@@ -104,6 +104,12 @@ def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: st
     ext = next((mapped for magic, mapped in IMAGE_MAGICS if first_chunk.startswith(magic)), None)
     if ext is None:
         return None
+    # RIFF is a container format, not WebP specifically -- AVI and WAV share
+    # the same leading magic. The WEBP four-CC sits at offset 8. Without
+    # this, a .avi would be saved as .webp and then fail in Pillow with a
+    # confusing "not a valid image" instead of being rejected up front.
+    if ext == ".webp" and content[8:12] != b"WEBP":
+        return None
     final_name = f"{name_prefix}{ext}"
     dest_path = os.path.join(dest_dir, final_name)
     with open(dest_path, "wb") as f:

@@ -134,6 +134,7 @@ def test_saving_password_without_encryption_key_is_rejected(client, monkeypatch)
     from app.database import engine
 
     monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
+    client.delete("/api/email-settings/password")  # self-contained: don't depend on prior test cleanup
     r = client.put("/api/email-settings", json=_settings_payload(password="should-not-persist"))
     assert r.status_code == 400
 
@@ -493,3 +494,36 @@ def test_mark_seen_uses_parenthesized_flag_list():
     email_client.mark_seen(conn, b"1")
     args = conn.store.call_args[0]
     assert args[2] == "(\\Seen)", f"expected parenthesized flag list, got {args[2]!r}"
+
+
+def test_inline_signature_image_is_not_treated_as_attachment(tmp_path):
+    """Decorative inline images (signature graphics, newsletter logos)
+    carry Content-Disposition: inline WITH a filename. Keying on the
+    filename alone sent them through OCR, where e.g. a phone number in a
+    signature can be mistaken for an ingredient line."""
+    from email.message import EmailMessage
+    from app.ingestion.email_processing import extract_email_parts
+
+    msg = EmailMessage()
+    msg["Subject"] = "[RECIPE] with signature"
+    msg.set_content("Body Recipe\nIngredients\n2 cups flour\nInstructions\n1. Mix")
+    msg.add_related(TINY_PNG, maintype="image", subtype="png",
+                    filename="signature.png", disposition="inline")
+
+    parts = extract_email_parts(msg)
+    assert parts["image_bytes"] is None, "an inline image must not be picked up as an attachment"
+    assert "flour" in parts["body_text"]
+
+
+def test_genuine_attachment_still_detected(tmp_path):
+    """The inline fix must not break real attachments."""
+    from email.message import EmailMessage
+    from app.ingestion.email_processing import extract_email_parts
+
+    msg = EmailMessage()
+    msg["Subject"] = "[RECIPE] photo"
+    msg.set_content("See attached.")
+    msg.add_attachment(TINY_PNG, maintype="image", subtype="png", filename="card.png")
+
+    parts = extract_email_parts(msg)
+    assert parts["image_bytes"] is not None

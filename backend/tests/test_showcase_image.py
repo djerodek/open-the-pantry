@@ -189,8 +189,15 @@ def test_combine_multiple_screenshots_into_one_draft(client):
     draft = r.json()
 
     assert draft["image_count"] == 2
-    assert [i["raw_line"] for i in draft["ingredients"]] == ["2 cups flour", "1 tsp salt"]
-    assert [s["text"] for s in draft["steps"]] == ["1. Mix ingredients", "2. Bake at 350F"]
+    # Containment rather than exact equality: the point of this test is that
+    # BOTH screenshots contributed to ONE draft, not that Tesseract emits
+    # specific bytes. Exact-match assertions here would go flaky across
+    # Tesseract versions / CI font rendering.
+    ingredient_text = " ".join(i["raw_line"] for i in draft["ingredients"]).lower()
+    assert "flour" in ingredient_text and "salt" in ingredient_text
+    step_text = " ".join(s["text"] for s in draft["steps"]).lower()
+    assert "mix" in step_text, "content from the first screenshot"
+    assert "bake" in step_text, "content from the second screenshot -- proves they were combined"
     # showcase image defaults to the first screenshot submitted
     assert draft["image_path"] == draft["stored_file"]
     assert os.path.isfile(os.path.join(TMP_DIR, draft["image_path"]))

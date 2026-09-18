@@ -1244,8 +1244,8 @@ def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Dep
         # rather than storing a reference to a file that was never
         # uploaded -- _promote_temp_file passes unknown names through
         # unchanged, which would leave a permanently-broken image link.
-        if not (safe_join(TMP_DIR, payload.image_path)
-                and os.path.isfile(safe_join(TMP_DIR, payload.image_path))):
+        draft_path = safe_join(TMP_DIR, payload.image_path)
+        if not (draft_path and os.path.isfile(draft_path)):
             raise HTTPException(
                 status_code=400,
                 detail="Unknown image reference -- upload the image first.",

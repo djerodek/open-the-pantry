@@ -1,3 +1,10 @@
+# NOTE: this is a floating tag -- it follows whatever Debian release the
+# Python image currently tracks. That moved from Bookworm to Trixie, which
+# is what broke the original build: the transitional package
+# "libgdk-pixbuf2.0-0" was dropped in Trixie. The name below
+# ("libgdk-pixbuf-2.0-0") is the real package in BOTH releases, so it works
+# either way. If a future base-image move breaks apt again, pin the suite
+# explicitly (e.g. python:3.12-slim-trixie) rather than chasing names.
 FROM python:3.12-slim
 
 # System dependencies:
@@ -12,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libcairo2 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-2.0-0 \
     libffi-dev \
     shared-mime-info \
     fonts-liberation \

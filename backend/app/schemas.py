@@ -30,7 +30,7 @@ class TagIn(BaseModel):
 
 class RecipeCreate(BaseModel):
     title: str
-    source_type: str  # 'url' | 'pdf' | 'screenshot' | 'manual'
+    source_type: str  # 'url' | 'pdf' | 'screenshot' | 'manual' | 'email'
     source_url: Optional[str] = None
     servings: Optional[str] = None
     prep_time: Optional[str] = None

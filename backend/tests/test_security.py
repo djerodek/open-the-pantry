@@ -263,3 +263,14 @@ def test_safe_join_confines_to_base_dir(tmp_path):
     assert safe_join(str(tmp_path), good) is not None
     for bad in ["/etc/passwd", "../escape.jpg", "nope.txt"]:
         assert safe_join(str(tmp_path), bad) is None
+
+
+def test_riff_container_that_is_not_webp_is_rejected(tmp_path):
+    """RIFF is a container -- AVI and WAV share WebP's leading magic. The
+    WEBP four-CC at offset 8 distinguishes them. Without the check an AVI
+    was saved as .webp and failed later with a misleading error."""
+    from app.file_validation import validate_and_save_image_bytes
+
+    fake_avi = b"RIFF" + b"\x00\x00\x00\x00" + b"AVI " + b"\x00" * 64
+    assert validate_and_save_image_bytes(fake_avi, str(tmp_path), "img-" + "a" * 32) is None
+    assert not list(tmp_path.iterdir()), "nothing should be left on disk"

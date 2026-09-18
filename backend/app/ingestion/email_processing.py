@@ -23,9 +23,17 @@ def extract_email_parts(msg) -> dict:
 
     if msg.is_multipart():
         for part in msg.walk():
-            content_disposition = str(part.get("Content-Disposition") or "")
+            content_disposition = str(part.get("Content-Disposition") or "").lower()
             content_type = part.get_content_type()
-            is_attachment = "attachment" in content_disposition or bool(part.get_filename())
+            # Require an explicit "attachment" disposition rather than just
+            # the presence of a filename. Most decorative inline images
+            # (signature graphics, newsletter logos) carry
+            # Content-Disposition: inline WITH a filename, so keying on the
+            # filename alone sent them through the OCR pipeline -- where a
+            # phone number in a signature can plausibly be mistaken for an
+            # ingredient line. A genuine photo of a recipe card is
+            # essentially always sent as a real attachment.
+            is_attachment = "attachment" in content_disposition
 
             if is_attachment:
                 payload = part.get_payload(decode=True)

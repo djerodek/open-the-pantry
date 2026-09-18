@@ -494,7 +494,9 @@ backend/
   docker-entrypoint.sh   drops from root to non-root user at container start
   requirements.txt
   requirements-test.txt  pytest + httpx + piexif, not included in the deployed image
+  pytest.ini             pythonpath = . (no per-file sys.path boilerplate)
   tests/
+    __init__.py            makes tests a package, so `from .conftest import ...` resolves
     conftest.py            shared fixtures (isolated data dir, TestClient)
     test_time_utils.py
     test_ingredient_parser.py
