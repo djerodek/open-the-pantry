@@ -1,0 +1,14 @@
+services:
+  open-the-pantry:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: open-the-pantry
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    # environment:
+    #   RECIPE_APP_ENCRYPTION_KEY: "paste-generated-key-here"
+    #   RECIPE_APP_API_KEY: "choose-a-long-random-string"

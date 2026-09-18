@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ recipe.title }}</title>
+<style>
+  @page { size: letter; margin: 2cm; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #22201B;
+    max-width: 680px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+  h1 {
+    font-size: 28px;
+    margin-bottom: 4px;
+  }
+  .meta {
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #55524A;
+    margin-bottom: 16px;
+  }
+  .meta span { margin-right: 16px; }
+  img.hero {
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    text-transform: none;
+    border-bottom: 1px solid #C48A2E;
+    padding-bottom: 4px;
+    margin-top: 24px;
+  }
+  ul.ingredients { list-style: none; padding: 0; }
+  ul.ingredients li {
+    padding: 4px 0;
+    border-bottom: 1px dotted #ddd;
+  }
+  ol.steps li { margin-bottom: 10px; }
+  .notes {
+    white-space: pre-wrap;   /* preserve user-entered line breaks/spacing */
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .source {
+    margin-top: 24px;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+  <h1>{{ recipe.title }}</h1>
+  <div class="meta">
+    {% if recipe.servings %}<span>Servings: {{ recipe.servings }}</span>{% endif %}
+    {% if recipe.prep_time %}<span>Prep: {{ recipe.prep_time }}</span>{% endif %}
+    {% if recipe.cook_time %}<span>Cook: {{ recipe.cook_time }}</span>{% endif %}
+    {% if recipe.total_time %}<span>Total: {{ recipe.total_time }}</span>{% endif %}
+  </div>
+
+  {% if image_data_uri %}
+  <img class="hero" src="{{ image_data_uri }}" alt="">
+  {% endif %}
+
+  <h2>Ingredients</h2>
+  <ul class="ingredients">
+    {% for ing in recipe.ingredients %}
+    <li>
+      {% if ing.quantity %}{{ ing.quantity }} {% endif %}{% if ing.unit %}{{ ing.unit }} {% endif %}{{ ing.name or ing.raw_line }}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h2>Instructions</h2>
+  <ol class="steps">
+    {% for step in recipe.steps %}
+    <li>{{ step.text }}</li>
+    {% endfor %}
+  </ol>
+
+  {% if show_notes %}
+  <h2>Notes</h2>
+  <div class="notes">{{ recipe.notes }}</div>
+  {% endif %}
+
+  <div class="source">
+    {% if recipe.source_type == 'url' and recipe.source_url %}
+      Source: {{ recipe.source_url }}
+    {% elif recipe.source_type == 'manual' %}
+      Source: handwritten / manual entry
+    {% else %}
+      Source: {{ recipe.source_type }}
+    {% endif %}
+  </div>
+</body>
+</html>

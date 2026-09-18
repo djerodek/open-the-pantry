@@ -1,0 +1,915 @@
+/* ---------------------------------------------------------------------
+   Design tokens
+   Palette: warm paper background, warm charcoal ink, saffron accent
+   (spice-rack reference, not the terracotta/clay tone common in generated
+   UI), sage green for vegetarian/herb-adjacent tags, muted rust for
+   low-confidence/alert states.
+--------------------------------------------------------------------- */
+:root {
+  --color-bg: #FBF9F4;
+  --color-bg-raised: #FFFFFF;
+  --color-ink: #22201B;
+  --color-ink-muted: #6B675C;
+  --color-border: #E4DFD3;
+  --color-accent: #C48A2E;
+  --color-accent-ink: #FFFFFF;
+  --color-sage: #6B7A5E;
+  --color-alert: #A8443A;
+  --color-focus: #1D6FA5;
+
+  --badge-url-bg: #E4EDF2;      --badge-url-fg: #1D5A80;
+  --badge-pdf-bg: #EFE6F5;      --badge-pdf-fg: #6B3FA0;
+  --badge-screenshot-bg: #FCEFDD; --badge-screenshot-fg: #A0631D;
+  --badge-manual-bg: #EDE8DC;   --badge-manual-fg: #6B5B3A;
+  --badge-email-bg: #E6EFE9;    --badge-email-fg: #2F6B4F;
+  --badge-conf-high-bg: #E3EEE0; --badge-conf-high-fg: #3D6B32;
+  --badge-conf-med-bg: #FBF0D9;  --badge-conf-med-fg: #8A6410;
+  --badge-conf-low-bg: #F6DEDA;  --badge-conf-low-fg: #A8443A;
+  --badge-matched-bg: #EAF1E8;   --badge-matched-fg: #6B7A5E;
+
+  --overlay-scrim: rgba(34, 32, 27, 0.5);
+  --shadow-color: rgba(0, 0, 0, 0.25);
+
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  --font-body: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Base font size is user-adjustable (small/medium/large) via JS, which
+     updates this variable. All type in the app is set in rem so the whole
+     UI scales together, in addition to normal browser zoom / OS text size
+     (which this app never disables). */
+  --base-font-size: 16px;
+
+  --sidebar-width: 15.5rem;
+  --topbar-height: 3.5rem;
+  --radius: 3px;
+}
+
+/* ---------------------------------------------------------------------
+   Dark theme: true black surfaces (#000), not a dark-gray substitute.
+   Depth between surfaces (cards, modals, popovers on top of the black
+   page background) comes from a 1px border, not a lighter fill -- so
+   "raised" surfaces stay pure black too, matching what was asked for.
+   Two ways this applies:
+     1. System preference, when the user hasn't forced a choice (media
+        query, guarded so an explicit [data-theme="light"] can override it)
+     2. An explicit choice, forced via [data-theme="dark"] regardless of
+        system preference (set by the theme toggle in Settings, see app.js)
+--------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #000000;
+    --color-bg-raised: #000000;
+    --color-ink: #F2F0EA;
+    --color-ink-muted: #A8A49A;
+    --color-border: #333330;
+    --color-accent: #D9A54A;
+    --color-accent-ink: #000000;
+    --color-sage: #8FA37E;
+    --color-alert: #D97364;
+    --color-focus: #5FB0E0;
+
+    --badge-url-bg: #0D2430;      --badge-url-fg: #7FC4EA;
+    --badge-pdf-bg: #241A30;      --badge-pdf-fg: #C9A6E8;
+    --badge-screenshot-bg: #2E2008; --badge-screenshot-fg: #E8B66A;
+    --badge-manual-bg: #262218;   --badge-manual-fg: #CDBE9A;
+    --badge-email-bg: #12241A;    --badge-email-fg: #7FC49D;
+    --badge-conf-high-bg: #16260F; --badge-conf-high-fg: #8FCB7A;
+    --badge-conf-med-bg: #2E2408;  --badge-conf-med-fg: #E0B84A;
+    --badge-conf-low-bg: #300F0C;  --badge-conf-low-fg: #E88A7A;
+    --badge-matched-bg: #16220F;   --badge-matched-fg: #A0C08A;
+
+    --overlay-scrim: rgba(0, 0, 0, 0.7);
+    --shadow-color: rgba(0, 0, 0, 0.6);
+  }
+}
+
+html[data-theme="dark"] {
+  --color-bg: #000000;
+  --color-bg-raised: #000000;
+  --color-ink: #F2F0EA;
+  --color-ink-muted: #A8A49A;
+  --color-border: #333330;
+  --color-accent: #D9A54A;
+  --color-accent-ink: #000000;
+  --color-sage: #8FA37E;
+  --color-alert: #D97364;
+  --color-focus: #5FB0E0;
+
+  --badge-url-bg: #0D2430;      --badge-url-fg: #7FC4EA;
+  --badge-pdf-bg: #241A30;      --badge-pdf-fg: #C9A6E8;
+  --badge-screenshot-bg: #2E2008; --badge-screenshot-fg: #E8B66A;
+  --badge-manual-bg: #262218;   --badge-manual-fg: #CDBE9A;
+  --badge-email-bg: #12241A;    --badge-email-fg: #7FC49D;
+  --badge-conf-high-bg: #16260F; --badge-conf-high-fg: #8FCB7A;
+  --badge-conf-med-bg: #2E2408;  --badge-conf-med-fg: #E0B84A;
+  --badge-conf-low-bg: #300F0C;  --badge-conf-low-fg: #E88A7A;
+  --badge-matched-bg: #16220F;   --badge-matched-fg: #A0C08A;
+
+  --overlay-scrim: rgba(0, 0, 0, 0.7);
+  --shadow-color: rgba(0, 0, 0, 0.6);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  font-size: var(--base-font-size);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+h1, h2, h3, .recipe-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+a { color: var(--color-focus); }
+
+/* Visible keyboard focus everywhere -- never suppressed */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  padding: 0.5rem 1rem;
+  z-index: 200;
+}
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------
+   Top bar: search only, deliberately compact so it doesn't crowd content
+--------------------------------------------------------------------- */
+.topbar {
+  height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.sidebar-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.search-form {
+  flex: 1;
+  display: flex;
+  max-width: 32rem;
+}
+
+.search-form input[type="search"] {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius) 0 0 var(--radius);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+}
+
+.search-form button {
+  padding: 0 0.9rem;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+}
+
+.topbar-spacer { flex: 1; }
+
+.text-size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-muted);
+}
+.text-size-control button {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------
+   Layout shell
+--------------------------------------------------------------------- */
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - var(--topbar-height));
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+  transition: margin-left 0.15s ease;
+}
+
+.sidebar[data-collapsed="true"] {
+  margin-left: calc(-1 * var(--sidebar-width));
+}
+
+@media (max-width: 720px) {
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    background: var(--color-bg-raised);
+    z-index: 40;
+    box-shadow: 2px 0 8px var(--shadow-color);
+  }
+}
+
+.sidebar h2 {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-muted);
+  margin: 1rem 0 0.4rem;
+  font-family: var(--font-body);
+  font-weight: 700;
+}
+.sidebar h2:first-child { margin-top: 0; }
+
+.tag-tree-group button.tag-node {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0.35rem 0.4rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--color-ink);
+}
+.tag-tree-group button.tag-node:hover,
+.tag-tree-group button.tag-node[aria-pressed="true"] {
+  background: var(--color-border);
+}
+
+.subgroup-label {
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+  margin: 0.5rem 0 0.15rem 0.4rem;
+}
+
+main {
+  flex: 1;
+  padding: 1rem 1.25rem 4rem;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Grouping toggle (segmented control)
+--------------------------------------------------------------------- */
+.toolbar-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.toolbar-actions { display: flex; gap: 0.5rem; }
+
+.grouping-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+.grouping-toggle button {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--color-ink);
+}
+.grouping-toggle button[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: var(--color-bg-raised);
+  border-color: var(--color-ink);
+}
+
+/* ---------------------------------------------------------------------
+   Filter panel (All tab only): stacked tag filters (AND) + nested time filter
+--------------------------------------------------------------------- */
+.filter-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-raised);
+  padding: 0.9rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.filter-panel[hidden] { display: none; }
+
+.filter-section { margin-bottom: 0.9rem; }
+.filter-section:last-child { margin-bottom: 0; }
+.filter-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-muted);
+  margin-bottom: 0.4rem;
+}
+
+.filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.filter-chip {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: var(--color-ink);
+}
+.filter-chip[aria-pressed="true"] {
+  background: var(--color-sage);
+  border-color: var(--color-sage);
+  color: #fff;
+}
+
+.time-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+.time-filter-row.sub {
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-border);
+}
+
+.active-filters-summary {
+  font-size: 0.82rem;
+  color: var(--color-ink-muted);
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.active-filters-summary button {
+  background: none;
+  border: none;
+  color: var(--color-focus);
+  cursor: pointer;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------
+   Card select mode
+--------------------------------------------------------------------- */
+.recipe-grid[data-select-mode="true"] .recipe-card { cursor: default; }
+
+.recipe-grid[data-show-thumbnails="false"] .recipe-card-image {
+  display: none;
+}
+.recipe-grid[data-show-thumbnails="false"] .card-tab {
+  position: static;
+  padding: 0.6rem 0.75rem 0;
+}
+.recipe-grid[data-show-thumbnails="false"] .card-quick-controls {
+  position: static;
+  padding: 0.4rem 0.75rem 0;
+  justify-content: flex-start;
+}
+.recipe-grid[data-show-thumbnails="false"] .card-select-box {
+  position: static;
+  margin: 0.5rem 0 0 0.75rem;
+}
+
+.card-select-box {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  z-index: 5;
+}
+
+.batch-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  background: var(--color-ink);
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 70;
+  box-shadow: 0 3px 12px var(--shadow-color);
+}
+.batch-bar[hidden] { display: none; }
+.batch-bar .btn-secondary {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+/* ---------------------------------------------------------------------
+   Card quick-controls: favorite toggle + 3 rating popovers
+--------------------------------------------------------------------- */
+.card-quick-controls {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+  z-index: 6;
+}
+
+.favorite-btn {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  width: 1.9rem;
+  height: 1.9rem;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.favorite-btn[aria-pressed="true"] { color: var(--color-alert); }
+
+.rating-control { position: relative; }
+.rating-control > button {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  height: 1.9rem;
+  padding: 0 0.5rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.rating-control > button[data-has-value="true"] {
+  border-color: var(--color-accent);
+  background: #fff;
+}
+
+.wakelock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+}
+.wakelock-btn[data-active="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.notes-section { margin: 0.75rem 0; }
+.notes-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.notes-toggle-btn[data-has-notes="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+.notes-editor {
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+.notes-editor textarea { width: 100%; }
+
+.rating-popover {
+  position: absolute;
+  bottom: 2.2rem;
+  right: 0;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 3px 10px var(--shadow-color);
+  padding: 0.4rem;
+  min-width: 8rem;
+  z-index: 20;
+}
+.rating-popover[hidden] { display: none; }
+.rating-popover button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.rating-popover button:hover,
+.rating-popover button[aria-pressed="true"] { background: var(--color-bg); }
+
+/* ---------------------------------------------------------------------
+   Search match indicator
+--------------------------------------------------------------------- */
+.badge-matched { background: var(--badge-matched-bg); color: var(--badge-matched-fg); }
+
+/* ---------------------------------------------------------------------
+   Batch upload (URL / PDF)
+--------------------------------------------------------------------- */
+.mode-switch {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.mode-switch button {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.mode-switch button[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: #fff;
+  border-color: var(--color-ink);
+}
+
+.batch-results-list {
+  list-style: none;
+  padding: 0;
+  font-size: 0.85rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.batch-results-list li { padding: 0.3rem 0; border-bottom: 1px dotted var(--color-border); }
+.batch-results-list .fail { color: var(--color-alert); }
+.batch-results-list .ok { color: var(--color-sage); }
+
+/* ---------------------------------------------------------------------
+   Duration input (dd:hh:mm)
+--------------------------------------------------------------------- */
+.duration-input {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.duration-input input {
+  width: 3.5rem;
+  padding: 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.duration-input span { font-size: 0.82rem; color: var(--color-ink-muted); }
+
+.group-section { margin-bottom: 2rem; }
+.group-section h3 {
+  font-size: 1.05rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3rem;
+}
+
+/* ---------------------------------------------------------------------
+   Recipe cards -- signature element: a small corner tab carrying the
+   source-type badge, referencing a physical recipe-box index-card divider rather
+   than a generic rounded SaaS card.
+--------------------------------------------------------------------- */
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.recipe-card {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-raised);
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+}
+.recipe-card:hover .recipe-card-title { color: var(--color-accent); }
+
+.recipe-card-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--color-border);
+}
+
+.recipe-card-body { padding: 0.6rem 0.75rem 0.8rem; flex: 1; }
+
+.recipe-card-title {
+  font-size: 1rem;
+  margin: 0 0 0.3rem;
+}
+
+.badge {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.badge-source-url { background: var(--badge-url-bg); color: var(--badge-url-fg); }
+.badge-source-pdf { background: var(--badge-pdf-bg); color: var(--badge-pdf-fg); }
+.badge-source-screenshot { background: var(--badge-screenshot-bg); color: var(--badge-screenshot-fg); }
+.badge-source-manual { background: var(--badge-manual-bg); color: var(--badge-manual-fg); }
+.badge-source-email { background: var(--badge-email-bg); color: var(--badge-email-fg); }
+
+.badge-confidence-high { background: var(--badge-conf-high-bg); color: var(--badge-conf-high-fg); }
+.badge-confidence-med { background: var(--badge-conf-med-bg); color: var(--badge-conf-med-fg); }
+.badge-confidence-low { background: var(--badge-conf-low-bg); color: var(--badge-conf-low-fg); }
+
+.card-tab {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* ---------------------------------------------------------------------
+   Floating add-recipe button
+--------------------------------------------------------------------- */
+.fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border: none;
+  font-size: 1.75rem;
+  box-shadow: 0 3px 10px var(--shadow-color);
+  cursor: pointer;
+  z-index: 60;
+}
+
+/* ---------------------------------------------------------------------
+   Modal / dialog
+--------------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  background: var(--color-bg-raised);
+  border-radius: var(--radius);
+  max-width: 40rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.modal h2 { margin-top: 0; }
+
+.modal-close {
+  float: right;
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+
+.source-type-picker {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+.source-type-picker button {
+  padding: 1rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.source-type-picker button:hover { border-color: var(--color-accent); }
+
+.field { margin-bottom: 0.85rem; }
+.field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; }
+.field input[type="text"],
+.field input[type="url"],
+.field input[type="file"],
+.field textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+.field textarea { min-height: 6rem; resize: vertical; }
+.field-hint { font-size: 0.78rem; color: var(--color-ink-muted); margin-top: 0.2rem; }
+
+.review-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .review-columns { grid-template-columns: 1fr 1fr; }
+}
+.review-raw {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.6rem;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-secondary {
+  background: none;
+  border: 1px solid var(--color-border);
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* ---------------------------------------------------------------------
+   Recipe detail
+--------------------------------------------------------------------- */
+.recipe-detail { max-width: 42rem; margin: 0 auto; }
+.recipe-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.recipe-detail img.hero {
+  width: 100%;
+  max-height: 22rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin: 0.75rem 0 1rem;
+}
+.recipe-meta { color: var(--color-ink-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+.recipe-meta span { margin-right: 1rem; }
+
+.share-menu-wrap { position: relative; }
+.share-menu {
+  position: absolute;
+  right: 0;
+  top: 2.4rem;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 3px 10px var(--shadow-color);
+  min-width: 11rem;
+  z-index: 30;
+}
+.share-menu[hidden] { display: none; }
+.share-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.share-menu button:hover { background: var(--color-bg); }
+
+.ingredients-list { list-style: none; padding: 0; }
+.ingredients-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px dotted var(--color-border);
+  display: flex;
+  gap: 0.4rem;
+}
+.steps-list li { margin-bottom: 0.7rem; }
+
+.status-region {
+  position: fixed;
+  left: -9999px;
+}
+
+.empty-state {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--color-ink-muted);
+}
+
+/* ---------------------------------------------------------------------
+   Motion: respect reduced-motion preference
+--------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---------------------------------------------------------------------
+   Print styles: used both for browser Ctrl/Cmd+P on the recipe detail
+   page and shares the visual language of the exported PDF/HTML template.
+--------------------------------------------------------------------- */
+@media print {
+  .topbar, .sidebar, .fab, .toolbar-row, .filter-panel, .batch-bar, .share-menu-wrap, .skip-link,
+  .notes-section, .wakelock-btn,
+  #add-recipe-overlay, .modal-close {
+    display: none !important;
+  }
+  .app-shell { display: block; }
+  main { padding: 0; }
+  body { background: #fff; }
+  #recipe-detail-overlay {
+    position: static;
+    background: none;
+    padding: 0;
+    display: block !important;
+  }
+  #recipe-detail-modal {
+    max-width: 100%;
+    max-height: none;
+    overflow: visible;
+    box-shadow: none;
+    padding: 0;
+  }
+  .recipe-detail { max-width: 100%; }
+}

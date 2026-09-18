@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- user-scalable is intentionally left at its default (enabled): pinch-zoom
+     and browser/OS text-size settings must keep working. -->
+<title>Open the Pantry</title>
+<meta name="description" content="Self-hosted searchable recipe book">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#C48A2E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<header class="topbar">
+  <button
+    id="sidebar-toggle"
+    class="sidebar-toggle"
+    type="button"
+    aria-label="Toggle category sidebar"
+    aria-expanded="true"
+    aria-controls="sidebar">
+    &#9776;
+  </button>
+
+  <form class="search-form" role="search" id="search-form">
+    <label class="visually-hidden" for="search-input">Search recipes</label>
+    <input
+      type="search"
+      id="search-input"
+      name="q"
+      placeholder="Search recipes...">
+    <button type="submit" aria-label="Search">&#128269;</button>
+  </form>
+
+  <div class="topbar-spacer"></div>
+
+  <button
+    id="settings-toggle"
+    class="sidebar-toggle"
+    type="button"
+    aria-haspopup="dialog"
+    aria-controls="settings-modal"
+    aria-label="Settings">
+    &#9881;
+  </button>
+</header>
+
+<div class="app-shell">
+  <nav id="sidebar" class="sidebar" aria-label="Recipe categories" data-collapsed="false">
+    <div id="tag-tree"><!-- populated by app.js --></div>
+  </nav>
+
+  <main id="main-content" tabindex="-1">
+    <div class="toolbar-row">
+      <div class="grouping-toggle" role="group" aria-label="Group recipes by">
+        <button type="button" data-group="all" aria-pressed="true">All</button>
+        <button type="button" data-group="meal_type" aria-pressed="false">Meal Type</button>
+        <button type="button" data-group="cooking_style" aria-pressed="false">Cooking Style</button>
+        <button type="button" data-group="main_ingredient" aria-pressed="false">Main Ingredient</button>
+      </div>
+      <div class="toolbar-actions">
+        <button type="button" id="filters-toggle" class="btn-secondary" aria-expanded="false" aria-controls="filter-panel" hidden>
+          Filters
+        </button>
+        <button type="button" id="thumbnails-toggle" class="btn-secondary" aria-pressed="true">
+          Thumbnails
+        </button>
+        <button type="button" id="select-mode-toggle" class="btn-secondary" aria-pressed="false">
+          Select
+        </button>
+      </div>
+    </div>
+
+    <div id="filter-panel" class="filter-panel" hidden aria-label="Filter recipes"></div>
+
+    <div id="recipe-list-region" aria-live="polite">
+      <!-- populated by app.js -->
+    </div>
+  </main>
+</div>
+
+<div id="batch-bar" class="batch-bar" hidden>
+  <span id="batch-count">0 selected</span>
+  <button type="button" id="batch-delete-btn" class="btn-secondary">Delete selected</button>
+  <button type="button" id="batch-cancel-btn" class="btn-secondary">Cancel</button>
+</div>
+
+<button
+  class="fab"
+  id="add-recipe-fab"
+  type="button"
+  aria-haspopup="dialog"
+  aria-controls="add-recipe-modal"
+  aria-label="Add recipe">
+  +
+</button>
+
+<!-- Add recipe modal -->
+<div class="modal-overlay" id="add-recipe-overlay" hidden>
+  <div
+    class="modal"
+    id="add-recipe-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="add-recipe-heading">
+    <button class="modal-close" id="add-recipe-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="add-recipe-heading">Add Recipe</h2>
+    <div id="add-recipe-body"><!-- populated by app.js --></div>
+  </div>
+</div>
+
+<!-- Recipe detail modal / view -->
+<div class="modal-overlay" id="recipe-detail-overlay" hidden>
+  <div
+    class="modal"
+    id="recipe-detail-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="recipe-detail-heading">
+    <button class="modal-close" id="recipe-detail-close" type="button" aria-label="Close dialog">&times;</button>
+    <div id="recipe-detail-body"><!-- populated by app.js --></div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settings-overlay" hidden>
+  <div
+    class="modal"
+    id="settings-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-heading"
+    style="max-width:32rem;">
+    <button class="modal-close" id="settings-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="settings-heading">Settings</h2>
+
+    <div class="filter-section">
+      <div class="filter-section-title" id="theme-setting-label">Theme</div>
+      <div class="mode-switch" id="theme-switch" role="group" aria-labelledby="theme-setting-label">
+        <button type="button" data-theme-choice="light">Light</button>
+        <button type="button" data-theme-choice="dark">Dark</button>
+        <button type="button" data-theme-choice="system">System</button>
+      </div>
+      <div class="field-hint">Dark mode uses true black, not a gray substitute.</div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title" id="text-size-setting-label">Text size</div>
+      <div class="text-size-control" role="group" aria-labelledby="text-size-setting-label">
+        <button type="button" id="text-size-decrease" aria-label="Decrease text size">A-</button>
+        <button type="button" id="text-size-increase" aria-label="Increase text size">A+</button>
+      </div>
+    </div>
+
+    <div class="filter-section" id="wakelock-setting" hidden>
+      <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
+      <label for="wakelock-default" style="display:flex;align-items:center;gap:0.5rem;">
+        <input type="checkbox" id="wakelock-default">
+        <span>Keep screen awake when viewing a recipe</span>
+      </label>
+      <div class="field-hint">
+        Applies automatically to every recipe you open. You can still toggle it
+        per recipe. Released when you close the recipe.
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">Email ingest</div>
+      <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
+        Configure email ingest
+      </button>
+      <div class="field-hint">
+        Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
+        scans once daily.
+      </div>
+      <div id="email-settings-panel" hidden></div>
+    </div>
+  </div>
+</div>
+
+<div class="status-region" id="status-region" role="status" aria-live="polite"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
