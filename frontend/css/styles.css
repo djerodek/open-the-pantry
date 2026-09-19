@@ -123,6 +123,16 @@ body {
   line-height: 1.5;
 }
 
+/* Form controls do NOT inherit `color` -- the user agent gives them
+   `color: buttontext`, which is black. Any control that draws no background
+   of its own therefore rendered black-on-black in dark mode: the Filters /
+   Thumbnails / Select buttons, the sidebar and settings toggles, and the
+   detail-page actions were all invisible (measured contrast 1.00:1). Rules
+   below that set their own colour still win; this is only the default. */
+button, select, textarea, input {
+  color: inherit;
+}
+
 h1, h2, h3, .recipe-title {
   font-family: var(--font-display);
   font-weight: 600;
@@ -421,11 +431,8 @@ main {
   position: static;
   padding: 0.6rem 0.75rem 0;
 }
-.recipe-grid[data-show-thumbnails="false"] .card-quick-controls {
-  position: static;
-  padding: 0.4rem 0.75rem 0;
-  justify-content: flex-start;
-}
+/* .card-quick-controls needs no override here -- it is in flow inside the
+   card body in both thumbnail modes. */
 .recipe-grid[data-show-thumbnails="false"] .card-select-box {
   position: static;
   margin: 0.5rem 0 0 0.75rem;
@@ -443,8 +450,9 @@ main {
 .batch-bar {
   position: fixed;
   left: 50%;
-  bottom: 1.25rem;
-  transform: translateX(-50%);
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  /* translateZ for the same iOS fixed-position reason as .fab below. */
+  transform: translateX(-50%) translateZ(0);
   background: var(--color-ink);
   color: #fff;
   padding: 0.6rem 1rem;
@@ -467,46 +475,58 @@ main {
 /* ---------------------------------------------------------------------
    Card quick-controls: favorite toggle + 3 rating popovers
 --------------------------------------------------------------------- */
+/* In flow, on their own row beneath the title -- NOT absolutely positioned
+   over the card, which used to put them on top of the title text. */
 .card-quick-controls {
-  position: absolute;
-  bottom: 0.5rem;
-  right: 0.5rem;
   display: flex;
-  gap: 0.3rem;
-  z-index: 6;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.5rem;
 }
 
+/* Controls sit on the card surface, so they follow the theme tokens. The
+   old hardcoded rgba(255,255,255,0.92) was a white puck that stayed white
+   in dark mode -- bright, and it made the icons on it hard to pick out. */
 .favorite-btn {
-  background: rgba(255,255,255,0.92);
+  background: var(--color-bg-raised);
   border: 1px solid var(--color-border);
   border-radius: 50%;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2.85rem;
+  height: 2.85rem;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.5rem;
   line-height: 1;
+  color: var(--color-ink);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.favorite-btn[aria-pressed="true"] { color: var(--color-alert); }
+.favorite-btn[aria-pressed="true"] {
+  color: var(--color-alert);
+  border-color: var(--color-alert);
+}
 
 .rating-control { position: relative; }
 .rating-control > button {
-  background: rgba(255,255,255,0.92);
+  background: var(--color-bg-raised);
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  height: 1.9rem;
-  padding: 0 0.5rem;
+  height: 2.85rem;
+  min-width: 2.85rem;
+  padding: 0 0.7rem;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-ink);
   display: flex;
   align-items: center;
-  gap: 0.2rem;
+  justify-content: center;
+  gap: 0.3rem;
 }
 .rating-control > button[data-has-value="true"] {
   border-color: var(--color-accent);
-  background: #fff;
+  color: var(--color-accent);
 }
 
 .wakelock-btn {
@@ -654,9 +674,12 @@ main {
 }
 .recipe-card:hover .recipe-card-title { color: var(--color-accent); }
 
+/* 8/3 is exactly half the height 4/3 gave at the same card width -- the
+   thumbnail was eating most of a phone screen per card. Tune this one
+   ratio to change thumbnail height; object-fit keeps the crop centred. */
 .recipe-card-image {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 8 / 3;
   object-fit: cover;
   background: var(--color-border);
 }
@@ -697,10 +720,16 @@ main {
 /* ---------------------------------------------------------------------
    Floating add-recipe button
 --------------------------------------------------------------------- */
+/* translateZ(0) promotes the button to its own compositing layer. Without
+   it, iOS Safari (and an installed PWA especially) intermittently drops a
+   position:fixed element back into document flow while scrolling a long
+   list -- it stops floating and ends up at the bottom of the page, so you
+   have to scroll the whole library to reach it. The safe-area inset keeps
+   it clear of the home indicator / PWA chrome. */
 .fab {
   position: fixed;
   right: 1.25rem;
-  bottom: 1.25rem;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
   width: 3.5rem;
   height: 3.5rem;
   border-radius: 50%;
@@ -711,6 +740,8 @@ main {
   box-shadow: 0 3px 10px var(--shadow-color);
   cursor: pointer;
   z-index: 60;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* ---------------------------------------------------------------------
@@ -825,7 +856,7 @@ main {
 .recipe-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 .recipe-detail img.hero {
   width: 100%;
-  max-height: 22rem;
+  max-height: 11rem;
   object-fit: cover;
   border-radius: var(--radius);
   margin: 0.75rem 0 1rem;

@@ -394,11 +394,14 @@ docker compose -f docker-compose.build.yml up -d --build
   host directory, so nothing baked into the image can set its permissions
   ahead of time — then drops privileges before running the app. No manual
   `chown` on the host is required for the default case.
-- `docker-compose.yml` as given tracks `:latest`. That's convenient, but
-  means whatever the tag currently points to is what you get on the next
-  `docker compose pull`. For reproducible upgrades (and to control exactly
-  when a new version applies), pin a version tag instead, e.g.
-  `image: djerodek/open-the-pantry:1.2.0`, and bump it deliberately.
+- `docker-compose.yml` as given tracks `:main`, which follows the default
+  branch and is the tag that is always published. `:latest` follows the same
+  builds and is interchangeable. Either is convenient, but means whatever the
+  tag currently points to is what you get on the next `docker compose pull`.
+  For reproducible upgrades (and to control exactly when a new version
+  applies), pin a version tag instead, e.g.
+  `image: djerodek/open-the-pantry:1.2.0`, and bump it deliberately. Version
+  tags are published by pushing a `vX.Y.Z` git tag.
 - A `HEALTHCHECK` is included (hitting a dedicated `/healthz` endpoint, not
   a real-data one), so `docker ps` / orchestration tooling can tell a
   hung-but-still-listening process apart from a genuinely healthy one.

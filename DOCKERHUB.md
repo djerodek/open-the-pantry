@@ -45,7 +45,7 @@ Save as `docker-compose.yml`:
 
     services:
       open-the-pantry:
-        image: djerodek/open-the-pantry:latest
+        image: djerodek/open-the-pantry:main
         container_name: open-the-pantry
         ports:
           - "8090:8090"

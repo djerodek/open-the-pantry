@@ -812,12 +812,17 @@
       };
       if (isSelected) checkboxAttrs.checked = "";
       card.appendChild(el("input", checkboxAttrs));
-    } else {
-      card.appendChild(cardQuickControls(recipe));
     }
 
+    // The favourite/rating controls live IN FLOW inside the card body, on
+    // their own row under the title -- they used to be absolutely positioned
+    // at the card's bottom-right, which is exactly where the title sits, so
+    // they painted straight over it (worse the longer the title). Keeping
+    // them in flow means the card grows to fit them and the controls can be
+    // sized for touch without ever colliding with text again.
     card.appendChild(el("div", { class: "recipe-card-body" }, [
       el("h3", { class: "recipe-card-title recipe-title", text: recipe.title }),
+      state.selectMode ? null : cardQuickControls(recipe),
     ]));
     return card;
   }
@@ -1293,6 +1298,44 @@
     ]));
   }
 
+  // Downloads an export without navigating the window.
+  //
+  // This used to be window.open(url, "_blank"). In an installed PWA there is
+  // no browser chrome, and iOS in particular ignores "_blank" and navigates
+  // the standalone window itself -- so the PDF filled the app window with no
+  // address bar and no back button, and the only way out was to kill and
+  // reopen the app. Fetching to a blob and clicking a synthetic <a download>
+  // keeps the current page put: nothing navigates, so there is nothing to
+  // navigate back from. window.open is kept only as a last-resort fallback
+  // for a browser that refuses the blob path.
+  async function downloadExport(url, filename) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke late: Safari can still be reading the blob as the click is
+      // handled, and revoking immediately produces an empty file.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      announce("Download started.");
+    } catch (err) {
+      announce("Could not prepare the download; opening it instead.");
+      window.open(url, "_blank", "noopener");
+    }
+  }
+
+  function safeFilename(title, ext) {
+    const base = String(title || "recipe").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
+    return `${base || "recipe"}.${ext}`;
+  }
+
   function shareMenu(recipe) {
     const menu = el("div", { class: "share-menu", id: "share-menu", hidden: "" }, [
       el("button", { type: "button", text: "Print", onclick: () => { menu.hidden = true; window.print(); } }),
@@ -1302,10 +1345,16 @@
           menu.hidden = true;
           const includeNotes = recipe.notes ? confirm("Include your notes in the PDF?") : false;
           const url = `${API}/recipes/${recipe.id}/export.pdf${includeNotes ? "?include_notes=true" : ""}`;
-          window.open(url, "_blank");
+          downloadExport(url, safeFilename(recipe.title, "pdf"));
         },
       }),
-      el("button", { type: "button", text: "Download HTML", onclick: () => { menu.hidden = true; window.open(`${API}/recipes/${recipe.id}/export.html`, "_blank"); } }),
+      el("button", {
+        type: "button", text: "Download HTML",
+        onclick: () => {
+          menu.hidden = true;
+          downloadExport(`${API}/recipes/${recipe.id}/export.html`, safeFilename(recipe.title, "html"));
+        },
+      }),
       el("button", {
         type: "button", text: "Copy as text",
         onclick: async () => {
