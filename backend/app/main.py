@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 import anyio
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Request
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .database import get_db, engine, SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR
+from .database import get_db, engine, SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR, DB_PATH
 from .init_db import init_db
 from .ingestion.url_ingest import ingest_url, safe_get
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
@@ -25,6 +26,7 @@ from .ingestion.ingredient_parser import parse_ingredient_block
 from .ingestion.tagger import suggest_tags
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
+from .backup import build_database_backup, build_pdf_bundle
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import crypto
@@ -81,20 +83,37 @@ from .file_validation import (
 )
 
 
+# Backup archives are staged here, NOT in TMP_DIR. TMP_DIR is mounted at
+# /tmp-preview so the review screen can show a draft's captured image, which
+# would put a complete copy of the database under a publicly reachable path.
+# The filenames are unguessable either way, but there is no reason to serve
+# them at all.
+BACKUP_TMP_DIR = os.path.join(DATA_DIR, "backup-tmp")
+os.makedirs(BACKUP_TMP_DIR, exist_ok=True)
+
+
 def _sweep_stale_tmp_files():
     """Safety net for draft files left behind when the add-recipe modal is
     closed without saving and the frontend's explicit discard call didn't
     fire (e.g. tab closed mid-flow), or a browser/tab crash. Runs at startup
     and periodically thereafter (see lifespan below) -- a container can run
-    for weeks, so a startup-only sweep isn't enough on its own."""
+    for weeks, so a startup-only sweep isn't enough on its own.
+
+    Also sweeps abandoned backup archives: the streaming response deletes its
+    own file, but a download that is cancelled or dies mid-flight can leave
+    one behind, and those are large.
+    """
     now = time.time()
-    for name in os.listdir(TMP_DIR):
-        path = os.path.join(TMP_DIR, name)
-        try:
-            if os.path.isfile(path) and now - os.path.getmtime(path) > TMP_FILE_MAX_AGE_SECONDS:
-                os.remove(path)
-        except OSError:
-            pass
+    for directory in (TMP_DIR, BACKUP_TMP_DIR):
+        if not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            path = os.path.join(directory, name)
+            try:
+                if os.path.isfile(path) and now - os.path.getmtime(path) > TMP_FILE_MAX_AGE_SECONDS:
+                    os.remove(path)
+            except OSError:
+                pass
 
 
 def _sweep_orphaned_upload_files():
@@ -1467,6 +1486,91 @@ def export_html(recipe_id: int, include_notes: bool = False, db: Session = Depen
         media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Backup / export bundles
+# ---------------------------------------------------------------------------
+
+def _timestamped(prefix: str) -> str:
+    return f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+
+
+def _stream_zip_and_cleanup(path: str, filename: str) -> FileResponse:
+    """Stream a temp zip to the client, then delete it.
+
+    BackgroundTask runs after the response body has been sent, so the file
+    survives long enough to be read. Building these in memory instead is not
+    an option: a library with a few hundred photos runs to hundreds of MB,
+    and this app is expected to run on a NAS.
+    """
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+        background=BackgroundTask(lambda: os.path.isfile(path) and os.remove(path)),
+    )
+
+
+@app.get("/api/backup/info")
+def backup_info(db: Session = Depends(get_db)):
+    """Lets the UI warn about size/duration before someone taps a button that
+    renders several hundred PDFs."""
+    recipe_count = db.query(models.Recipe).count()
+    upload_bytes = 0
+    upload_count = 0
+    if os.path.isdir(UPLOADS_DIR):
+        for name in os.listdir(UPLOADS_DIR):
+            p = os.path.join(UPLOADS_DIR, name)
+            if os.path.isfile(p):
+                upload_count += 1
+                upload_bytes += os.path.getsize(p)
+    return {
+        "recipe_count": recipe_count,
+        "upload_count": upload_count,
+        "upload_bytes": upload_bytes,
+        "database_bytes": os.path.getsize(DB_PATH) if os.path.isfile(DB_PATH) else 0,
+    }
+
+
+@app.get("/api/backup/database.zip")
+def backup_database():
+    """Restorable backup: a consistent database snapshot plus every upload.
+
+    Not db-session-dependent on purpose -- it snapshots through SQLite's own
+    backup API rather than reading rows through the ORM, which is what makes
+    it consistent under WAL. See backup.snapshot_database.
+    """
+    path = os.path.join(BACKUP_TMP_DIR, f"backup-{uuid.uuid4().hex}.zip")
+    try:
+        _run_heavy(build_database_backup, path)
+    except Exception:
+        if os.path.isfile(path):
+            os.remove(path)
+        raise HTTPException(status_code=500, detail="Could not build the backup archive.")
+    return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-backup"))
+
+
+@app.get("/api/backup/pdfs.zip")
+def backup_pdfs(include_notes: bool = True, db: Session = Depends(get_db)):
+    """Reading archive: one PDF per recipe. Cannot be restored from.
+
+    include_notes defaults to True here, unlike the per-recipe share export.
+    This bundle is for you, not for handing to someone else, and notes are
+    part of what you'd want to keep.
+    """
+    recipes = db.query(models.Recipe).order_by(models.Recipe.id).all()
+    if not recipes:
+        raise HTTPException(status_code=404, detail="There are no recipes to export.")
+
+    path = os.path.join(BACKUP_TMP_DIR, f"pdfs-{uuid.uuid4().hex}.zip")
+    try:
+        _run_heavy(build_pdf_bundle, recipes, path, include_notes)
+    except Exception:
+        if os.path.isfile(path):
+            os.remove(path)
+        raise HTTPException(status_code=500, detail="Could not build the PDF archive.")
+    return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-pdfs"))
 
 
 # ---------------------------------------------------------------------------

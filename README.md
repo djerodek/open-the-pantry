@@ -154,6 +154,37 @@ docker compose -f docker-compose.build.yml up -d --build
 - Never included in the shared PDF (see Share/print below); the exported
   HTML file and the in-app print view still include it.
 
+**Backup & export** (Settings → Backup & export)
+- **Database backup (`.zip`)** — the restorable one. Contains a consistent
+  snapshot of the SQLite database plus every uploaded photo and PDF, with
+  a `manifest.json` and a `RESTORE.txt` explaining how to put it back.
+  Restoring is: stop the app, unzip over `./data`, start it again. The app
+  is stopped for that on purpose — replacing a SQLite file underneath a
+  running process is how you corrupt it.
+- The snapshot is taken through SQLite's **online backup API**, not by
+  copying `recipes.db`. This matters more than it sounds: the app runs in
+  WAL mode, so at any moment an unknown amount of committed data is sitting
+  in `recipes.db-wal` rather than the main file. A plain file copy silently
+  produces a backup missing your most recent recipes — measurably so; there
+  is a regression test asserting the snapshot contains WAL-committed rows.
+  The backup is also checkpointed out of WAL mode before being zipped, so
+  what lands in the archive is one self-contained file.
+- **PDF bundle (`.zip`)** — one PDF per recipe, plus an `index.csv`. This is
+  the archive that outlives the app: PDFs open on anything, with no Docker
+  and no SQLite. It **cannot** be restored from — it's a reading copy, not a
+  backup. Notes are included by default (it's your own archive, unlike the
+  share export) and there's a checkbox to leave them out. A recipe that
+  fails to render is recorded in the index and skipped rather than killing
+  the whole archive.
+- Both are built to a temp file and streamed, never assembled in memory — a
+  library with a few hundred photos is larger than it would be sensible to
+  hold in RAM on a NAS. Temp archives are deleted once sent, and swept if a
+  download dies mid-flight.
+- There is deliberately **no in-app restore button**. The app has no
+  authentication, and an unauthenticated endpoint that overwrites the entire
+  database is a materially worse thing to expose than one that reads it.
+  Restoring is a documented two-command manual step instead.
+
 **Organizing & finding**
 - Three structured tag categories (meal type, cooking style, main
   ingredient) plus free-form custom tags. Keyword-based auto-suggestion at
@@ -168,8 +199,12 @@ docker compose -f docker-compose.build.yml up -d --build
 
 **Rating & tracking**
 - Favorite toggle, plus three independent ratings (tastiness 1–5, pace
-  quick/moderate/long, difficulty easy/medium/hard) settable inline from
-  each recipe card via small popovers, no need to open the full recipe.
+  quick/moderate/long, difficulty easy/medium/hard) settable straight from
+  each recipe card, no need to open the full recipe. On a card these open a
+  sheet (a card clips its own overflow, so an inline popover would be cut
+  off and would cover the title); the detail page uses an inline popover,
+  where there's room. The sheet also shows the current value and offers to
+  clear it.
 - Optional real-world cook time (`dd:hh:mm`), logged separately from
   whatever prep/cook/total time a source states — this is what drives the
   time filter.

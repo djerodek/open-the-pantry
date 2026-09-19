@@ -203,7 +203,27 @@
   }
 
 
-  $("#settings-toggle").addEventListener("click", () => openModal(settingsOverlay));
+  const backupDbBtn = $("#backup-db-btn");
+  if (backupDbBtn) {
+    backupDbBtn.addEventListener("click", () => {
+      announce("Preparing your backup. The download will start shortly.");
+      downloadViaLink(`${API}/backup/database.zip`);
+    });
+  }
+  const backupPdfBtn = $("#backup-pdf-btn");
+  if (backupPdfBtn) {
+    backupPdfBtn.addEventListener("click", () => {
+      // Rendering every recipe to PDF is genuinely slow -- seconds per
+      // hundred -- and a direct-link download shows nothing until the server
+      // starts sending. Say so, or it looks like the button did nothing.
+      announce("Building PDFs for every recipe. This can take a while — the download will start when it's ready.");
+      const notes = $("#backup-pdf-notes");
+      const includeNotes = notes ? notes.checked : true;
+      downloadViaLink(`${API}/backup/pdfs.zip?include_notes=${includeNotes}`);
+    });
+  }
+
+  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); openModal(settingsOverlay); });
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 
@@ -1531,6 +1551,47 @@
     } catch (err) {
       announce("Could not prepare the download; opening it instead.");
       window.open(url, "_blank", "noopener");
+    }
+  }
+
+  // Backups use a plain <a download> pointing at the endpoint, NOT the blob
+  // path that downloadExport() uses. A blob has to be held in memory in full,
+  // and a backup of a real library -- database plus every photo -- runs to
+  // hundreds of megabytes; on a phone that is a crash rather than a download.
+  // A direct link streams straight to disk. The download attribute is what
+  // keeps a PWA from navigating away, which was the original problem with
+  // window.open.
+  function downloadViaLink(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";        // same-origin, so the server's filename is used
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function formatBytes(n) {
+    if (!n) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+    return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+  }
+
+  async function refreshBackupStats() {
+    const elStats = $("#backup-stats");
+    if (!elStats) return;
+    try {
+      const res = await fetch(`${API}/backup/info`);
+      if (!res.ok) throw new Error(String(res.status));
+      const d = await res.json();
+      elStats.textContent =
+        `${d.recipe_count} recipe${d.recipe_count === 1 ? "" : "s"}, `
+        + `${d.upload_count} uploaded file${d.upload_count === 1 ? "" : "s"} `
+        + `(${formatBytes(d.database_bytes + d.upload_bytes)} total).`;
+    } catch {
+      elStats.textContent = "";
     }
   }
 
