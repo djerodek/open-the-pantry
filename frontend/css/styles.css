@@ -133,6 +133,30 @@ button, select, textarea, input {
   color: inherit;
 }
 
+/* ...but a TEXT FIELD also has a user-agent BACKGROUND (white), which the
+   rule above does not touch. Inheriting light ink onto that white box made
+   every input and textarea illegible in dark mode -- measured 1.14:1, worse
+   than leaving them alone. Text fields need the background and the text set
+   together, from the same token pair, or they can never be consistent.
+   Checkboxes, radios, range sliders and file inputs are excluded: they paint
+   themselves from these properties and would break. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
+textarea,
+select {
+  background-color: var(--color-bg-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+}
+
+/* The placeholder is the text that was actually unreadable in practice --
+   most of these fields are empty most of the time. opacity:1 because
+   Firefox dims placeholders by default, which would undo the contrast. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-ink-muted);
+  opacity: 1;
+}
+
 h1, h2, h3, .recipe-title {
   font-family: var(--font-display);
   font-weight: 600;
