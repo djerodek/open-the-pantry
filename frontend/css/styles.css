@@ -771,6 +771,10 @@ main {
 
 .modal h2 { margin-top: 0; }
 
+/* Share sheet: a short action list, so it shouldn't stretch to the full
+   40rem the content modals use. */
+.modal-sheet { max-width: 24rem; }
+
 .modal-close {
   float: right;
   background: none;
@@ -854,6 +858,14 @@ main {
 --------------------------------------------------------------------- */
 .recipe-detail { max-width: 42rem; margin: 0 auto; }
 .recipe-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+/* Title + badges stack on the left; the share button holds the top-right
+   corner. min-width:0 lets a long title wrap instead of shoving the button
+   off the edge. */
+.recipe-detail-header-main { min-width: 0; flex: 1; }
+/* The modal's close button floats into this same corner. Without this the
+   two touch targets end up edge-to-edge (measured 0px apart), and a missed
+   tap on Share discards the recipe view instead. */
+.recipe-detail-header .share-menu-wrap { margin-right: 0.85rem; }
 .recipe-detail img.hero {
   width: 100%;
   max-height: 11rem;
@@ -863,6 +875,60 @@ main {
 }
 .recipe-meta { color: var(--color-ink-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
 .recipe-meta span { margin-right: 1rem; }
+
+/* Share icon: sized in em so it tracks whatever button it sits in. */
+.icon-share {
+  width: 1.1em;
+  height: 1.1em;
+  display: block;
+  flex-shrink: 0;
+}
+
+.share-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Icon-only share on a list card, pushed opposite the rating controls. */
+.card-share-btn {
+  margin-left: auto;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  width: 2.85rem;
+  height: 2.85rem;
+  font-size: 1.2rem;
+  color: var(--color-ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.card-share-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+.share-sheet-title {
+  color: var(--color-ink-muted);
+  margin: 0.25rem 0 1rem;
+}
+.share-sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.share-sheet-actions button {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.9rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.share-sheet-actions button:hover { border-color: var(--color-accent); }
 
 .share-menu-wrap { position: relative; }
 .share-menu {

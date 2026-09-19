@@ -1,0 +1,17 @@
+# macOS Finder metadata -- committed by accident once already
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+venv/
+.venv/
+
+# Runtime data: the SQLite DB and uploaded images/PDFs live here.
+# Never commit these -- they are personal recipe data.
+data/
+
+# Local build scaffolding: the Dockerfile copies frontend/ to this path,
+# so it only exists inside the image.
+backend/static

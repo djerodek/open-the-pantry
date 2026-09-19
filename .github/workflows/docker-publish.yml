@@ -28,6 +28,17 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/open-the-pantry
+          # Without an explicit tag list, metadata-action's defaults only
+          # publish "latest" on a git TAG push (flavor.latest=auto), never on
+          # a push to main -- so the image had a :main tag and no :latest at
+          # all, and any compose file saying :latest failed to pull. These
+          # rules publish both: :latest and :main track the default branch,
+          # and pushing a vX.Y.Z git tag also publishes :X.Y.Z and :X.Y.
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
         uses: docker/build-push-action@v6

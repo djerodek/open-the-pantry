@@ -207,6 +207,10 @@
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 
+  const shareSheetOverlay = $("#share-sheet-overlay");
+  $("#share-sheet-close").addEventListener("click", () => closeModal(shareSheetOverlay));
+  shareSheetOverlay.addEventListener("click", (e) => { if (e.target === shareSheetOverlay) closeModal(shareSheetOverlay); });
+
   // -------------------------------------------------------------------
   // Email ingest settings (optional feature, collapsed by default)
   // -------------------------------------------------------------------
@@ -781,6 +785,20 @@
     wrap.appendChild(ratingPopoverControl(recipe, "cook_time_rating", "\u23f1", ["quick", "moderate", "long"], (v) => v.charAt(0).toUpperCase() + v.slice(1)));
     wrap.appendChild(ratingPopoverControl(recipe, "difficulty_rating", "\ud83c\udf9a", ["easy", "medium", "hard"], (v) => v.charAt(0).toUpperCase() + v.slice(1)));
 
+    // Icon-only share, pushed to the far end of the row so it sits opposite
+    // the ratings. Only on list cards -- the detail page has its own
+    // labelled Share button in the header, so a second one here would be
+    // redundant.
+    if (!inline) {
+      wrap.appendChild(el("button", {
+        type: "button", class: "card-share-btn",
+        "aria-label": `Share ${recipe.title}`,
+        title: "Share",
+        html: SHARE_ICON_SVG,
+        onclick: (e) => { e.preventDefault(); e.stopPropagation(); openShareSheet(recipe); },
+      }));
+    }
+
     return wrap;
   }
 
@@ -1259,9 +1277,14 @@
     });
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
+      // Share lives at the top right of the recipe card; the source/OCR
+      // badges move under the title so the corner stays a single action.
       el("div", { class: "recipe-detail-header" }, [
-        el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: recipe.title }),
-        el("div", { class: "card-tab", style: "position:static;" }, [sourceBadge(recipe), confidenceBadge(recipe)]),
+        el("div", { class: "recipe-detail-header-main" }, [
+          el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: recipe.title }),
+          el("div", { class: "card-tab", style: "position:static;" }, [sourceBadge(recipe), confidenceBadge(recipe)]),
+        ]),
+        shareMenu(recipe),
       ]),
       showcaseImageSection(recipe),
       el("div", { class: "recipe-meta" }, [
@@ -1283,7 +1306,6 @@
         el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
       ]),
       notesSection(recipe),
-      shareMenu(recipe),
       el("h2", { text: "Ingredients" }),
       el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
         el("li", { text: [i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" ") })
@@ -1336,13 +1358,30 @@
     return `${base || "recipe"}.${ext}`;
   }
 
-  function shareMenu(recipe) {
-    const menu = el("div", { class: "share-menu", id: "share-menu", hidden: "" }, [
-      el("button", { type: "button", text: "Print", onclick: () => { menu.hidden = true; window.print(); } }),
+  // The familiar "box with an arrow leaving the top" share glyph. There is no
+  // Unicode character for it, so it is inline SVG. It is a fixed literal --
+  // never built from recipe data -- so the innerHTML path in el() stays free
+  // of anything user-controlled. stroke="currentColor" means it inherits the
+  // button's themed colour and works in both light and dark without a second
+  // asset.
+  const SHARE_ICON_SVG =
+    '<svg class="icon-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>' +
+    '<path d="M12 15V3"/>' +
+    '<path d="M8 7l4-4 4 4"/>' +
+    '</svg>';
+
+  // The four share actions, built once and reused by both presentations:
+  // the dropdown on the recipe detail page and the centred sheet opened from
+  // a card in the list. onDone() closes whichever container invoked them.
+  function shareActionButtons(recipe, onDone) {
+    return [
+      el("button", { type: "button", text: "Print", onclick: () => { onDone(); window.print(); } }),
       el("button", {
         type: "button", text: "Download PDF",
         onclick: () => {
-          menu.hidden = true;
+          onDone();
           const includeNotes = recipe.notes ? confirm("Include your notes in the PDF?") : false;
           const url = `${API}/recipes/${recipe.id}/export.pdf${includeNotes ? "?include_notes=true" : ""}`;
           downloadExport(url, safeFilename(recipe.title, "pdf"));
@@ -1351,14 +1390,14 @@
       el("button", {
         type: "button", text: "Download HTML",
         onclick: () => {
-          menu.hidden = true;
+          onDone();
           downloadExport(`${API}/recipes/${recipe.id}/export.html`, safeFilename(recipe.title, "html"));
         },
       }),
       el("button", {
         type: "button", text: "Copy as text",
         onclick: async () => {
-          menu.hidden = true;
+          onDone();
           const text = `${recipe.title}\n\nIngredients:\n` +
             recipe.ingredients.map((i) => `- ${[i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" ")}`).join("\n") +
             `\n\nInstructions:\n` + recipe.steps.map((s, idx) => `${idx + 1}. ${s.text}`).join("\n");
@@ -1366,10 +1405,27 @@
           catch { announce("Could not copy to clipboard."); }
         },
       }),
-    ]);
+    ];
+  }
+
+  // Share from a recipe card in the list. Cards clip their own overflow, so
+  // this is a centred modal rather than the detail page's dropdown.
+  function openShareSheet(recipe) {
+    const overlay = $("#share-sheet-overlay");
+    $("#share-sheet-title").textContent = recipe.title;
+    const actions = $("#share-sheet-actions");
+    actions.innerHTML = "";
+    shareActionButtons(recipe, () => closeModal(overlay)).forEach((b) => actions.appendChild(b));
+    openModal(overlay);
+  }
+
+  function shareMenu(recipe) {
+    const menu = el("div", { class: "share-menu", id: "share-menu", hidden: "" },
+      shareActionButtons(recipe, () => { menu.hidden = true; toggleBtn.setAttribute("aria-expanded", "false"); }));
     const toggleBtn = el("button", {
-      class: "btn-secondary", type: "button", "aria-haspopup": "true",
-      "aria-expanded": "false", text: "Share",
+      class: "btn-secondary share-toggle", type: "button", "aria-haspopup": "true",
+      "aria-expanded": "false", "aria-label": "Share recipe",
+      html: `${SHARE_ICON_SVG}<span>Share</span>`,
       onclick: () => {
         const willOpen = menu.hidden;
         menu.hidden = !willOpen;
