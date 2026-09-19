@@ -143,6 +143,25 @@
   </div>
 </div>
 
+<!-- Rating sheet: used by the rating controls on a recipe card in the list.
+     Same reason as the share sheet -- .recipe-card sets overflow:hidden, so
+     the detail page's inline popover is clipped at the card edge, and on a
+     short card it also covers the thumbnail and title. The detail page keeps
+     its popover; only cards use this. -->
+<div class="modal-overlay" id="rating-sheet-overlay" hidden>
+  <div
+    class="modal modal-sheet"
+    id="rating-sheet-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="rating-sheet-heading">
+    <button class="modal-close" id="rating-sheet-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="rating-sheet-heading">Rating</h2>
+    <p id="rating-sheet-title" class="share-sheet-title"></p>
+    <div id="rating-sheet-actions" class="share-sheet-actions"><!-- populated by app.js --></div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="modal-overlay" id="settings-overlay" hidden>
   <div

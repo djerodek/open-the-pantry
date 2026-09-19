@@ -211,6 +211,10 @@
   $("#share-sheet-close").addEventListener("click", () => closeModal(shareSheetOverlay));
   shareSheetOverlay.addEventListener("click", (e) => { if (e.target === shareSheetOverlay) closeModal(shareSheetOverlay); });
 
+  const ratingSheetOverlay = $("#rating-sheet-overlay");
+  $("#rating-sheet-close").addEventListener("click", () => closeModal(ratingSheetOverlay));
+  ratingSheetOverlay.addEventListener("click", (e) => { if (e.target === ratingSheetOverlay) closeModal(ratingSheetOverlay); });
+
   // -------------------------------------------------------------------
   // Email ingest settings (optional feature, collapsed by default)
   // -------------------------------------------------------------------
@@ -813,15 +817,103 @@
     }
   });
 
-  function ratingPopoverControl(recipe, field, icon, options, shortLabel) {
-    let current = recipe[field];
-    const popover = el("div", { class: "rating-popover", hidden: "" });
+  const RATING_TITLES = {
+    tastiness_rating: "How good was it?",
+    cook_time_rating: "How long does it take?",
+    difficulty_rating: "How hard is it?",
+  };
+
+  function ratingOptionLabel(field, opt) {
+    return field === "tastiness_rating"
+      ? "\u2b50".repeat(opt)
+      : opt.charAt(0).toUpperCase() + opt.slice(1);
+  }
+
+  // Rating controls come in two shapes for the same reason the share button
+  // does: on a list card the inline popover is unusable. .recipe-card sets
+  // overflow:hidden, so the popover is clipped at the card edge, and because
+  // a card is short the popover also lands on top of the thumbnail and the
+  // title. On the detail page there is room and nothing clips, so the popover
+  // stays there. Both paths write through the same patch + apply helper, so
+  // the behaviour can't drift.
+  // A card is only ~15rem wide and the row also carries the favourite and
+  // share buttons. Full words ("Moderate", "Medium") overflow it, the row
+  // wraps, and share drops onto a line of its own. Cards get a one-character
+  // form -- the icon already says which rating it is, and the sheet spells
+  // the value out in full. The detail page has the room, so it keeps words.
+  function compactRatingLabel(v) {
+    return typeof v === "number" ? String(v) : String(v).charAt(0).toUpperCase();
+  }
+
+  function applyRating(recipe, field, opt, btn, icon, shortLabel) {
+    recipe[field] = opt;
+    btn.setAttribute("data-has-value", String(opt != null));
+    btn.textContent = opt != null ? `${icon} ${shortLabel(opt)}` : icon;
+    if (opt != null) btn.setAttribute("title", `${field.replace(/_/g, " ")}: ${opt}`);
+    else btn.removeAttribute("title");
+  }
+
+  function openRatingSheet(recipe, field, icon, options, shortLabel, btn) {
+    const overlay = $("#rating-sheet-overlay");
+    $("#rating-sheet-heading").textContent = RATING_TITLES[field] || "Rating";
+    $("#rating-sheet-title").textContent = recipe.title;
+    const actions = $("#rating-sheet-actions");
+    actions.innerHTML = "";
+
+    for (const opt of options) {
+      actions.appendChild(el("button", {
+        type: "button",
+        "aria-pressed": String(recipe[field] === opt),
+        text: ratingOptionLabel(field, opt),
+        onclick: async () => {
+          closeModal(overlay);
+          const ok = await patchRating(recipe.id, { [field]: opt });
+          if (ok) applyRating(recipe, field, opt, btn, icon, compactRatingLabel);
+          else announce("Could not save rating.");
+        },
+      }));
+    }
+
+    // Setting a rating by mistake needs a way out, and on a card there is no
+    // other affordance for it.
+    if (recipe[field] != null) {
+      actions.appendChild(el("button", {
+        type: "button", class: "rating-clear",
+        text: "Clear rating",
+        onclick: async () => {
+          closeModal(overlay);
+          const ok = await patchRating(recipe.id, { [field]: null });
+          if (ok) applyRating(recipe, field, null, btn, icon, compactRatingLabel);
+          else announce("Could not clear rating.");
+        },
+      }));
+    }
+
+    openModal(overlay);
+  }
+
+  function ratingPopoverControl(recipe, field, icon, options, shortLabel, inline = false) {
+    const current = recipe[field];
+    const label = inline ? shortLabel : compactRatingLabel;
     const btn = el("button", {
       type: "button", "data-has-value": String(current != null),
       "aria-haspopup": "true", "aria-expanded": "false",
-      text: current != null ? `${icon} ${shortLabel(current)}` : icon,
-      "aria-label": `Set ${field.replace("_", " ")}`,
+      text: current != null ? `${icon} ${label(current)}` : icon,
+      "aria-label": `Set ${field.replace(/_/g, " ")}`,
+      title: current != null ? `${field.replace(/_/g, " ")}: ${current}` : null,
     });
+
+    if (!inline) {
+      btn.setAttribute("aria-haspopup", "dialog");
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openRatingSheet(recipe, field, icon, options, shortLabel, btn);
+      });
+      return el("div", { class: "rating-control" }, [btn]);
+    }
+
+    const popover = el("div", { class: "rating-popover", hidden: "" });
     btn.addEventListener("click", () => {
       const willOpen = popover.hidden;
       closeAllRatingPopovers();
@@ -832,20 +924,14 @@
     for (const opt of options) {
       popover.appendChild(el("button", {
         type: "button",
-        "aria-pressed": String(current === opt),
-        text: field === "tastiness_rating" ? "\u2b50".repeat(opt) : (opt.charAt(0).toUpperCase() + opt.slice(1)),
+        "aria-pressed": String(recipe[field] === opt),
+        text: ratingOptionLabel(field, opt),
         onclick: async () => {
           popover.hidden = true;
           btn.setAttribute("aria-expanded", "false");
           const ok = await patchRating(recipe.id, { [field]: opt });
-          if (ok) {
-            current = opt;
-            recipe[field] = opt;
-            btn.setAttribute("data-has-value", "true");
-            btn.textContent = `${icon} ${shortLabel(opt)}`;
-          } else {
-            announce("Could not save rating.");
-          }
+          if (ok) applyRating(recipe, field, opt, btn, icon, shortLabel);
+          else announce("Could not save rating.");
         },
       }));
     }
@@ -876,9 +962,9 @@
     });
     wrap.appendChild(favBtn);
 
-    wrap.appendChild(ratingPopoverControl(recipe, "tastiness_rating", "\u2b50", [1, 2, 3, 4, 5], (v) => String(v)));
-    wrap.appendChild(ratingPopoverControl(recipe, "cook_time_rating", "\u23f1", ["quick", "moderate", "long"], (v) => v.charAt(0).toUpperCase() + v.slice(1)));
-    wrap.appendChild(ratingPopoverControl(recipe, "difficulty_rating", "\ud83c\udf9a", ["easy", "medium", "hard"], (v) => v.charAt(0).toUpperCase() + v.slice(1)));
+    wrap.appendChild(ratingPopoverControl(recipe, "tastiness_rating", "\u2b50", [1, 2, 3, 4, 5], (v) => String(v), inline));
+    wrap.appendChild(ratingPopoverControl(recipe, "cook_time_rating", "\u23f1", ["quick", "moderate", "long"], (v) => v.charAt(0).toUpperCase() + v.slice(1), inline));
+    wrap.appendChild(ratingPopoverControl(recipe, "difficulty_rating", "\ud83c\udf9a", ["easy", "medium", "hard"], (v) => v.charAt(0).toUpperCase() + v.slice(1), inline));
 
     // Icon-only share, pushed to the far end of the row so it sits opposite
     // the ratings. Only on list cards -- the detail page has its own

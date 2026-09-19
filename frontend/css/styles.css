@@ -884,6 +884,11 @@ main {
 }
 .modal-overlay[hidden] { display: none; }
 
+/* overscroll-behavior: contain is the same fix the sidebar needed. Without
+   it, scrolling to the end of a long recipe hands the remaining momentum to
+   the page behind the modal, which then scrolls under the overlay -- the
+   "awkward scrolling" that shows up as the list creeping about while you are
+   reading a recipe. Containing it keeps the gesture inside the modal. */
 .modal {
   background: var(--color-bg-raised);
   border-radius: var(--radius);
@@ -891,7 +896,15 @@ main {
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 1.25rem;
+}
+
+/* The overlay itself must not scroll or rubber-band either; it is a fixed
+   backdrop, and any give in it reads as the page sliding around. */
+.modal-overlay {
+  overscroll-behavior: contain;
 }
 
 .modal h2 { margin-top: 0; }
@@ -1054,6 +1067,15 @@ main {
   cursor: pointer;
 }
 .share-sheet-actions button:hover { border-color: var(--color-accent); }
+/* The currently-set rating, so the sheet shows what you already picked. */
+.share-sheet-actions button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.share-sheet-actions button.rating-clear {
+  color: var(--color-ink-muted);
+  margin-top: 0.25rem;
+}
 
 .share-menu-wrap { position: relative; }
 .share-menu {

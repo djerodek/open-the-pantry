@@ -1195,13 +1195,21 @@ def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = D
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
+    # The three ratings are cleared by sending an explicit null, so "omitted"
+    # and "set to null" have to be told apart -- `is not None` collapses them
+    # and makes clearing silently do nothing (200 OK, no change). Pydantic's
+    # model_fields_set only contains keys the client actually sent.
+    provided = payload.model_fields_set
+
+    # favorite is a non-nullable bool: absent means "leave alone", and there
+    # is no null case to honour.
     if payload.favorite is not None:
         recipe.favorite = payload.favorite
-    if payload.tastiness_rating is not None:
+    if "tastiness_rating" in provided:
         recipe.tastiness_rating = payload.tastiness_rating
-    if payload.cook_time_rating is not None:
+    if "cook_time_rating" in provided:
         recipe.cook_time_rating = payload.cook_time_rating
-    if payload.difficulty_rating is not None:
+    if "difficulty_rating" in provided:
         recipe.difficulty_rating = payload.difficulty_rating
     if payload.actual_cook_time is not None:
         recipe.actual_cook_time_minutes = ddhhmm_to_minutes(payload.actual_cook_time) if payload.actual_cook_time else None

@@ -132,6 +132,47 @@ def test_rating_fields_are_constrained(client, sample_recipe_payload):
         client.delete(f"/api/recipes/{recipe_id}")
 
 
+def test_ratings_can_be_cleared_with_explicit_null(client, sample_recipe_payload):
+    """An explicit null clears a rating; omitting the key leaves it alone.
+
+    These two cases are easy to collapse -- `if payload.x is not None` treats
+    them identically, which makes a "clear rating" control return 200 and do
+    nothing. The card rating sheet depends on the difference.
+    """
+    r = client.post("/api/recipes", json=sample_recipe_payload)
+    recipe_id = r.json()["id"]
+    try:
+        r = client.patch(f"/api/recipes/{recipe_id}/rating", json={
+            "tastiness_rating": 4, "cook_time_rating": "quick",
+            "difficulty_rating": "hard", "favorite": True,
+        })
+        assert r.status_code == 200
+
+        # Omitting a key must not disturb it.
+        r = client.patch(f"/api/recipes/{recipe_id}/rating", json={"favorite": True})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["tastiness_rating"] == 4
+        assert body["cook_time_rating"] == "quick"
+        assert body["difficulty_rating"] == "hard"
+
+        # An explicit null clears that one and only that one.
+        r = client.patch(f"/api/recipes/{recipe_id}/rating", json={"tastiness_rating": None})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["tastiness_rating"] is None
+        assert body["cook_time_rating"] == "quick"
+        assert body["difficulty_rating"] == "hard"
+        assert body["favorite"] is True
+
+        for field in ("cook_time_rating", "difficulty_rating"):
+            r = client.patch(f"/api/recipes/{recipe_id}/rating", json={field: None})
+            assert r.status_code == 200
+            assert r.json()[field] is None
+    finally:
+        client.delete(f"/api/recipes/{recipe_id}")
+
+
 def test_tags_seeded_with_cocktail_subgroup(client):
     r = client.get("/api/tags")
     tags = r.json()
