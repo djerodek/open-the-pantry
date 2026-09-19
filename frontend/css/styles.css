@@ -247,12 +247,24 @@ a { color: var(--color-focus); }
   min-height: calc(100vh - var(--topbar-height));
 }
 
+/* The sidebar scrolls ITSELF. It used to have overflow-y:auto with no
+   bounded height -- .app-shell only sets min-height -- so the list simply
+   grew the page and you scrolled the whole document to reach the bottom of
+   the tree. Sticking it to the viewport below the topbar gives it a real
+   height to scroll within. overscroll-behavior stops a flick that reaches
+   the end of the list from chaining into the page behind it. */
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   padding: 1rem 0.75rem;
+  position: sticky;
+  top: var(--topbar-height);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--topbar-height));
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   transition: margin-left 0.15s ease;
 }
 
@@ -261,14 +273,20 @@ a { color: var(--color-focus); }
 }
 
 @media (max-width: 720px) {
+  /* As a drawer it is fixed to the viewport, so it needs an explicit
+     height and its own scroll -- and padding-bottom clear of the iOS home
+     indicator, or the last category sits under it. */
   .sidebar {
     position: fixed;
     top: var(--topbar-height);
     bottom: 0;
     left: 0;
+    max-height: none;
+    height: calc(100% - var(--topbar-height));
     background: var(--color-bg-raised);
     z-index: 40;
     box-shadow: 2px 0 8px var(--shadow-color);
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -282,7 +300,7 @@ a { color: var(--color-focus); }
 }
 .sidebar h2:first-child { margin-top: 0; }
 
-.tag-tree-group button.tag-node {
+button.tag-node {
   display: flex;
   width: 100%;
   align-items: center;
@@ -296,8 +314,8 @@ a { color: var(--color-focus); }
   cursor: pointer;
   color: var(--color-ink);
 }
-.tag-tree-group button.tag-node:hover,
-.tag-tree-group button.tag-node[aria-pressed="true"] {
+button.tag-node:hover,
+button.tag-node[aria-pressed="true"] {
   background: var(--color-border);
 }
 
@@ -305,6 +323,89 @@ a { color: var(--color-focus); }
   font-size: 0.75rem;
   color: var(--color-ink-muted);
   margin: 0.5rem 0 0.15rem 0.4rem;
+}
+
+/* ---------------------------------------------------------------------
+   Collapsible sidebar categories
+--------------------------------------------------------------------- */
+.tag-tree-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
+}
+.tag-tree-expand-all {
+  background: none;
+  border: none;
+  color: var(--color-focus);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.35rem 0.4rem;
+}
+
+.tag-group + .tag-group { margin-top: 0.15rem; }
+
+.tag-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  /* Roomy enough to be a comfortable touch target -- these are now the
+     primary way to navigate the tree, not decoration. */
+  padding: 0.6rem 0.4rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-muted);
+}
+.tag-group-toggle:hover { background: var(--color-bg); color: var(--color-ink); }
+
+.tag-group-label { flex: 1; min-width: 0; }
+
+/* Rotates to point down when the section is open. */
+.tag-group-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+  flex-shrink: 0;
+}
+.tag-group-toggle[aria-expanded="true"] .tag-group-chevron { transform: rotate(90deg); }
+
+/* Count of active filters inside a collapsed group. */
+.tag-group-count {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-radius: 999px;
+  min-width: 1.25rem;
+  padding: 0 0.35rem;
+  text-align: center;
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  flex-shrink: 0;
+}
+
+/* A group forced open because it holds an active filter: the header can't
+   close it, so say so rather than letting the tap look broken. */
+.tag-group-toggle[data-forced-open="true"] { color: var(--color-ink); }
+
+.tag-group-body[hidden] { display: none; }
+
+.tag-group-toggle-sub {
+  font-size: 0.72rem;
+  padding-left: 0.9rem;
+  text-transform: none;
+}
+.tag-group-toggle-sub + .tag-group-body { padding-left: 0.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tag-group-chevron { transition: none; }
 }
 
 main {

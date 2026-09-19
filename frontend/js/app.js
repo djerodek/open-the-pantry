@@ -412,12 +412,71 @@
     selectedIds: new Set(),
     currentDraftFiles: new Set(),  // temp file(s) awaiting save/discard for the open add-recipe session
     showThumbnails: localStorage.getItem("recipe-app-show-thumbnails") !== "false",  // default on
+    // Which sidebar category groups are open. Default is ALL CLOSED: fully
+    // expanded, the tree runs well past a phone screen. This has to live in
+    // state rather than the DOM because renderSidebar() tears the tree down
+    // and rebuilds it on every tag click -- keeping it in the markup would
+    // re-open every group the moment you picked a filter.
+    expandedGroups: loadExpandedGroups(),
   };
   let uiTimeLevel1 = null;   // UI-only: which coarse hour bucket is expanded in the time filter
 
   // -------------------------------------------------------------------
   // Tag sidebar
   // -------------------------------------------------------------------
+
+  // Persisted set of open group keys. A missing/corrupt entry means "none
+  // open", which is the intended first-run state.
+  function loadExpandedGroups() {
+    try {
+      const raw = localStorage.getItem("recipe-app-expanded-groups");
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch { return new Set(); }
+  }
+
+  function saveExpandedGroups() {
+    try {
+      localStorage.setItem("recipe-app-expanded-groups", JSON.stringify([...state.expandedGroups]));
+    } catch { /* private mode / storage disabled -- collapsing still works for this session */ }
+  }
+
+  function toggleGroup(key) {
+    if (state.expandedGroups.has(key)) state.expandedGroups.delete(key);
+    else state.expandedGroups.add(key);
+    saveExpandedGroups();
+    renderSidebar();
+  }
+
+  // A collapsible section: a header button that owns its own body. The body
+  // is a sibling rather than a child so the header stays a single, simple
+  // hit target.
+  function collapsibleSection(key, label, opts, children) {
+    const forced = opts.forceOpen;
+    const open = forced || state.expandedGroups.has(key);
+    const body = el("div", { class: "tag-group-body", id: `group-body-${key}` }, children);
+    if (!open) body.hidden = true;
+
+    const header = el("button", {
+      type: "button",
+      class: opts.sub ? "tag-group-toggle tag-group-toggle-sub" : "tag-group-toggle",
+      "aria-expanded": String(open),
+      "aria-controls": `group-body-${key}`,
+      onclick: () => toggleGroup(key),
+    }, [
+      el("span", { class: "tag-group-chevron", "aria-hidden": "true", text: "›" }),
+      el("span", { class: "tag-group-label", text: label }),
+      // When a group is closed, its active filters are invisible. The count
+      // keeps them discoverable so you can't forget a filter is narrowing
+      // the list.
+      opts.activeCount ? el("span", { class: "tag-group-count", text: String(opts.activeCount) }) : null,
+    ]);
+    if (forced) header.setAttribute("data-forced-open", "true");
+
+    return el("div", { class: "tag-group" }, [header, body]);
+  }
+
   async function loadTags() {
     const res = await fetch(`${API}/tags`);
     state.allTags = await res.json();
@@ -439,23 +498,59 @@
       ["custom", "Custom"],
     ];
 
+    // Expand/collapse everything at once -- with all groups closed by
+    // default this is the one control that makes the whole tree browsable
+    // without hunting through headers.
+    const present = categories
+      .filter(([k]) => state.allTags.some((t) => t.category === k))
+      .map(([k]) => k);
+    const anyOpen = present.some((k) => state.expandedGroups.has(k));
+    container.appendChild(el("div", { class: "tag-tree-actions" }, [
+      el("button", {
+        type: "button", class: "tag-tree-expand-all",
+        text: anyOpen ? "Collapse all" : "Expand all",
+        onclick: () => {
+          if (anyOpen) state.expandedGroups.clear();
+          else {
+            present.forEach((k) => state.expandedGroups.add(k));
+            // Sub-sections are keyed separately, so open them too.
+            state.allTags.filter((t) => t.subgroup)
+              .forEach((t) => state.expandedGroups.add(`${t.category}:${t.subgroup}`));
+          }
+          saveExpandedGroups();
+          renderSidebar();
+        },
+      }),
+    ]));
+
     for (const [catKey, catLabel] of categories) {
       const tagsInCat = state.allTags.filter((t) => t.category === catKey);
       if (!tagsInCat.length) continue;
 
-      const group = el("div", { class: "tag-tree-group" });
-      group.appendChild(el("h2", { text: catLabel }));
+      const activeCount = tagsInCat.filter((t) => state.filterTags.has(t.name)).length;
+      const children = [];
 
       const mainTags = tagsInCat.filter((t) => !t.subgroup);
-      for (const t of mainTags) group.appendChild(makeTagButton(t));
+      for (const t of mainTags) children.push(makeTagButton(t));
 
       const subgroups = [...new Set(tagsInCat.filter((t) => t.subgroup).map((t) => t.subgroup))];
       for (const sg of subgroups) {
-        group.appendChild(el("div", { class: "subgroup-label", text: sg === "cocktail" ? "Cocktail Prep" : sg }));
-        for (const t of tagsInCat.filter((t2) => t2.subgroup === sg)) group.appendChild(makeTagButton(t));
+        const sgTags = tagsInCat.filter((t2) => t2.subgroup === sg);
+        const sgKey = `${catKey}:${sg}`;
+        const sgActive = sgTags.filter((t) => state.filterTags.has(t.name)).length;
+        children.push(collapsibleSection(
+          sgKey,
+          sg === "cocktail" ? "Cocktail Prep" : sg,
+          { sub: true, activeCount: sgActive, forceOpen: sgActive > 0 },
+          sgTags.map(makeTagButton),
+        ));
       }
 
-      container.appendChild(group);
+      // A group holding an active filter is forced open regardless of the
+      // saved state -- a filter you can't see is a filter you can't clear.
+      container.appendChild(collapsibleSection(
+        catKey, catLabel, { activeCount, forceOpen: activeCount > 0 }, children,
+      ));
     }
   }
 
