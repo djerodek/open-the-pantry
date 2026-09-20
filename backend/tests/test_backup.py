@@ -14,8 +14,15 @@ import shutil
 import sqlite3
 import zipfile
 
-from app.backup import safe_pdf_filename, snapshot_database
-from app.database import DB_PATH
+# NOTE: app.* is imported INSIDE the tests, never at module scope.
+# Importing app.database runs os.makedirs(DATA_DIR) at import time, and
+# DATA_DIR defaults to /app/data. conftest sets RECIPE_APP_DATA_DIR from a
+# fixture, which runs after collection -- so a module-level import here
+# executes before the env var exists and fails with PermissionError on any
+# machine where /app isn't writable. That is why the client fixture imports
+# app.main inside its body too; this file follows the same rule.
+# Every test that touches app.* therefore also depends on data_dir (directly
+# or via client) so the env var is set before the import happens.
 
 
 def test_backup_info_reports_counts(client, sample_recipe_payload):
@@ -88,6 +95,9 @@ def test_database_backup_captures_wal_committed_data(client, sample_recipe_paylo
     the row, but the snapshot must contain it. If someone ever "simplifies"
     snapshot_database into shutil.copyfile, this fails.
     """
+    from app.backup import snapshot_database
+    from app.database import DB_PATH
+
     payload = dict(sample_recipe_payload, title="WAL probe recipe")
     r = client.post("/api/recipes", json=payload)
     recipe_id = r.json()["id"]
@@ -173,7 +183,11 @@ def test_backup_archives_are_not_left_behind(client, sample_recipe_payload):
         client.delete(f"/api/recipes/{recipe_id}")
 
 
-def test_pdf_filenames_are_safe_and_unique():
+def test_pdf_filenames_are_safe_and_unique(data_dir):
+    # data_dir is requested purely so RECIPE_APP_DATA_DIR is set before
+    # app.backup pulls in app.database -- see the note at the top of this file.
+    from app.backup import safe_pdf_filename
+
     # Path separators and Windows-reserved characters must not survive, or
     # extracting the zip writes outside the target directory.
     assert "/" not in safe_pdf_filename("Soup/Stew", 1)
