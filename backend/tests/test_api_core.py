@@ -324,3 +324,59 @@ def test_incomplete_put_does_wipe_fields(client, sample_recipe_payload):
         assert r.json()["tastiness_rating"] is None
     finally:
         client.delete(f"/api/recipes/{recipe_id}")
+
+
+def test_sort_orders_and_always_puts_blanks_last(client, sample_recipe_payload):
+    """Sorting, and the deliberate asymmetry in how blanks are handled.
+
+    Unrated/untimed recipes sort last in BOTH directions. Most recipes have
+    no rating, so an ascending sort that honoured nulls naturally would open
+    with a wall of blanks. The trade is that asc and desc are not strict
+    mirrors, which is easy to "fix" by accident later -- hence this test.
+    """
+    made = []
+    try:
+        for title, rating, diff in [
+            ("ZZ sort probe alpha", 5, "hard"),
+            ("AA sort probe beta", 2, "easy"),
+            ("MM sort probe gamma", None, None),
+        ]:
+            r = client.post("/api/recipes", json=dict(sample_recipe_payload, title=title))
+            rid = r.json()["id"]
+            made.append(rid)
+            if rating is not None:
+                assert client.patch(f"/api/recipes/{rid}/rating", json={
+                    "tastiness_rating": rating, "difficulty_rating": diff,
+                }).status_code == 200
+
+        def probe(sort, direction, key):
+            rows = client.get(f"/api/recipes?sort={sort}&direction={direction}").json()
+            rows = [r for r in rows if r["id"] in made]
+            return [r[key] for r in rows]
+
+        # Ratings descend and ascend correctly among the rated ones.
+        desc = probe("rating", "desc", "tastiness_rating")
+        assert [v for v in desc if v is not None] == [5, 2]
+        asc = probe("rating", "asc", "tastiness_rating")
+        assert [v for v in asc if v is not None] == [2, 5]
+
+        # ...and the unrated one is last either way.
+        for direction in ("asc", "desc"):
+            vals = probe("rating", direction, "tastiness_rating")
+            assert vals[-1] is None, f"blank must sort last when {direction}"
+
+        # Difficulty is stored as text; it must order easy < medium < hard,
+        # not alphabetically (which would put "hard" before "medium").
+        assert [v for v in probe("difficulty", "asc", "difficulty_rating") if v] == ["easy", "hard"]
+        assert [v for v in probe("difficulty", "desc", "difficulty_rating") if v] == ["hard", "easy"]
+
+        # Title sorting is case-insensitive.
+        titles = probe("title", "asc", "title")
+        assert titles == sorted(titles, key=str.lower)
+
+        # An unknown sort field is rejected rather than silently ignored.
+        assert client.get("/api/recipes?sort=nonsense").status_code == 422
+        assert client.get("/api/recipes?sort=title&direction=sideways").status_code == 422
+    finally:
+        for rid in made:
+            client.delete(f"/api/recipes/{rid}")

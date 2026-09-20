@@ -13,6 +13,13 @@
   --color-border: #E4DFD3;
   --color-accent: #C48A2E;
   --color-accent-ink: #FFFFFF;
+  /* Accent as TEXT needs to be darker than accent as a border/fill.
+     #C48A2E on white measures 2.99:1 -- below the 4.5:1 floor -- so every
+     accent-coloured label (a set rating, a hover state) was failing in
+     light mode. #8F6218 is the same saffron family at 5.35:1 on white and
+     5.08:1 on the page background. Borders keep --color-accent: a border
+     is not text and is not held to that ratio. */
+  --color-accent-text: #8F6218;
   --color-sage: #6B7A5E;
   --color-alert: #A8443A;
   --color-focus: #1D6FA5;
@@ -64,6 +71,7 @@
     --color-border: #333330;
     --color-accent: #D9A54A;
     --color-accent-ink: #000000;
+    --color-accent-text: #D9A54A;   /* 9.43:1 on black -- no darkening needed */
     --color-sage: #8FA37E;
     --color-alert: #D97364;
     --color-focus: #5FB0E0;
@@ -91,6 +99,7 @@ html[data-theme="dark"] {
   --color-border: #333330;
   --color-accent: #D9A54A;
   --color-accent-ink: #000000;
+  --color-accent-text: #D9A54A;   /* 9.43:1 on black -- no darkening needed */
   --color-sage: #8FA37E;
   --color-alert: #D97364;
   --color-focus: #5FB0E0;
@@ -221,14 +230,20 @@ a { color: var(--color-focus); }
   flex-shrink: 0;
 }
 
+/* min-width:0 because a flex item defaults to min-width:auto, which refuses
+   to shrink below the search input's intrinsic width. On a narrow phone that
+   pushed the topbar ~3px wider than the viewport and gave the whole page a
+   horizontal scroll. Pre-existing, noticed while checking the toolbar. */
 .search-form {
   flex: 1;
+  min-width: 0;
   display: flex;
   max-width: 32rem;
 }
 
 .search-form input[type="search"] {
   flex: 1;
+  min-width: 0;   /* same min-width:auto trap as the form itself */
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius) 0 0 var(--radius);
@@ -449,7 +464,16 @@ main {
   flex-wrap: wrap;
   margin-bottom: 0.75rem;
 }
-.toolbar-actions { display: flex; gap: 0.5rem; }
+/* Wraps, or the sort <select> pushes Select off the right edge on a phone.
+   min-width:0 lets the select shrink instead of forcing the row wider than
+   the viewport. */
+.toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.toolbar-actions > * { min-width: 0; }
 
 .grouping-toggle {
   display: flex;
@@ -552,12 +576,15 @@ main {
 .recipe-grid[data-show-thumbnails="false"] .recipe-card-image {
   display: none;
 }
-.recipe-grid[data-show-thumbnails="false"] .card-tab {
-  position: static;
-  padding: 0.6rem 0.75rem 0;
+/* .card-tab no longer appears on cards at all -- source and OCR badges are
+   detail-page only -- so there is nothing to reposition when thumbnails are
+   off. .card-quick-controls needs no override either: it is in flow inside
+   the card body in both modes. */
+
+/* The matched-via label on a search result, in flow under the title. */
+.card-matched-row {
+  margin-top: 0.3rem;
 }
-/* .card-quick-controls needs no override here -- it is in flow inside the
-   card body in both thumbnail modes. */
 .recipe-grid[data-show-thumbnails="false"] .card-select-box {
   position: static;
   margin: 0.5rem 0 0 0.75rem;
@@ -651,7 +678,7 @@ main {
 }
 .rating-control > button[data-has-value="true"] {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .wakelock-btn {
@@ -728,15 +755,22 @@ main {
 }
 .mode-switch button {
   border: 1px solid var(--color-border);
-  background: var(--color-bg);
+  background: var(--color-bg-raised);
+  color: var(--color-ink);
   padding: 0.35rem 0.8rem;
   border-radius: 999px;
   font-size: 0.82rem;
   cursor: pointer;
 }
+/* The selected pill inverts: ink background, page-surface text. The text
+   colour MUST come from a token. It was hardcoded #fff against
+   background: var(--color-ink) -- fine in light mode, but --color-ink is
+   #F2F0EA in dark, so the selected option was near-white on near-white and
+   the ACTIVE choice was the one you couldn't read. .grouping-toggle
+   directly below already did this correctly; the two are now consistent. */
 .mode-switch button[aria-pressed="true"] {
   background: var(--color-ink);
-  color: #fff;
+  color: var(--color-bg-raised);
   border-color: var(--color-ink);
 }
 
@@ -797,7 +831,7 @@ main {
   display: flex;
   flex-direction: column;
 }
-.recipe-card:hover .recipe-card-title { color: var(--color-accent); }
+.recipe-card:hover .recipe-card-title { color: var(--color-accent-text); }
 
 /* 8/3 is exactly half the height 4/3 gave at the same card width -- the
    thumbnail was eating most of a phone screen per card. Tune this one
@@ -998,22 +1032,51 @@ main {
   overflow-y: auto;
 }
 
+/* Buttons use a pill radius rather than --radius (3px), which at this size
+   was visually indistinguishable from a square and made secondary buttons
+   read as bare outlined rectangles rather than things you press. The rating
+   and share controls were already circular, so this brings the rest of the
+   app into line with a system that was only half applied. */
 .btn-primary {
   background: var(--color-accent);
   color: var(--color-accent-ink);
-  border: none;
+  border: 1px solid var(--color-accent);
   padding: 0.55rem 1.1rem;
-  border-radius: var(--radius);
+  border-radius: 999px;
   cursor: pointer;
   font-size: 0.9rem;
+  font-family: var(--font-body);
 }
+
 .btn-secondary {
-  background: none;
+  /* A surface fill, not `none`: it gives the button an edge-to-edge shape
+     instead of a hairline outline floating on the page background. In dark
+     mode --color-bg-raised is pure black by design, so the 1px border is
+     still what defines the shape there -- the fill matters most in light
+     mode, where it separates the control from the warm page background. */
+  background: var(--color-bg-raised);
+  color: var(--color-ink);
   border: 1px solid var(--color-border);
   padding: 0.55rem 1.1rem;
-  border-radius: var(--radius);
+  border-radius: 999px;
   cursor: pointer;
   font-size: 0.9rem;
+  font-family: var(--font-body);
+  line-height: 1.2;
+}
+.btn-secondary:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
+
+/* Destructive actions read as destructive. Used for Delete, which now sits
+   next to Edit at the foot of the recipe -- without this they would look
+   like two equivalent, equally safe buttons. */
+.btn-danger {
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+}
+.btn-danger:hover {
+  background: var(--color-alert);
+  color: var(--color-bg-raised);
+  border-color: var(--color-alert);
 }
 
 /* ---------------------------------------------------------------------
@@ -1070,7 +1133,7 @@ main {
   justify-content: center;
   flex-shrink: 0;
 }
-.card-share-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.card-share-btn:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
 
 .share-sheet-title {
   color: var(--color-ink-muted);
@@ -1095,7 +1158,7 @@ main {
 /* The currently-set rating, so the sheet shows what you already picked. */
 .share-sheet-actions button[aria-pressed="true"] {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 .share-sheet-actions button.rating-clear {
   color: var(--color-ink-muted);
@@ -1181,4 +1244,44 @@ main {
     padding: 0;
   }
   .recipe-detail { max-width: 100%; }
+}
+
+/* Edit + Delete, grouped at the foot of the recipe. */
+.recipe-record-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Clear filters: its own separated region at the top of the sidebar, so it
+   can't be mistaken for -- or mis-tapped instead of -- a tag in the tree. */
+.sidebar-clear-region {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.sidebar-clear-region .btn-clear-filters { width: 100%; }
+
+.btn-clear-filters {
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+.btn-clear-filters:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-color: var(--color-accent);
+}
+
+/* The sort control is a native <select> so it gets each platform's own
+   picker -- a wheel on iOS, which beats any custom menu on a phone. It
+   borrows .btn-secondary's shape so it sits with the toolbar buttons. */
+.sort-select {
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+  max-width: 13rem;
+  min-width: 0;
+  flex-shrink: 1;
 }

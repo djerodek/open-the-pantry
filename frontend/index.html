@@ -68,8 +68,26 @@
         <button type="button" id="thumbnails-toggle" class="btn-secondary" aria-pressed="true">
           Thumbnails
         </button>
+        <label class="visually-hidden" for="sort-select">Sort recipes by</label>
+        <select id="sort-select" class="btn-secondary sort-select">
+          <option value="created|desc">Newest first</option>
+          <option value="created|asc">Oldest first</option>
+          <option value="title|asc">Title A–Z</option>
+          <option value="title|desc">Title Z–A</option>
+          <option value="rating|desc">Rating: high to low</option>
+          <option value="rating|asc">Rating: low to high</option>
+          <option value="cook_time|asc">Cook time: shortest</option>
+          <option value="cook_time|desc">Cook time: longest</option>
+          <option value="difficulty|asc">Difficulty: easiest</option>
+          <option value="difficulty|desc">Difficulty: hardest</option>
+        </select>
         <button type="button" id="select-mode-toggle" class="btn-secondary" aria-pressed="false">
           Select
+        </button>
+        <!-- Hidden until something is actually filtering; app.js keeps the
+             count in the label so active filtering is visible at a glance. -->
+        <button type="button" id="clear-filters-btn" class="btn-secondary btn-clear-filters" hidden>
+          Clear filters
         </button>
       </div>
     </div>

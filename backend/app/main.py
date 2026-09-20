@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict, deque
+from typing import Literal
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 import anyio
@@ -13,7 +14,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Re
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
-from sqlalchemy import text
+from sqlalchemy import text, case, asc, desc, func
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -1028,6 +1029,8 @@ def list_recipes(
     tags: list[str] | None = Query(default=None),        # repeated ?tags=A&tags=B, AND logic
     max_minutes: int | None = None,        # actual_cook_time_minutes <= max_minutes
     favorite: bool | None = None,
+    sort: Literal["created", "title", "rating", "cook_time", "difficulty"] = "created",
+    direction: Literal["asc", "desc"] = "desc",
     db: Session = Depends(get_db),
 ):
     matched_via: dict[int, set[str]] = {}
@@ -1081,7 +1084,7 @@ def list_recipes(
                 )
             )
 
-    results = query.order_by(models.Recipe.created_at.desc()).all()
+    results = query.order_by(*_sort_clauses(sort, direction)).all()
 
     summaries = []
     for r in results:
@@ -1090,6 +1093,51 @@ def list_recipes(
             summary.matched_via = sorted(matched_via[r.id])
         summaries.append(summary)
     return summaries
+
+
+def _sort_clauses(sort: str, direction: str):
+    """ORDER BY terms for the recipe list.
+
+    Two things worth knowing about this:
+
+    Unrated / untimed recipes always sort LAST, in both directions. Most
+    recipes have no rating and no logged cook time, so a plain ascending
+    sort by rating opens with a wall of blanks -- correct, and useless. The
+    null-flag term below is deliberately not reversed with the direction,
+    which means ascending and descending are not strict mirrors of each
+    other. That is the intended trade.
+
+    `NULLS LAST` is avoided in favour of an `x IS NULL` flag column: the
+    former needs SQLite 3.30+, and this app ships wherever the host's
+    Python happens to link its SQLite from.
+    """
+    is_desc = direction == "desc"
+    order = desc if is_desc else asc
+
+    if sort == "title":
+        # Case-insensitive, or "apple" sorts after "Zucchini".
+        primary = order(func.lower(models.Recipe.title))
+        return (primary, models.Recipe.id.asc())
+
+    if sort == "rating":
+        col = models.Recipe.tastiness_rating
+    elif sort == "cook_time":
+        col = models.Recipe.actual_cook_time_minutes
+    elif sort == "difficulty":
+        # Stored as text, so it needs an explicit ordinal -- alphabetically
+        # "hard" < "medium", which is not the order anyone means.
+        col = case(
+            (models.Recipe.difficulty_rating == "easy", 1),
+            (models.Recipe.difficulty_rating == "medium", 2),
+            (models.Recipe.difficulty_rating == "hard", 3),
+            else_=None,
+        )
+    else:  # "created"
+        # created_at is never null, so no null-flag term is needed.
+        return (order(models.Recipe.created_at), models.Recipe.id.asc())
+
+    # (col IS NULL) sorts 0 before 1, i.e. real values first, always.
+    return (asc(col.is_(None)), order(col), models.Recipe.id.asc())
 
 
 @app.get("/api/time-buckets")

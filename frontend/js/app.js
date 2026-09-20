@@ -397,7 +397,9 @@
         class: "btn-secondary", type: "button", text: "Clear password",
         onclick: async () => {
           if (!confirm("Remove the stored email password? This also disables email ingest.")) return;
-          await fetch(`${API}/email-settings/password`, { method: "DELETE" });
+          const result = await fetchWithTimeout(`${API}/email-settings/password`, { method: "DELETE" });
+          if (!result.ok) { announce(writeFailureMessage(result, "The stored password")); return; }
+          announce("Stored email password removed.");
           await renderEmailSettings();
         },
       }));
@@ -412,15 +414,53 @@
   // -------------------------------------------------------------------
   const sidebar = $("#sidebar");
   const sidebarToggle = $("#sidebar-toggle");
-  sidebarToggle.addEventListener("click", () => {
-    const collapsed = sidebar.getAttribute("data-collapsed") === "true";
-    sidebar.setAttribute("data-collapsed", String(!collapsed));
-    sidebarToggle.setAttribute("aria-expanded", String(collapsed));
-  });
-  if (window.innerWidth <= 720) {
-    sidebar.setAttribute("data-collapsed", "true");
-    sidebarToggle.setAttribute("aria-expanded", "false");
+
+  // 720px matches the media query that turns the sidebar into an overlay
+  // drawer. Above it the sidebar is a permanent column, and the
+  // dismiss-on-outside-click behaviour below must NOT apply -- closing the
+  // navigation because someone clicked a recipe would be absurd.
+  const DRAWER_MAX_WIDTH = 720;
+  const isDrawer = () => window.innerWidth <= DRAWER_MAX_WIDTH;
+  const sidebarOpen = () => sidebar.getAttribute("data-collapsed") !== "true";
+
+  function setSidebar(open) {
+    sidebar.setAttribute("data-collapsed", String(!open));
+    sidebarToggle.setAttribute("aria-expanded", String(open));
   }
+
+  sidebarToggle.addEventListener("click", () => setSidebar(!sidebarOpen()));
+
+  // Tapping anywhere outside the open drawer closes it. Previously the only
+  // way out was a second tap on the hamburger, which is not where your
+  // thumb is after you have just picked a filter.
+  //
+  // This listens on the CAPTURE phase, which matters: renderSidebar() tears
+  // down and rebuilds the whole tag tree inside its own click handler, so by
+  // the time a bubbled event reached document the clicked node had already
+  // been detached and sidebar.contains(target) was false. Every tap on a
+  // category header therefore closed the drawer. Capturing runs before the
+  // target's own handler, while the node is still in the tree.
+  document.addEventListener("click", (e) => {
+    if (!isDrawer() || !sidebarOpen()) return;
+    const t = e.target;
+    if (sidebar.contains(t) || sidebarToggle.contains(t)) return;
+    // A modal sits above the drawer; clicks in one are not "outside" in any
+    // sense the user means.
+    if (t.closest && t.closest(".modal-overlay")) return;
+    setSidebar(false);
+  }, true);
+
+  // Escape closes it too, and focus goes back to the control that opened it
+  // so keyboard users aren't stranded. Modals handle their own Escape in
+  // trapFocus(); this only fires when none of them are open.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !isDrawer() || !sidebarOpen()) return;
+    if ($$(".modal-overlay").some((o) => !o.hidden)) return;
+    setSidebar(false);
+    sidebarToggle.focus();
+  });
+
+  if (isDrawer()) setSidebar(false);
 
   // -------------------------------------------------------------------
   // State
@@ -442,8 +482,52 @@
     // and rebuilds it on every tag click -- keeping it in the markup would
     // re-open every group the moment you picked a filter.
     expandedGroups: loadExpandedGroups(),
+    // Sort is persisted: it is a standing preference about how you like to
+    // read your library, not a per-visit choice.
+    sort: localStorage.getItem("recipe-app-sort") || "created",
+    direction: localStorage.getItem("recipe-app-sort-dir") || "desc",
   };
   let uiTimeLevel1 = null;   // UI-only: which coarse hour bucket is expanded in the time filter
+
+  // -------------------------------------------------------------------
+  // Clearing filters
+  //
+  // One function, three entry points (toolbar, filter panel, sidebar) so
+  // they cannot drift apart. It clears the SEARCH BOX as well as the tag
+  // and time filters: all three narrow the list, they combine, and a
+  // forgotten search term is exactly the one people don't think to look
+  // for when the list seems wrong.
+  // -------------------------------------------------------------------
+  function activeFilterCount() {
+    return state.filterTags.size
+      + (state.maxMinutes != null ? 1 : 0)
+      + (state.query ? 1 : 0);
+  }
+
+  function clearAllFilters() {
+    state.filterTags.clear();
+    state.maxMinutes = null;
+    uiTimeLevel1 = null;
+    state.query = "";
+    const searchInput = $("#search-input");
+    if (searchInput) searchInput.value = "";
+    renderSidebar();
+    if (!$("#filter-panel").hidden) renderFilterPanel();
+    syncClearFiltersButton();
+    loadRecipes();
+    announce("Filters cleared.");
+  }
+
+  // The toolbar button carries the count and hides itself when nothing is
+  // active -- a permanently visible "Clear filters" that usually does
+  // nothing is just noise.
+  function syncClearFiltersButton() {
+    const btn = $("#clear-filters-btn");
+    if (!btn) return;
+    const n = activeFilterCount();
+    btn.hidden = n === 0;
+    btn.textContent = `Clear filters (${n})`;
+  }
 
   // -------------------------------------------------------------------
   // Tag sidebar
@@ -529,6 +613,20 @@
       .filter(([k]) => state.allTags.some((t) => t.category === k))
       .map(([k]) => k);
     const anyOpen = present.some((k) => state.expandedGroups.has(k));
+
+    // Clear filters sits in its own bordered region ABOVE the tag tree, not
+    // among the categories: in a list of tappable tag names an identically
+    // shaped button is easy to hit by accident while scanning.
+    if (activeFilterCount()) {
+      container.appendChild(el("div", { class: "sidebar-clear-region" }, [
+        el("button", {
+          type: "button", class: "btn-secondary btn-clear-filters",
+          text: `Clear filters (${activeFilterCount()})`,
+          onclick: clearAllFilters,
+        }),
+      ]));
+    }
+
     container.appendChild(el("div", { class: "tag-tree-actions" }, [
       el("button", {
         type: "button", class: "tag-tree-expand-all",
@@ -583,6 +681,7 @@
     else state.filterTags.add(tagName);
     renderSidebar();
     if (!$("#filter-panel").hidden) renderFilterPanel();
+    syncClearFiltersButton();
     loadRecipes();
   }
 
@@ -644,6 +743,7 @@
             uiTimeLevel1 = uiTimeLevel1 === b.minutes ? null : b.minutes;
             state.maxMinutes = uiTimeLevel1;
             renderFilterPanel();
+            syncClearFiltersButton();
             loadRecipes();
           },
         })
@@ -659,6 +759,7 @@
             onclick: () => {
               state.maxMinutes = state.maxMinutes === b.minutes ? uiTimeLevel1 : b.minutes;
               renderFilterPanel();
+              syncClearFiltersButton();
               loadRecipes();
             },
           })
@@ -667,19 +768,16 @@
     }
     panel.appendChild(timeSection);
 
-    if (state.filterTags.size || state.maxMinutes != null) {
+    if (activeFilterCount()) {
+      const bits = [];
+      if (state.filterTags.size) bits.push(`${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}`);
+      if (state.maxMinutes != null) bits.push("time filter");
+      if (state.query) bits.push("search");
       panel.appendChild(el("div", { class: "active-filters-summary" }, [
-        el("span", { text: `${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}${state.maxMinutes != null ? " + time filter" : ""} active` }),
+        el("span", { text: `${bits.join(" + ")} active` }),
         el("button", {
-          type: "button", text: "Clear all",
-          onclick: () => {
-            state.filterTags.clear();
-            state.maxMinutes = null;
-            uiTimeLevel1 = null;
-            renderSidebar();
-            renderFilterPanel();
-            loadRecipes();
-          },
+          type: "button", class: "btn-secondary", text: "Clear filters",
+          onclick: clearAllFilters,
         }),
       ]));
     }
@@ -699,6 +797,7 @@
   $("#search-form").addEventListener("submit", (e) => {
     e.preventDefault();
     state.query = $("#search-input").value.trim();
+    syncClearFiltersButton();
     loadRecipes();
   });
 
@@ -731,6 +830,29 @@
     renderRecipeList(currentRecipes);
   }
 
+  $("#clear-filters-btn").addEventListener("click", clearAllFilters);
+
+  // Sort. Field and direction travel together in one select rather than a
+  // field picker plus an asc/desc toggle: with only five fields, spelling
+  // out both directions ("Rating: high to low") is less to think about than
+  // a separate arrow whose meaning changes per field.
+  const sortSelect = $("#sort-select");
+  sortSelect.value = `${state.sort}|${state.direction}`;
+  if (!sortSelect.value) {            // stored value no longer offered
+    sortSelect.value = "created|desc";
+    state.sort = "created"; state.direction = "desc";
+  }
+  sortSelect.addEventListener("change", () => {
+    const [sort, direction] = sortSelect.value.split("|");
+    state.sort = sort;
+    state.direction = direction;
+    try {
+      localStorage.setItem("recipe-app-sort", sort);
+      localStorage.setItem("recipe-app-sort-dir", direction);
+    } catch { /* private mode -- the choice still applies for this session */ }
+    loadRecipes();
+  });
+
   $("#select-mode-toggle").addEventListener("click", () => {
     state.selectMode = !state.selectMode;
     state.selectedIds.clear();
@@ -759,14 +881,55 @@
     if (!state.selectedIds.size) return;
     if (!confirm(`Delete ${state.selectedIds.size} recipe(s)? This cannot be undone.`)) return;
     const ids = [...state.selectedIds];
-    await fetch(`${API}/recipes/batch-delete`, {
+    const btn = $("#batch-delete-btn");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Deleting…";
+
+    const result = await fetchWithTimeout(`${API}/recipes/batch-delete`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
-    announce(`${ids.length} recipe(s) deleted.`);
-    state.selectedIds.clear();
-    state.selectMode = false;
-    $("#select-mode-toggle").setAttribute("aria-pressed", "false");
+
+    btn.disabled = false;
+    btn.textContent = label;
+
+    if (!result.ok) {
+      // Keep the selection on failure. It used to be cleared unconditionally
+      // alongside an unconditional "deleted" message, so a failed batch told
+      // you it had worked AND threw away the selection you would need to
+      // retry with.
+      announce(writeFailureMessage(result, "The selected recipes"));
+      if (result.timedOut) loadRecipes();
+      return;
+    }
+
+    // The endpoint reports per-item outcomes (deleted / missing / failed).
+    // Those were being discarded, so a batch where half the items failed
+    // still announced complete success.
+    let summary;
+    try {
+      const body = await result.res.json();
+      const parts = [`${body.deleted.length} deleted`];
+      if (body.missing.length) parts.push(`${body.missing.length} already gone`);
+      if (body.failed.length) parts.push(`${body.failed.length} failed`);
+      summary = parts.join(", ") + ".";
+      if (!body.failed.length) {
+        state.selectedIds.clear();
+        state.selectMode = false;
+        $("#select-mode-toggle").setAttribute("aria-pressed", "false");
+      } else {
+        // Leave the failures selected so a retry is one tap.
+        state.selectedIds = new Set(body.failed.map((f) => f.id));
+      }
+    } catch {
+      summary = `${ids.length} recipe(s) deleted.`;
+      state.selectedIds.clear();
+      state.selectMode = false;
+      $("#select-mode-toggle").setAttribute("aria-pressed", "false");
+    }
+
+    announce(summary);
     updateBatchBar();
     await loadTimeBuckets();
     loadRecipes();
@@ -782,6 +945,8 @@
     if (state.query) params.set("q", state.query);
     for (const t of state.filterTags) params.append("tags", t);
     if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
+    params.set("sort", state.sort);
+    params.set("direction", state.direction);
     const res = await fetch(`${API}/recipes?${params.toString()}`);
     currentRecipes = await res.json();
     renderRecipeList(currentRecipes);
@@ -1014,14 +1179,26 @@
         openRecipeDetail(recipe.id);
       },
     });
-    card.appendChild(el("img", {
-      class: "recipe-card-image",
-      src: recipe.image_path ? `/uploads/${recipe.image_path}` : "",
-      alt: "", loading: "lazy",
-    }));
+    // Only render the image element when there is actually an image. It used
+    // to be emitted unconditionally with src="", and the CSS aspect-ratio
+    // plus border-coloured background turned that into a grey placeholder
+    // box on every photo-less recipe. Omitting the element entirely (rather
+    // than hiding it) means the card is genuinely shorter instead of leaving
+    // the gap behind.
+    if (recipe.image_path) {
+      card.appendChild(el("img", {
+        class: "recipe-card-image",
+        src: `/uploads/${recipe.image_path}`,
+        alt: "", loading: "lazy",
+      }));
+    }
 
-    const tab = el("div", { class: "card-tab" }, [sourceBadge(recipe), confidenceBadge(recipe), matchedViaBadge(recipe)]);
-    card.appendChild(tab);
+    // Source and OCR-confidence badges are detail-page only now: they sat in
+    // an absolutely-positioned overlay in the photo's corner, which is both
+    // clutter in a list and homeless once a card has no photo. The
+    // matched-via label stays, because on a search result it explains WHY a
+    // recipe matched -- but it moves in-flow into the card body below, for
+    // the same reason the overlay had to go.
 
     if (state.selectMode) {
       const checkboxAttrs = {
@@ -1039,8 +1216,10 @@
     // they painted straight over it (worse the longer the title). Keeping
     // them in flow means the card grows to fit them and the controls can be
     // sized for touch without ever colliding with text again.
+    const matched = matchedViaBadge(recipe);
     card.appendChild(el("div", { class: "recipe-card-body" }, [
       el("h3", { class: "recipe-card-title recipe-title", text: recipe.title }),
+      matched ? el("div", { class: "card-matched-row" }, [matched]) : null,
       state.selectMode ? null : cardQuickControls(recipe),
     ]));
     return card;
@@ -1497,10 +1676,6 @@
       cardQuickControls(recipe, true),
       el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;" }, [
         wakeLockToggle(),
-        el("button", {
-          class: "btn-secondary", type: "button", text: "\u270e Edit recipe",
-          onclick: () => renderRecipeEditForm(recipe),
-        }),
       ]),
       el("div", { class: "field" }, [
         el("label", { text: "Real-world cook time" }),
@@ -1513,11 +1688,21 @@
       )),
       el("h2", { text: "Instructions" }),
       el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
-      el("button", {
-        class: "btn-secondary", type: "button", text: "Delete recipe",
-        style: "margin-top:1.5rem;",
-        onclick: () => deleteRecipe(recipe.id),
-      }),
+      // Edit and Delete are grouped at the foot of the recipe: both are
+      // operations on the record rather than part of reading it, and Edit
+      // was previously orphaned between the ratings row and the cook-time
+      // form, where it read as part of the time-logging block. Delete gets
+      // btn-danger so the pair don't look like two equivalent safe actions.
+      el("div", { class: "recipe-record-actions" }, [
+        el("button", {
+          class: "btn-secondary", type: "button", text: "✎ Edit recipe",
+          onclick: () => renderRecipeEditForm(recipe),
+        }),
+        el("button", {
+          class: "btn-secondary btn-danger", type: "button", text: "Delete recipe",
+          onclick: (e) => deleteRecipe(recipe.id, e.currentTarget),
+        }),
+      ]),
     ]));
   }
 
@@ -1677,13 +1862,84 @@
     return el("div", { class: "share-menu-wrap" }, [toggleBtn, menu]);
   }
 
-  async function deleteRecipe(id) {
+  // How long to wait before giving up on a write. Long enough that a slow
+  // NAS or a sluggish VPN hop isn't cut off mid-request, short enough that
+  // you aren't staring at a dead button wondering.
+  const WRITE_TIMEOUT_MS = 10000;
+
+  /** fetch with a timeout. Returns {ok, status, timedOut, networkError}. */
+  async function fetchWithTimeout(url, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WRITE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return { ok: res.ok, status: res.status, res };
+    } catch (err) {
+      // AbortError is our own timeout; anything else is the network.
+      if (err && err.name === "AbortError") return { ok: false, timedOut: true };
+      return { ok: false, networkError: true };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Turns a failed request into something that says WHY, not just "failed". */
+  function writeFailureMessage(result, subject) {
+    if (result.timedOut) {
+      return `The server didn't respond within ${WRITE_TIMEOUT_MS / 1000} seconds. `
+        + `${subject} may or may not have gone through — the list has been refreshed so you can check.`;
+    }
+    if (result.networkError) return `Couldn't reach Open the Pantry. Check your connection and try again.`;
+    switch (result.status) {
+      case 401:
+      case 403: return "Not authorised — the API key is missing or wrong.";
+      case 404: return `${subject} was already gone. The list has been refreshed.`;
+      case 429: return "Too many requests just now. Wait a moment and try again.";
+      default:
+        return result.status >= 500
+          ? `The server returned an error (${result.status}). Nothing was changed.`
+          : `That didn't work (status ${result.status}).`;
+    }
+  }
+
+  async function deleteRecipe(id, btn) {
     if (!confirm("Delete this recipe? This cannot be undone.")) return;
-    await fetch(`${API}/recipes/${id}`, { method: "DELETE" });
-    closeModal(detailOverlay);
-    announce("Recipe deleted.");
-    await loadTimeBuckets();
-    loadRecipes();
+
+    // Guard against a double-fire, but deliberately do NOT touch the modal's
+    // close button or the Escape handler: the modal now stays open until the
+    // request resolves, so those are the only way out if this hangs.
+    if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
+    const restore = () => { if (btn) { btn.disabled = false; btn.textContent = "Delete recipe"; } };
+
+    const result = await fetchWithTimeout(`${API}/recipes/${id}`, { method: "DELETE" });
+
+    if (result.ok) {
+      closeModal(detailOverlay);
+      announce("Recipe deleted.");
+      await loadTimeBuckets();
+      loadRecipes();
+      return;
+    }
+
+    // A 404 means it is not there any more, which is the outcome that was
+    // wanted -- close and refresh rather than leaving the user staring at a
+    // recipe that no longer exists.
+    if (result.status === 404) {
+      closeModal(detailOverlay);
+      // announce AFTER the refresh: loadRecipes() announces its own
+      // "N recipes found", which would otherwise immediately overwrite the
+      // explanation and leave the user with no idea what happened.
+      await loadRecipes();
+      announce(writeFailureMessage(result, "That recipe"));
+      return;
+    }
+
+    // Everything else: stay put, say what happened, let them retry. On a
+    // timeout the outcome is genuinely unknown, so refresh the list behind
+    // the modal rather than claiming either result -- again announcing last.
+    restore();
+    if (result.timedOut) await loadRecipes();
+    announce(writeFailureMessage(result, "The recipe"));
   }
 
   // -------------------------------------------------------------------
