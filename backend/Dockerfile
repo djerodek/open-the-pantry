@@ -42,6 +42,14 @@ RUN mkdir -p /app/data/uploads /app/data/tmp \
     && useradd -u 1000 -g appuser -s /usr/sbin/nologin -M appuser \
     && chown -R appuser:appuser /app
 
+# Fontconfig (used by WeasyPrint for PDF export) wants somewhere to cache its
+# font list. The app runs as non-root with no home directory, so it has
+# nowhere to write and logs "Fontconfig error: No writable cache directories"
+# at startup. Harmless -- it falls back to building the list in memory, once,
+# in this long-lived process -- but it is noise in the logs that looks like a
+# fault. Point the cache at a writable path instead.
+ENV XDG_CACHE_HOME=/tmp/.cache
+
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
