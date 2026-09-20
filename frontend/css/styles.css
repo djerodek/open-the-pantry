@@ -875,12 +875,24 @@ main {
 .modal-overlay {
   position: fixed;
   inset: 0;
+  /* inset:0 on a fixed element is measured against the layout viewport,
+     which on iOS is the large one -- same trap as the modal's max-height.
+     Pinning the height to the dynamic viewport keeps the centred modal
+     inside the part of the screen you can actually see. */
+  height: 100vh;
+  height: 100dvh;
   background: var(--overlay-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  /* In an installed PWA there is no dynamic toolbar, so dvh and vh agree and
+     the modal fills the screen -- including the strip under the home
+     indicator. Insetting the overlay keeps the whole modal box, and so its
+     last control, above that strip. */
   padding: 1rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
 }
 .modal-overlay[hidden] { display: none; }
 
@@ -894,11 +906,24 @@ main {
   border-radius: var(--radius);
   max-width: 40rem;
   width: 100%;
+  /* 90vh first as the fallback, then 90dvh for anything that understands it.
+     On iOS a vh is measured against the LARGE viewport -- the page as it
+     would be with the browser toolbar hidden -- so a 90vh box is taller than
+     what you can actually see whenever the toolbar is showing. The modal
+     then scrolls to the end of its content while its own bottom edge sits
+     below the visible window, which is how the last control in a long recipe
+     (Delete) became unreachable: the scrollbar said "you're at the bottom"
+     and the button was off-screen anyway. dvh tracks the viewport that is
+     actually on screen. */
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 1.25rem;
+  /* Clear the home indicator so the last element isn't sitting under it.
+     env() is 0 where there is no inset, so this costs nothing elsewhere. */
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* The overlay itself must not scroll or rubber-band either; it is a fixed
