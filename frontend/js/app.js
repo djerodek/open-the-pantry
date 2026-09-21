@@ -203,23 +203,49 @@
   }
 
 
-  const backupDbBtn = $("#backup-db-btn");
-  if (backupDbBtn) {
-    backupDbBtn.addEventListener("click", () => {
-      announce("Preparing your backup. The download will start shortly.");
-      downloadViaLink(`${API}/backup/database.zip`);
-    });
-  }
-  const backupPdfBtn = $("#backup-pdf-btn");
-  if (backupPdfBtn) {
-    backupPdfBtn.addEventListener("click", () => {
-      // Rendering every recipe to PDF is genuinely slow -- seconds per
-      // hundred -- and a direct-link download shows nothing until the server
-      // starts sending. Say so, or it looks like the button did nothing.
-      announce("Building PDFs for every recipe. This can take a while — the download will start when it's ready.");
-      const notes = $("#backup-pdf-notes");
-      const includeNotes = notes ? notes.checked : true;
-      downloadViaLink(`${API}/backup/pdfs.zip?include_notes=${includeNotes}`);
+  // One chooser, one Download button. There used to be two separate buttons
+  // with the explanation in small print underneath, which read as "a backup
+  // button" plus something else rather than as a choice of format.
+  const backupDownloadBtn = $("#backup-download-btn");
+  const backupNotesOption = document.querySelector(".backup-notes-option");
+  const selectedBackupFormat = () =>
+    (document.querySelector('input[name="backup-format"]:checked') || {}).value || "database";
+  document.querySelectorAll('input[name="backup-format"]').forEach((r) =>
+    r.addEventListener("change", () => { backupNotesOption.hidden = selectedBackupFormat() !== "pdfs"; }));
+
+  if (backupDownloadBtn) {
+    backupDownloadBtn.addEventListener("click", async () => {
+      const status = $("#backup-status");
+      const format = selectedBackupFormat();
+      let url, fallbackName;
+      if (format === "pdfs") {
+        const includeNotes = $("#backup-pdf-notes").checked;
+        url = `${API}/backup/pdfs.zip?include_notes=${includeNotes}`;
+        fallbackName = "open-the-pantry-pdfs.zip";
+        status.textContent = "Building a PDF of every recipe. This can take a while.";
+      } else {
+        url = `${API}/backup/database.zip`;
+        fallbackName = "open-the-pantry-backup.zip";
+        status.textContent = "Preparing your backup…";
+      }
+      backupDownloadBtn.disabled = true;
+      const original = backupDownloadBtn.textContent;
+      backupDownloadBtn.textContent = "Preparing…";
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          status.textContent = `The server couldn't build the file (error ${res.status}). Nothing was downloaded.`;
+          return;
+        }
+        const blob = await res.blob();
+        saveBlob(blob, filenameFromResponse(res) || fallbackName);
+        status.textContent = `Ready: ${formatBytes(blob.size)}. Check your downloads.`;
+      } catch {
+        status.textContent = "Couldn't reach Open the Pantry, so nothing was downloaded. Check your connection and try again.";
+      } finally {
+        backupDownloadBtn.disabled = false;
+        backupDownloadBtn.textContent = original;
+      }
     });
   }
 
@@ -1744,21 +1770,37 @@
     }
   }
 
-  // Backups use a plain <a download> pointing at the endpoint, NOT the blob
-  // path that downloadExport() uses. A blob has to be held in memory in full,
-  // and a backup of a real library -- database plus every photo -- runs to
-  // hundreds of megabytes; on a phone that is a crash rather than a download.
-  // A direct link streams straight to disk. The download attribute is what
-  // keeps a PWA from navigating away, which was the original problem with
-  // window.open.
-  function downloadViaLink(url) {
+  // Backups go through a blob too, for the same reason as downloadExport().
+  //
+  // They used to be a plain <a download> pointing at the endpoint, to avoid
+  // holding the whole archive in memory. The assumption was that the download
+  // attribute alone would keep an installed PWA from navigating. On iOS it
+  // doesn't: the standalone window navigated to the zip's preview page, which
+  // has no back button, and the only way out was to force-quit the app. A
+  // blob URL keeps the page where it is. The cost is memory: the archive is
+  // held in full before it is saved, which is fine for megabytes and gets
+  // risky on a phone somewhere in the hundreds of megabytes.
+  function saveBlob(blob, filename) {
+    const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "";        // same-origin, so the server's filename is used
+    a.href = objectUrl;
+    a.download = filename;
     a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
     a.remove();
+    // Revoke late: Safari can still be reading the blob as the click is handled.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  }
+
+  // The server names the file (with a timestamp) in Content-Disposition; a
+  // blob download loses that unless it is read back out explicitly.
+  function filenameFromResponse(res) {
+    const cd = res.headers.get("Content-Disposition") || "";
+    const star = cd.match(/filename\*=UTF-8''([^;]+)/i);
+    if (star) { try { return decodeURIComponent(star[1]); } catch { /* fall through */ } }
+    const plain = cd.match(/filename="?([^";]+)"?/i);
+    return plain ? plain[1] : null;
   }
 
   function formatBytes(n) {

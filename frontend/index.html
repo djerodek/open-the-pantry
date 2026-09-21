@@ -225,28 +225,36 @@
     </div>
 
     <div class="filter-section">
-      <div class="filter-section-title">Backup &amp; export</div>
+      <div class="filter-section-title" id="backup-format-label">Backup &amp; export</div>
       <p class="field-hint" id="backup-stats">&nbsp;</p>
 
-      <button type="button" id="backup-db-btn" class="btn-secondary">Download backup (.zip)</button>
-      <div class="field-hint">
-        The database plus every photo and uploaded PDF. This is the one you
-        restore from &mdash; it puts the app back exactly as it is now.
-        Instructions are inside the zip.
-      </div>
+      <fieldset class="backup-formats" aria-labelledby="backup-format-label">
+        <label class="backup-format">
+          <input type="radio" name="backup-format" value="database" checked>
+          <span>
+            <strong>Full backup</strong>
+            <span class="field-hint">The database plus every photo and uploaded
+            PDF, as a .zip. This is the one you restore from &mdash; it puts the
+            app back exactly as it is now. Instructions are inside.</span>
+          </span>
+        </label>
+        <label class="backup-format">
+          <input type="radio" name="backup-format" value="pdfs">
+          <span>
+            <strong>Recipes as PDFs</strong>
+            <span class="field-hint">One PDF per recipe in a .zip, readable
+            anywhere without this app. <strong>Cannot</strong> be restored
+            from. Large libraries take a while to build.</span>
+          </span>
+        </label>
+        <label class="backup-notes-option" for="backup-pdf-notes" hidden>
+          <input type="checkbox" id="backup-pdf-notes" checked>
+          <span>Include my notes in the PDFs</span>
+        </label>
+      </fieldset>
 
-      <button type="button" id="backup-pdf-btn" class="btn-secondary" style="margin-top:0.75rem;">
-        Download all recipes as PDFs (.zip)
-      </button>
-      <label for="backup-pdf-notes" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.4rem;">
-        <input type="checkbox" id="backup-pdf-notes" checked>
-        <span>Include my notes</span>
-      </label>
-      <div class="field-hint">
-        One PDF per recipe, readable anywhere without this app. This
-        <strong>cannot</strong> be restored from &mdash; it's an archive, not a
-        backup. Large libraries take a while to build.
-      </div>
+      <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
+      <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
     </div>
 
     <div class="filter-section">
