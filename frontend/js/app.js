@@ -820,7 +820,12 @@
   // -------------------------------------------------------------------
   function updateBatchBar() {
     $("#batch-count").textContent = `${state.selectedIds.size} selected`;
-    $("#batch-bar").hidden = !state.selectMode || state.selectedIds.size === 0;
+    const barVisible = state.selectMode && state.selectedIds.size > 0;
+    $("#batch-bar").hidden = !barVisible;
+    // The bar and the + button share the bottom edge; on a phone the bar is
+    // wide enough to run underneath it. Adding a recipe mid-selection isn't
+    // a thing anyone needs, so the + steps aside while the bar is up.
+    $("#add-recipe-fab").hidden = barVisible;
   }
 
   function toggleSelect(id) {
@@ -1172,7 +1177,7 @@
     const isSelected = state.selectedIds.has(recipe.id);
     const card = el("a", {
       href: `#recipe-${recipe.id}`,
-      class: "recipe-card",
+      class: recipe.image_path ? "recipe-card" : "recipe-card recipe-card--no-image",
       onclick: (e) => {
         e.preventDefault();
         if (state.selectMode) { toggleSelect(recipe.id); return; }

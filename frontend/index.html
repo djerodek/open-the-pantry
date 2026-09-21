@@ -65,6 +65,11 @@
         <button type="button" id="filters-toggle" class="btn-secondary" aria-expanded="false" aria-controls="filter-panel" hidden>
           Filters
         </button>
+        <!-- Hidden until something is actually filtering; app.js keeps the
+             count in the label so active filtering is visible at a glance. -->
+        <button type="button" id="clear-filters-btn" class="btn-secondary btn-clear-filters" hidden>
+          Clear filters
+        </button>
         <button type="button" id="thumbnails-toggle" class="btn-secondary" aria-pressed="true">
           Thumbnails
         </button>
@@ -81,13 +86,10 @@
           <option value="difficulty|asc">Difficulty: easiest</option>
           <option value="difficulty|desc">Difficulty: hardest</option>
         </select>
-        <button type="button" id="select-mode-toggle" class="btn-secondary" aria-pressed="false">
+        <!-- Select is a mode switch, not a view setting: it sits apart from
+             the view controls, pushed to the far end of the row. -->
+        <button type="button" id="select-mode-toggle" class="btn-secondary toolbar-select" aria-pressed="false">
           Select
-        </button>
-        <!-- Hidden until something is actually filtering; app.js keeps the
-             count in the label so active filtering is visible at a glance. -->
-        <button type="button" id="clear-filters-btn" class="btn-secondary btn-clear-filters" hidden>
-          Clear filters
         </button>
       </div>
     </div>
@@ -102,7 +104,7 @@
 
 <div id="batch-bar" class="batch-bar" hidden>
   <span id="batch-count">0 selected</span>
-  <button type="button" id="batch-delete-btn" class="btn-secondary">Delete selected</button>
+  <button type="button" id="batch-delete-btn" class="btn-secondary btn-danger">Delete selected</button>
   <button type="button" id="batch-cancel-btn" class="btn-secondary">Cancel</button>
 </div>
 
