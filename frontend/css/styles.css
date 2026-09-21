@@ -260,7 +260,14 @@ a { color: var(--color-focus); }
   cursor: pointer;
 }
 
-.topbar-spacer { flex: 1; }
+/* The spacer must not grow. With flex:1 on both it and .search-form, the two
+   split the spare width evenly, and once .search-form had min-width:0 (see
+   above) nothing held it at its natural width any more -- on a phone the
+   search box ended up about half the space it had. The settings button is
+   pushed right with an auto margin instead, so search takes every spare
+   pixel up to its 32rem cap. */
+.topbar-spacer { flex: 0 0 0; }
+#settings-toggle { margin-left: auto; }
 
 .text-size-control {
   display: flex;
