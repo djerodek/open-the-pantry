@@ -8,10 +8,11 @@ services:
       - ./data:/app/data     # SQLite DB + uploaded images/PDFs, persists across updates
     restart: unless-stopped
     # environment:
-    #   # Only needed if you use the optional email-ingest feature. Generate with:
-    #   #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    #   # Back this up separately from ./data -- losing it means re-entering
-    #   # email credentials (nothing else is affected).
+    #   # Optional. Email ingest can create its own key from Settings
+    #   # (stored as encryption.key in ./data). Set this instead only if you
+    #   # want the key kept outside the data folder. Generate one with:
+    #   #   docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    #   # If set, it overrides encryption.key.
     #   RECIPE_APP_ENCRYPTION_KEY: "paste-generated-key-here"
     #
     #   # Strongly recommended if you enable email ingest -- see the README's

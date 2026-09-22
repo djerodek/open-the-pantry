@@ -298,12 +298,52 @@
 
     emailPanel.innerHTML = "";
 
+    // Step one of setup when no key exists. This used to be a one-line
+    // warning naming an environment variable and pointing at the README;
+    // the password field stayed enabled, so the first sign of trouble was a
+    // failed save. Now the key can be created right here, and the password
+    // field stays disabled until it exists, so that failure can't happen.
     if (!settings.encryption_configured) {
-      emailPanel.appendChild(el("div", {
-        class: "badge badge-confidence-low",
-        style: "display:block;margin-bottom:0.6rem;padding:0.5rem;",
-        text: "RECIPE_APP_ENCRYPTION_KEY isn't set on the server. Credentials can't be stored securely until it is \u2014 see the README.",
-      }));
+      const setupStatus = el("p", { class: "field-hint", role: "status" });
+      const box = el("div", { class: "setup-callout" });
+      if (settings.encryption_source === "env_invalid") {
+        box.appendChild(el("strong", { text: "Encryption key is invalid" }));
+        box.appendChild(el("p", {
+          text: "RECIPE_APP_ENCRYPTION_KEY is set in your compose file, but its value isn't a valid key. " +
+                "Fix it or delete that line, then restart the container.",
+        }));
+      } else {
+        box.appendChild(el("strong", { text: "Step 1: set up encryption" }));
+        box.appendChild(el("p", {
+          text: "Your email password is stored encrypted, so a key has to exist first. " +
+                "This creates one in the app's data folder (encryption.key). " +
+                "If you ever move the data folder, the key goes with it. The backup zip leaves it out, " +
+                "so after restoring from a backup on a new install you re-enter the password.",
+        }));
+        box.appendChild(el("button", {
+          class: "btn-primary", type: "button", text: "Set up encryption",
+          onclick: async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            setupStatus.textContent = "Creating key\u2026";
+            try {
+              const res = await fetch(`${API}/email-settings/encryption-key`, { method: "POST" });
+              if (res.ok || res.status === 409) {
+                announce("Encryption is set up. You can now enter the email password.");
+                await renderEmailSettings();
+                return;
+              }
+              const err = await res.json().catch(() => ({}));
+              setupStatus.textContent = err.detail || `Couldn't create the key (error ${res.status}).`;
+            } catch {
+              setupStatus.textContent = "Couldn't reach Open the Pantry. Check your connection and try again.";
+            }
+            btn.disabled = false;
+          },
+        }));
+        box.appendChild(setupStatus);
+      }
+      emailPanel.appendChild(box);
     }
 
     const enabledInput = el("input", { type: "checkbox", id: "email-enabled" });
@@ -315,15 +355,18 @@
     const smtpPort = el("input", { type: "number", id: "email-smtp-port", value: String(settings.smtp_port ?? 587) });
     const username = el("input", { type: "text", id: "email-username", value: settings.username || "" });
     const password = el("input", {
-      type: "password", id: "email-password",
-      placeholder: settings.password_set ? "(saved \u2014 leave blank to keep)" : "",
+      type: "password", id: "email-password", autocomplete: "new-password",
+      placeholder: !settings.encryption_configured
+        ? "Set up encryption first (above)"
+        : settings.password_set ? "Saved \u2014 leave blank to keep" : "App password",
     });
+    if (!settings.encryption_configured) password.disabled = true;
     const notifyEmail = el("input", { type: "email", id: "email-notify", value: settings.notify_email || "" });
     const keyword = el("input", { type: "text", id: "email-keyword", value: settings.subject_keyword || "[RECIPE]" });
     const scanHour = el("input", { type: "number", id: "email-scan-hour", min: "0", max: "23", value: String(settings.daily_scan_hour ?? 3) });
     const cooldown = el("input", { type: "number", id: "email-cooldown", min: "0", value: String(settings.cooldown_minutes ?? 30) });
 
-    const statusLine = el("div", { class: "field-hint", style: "margin-top:0.5rem;" });
+    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;" });
 
     emailPanel.appendChild(el("div", { class: "field" }, [
       el("label", { for: "email-enabled", style: "display:flex;align-items:center;gap:0.5rem;" }, [
@@ -1572,7 +1615,7 @@
       value: recipe.tags.map((t) => t.name).join(", "),
     });
 
-    const statusLine = el("div", { class: "field-hint", style: "margin-top:0.5rem;" });
+    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;" });
 
     const saveBtn = el("button", {
       class: "btn-primary", type: "button", text: "Save changes",

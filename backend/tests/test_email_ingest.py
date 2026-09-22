@@ -527,3 +527,105 @@ def test_genuine_attachment_still_detected(tmp_path):
 
     parts = extract_email_parts(msg)
     assert parts["image_bytes"] is not None
+
+
+# ---------------------------------------------------------------------------
+# In-app key generation (encryption.key in the data directory)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def no_key(client, monkeypatch):
+    """No env var and no key file, before and after. The key file lives in
+    the session-wide data dir, so a test that leaves one behind would make
+    every later "no key configured" test silently pass for the wrong reason."""
+    from app import crypto
+
+    monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
+    path = crypto.key_file_path()
+    if os.path.exists(path):
+        os.remove(path)
+    client.delete("/api/email-settings/password")
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+    client.delete("/api/email-settings/password")
+
+
+def test_generate_key_file_enables_saving_a_password(client, no_key):
+    r = client.get("/api/email-settings")
+    assert r.json()["encryption_configured"] is False
+    assert r.json()["encryption_source"] is None
+
+    r = client.post("/api/email-settings/encryption-key")
+    assert r.status_code == 200
+    assert r.json()["encryption_configured"] is True
+    assert r.json()["encryption_source"] == "file"
+
+    assert os.path.isfile(no_key)
+    assert (os.stat(no_key).st_mode & 0o777) == 0o600
+
+    r = client.put("/api/email-settings", json=_settings_payload(password="app-pw"))
+    assert r.status_code == 200
+    assert r.json()["password_set"] is True
+
+    from app import crypto
+    from app.database import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        stored = conn.execute(text("SELECT password_encrypted FROM email_ingest_settings WHERE id=1")).scalar()
+    assert "app-pw" not in stored
+    assert crypto.decrypt_secret(stored) == "app-pw"
+
+
+def test_generate_key_refuses_to_replace_an_existing_key_file(client, no_key):
+    assert client.post("/api/email-settings/encryption-key").status_code == 200
+    with open(no_key) as f:
+        first = f.read()
+    r = client.post("/api/email-settings/encryption-key")
+    assert r.status_code == 409
+    with open(no_key) as f:
+        assert f.read() == first
+
+
+def test_generate_key_refuses_when_env_var_is_set(client, no_key, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app import crypto
+
+    monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
+    r = client.post("/api/email-settings/encryption-key")
+    assert r.status_code == 409
+    assert not os.path.exists(no_key)
+
+
+def test_invalid_env_var_is_not_silently_replaced_by_key_file(client, no_key, monkeypatch):
+    """An env var that is set but broken must not quietly fall back to the
+    key file: which key is in use would change without anyone seeing why."""
+    from app import crypto
+
+    assert client.post("/api/email-settings/encryption-key").status_code == 200
+    monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, "not-a-valid-key")
+    assert crypto.key_source() == "env_invalid"
+    assert crypto.encryption_configured() is False
+
+    r = client.put("/api/email-settings", json=_settings_payload(password="x"))
+    assert r.status_code == 400
+    assert "compose" in r.json()["detail"]
+
+
+def test_missing_key_error_tells_the_user_what_to_do(client, no_key):
+    r = client.put("/api/email-settings", json=_settings_payload(password="x"))
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "Set up encryption" in detail
+    # The old message was a Python one-liner to paste into a shell.
+    assert "python3" not in detail
+
+
+def test_backup_zip_does_not_contain_the_key_file(client, no_key):
+    import zipfile
+
+    assert client.post("/api/email-settings/encryption-key").status_code == 200
+    r = client.get("/api/backup/database.zip")
+    assert r.status_code == 200
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert not any(n.endswith("encryption.key") for n in names)

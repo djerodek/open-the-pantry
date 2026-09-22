@@ -55,6 +55,47 @@ docker compose up -d
 Open `http://localhost:8090`. Data (SQLite DB + uploaded images/PDFs) persists
 in `./data` next to the compose file.
 
+### Moving or restoring your data
+
+Everything the app stores lives in one folder: whatever is on the left side
+of the `volumes:` line in `docker-compose.yml` (`./data` by default). It
+holds `recipes.db`, `uploads/` (photos and PDFs), and `encryption.key` if you
+set up email ingest from Settings. Moving the app to another drive means
+moving that folder and pointing the compose file at it.
+
+**Moving to another drive or path** (e.g. from `./data` to a NAS pool):
+
+1. Stop the app: `docker compose down`. Do not copy while it is running --
+   SQLite may be holding recent writes in `recipes.db-wal`, and a copy taken
+   mid-write can be inconsistent.
+2. Copy the whole folder, keeping everything in it:
+   `cp -a ./data /path/on/nas/open-the-pantry-data`
+3. Edit the volume line in `docker-compose.yml`. Change only the left side;
+   `/app/data` on the right is the path inside the container and must stay:
+
+   ```yaml
+   volumes:
+     - /path/on/nas/open-the-pantry-data:/app/data
+   ```
+
+4. Start it: `docker compose up -d`. The container fixes file ownership on
+   start, so no `chown` is needed.
+5. Check your recipes are there before deleting the old folder.
+
+**Restoring from a backup zip** (Settings → Backup & export → Full backup):
+
+1. `docker compose down`
+2. Unzip into the folder the volume line points at, so that `recipes.db` and
+   `uploads/` sit directly inside it (not in a subfolder):
+   `unzip -o open-the-pantry-backup-*.zip -d /path/to/data`
+3. `docker compose up -d`
+
+Restoring replaces the current library. The backup zip deliberately does
+**not** include `encryption.key`, so a leaked backup exposes no email
+password. After restoring onto a fresh install, either copy `encryption.key`
+across from the old data folder or set up encryption again in Settings and
+re-enter the email password. Nothing else depends on the key.
+
 To build from source instead of pulling the published image:
 
 ```bash
@@ -141,7 +182,11 @@ docker compose -f docker-compose.build.yml up -d --build
   it at an account holding your real correspondence means storing
   credentials to all of it. A dedicated address limits the blast radius to
   an inbox containing nothing but recipes.
-- Requires `RECIPE_APP_ENCRYPTION_KEY` to be set — see Security notes.
+- The email password is stored encrypted, so a key has to exist first.
+  Settings → Email ingest has a **Set up encryption** button that creates
+  one (`encryption.key` in the data folder); no compose editing needed.
+  Setting `RECIPE_APP_ENCRYPTION_KEY` yourself still works and takes
+  priority — see Security notes for the difference.
 
 **Showcase image**
 - Every recipe can have one representative photo: shown below the title on
@@ -272,21 +317,33 @@ docker compose -f docker-compose.build.yml up -d --build
   layer (basic auth, Tailscale, etc.) remains the more complete option for
   exposing this beyond your LAN.
 - **Email credentials (if you use email ingest)** are encrypted at rest
-  with Fernet (AES-128-CBC + HMAC) using a key supplied via
-  `RECIPE_APP_ENCRYPTION_KEY`, so the database file alone never exposes
-  the password. Generate one with:
+  with Fernet (AES-128-CBC + HMAC). The key comes from one of two places:
 
-  ```bash
-  python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-  ```
+  1. **The Set up encryption button** in Settings → Email ingest (easiest).
+     It writes a random key to `encryption.key` in the data folder, readable
+     only by the app user. The trade-off: the key sits next to the
+     database, so anyone who can copy the whole data folder gets both. The
+     backup zip leaves the key out, so a backup on its own still exposes
+     nothing.
+  2. **`RECIPE_APP_ENCRYPTION_KEY`** in the compose file, if you want the
+     key kept out of the data folder. Generate one with the image's own
+     Python, since the NAS usually doesn't have the library installed:
 
-  Set it as an environment variable in your compose file and **back it up
-  separately from the database** — lose it and stored credentials can't be
-  decrypted (you'd re-enter them; nothing else is affected). The app fails
-  closed: without a valid key it refuses to save a credential rather than
-  falling back to plaintext. The password is never returned by the API in
-  any form, encrypted or otherwise — only a boolean indicating whether one
-  is set.
+     ```bash
+     docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+     ```
+
+     If this variable is set, it is used and any `encryption.key` is
+     ignored. A value that is set but invalid is reported as an error and
+     does **not** fall back to the key file. Silently switching keys would
+     make saved credentials stop working with no visible cause.
+
+  Either way, losing the key means re-entering the email password; nothing
+  else is affected. The app fails closed: without a valid key it refuses
+  to save a credential rather than falling back to plaintext, and the
+  password field stays disabled until a key exists. The password is never
+  returned by the API in any form, encrypted or otherwise — only a boolean
+  indicating whether one is set.
 - **Two warnings specific to email ingest**, both worth reading before
   enabling it:
   - The app has **no authentication by default** (see above). Storing

@@ -53,8 +53,9 @@ Save as `docker-compose.yml`:
           - ./data:/app/data
         restart: unless-stopped
         # environment:
-        #   # Only needed for the optional email-ingest feature.
-        #   RECIPE_APP_ENCRYPTION_KEY: "generate-with-fernet"
+        #   # Optional: email ingest can create its own key in Settings.
+        #   # Set this only to keep the key outside ./data.
+        #   RECIPE_APP_ENCRYPTION_KEY: "see-README"
         #   # Recommended if anything beyond you can reach this.
         #   RECIPE_APP_API_KEY: "a-long-random-string"
 

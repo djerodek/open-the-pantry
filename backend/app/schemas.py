@@ -187,6 +187,8 @@ class EmailSettingsOut(BaseModel):
     cooldown_minutes: int
     last_scan_at: Optional[str] = None
     encryption_configured: bool = True  # whether RECIPE_APP_ENCRYPTION_KEY is set at all
+    # "env", "file", "env_invalid", or None -- see crypto.key_source().
+    encryption_source: Optional[str] = None
 
 
 class EmailTestResult(BaseModel):

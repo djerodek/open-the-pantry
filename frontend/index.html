@@ -255,6 +255,38 @@
 
       <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
       <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
+
+      <details class="restore-help">
+        <summary>How to restore a backup or move to another drive</summary>
+        <p>Your library lives in one folder on the server: the <strong>left side</strong>
+        of the <code>volumes:</code> line in <code>docker-compose.yml</code>
+        (<code>./data</code> unless you changed it).</p>
+
+        <p class="restore-help-title">Move to another drive</p>
+        <ol>
+          <li>Stop the app: <code>docker compose down</code></li>
+          <li>Copy the whole folder to the new location, e.g.
+            <code>cp -a ./data /path/on/nas/pantry-data</code></li>
+          <li>In <code>docker-compose.yml</code>, change only the left side of the volume line:
+            <code>- /path/on/nas/pantry-data:/app/data</code></li>
+          <li>Start it: <code>docker compose up -d</code>, and check your recipes are
+            there before deleting the old folder.</li>
+        </ol>
+
+        <p class="restore-help-title">Restore a full backup</p>
+        <ol>
+          <li>Stop the app: <code>docker compose down</code></li>
+          <li>Unzip the backup into the data folder so <code>recipes.db</code> and
+            <code>uploads/</code> are directly inside it:
+            <code>unzip -o open-the-pantry-backup-*.zip -d ./data</code></li>
+          <li>Start it: <code>docker compose up -d</code></li>
+        </ol>
+        <p>Restoring replaces everything currently in the app. Always stop the app first:
+        replacing the database while it runs can corrupt it.</p>
+        <p>The backup doesn't include the email encryption key. If you use email ingest,
+        copy <code>encryption.key</code> from the old folder too, or set up encryption
+        again and re-enter the password.</p>
+      </details>
     </div>
 
     <div class="filter-section">

@@ -110,12 +110,12 @@ To restore
 
        docker compose down
 
-2. Unpack this archive into the data directory next to your compose file,
-   replacing what is there. From the directory holding docker-compose.yml:
+2. Find the data folder: it is the LEFT side of the "volumes:" line in
+   docker-compose.yml (./data by default). Unpack this archive into it,
+   replacing what is there, so that recipes.db and uploads/ sit directly
+   inside that folder -- not in a subfolder:
 
        unzip -o open-the-pantry-backup-YYYYMMDD-HHMMSS.zip -d ./data
-
-   Your data directory should then contain recipes.db and uploads/.
 
 3. Start the app again:
 
@@ -125,18 +125,29 @@ The app is stopped for step 2 on purpose. Replacing the database underneath
 a running app is how you corrupt it -- the running process still holds open
 handles to the old file.
 
+Restoring onto a different drive or path
+----------------------------------------
+
+Same steps, but unzip into the new folder and change the left side of the
+volumes line to point at it. Leave the right side (/app/data) alone:
+
+    volumes:
+      - /path/to/new/folder:/app/data
+
 Notes
 -----
 
 * Restoring REPLACES the current library. Anything added since this backup
-  was taken is gone. If you are unsure, copy your existing ./data somewhere
-  else first.
+  was taken is gone. If you are unsure, copy your existing data folder
+  somewhere else first.
 * recipes.db is an ordinary SQLite database. You can open it with any SQLite
   tool if you ever want the data out without running this app.
-* If you set RECIPE_APP_ENCRYPTION_KEY for email ingest, keep using the SAME
-  key after restoring. Stored email credentials are encrypted with it, and a
-  different key cannot decrypt them -- the app will refuse to use them rather
-  than fail silently. Everything else restores regardless.
+* Email ingest: this archive deliberately does NOT contain encryption.key,
+  so it exposes no email password. To keep the saved password working,
+  copy encryption.key from the old data folder into the new one (or keep
+  RECIPE_APP_ENCRYPTION_KEY the same, if you set it that way). Otherwise,
+  set up encryption again in Settings and re-enter the password. Everything
+  else restores regardless.
 """
 
 

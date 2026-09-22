@@ -1376,11 +1376,30 @@ def _email_settings_out(settings: models.EmailIngestSettings) -> schemas.EmailSe
         cooldown_minutes=settings.cooldown_minutes,
         last_scan_at=settings.last_scan_at.isoformat() if settings.last_scan_at else None,
         encryption_configured=crypto.encryption_configured(),
+        encryption_source=crypto.key_source(),
     )
 
 
 @app.get("/api/email-settings", response_model=schemas.EmailSettingsOut)
 def get_email_settings(db: Session = Depends(get_db)):
+    return _email_settings_out(_get_email_settings(db))
+
+
+@app.post("/api/email-settings/encryption-key", response_model=schemas.EmailSettingsOut)
+def create_encryption_key(db: Session = Depends(get_db)):
+    """Generate the credential-encryption key inside the data directory, so
+    email ingest can be set up without editing docker-compose.yml. Refuses
+    (409) if a key already exists in either form -- see
+    crypto.generate_key_file for why replacing one is never done here."""
+    try:
+        crypto.generate_key_file()
+    except crypto.KeyAlreadyConfiguredError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except OSError:
+        raise HTTPException(
+            status_code=500,
+            detail="Couldn't write the key file to the data folder. Check that the folder is writable.",
+        )
     return _email_settings_out(_get_email_settings(db))
 
 
