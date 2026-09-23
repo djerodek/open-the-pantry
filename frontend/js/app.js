@@ -406,13 +406,12 @@
           enabled: enabledInput.checked,
           imap_host: imapHost.value.trim() || null,
           imap_port: parseInt(imapPort.value, 10) || 993,
-          // 993 and 465 are implicit-TLS by convention (the connection is
-          // encrypted from the first byte); everything else -- 587, 143,
-          // 25 -- connects in the clear and upgrades via STARTTLS. This
-          // used to be hardcoded to "implicit" for both regardless of
-          // port, which hung and then timed out against any host whose
-          // recommended SMTP port was 587 (STARTTLS) while still claiming
-          // to speak TLS from byte one.
+          // 993 and 465 are implicit TLS by convention (encrypted from the
+          // first byte); everything else -- 587, 143, 25 -- connects in the
+          // clear and upgrades via STARTTLS. Both flags used to be sent as
+          // true regardless of port, which for SMTP meant STARTTLS even on
+          // 465: the client waited for a plaintext greeting the server
+          // never sends, and timed out.
           imap_use_ssl: (parseInt(imapPort.value, 10) || 993) === 993,
           smtp_host: smtpHost.value.trim() || null,
           smtp_port: parseInt(smtpPort.value, 10) || 587,

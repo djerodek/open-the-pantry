@@ -451,6 +451,16 @@ docker compose -f docker-compose.build.yml up -d --build
 
 ## Known limitations
 
+- **Email ingest needs a certificate the system trusts.** Connections
+  verify the mail server's certificate and hostname. A self-signed
+  certificate, or a host name that doesn't match the certificate (common
+  with shared hosting, where `mail.yourdomain` points at the provider's
+  server), fails with `CERTIFICATE_VERIFY_FAILED`. Use the host name your
+  provider's certificate is issued for.
+- **Email scans fetch each unread message's header separately.** Fine for
+  a dedicated inbox; slow on a shared inbox with hundreds of unread
+  messages. This is the reason the README recommends a dedicated address.
+
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based, not ML-based — expect to correct fields on messy or non-standard
   layouts via the review screen shown after single-item ingestion. Batch

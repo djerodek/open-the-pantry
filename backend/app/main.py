@@ -531,6 +531,9 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
     return recipe.id
 
 
+_email_scan_lock = threading.Lock()
+
+
 def run_email_scan(force_notify: bool = False) -> dict:
     """One full inbox pass: find tagged UNSEEN emails, try to parse each,
     save successes, queue result notifications, then flush them subject
@@ -548,11 +551,19 @@ def run_email_scan(force_notify: bool = False) -> dict:
     Every message is marked Seen once handled -- success or failure --
     so a permanently-unparseable email isn't retried forever. Individual
     message failures never abort the scan."""
+    # One scan at a time. The daily scan and "Scan inbox now" (or two taps
+    # on it) could otherwise both fetch the same UNSEEN message before
+    # either marks it Seen, and save the recipe twice. Non-blocking: a
+    # second caller is told a scan is running instead of queueing behind it.
+    if not _email_scan_lock.acquire(blocking=False):
+        return {"scanned": 0, "succeeded": 0, "failed": 0,
+                "messages": ["A scan is already running. Try again in a moment."]}
     db = SessionLocal()
     try:
         return _run_email_scan_inner(db, force_notify)
     finally:
         db.close()
+        _email_scan_lock.release()
 
 
 def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
@@ -1393,8 +1404,10 @@ def create_encryption_key(db: Session = Depends(get_db)):
     crypto.generate_key_file for why replacing one is never done here."""
     try:
         crypto.generate_key_file()
-    except crypto.KeyAlreadyConfiguredError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except (crypto.KeyAlreadyConfiguredError, FileExistsError):
+        # FileExistsError: lost the O_EXCL race to a simultaneous request.
+        # Same outcome as the pre-check, so same status.
+        raise HTTPException(status_code=409, detail="An encryption key is already set up.")
     except OSError:
         raise HTTPException(
             status_code=500,

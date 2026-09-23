@@ -1,4 +1,5 @@
 import email
+import email.utils
 import imaplib
 import smtplib
 import ssl
@@ -48,6 +49,12 @@ def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bo
         raise EmailConnectionError(f"Could not connect/login to IMAP ({host}:{port}): {e}")
 
 
+# Flag naming, for both functions below: use_ssl / use_tls choose HOW TLS
+# is established, never WHETHER. IMAP use_ssl=True and SMTP use_tls=False
+# both mean implicit TLS (encrypted from the first byte: 993 / 465). The
+# other value means connect in the clear and upgrade with STARTTLS
+# (143 / 587). There is no plaintext path. The names read the wrong way
+# round for SMTP; kept because they are stored columns.
 def connect_smtp(host: str, port: int, username: str, password: str, use_tls: bool = True) -> smtplib.SMTP:
     """Always uses TLS -- either STARTTLS upgrade (typical port 587) or a
     direct SSL connection (typical port 465, use_tls=False selects this
@@ -65,10 +72,18 @@ def connect_smtp(host: str, port: int, username: str, password: str, use_tls: bo
 
 
 def send_email(smtp_conn: smtplib.SMTP, from_addr: str, to_addr: str, subject: str, body: str):
-    msg = MIMEText(body)
+    # Charset stated explicitly. MIMEText(body) with no charset already
+    # switches to UTF-8 when the body isn't ASCII (checked: accented and
+    # CJK text round-trips), so this documents intent rather than fixing a
+    # failure.
+    msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = from_addr
     msg["To"] = to_addr
+    # Most servers add a Date on receipt; some strict ones reject mail
+    # that arrives without one.
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    msg["Message-ID"] = email.utils.make_msgid()
     smtp_conn.sendmail(from_addr, [to_addr], msg.as_string())
 
 

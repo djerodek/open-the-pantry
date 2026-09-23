@@ -629,3 +629,45 @@ def test_backup_zip_does_not_contain_the_key_file(client, no_key):
     assert r.status_code == 200
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert not any(n.endswith("encryption.key") for n in names)
+
+
+# ---------------------------------------------------------------------------
+# Review round: send headers, scan serialization, key race
+# ---------------------------------------------------------------------------
+
+def test_send_email_sets_date_and_utf8_body():
+    import email as email_lib
+    from app import email_client
+
+    conn = MagicMock()
+    email_client.send_email(conn, "a@example.com", "b@example.com",
+                            "[SUCCESS] Crème brûlée", "Pâte à choux — saved")
+    raw = conn.sendmail.call_args[0][2]
+    raw.encode("ascii")  # smtplib requires an ASCII-safe string
+    msg = email_lib.message_from_string(raw)
+    assert msg["Date"]
+    assert msg.get_content_charset() == "utf-8"
+    assert msg.get_payload(decode=True).decode("utf-8") == "Pâte à choux — saved"
+
+
+def test_concurrent_scan_is_refused_not_duplicated(client):
+    from app import main
+
+    assert main._email_scan_lock.acquire(blocking=False)
+    try:
+        r = client.post("/api/email-settings/scan")
+        assert r.status_code == 200
+        assert "already running" in r.json()["messages"][0]
+    finally:
+        main._email_scan_lock.release()
+    # And the lock is free again afterwards.
+    r = client.post("/api/email-settings/scan")
+    assert "already running" not in " ".join(r.json()["messages"])
+
+
+def test_lost_key_creation_race_is_409_not_500(client, no_key):
+    from app import crypto
+
+    with patch.object(crypto, "generate_key_file", side_effect=FileExistsError()):
+        r = client.post("/api/email-settings/encryption-key")
+    assert r.status_code == 409
