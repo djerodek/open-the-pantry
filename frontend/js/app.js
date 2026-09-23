@@ -376,9 +376,14 @@
     ]));
 
     emailPanel.appendChild(emailField("IMAP host (reading)", imapHost, "e.g. imap.gmail.com"));
-    emailPanel.appendChild(emailField("IMAP port", imapPort));
+    emailPanel.appendChild(emailField("IMAP port", imapPort,
+      "993 connects with TLS from the start (implicit TLS). Any other port starts " +
+      "unencrypted and upgrades via STARTTLS -- that's how port 143 is normally used."));
     emailPanel.appendChild(emailField("SMTP host (notifications)", smtpHost, "e.g. smtp.gmail.com"));
-    emailPanel.appendChild(emailField("SMTP port", smtpPort));
+    emailPanel.appendChild(emailField("SMTP port", smtpPort,
+      "465 connects with TLS from the start (implicit TLS). Any other port -- typically " +
+      "587 -- starts unencrypted and upgrades via STARTTLS. Guessed from the port " +
+      "number above; there's no separate setting for it."));
     emailPanel.appendChild(emailField("Username", username, "Used for both IMAP and SMTP."));
     emailPanel.appendChild(emailField("Password", password,
       "Stored encrypted. Use an app-specific password, not your main account password."));
@@ -401,10 +406,17 @@
           enabled: enabledInput.checked,
           imap_host: imapHost.value.trim() || null,
           imap_port: parseInt(imapPort.value, 10) || 993,
-          imap_use_ssl: true,
+          // 993 and 465 are implicit-TLS by convention (the connection is
+          // encrypted from the first byte); everything else -- 587, 143,
+          // 25 -- connects in the clear and upgrades via STARTTLS. This
+          // used to be hardcoded to "implicit" for both regardless of
+          // port, which hung and then timed out against any host whose
+          // recommended SMTP port was 587 (STARTTLS) while still claiming
+          // to speak TLS from byte one.
+          imap_use_ssl: (parseInt(imapPort.value, 10) || 993) === 993,
           smtp_host: smtpHost.value.trim() || null,
           smtp_port: parseInt(smtpPort.value, 10) || 587,
-          smtp_use_tls: true,
+          smtp_use_tls: (parseInt(smtpPort.value, 10) || 587) !== 465,
           username: username.value.trim() || null,
           notify_email: notifyEmail.value.trim() || null,
           subject_keyword: keyword.value.trim() || "[RECIPE]",
