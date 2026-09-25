@@ -78,12 +78,16 @@ updates apply.
   (text-layer detection, OCR only where needed), screenshots (single or
   combined multi-screenshot), or manual entry
 - Tag categories: meal type, cooking style (incl. cocktails), main ingredient
-- Full-text search across recipes and tags; stacked filters; cook-time filter
+- Full-text search across recipes and tags; stacked filters; cook-time filter;
+  sort by date, title, rating, cook time or difficulty
 - Ratings, favorites, per-recipe notes, showcase images
 - Print, PDF, and self-contained HTML export
 - PWA: installable, offline shell, light/dark (true black) themes, adjustable
   text size, keyboard and screen-reader accessible
-- Optional email ingest (off by default)
+- Optional email ingest (off by default): email a link, PDF, photo or the
+  recipe text to a dedicated inbox
+- Full backup (restorable) or every recipe as PDFs, from Settings
+- Logs: `docker logs open-the-pantry`, or `data/logs/app.log`
 
 Full documentation, source, and security notes:
 https://github.com/djerodek/open-the-pantry

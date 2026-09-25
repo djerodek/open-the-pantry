@@ -107,21 +107,24 @@ docker compose -f docker-compose.build.yml up -d --build
 **Ingestion**
 - **URL** — tries `recipe-scrapers` (100+ site-specific parsers) first, falls
   back to `schema.org` JSON-LD, then a heuristic HTML scrape. Individual or
-  batch (multiple URLs at once, auto-saved without per-item review). Also
+  batch (up to 50 URLs at once, auto-saved without per-item review). Also
   downloads the source page's showcase image (`og:image`/JSON-LD image)
   when present, through the same validated pipeline as any other image
   upload — a broken/oversized/invalid image never fails the ingestion,
   it's just skipped.
 - **PDF** — checks each page for an existing text layer first; only pages
-  without one (scanned images) go through Tesseract OCR, with a deskew pass
-  to correct pages scanned/fed in at a slight angle. Mixed documents are
-  handled per-page. Individual or batch (multiple files, auto-saved). Also
+  without one (scanned images) go through Tesseract OCR, with an
+  orientation pass (pages that are sideways or upside down are turned
+  upright) and a deskew pass for pages fed in at a slight angle. Mixed documents are
+  handled per-page. Individual or batch (up to 20 files, auto-saved). Also
   extracts the largest embedded image across the document as a showcase
   photo, if one is present and large enough to plausibly be a real photo
   rather than a logo/icon.
-- **Screenshot/photo** — OCR with preprocessing (grayscale, deskewing,
-  upscaling, thresholding) — the deskew step specifically helps photos of
-  a physical page taken at a slight angle. Works well on rendered/
+- **Screenshot/photo** — OCR with preprocessing (grayscale, orientation,
+  deskewing, upscaling, thresholding). A photo taken sideways or upside
+  down is detected and turned upright before OCR, and the saved photo is
+  turned too so it displays the right way up; deskewing then corrects a
+  page photographed at a slight angle. Works well on rendered/
   screenshot text; degrades on stylized fonts or low-contrast
   text-over-image graphics. Not intended for handwriting — use manual
   entry for handwritten cards instead. A "Combine multiple" mode handles
@@ -148,6 +151,16 @@ docker compose -f docker-compose.build.yml up -d --build
   image" option — before saving. Batch ingestion saves directly and reports
   per-item success/failure, since reviewing many items one at a time isn't
   really a batch operation.
+- **How extracted text becomes a recipe** (PDF, photo and email text all
+  use the same rules): the title is the line above the author byline, or
+  a short line the page repeats, never the browser's print date or a
+  breadcrumb. Ingredient lines that wrapped are rejoined, sub-headings
+  like "PEPPERED BACON CURE" become "For the peppered bacon cure:", and
+  recipe-card buttons ("1X 2X 3X", "US Customary / Metric") are dropped.
+  Steps are rebuilt whole from their printed lines, split at step numbers,
+  and end at "Notes" or "Nutrition". Plain-text email formatting (Gmail's
+  `*bold*` and `-` bullets) is understood, and numbered steps are found
+  even without an "Instructions" heading.
 - Uploads (PDF/image) are capped at 20MB and are validated by magic bytes,
   not just file extension, before any parsing/OCR is attempted.
 
@@ -157,7 +170,8 @@ docker compose -f docker-compose.build.yml up -d --build
   Everything without that keyword is ignored entirely — the app never
   attempts to parse, or even fully read, untagged mail.
 - Scans run once daily at a configurable hour (default 3:00 AM,
-  container-local time), plus an on-demand "Scan inbox now" button in
+  container-local time), plus on demand: "Check email inbox" in the +
+  menu (shown once email ingest is enabled), or "Scan inbox now" in
   Settings for when you don't want to wait.
 - Each tagged email is tried in order: PDF attachment → photo → links in
   the body (up to three, in order, handed to the existing URL ingestion
@@ -212,11 +226,16 @@ docker compose -f docker-compose.build.yml up -d --build
   HTML file and the in-app print view still include it.
 
 **Backup & export** (Settings → Backup & export)
-- **Database backup (`.zip`)** — the restorable one. Contains a consistent
+- Choose a format, then Download. The file is fetched in the background
+  and saved from the page, so an installed iPhone app doesn't get stuck on
+  a zip preview with no way back. A failed build says why instead of
+  silently doing nothing.
+- **Full backup (`.zip`)** — the restorable one. Contains a consistent
   snapshot of the SQLite database plus every uploaded photo and PDF, with
   a `manifest.json` and a `RESTORE.txt` explaining how to put it back.
-  Restoring is: stop the app, unzip over `./data`, start it again. The app
-  is stopped for that on purpose — replacing a SQLite file underneath a
+  Restoring is: stop the app, unzip into the data folder, start it again
+  (see *Moving or restoring your data* above; the same steps are in the
+  app under the Download button). The app is stopped for that on purpose — replacing a SQLite file underneath a
   running process is how you corrupt it.
 - The snapshot is taken through SQLite's **online backup API**, not by
   copying `recipes.db`. This matters more than it sounds: the app runs in
@@ -226,16 +245,18 @@ docker compose -f docker-compose.build.yml up -d --build
   is a regression test asserting the snapshot contains WAL-committed rows.
   The backup is also checkpointed out of WAL mode before being zipped, so
   what lands in the archive is one self-contained file.
-- **PDF bundle (`.zip`)** — one PDF per recipe, plus an `index.csv`. This is
+- **Recipes as PDFs (`.zip`)** — one PDF per recipe, plus an `index.csv`. This is
   the archive that outlives the app: PDFs open on anything, with no Docker
   and no SQLite. It **cannot** be restored from — it's a reading copy, not a
   backup. Notes are included by default (it's your own archive, unlike the
   share export) and there's a checkbox to leave them out. A recipe that
   fails to render is recorded in the index and skipped rather than killing
   the whole archive.
-- Both are built to a temp file and streamed, never assembled in memory — a
-  library with a few hundred photos is larger than it would be sensible to
-  hold in RAM on a NAS. Temp archives are deleted once sent, and swept if a
+- Both are built to a temp file and streamed by the server, never
+  assembled in its memory — a library with a few hundred photos is larger
+  than it would be sensible to hold in RAM on a NAS. (The browser does hold
+  the finished file in memory before saving it; that's the price of not
+  navigating away on iOS, and fine up to a few hundred MB.) Temp archives are deleted once sent, and swept if a
   download dies mid-flight.
 - There is deliberately **no in-app restore button**. The app has no
   authentication, and an unauthenticated endpoint that overwrites the entire
@@ -249,6 +270,16 @@ docker compose -f docker-compose.build.yml up -d --build
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across recipe text *and* tag names, with
   each result labeled by which one matched.
+- Sort by newest/oldest, title, rating, cook time or difficulty, each
+  either way; recipes with no value for the chosen field always go last.
+  The choice is remembered. Sorting applies to search results too.
+- "Clear filters" appears (with a count) whenever tags, a cook-time range
+  or a search are active: in the toolbar, and at the top of the sidebar,
+  kept apart from the tags themselves.
+- Cards without a photo show just the title, no empty placeholder. Source
+  and OCR-quality badges are on the recipe's own page, not on cards.
+- On a phone the category sidebar is a drawer that closes when you tap
+  outside it.
 - Stacked tag filters (AND logic — narrows to recipes matching every
   selected tag) plus a nested cook-time filter (coarse hour buckets that
   drill down to 20-minute increments), available options generated only
@@ -272,8 +303,13 @@ docker compose -f docker-compose.build.yml up -d --build
   so a client that omits them can't silently wipe them.
 
 **Bulk management**
-- Select mode for multi-select batch delete, alongside normal single-recipe
-  delete.
+- Select mode (the button at the right end of the toolbar) for
+  multi-select batch delete, alongside normal single-recipe delete
+  ("Delete recipe", next to "Edit recipe" at the bottom of a recipe).
+- Deleting asks first. If it fails, the app says why (server error, can't
+  reach the server, already deleted) and gives up after 10 seconds rather
+  than leaving the dialog stuck. A batch delete reports how many were
+  deleted, missing or failed, and keeps the failures selected for a retry.
 - Deletion is total: the DB row and any file on disk (image/PDF) are both
   removed. Draft files from an abandoned add-recipe session (uploaded but
   never saved) are discarded when the dialog closes, with a startup sweep
@@ -309,6 +345,11 @@ docker compose -f docker-compose.build.yml up -d --build
   works in Chrome/Edge/Android and Safari 16.4+), and reflects the real
   lock state rather than what was requested — if the browser denies it
   (low battery, OS policy), the toggle shows off rather than lying.
+  Browsers only allow it on a secure page: `https://`, or `localhost`.
+  Opened as `http://<NAS address>:8090` the browser doesn't offer it, so
+  the setting and the per-recipe toggle don't appear at all. Serving the
+  app over HTTPS (e.g. through a reverse proxy with a certificate) makes
+  them appear.
 - Semantic HTML, ARIA labeling on icon-only controls and dialogs, visible
   focus states, focus trapping/return on modals.
 
@@ -469,6 +510,16 @@ docker compose -f docker-compose.build.yml up -d --build
   a dedicated inbox; slow on a shared inbox with hundreds of unread
   messages. This is the reason the README recommends a dedicated address.
 
+- **Some recipe sites refuse automated requests.** Sites behind
+  Cloudflare's bot check (and paywalled ones such as NYT Cooking) answer
+  the app with HTTP 403 and a "Just a moment..." page; the log says so
+  (`otp.url`). The app doesn't try to get around that. Save the page as a
+  PDF (Share → Print, pinch out, share the PDF), take a screenshot, or
+  paste the text, and add or email that instead.
+- **Full-page screenshots saved as PDF can be cut off.** A PDF page can't
+  be taller than 200 inches, and iOS stops a long page there, so the end
+  of a long blog post's recipe card may simply not be in the file. Use
+  Print → PDF, which splits the page, or the site's own print button.
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based, not ML-based — expect to correct fields on messy or non-standard
   layouts via the review screen shown after single-item ingestion. Batch
@@ -621,18 +672,24 @@ backend/
                                          both uploads and email attachments)
     crypto.py                             Fernet encryption for stored
                                            credentials; fails closed
-    email_client.py                         IMAP/SMTP primitives (stdlib only)
+    email_client.py                         IMAP/SMTP primitives (stdlib only),
+                                             TLS mode by port, port probe for
+                                             connection diagnostics
+    backup.py                               full backup (SQLite online backup
+                                             API) and the PDF bundle
+    logging_setup.py                        stdout + rotating data/logs/app.log
     ingestion/
       url_ingest.py                    recipe-scrapers -> JSON-LD ->
                                         heuristic HTML
       pdf_ingest.py                      per-page text-layer check, OCR
                                           fallback, heuristic segmentation
       image_ingest.py                     screenshot/photo OCR
-      deskew.py                             shared OCR deskew pass (PDF + photo paths)
+      deskew.py                             shared OCR orientation + deskew
+                                             (PDF + photo paths)
       ingredient_parser.py                  regex quantity/unit/name parsing
       tagger.py                               keyword-based auto-tagging
       email_processing.py                       tagged-email extraction:
-                                                 attachment -> link -> body
+                                                 PDF -> photo -> links -> body
     templates/
       recipe_export.html                      shared print/PDF/HTML template
   Dockerfile
