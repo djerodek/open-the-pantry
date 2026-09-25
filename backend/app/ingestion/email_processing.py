@@ -8,6 +8,9 @@ from .url_ingest import ingest_url
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
 from ..file_validation import validate_and_save_pdf_bytes, validate_and_save_image_bytes
+from ..logging_setup import get_logger
+
+log = get_logger("email")
 
 URL_RE = re.compile(r'https?://[^\s<>"\')]+')
 
@@ -173,6 +176,7 @@ def extract_email_parts(msg) -> dict:
         try:
             body_text = _html_to_text(html_text)
         except Exception:
+            log.exception("HTML-to-text conversion failed")
             body_text = ""
 
     body_text = strip_client_boilerplate(body_text).strip()
@@ -225,7 +229,20 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     try:
         parts = extract_email_parts(msg)
     except Exception as e:
+        log.exception("Could not parse email structure")
         return _failure(f"Could not read email content: {e}")
+
+    # The MIME layout as the app saw it. Most "why wasn't this picked up"
+    # questions are answered by this one line.
+    layout = []
+    for part in _leaf_parts(msg):
+        payload = part.get_payload(decode=True) or b""
+        disp = str(part.get("Content-Disposition") or "-").split(";")[0]
+        layout.append(f"{part.get_content_type()}[{disp}"
+                      f"{', ' + part.get_filename() if part.get_filename() else ''}, {len(payload)}B]")
+    log.info("Parts: %s", " ".join(layout) or "(none)")
+    log.info("Found: pdf=%s image=%s urls=%s body=%d chars; skipped=%s",
+             parts["pdf_name"], parts["image_name"], parts["urls"], len(parts["body_text"]), parts["skipped"])
 
     name_prefix = f"email-{uuid.uuid4().hex}"
     tried = list(parts["skipped"])
@@ -245,6 +262,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                     os.remove(pdf_path)
                 return _failure(str(e))
             except Exception as e:
+                log.exception("PDF attachment %s: extraction failed", label)
                 if os.path.isfile(pdf_path):
                     os.remove(pdf_path)
                 return _failure(f"Could not read PDF attachment: {e}")
@@ -270,6 +288,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
             try:
                 ocr_result = ingest_image(image_path)
             except Exception as e:
+                log.exception("Image %s: OCR failed", label)
                 os.remove(image_path)
                 return _failure(f"Could not read image attachment: {e}")
 
@@ -305,6 +324,9 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                     url_result.raw_text, source_detail=f"URL in body ({url})",
                 )
             except Exception as e:
+                # Full traceback: the one-line reason is often an exception
+                # message that doesn't say where it came from.
+                log.warning("Link %s failed", url, exc_info=True)
                 tried.append(f"link {url}: {e}")
 
     # 4. Last resort: treat the body text itself as the recipe.
@@ -321,4 +343,6 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
 
     if not (parts["pdf_bytes"] or parts["image_bytes"] or parts["urls"]):
         tried.insert(0, "no PDF, photo or link in the email")
-    return _failure("No recipe found. Tried: " + "; ".join(tried) + ".")
+    reason = "No recipe found. Tried: " + "; ".join(tried) + "."
+    log.warning(reason)
+    return _failure(reason)

@@ -415,3 +415,60 @@ def test_links_are_tried_in_order_until_one_works(tmp_path):
         result = process_tagged_email(m, str(tmp_path))
     assert result["success"] is True
     assert "b.example/two" in result["source_detail"]
+
+
+# --- logging ----------------------------------------------------------------
+
+def _log_text(data_dir):
+    import logging
+    for h in logging.getLogger("otp").handlers:
+        h.flush()
+    path = data_dir / "logs" / "app.log"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_blocked_page_is_diagnosable_from_the_log(client, data_dir, tmp_path):
+    """The point of the log: when a link fails, it should say whether the
+    site refused (and with what page), not just that nothing was found."""
+    from email.message import EmailMessage
+    from app.ingestion import url_ingest
+    from app.ingestion.email_processing import process_tagged_email
+
+    blocked = MagicMock(status_code=403, is_redirect=False, is_permanent_redirect=False,
+                        text="<html><title>Just a moment...</title></html>",
+                        content=b"x" * 50, headers={"Content-Type": "text/html", "Server": "cloudflare"})
+    blocked.raise_for_status.side_effect = url_ingest.requests.HTTPError("403 Client Error: Forbidden")
+
+    m = EmailMessage()
+    m["Subject"] = "[RECIPE]"
+    m.set_content("https://blocked.example/recipe\n\nGet Outlook for iOS<https://aka.ms/o0ukef>")
+    with patch.object(url_ingest, "validate_public_url"), \
+         patch.object(url_ingest.requests, "get", return_value=blocked):
+        result = process_tagged_email(m, str(tmp_path))
+
+    assert result["success"] is False
+    text = _log_text(data_dir)
+    assert "Parts: text/plain" in text
+    assert "urls=['https://blocked.example/recipe']" in text        # footer link gone
+    assert "GET https://blocked.example/recipe -> 403" in text
+    assert "'Just a moment...'" in text and "'cloudflare'" in text
+    assert "Traceback" in text                                       # full error, not just the message
+
+
+def test_passwords_are_not_logged(client, data_dir, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app import crypto
+
+    monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
+    client.put("/api/email-settings", json={
+        "enabled": True, "imap_host": "mail.example.com", "imap_port": 993, "imap_use_ssl": True,
+        "smtp_host": "mail.example.com", "smtp_port": 465, "smtp_use_tls": False,
+        "username": "me@example.com", "password": "s3cret-Pa55", "notify_email": "me@example.com",
+        "subject_keyword": "[RECIPE]", "daily_scan_hour": 3, "cooldown_minutes": 0,
+    })
+    with patch("app.main.email_client.connect_imap", side_effect=Exception("auth failed")), \
+         patch("app.main.email_client.connect_smtp", side_effect=Exception("nope")):
+        client.post("/api/email-settings/scan")
+        client.post("/api/email-settings/test")
+    assert "s3cret-Pa55" not in _log_text(data_dir)
+    client.delete("/api/email-settings/password")

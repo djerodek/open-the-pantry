@@ -20,6 +20,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas
 from .database import get_db, engine, SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR, DB_PATH
+from .logging_setup import setup_logging, get_logger
+
+setup_logging(DATA_DIR)
+log = get_logger("app")
+scan_log = get_logger("scan")
 from .init_db import init_db
 from .ingestion.url_ingest import ingest_url, safe_get
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
@@ -192,6 +197,18 @@ app = FastAPI(title="Recipe App", lifespan=lifespan)
 # as such in the README rather than presented as a full turnkey login flow.
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
+
+
+@app.middleware("http")
+async def log_unhandled_errors(request: Request, call_next):
+    """Anything that escapes a handler as a 500 gets its traceback logged.
+    Registered first, which in Starlette makes it the innermost middleware:
+    it sits directly around the route handlers."""
+    try:
+        return await call_next(request)
+    except Exception:
+        log.exception("Unhandled error on %s %s", request.method, request.url.path)
+        raise
 
 
 @app.middleware("http")
@@ -498,6 +515,7 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
             except Exception:
                 pass
     except Exception:
+        scan_log.warning("Result email not sent; %d item(s) stay queued", len(queued), exc_info=True)
         return None  # leave everything queued; next scan retries
 
     for q in queued:
@@ -591,10 +609,12 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             settings.imap_host, settings.imap_port, settings.username, password, settings.imap_use_ssl
         )
     except Exception as e:
+        scan_log.warning("Scan: IMAP connection failed: %s", e)
         return {"scanned": 0, "succeeded": 0, "failed": 0, "messages": [f"Could not connect: {e}"]}
 
     try:
         msg_ids = email_client.search_unseen_by_subject(imap, settings.subject_keyword)
+        scan_log.info("Scan: %d unread email(s) matching %r", len(msg_ids), settings.subject_keyword)
         for msg_id in msg_ids:
             subject = "(unknown subject)"
             try:
@@ -612,11 +632,13 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                         pass
                     continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
+                scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
                 result = _run_heavy(process_tagged_email, msg, TMP_DIR)
                 if result["success"]:
                     recipe_id = _save_email_recipe(db, result, subject)
                     succeeded += 1
                     line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
+                    scan_log.info("Scan: saved recipe %s: %s", recipe_id, line)
                     messages.append(f"OK: {line}")
                     _queue_notification(db, True, line)
                 else:
@@ -625,6 +647,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     messages.append(f"FAILED: {line}")
                     _queue_notification(db, False, line)
             except Exception as e:
+                scan_log.exception("Scan: error handling message %r (%r); left unread", msg_id, subject)
                 # Something went wrong AROUND the email rather than IN it:
                 # fetching it, saving the recipe, the disk. That can be
                 # temporary, so the email is left unread and the next scan
@@ -715,6 +738,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
     try:
         result = ingest_url(payload.url)
     except Exception as e:
+        log.warning("Add from URL failed for %s", payload.url, exc_info=True)
         raise HTTPException(status_code=422, detail=str(e))
 
     parsed_ingredients = parse_ingredient_block(result.ingredients)

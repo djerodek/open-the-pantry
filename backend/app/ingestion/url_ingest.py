@@ -6,6 +6,10 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from ..logging_setup import get_logger
+
+log = get_logger("url")
+
 # A generic/custom UA gets blocked by some recipe sites' bot filtering.
 # This mirrors a current desktop Chrome UA for compatibility; it's still an
 # honest identification of an HTTP client, not spoofing a browser's behavior.
@@ -72,16 +76,33 @@ def safe_get(url: str, timeout: int = 15) -> requests.Response:
     current_url = url
     for _ in range(MAX_REDIRECTS + 1):
         validate_public_url(current_url)
-        resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout, allow_redirects=False)
+        try:
+            resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout, allow_redirects=False)
+        except requests.RequestException as e:
+            log.warning("GET %s failed: %s: %s", current_url, type(e).__name__, e)
+            raise
+        log.info("GET %s -> %s (%s bytes, %s)", current_url, resp.status_code,
+                 len(resp.content), resp.headers.get("Content-Type", "?"))
         if resp.is_redirect or resp.is_permanent_redirect:
             next_url = resp.headers.get("Location")
             if not next_url:
                 break
             current_url = requests.compat.urljoin(current_url, next_url)
+            log.info("  redirect -> %s", current_url)
             continue
+        if resp.status_code >= 400:
+            # Bot-protection pages (Cloudflare etc.) answer 403/503 with an
+            # HTML challenge. Its <title> says which, so log it.
+            log.warning("GET %s refused: HTTP %s, page title %r, server %r", current_url,
+                        resp.status_code, _page_title(resp.text), resp.headers.get("Server"))
         resp.raise_for_status()
         return resp
     raise UrlValidationError("Too many redirects, or a redirect with no Location header.")
+
+
+def _page_title(html: str) -> str:
+    m = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.IGNORECASE | re.DOTALL)
+    return re.sub(r"\s+", " ", m.group(1)).strip()[:120] if m else ""
 
 
 class UrlIngestResult:
@@ -112,7 +133,8 @@ def _try_recipe_scrapers(url: str, html: str):
         return None
     try:
         scraper = scrape_html(html, org_url=url, supported_only=False)
-    except Exception:
+    except Exception as e:
+        log.info("recipe-scrapers: no scraper for %s: %s: %s", url, type(e).__name__, e)
         return None
 
     try:
@@ -145,7 +167,8 @@ def _try_recipe_scrapers(url: str, html: str):
             raw_text=instructions,
             method="recipe-scrapers",
         )
-    except Exception:
+    except Exception as e:
+        log.info("recipe-scrapers: parse failed for %s: %s: %s", url, type(e).__name__, e)
         return None
 
 
@@ -284,18 +307,29 @@ def ingest_url(url: str) -> UrlIngestResult:
     resp = safe_get(url)
     html = resp.text
 
-    result = _try_recipe_scrapers(url, html)
-    if result:
-        return result
+    for name, attempt in (("recipe-scrapers", lambda: _try_recipe_scrapers(url, html)),
+                          ("json-ld", lambda: _try_json_ld(html)),
+                          ("heuristic", lambda: _try_heuristic_html(html))):
+        try:
+            result = attempt()
+        except Exception:
+            log.exception("%s: crashed on %s", name, url)
+            result = None
+        if result:
+            log.info("%s: got %r from %s (%d ingredients, %d steps)", name, result.title, url,
+                     len(result.ingredients or []), len(result.steps or []))
+            return result
+        log.info("%s: nothing usable on %s", name, url)
 
-    result = _try_json_ld(html)
-    if result:
-        return result
-
-    result = _try_heuristic_html(html)
-    if result:
-        return result
-
+    # Enough about the page to tell "blocked" from "no recipe markup" from
+    # "recipe markup we can't read", without logging the page itself.
+    ld_types = re.findall(r'"@type"\s*:\s*"?\[?\s*"([A-Za-z]+)"', html)
+    log.warning(
+        "No recipe extracted from %s: HTTP %s, %d bytes, title %r, %d ld+json blocks, "
+        "@types seen %s, 'Recipe' in page: %s",
+        url, resp.status_code, len(html), _page_title(html),
+        html.count("application/ld+json"), sorted(set(ld_types))[:12], "Recipe" in html,
+    )
     raise ValueError(
         "Could not extract a recipe from this URL automatically. "
         "Use manual entry instead, pasting from the page."

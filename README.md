@@ -484,6 +484,33 @@ docker compose -f docker-compose.build.yml up -d --build
   use the review screen's "Don't use this image" option, or replace it
   from the recipe detail page afterward.
 
+## Logs
+
+The app logs every step of email and link ingestion, with full error
+details, to two places:
+
+```bash
+docker logs open-the-pantry                 # since the container started
+tail -f /path/to/data/logs/app.log          # survives container restarts
+```
+
+`app.log` is in the data folder next to `recipes.db`, rotated at 1 MB with
+three old files kept. It's not included in the backup zip.
+
+Useful filters:
+
+```bash
+docker logs open-the-pantry 2>&1 | grep otp.scan    # what each scan found and did
+docker logs open-the-pantry 2>&1 | grep otp.email   # how each email was read
+docker logs open-the-pantry 2>&1 | grep otp.url     # page fetches: status, redirects, blocks
+docker logs open-the-pantry 2>&1 | grep -A20 WARNING   # failures, with tracebacks
+```
+
+Set `RECIPE_APP_LOG_LEVEL: DEBUG` in the compose `environment:` for more
+detail, or `WARNING` for less. Passwords, the encryption key, email bodies
+and page HTML are never logged. Subjects, senders, attachment names and
+sizes, and URLs are.
+
 ## Deployment notes
 
 - The published image is a normal Docker image — it runs anywhere Docker
