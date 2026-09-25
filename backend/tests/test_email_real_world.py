@@ -472,3 +472,32 @@ def test_passwords_are_not_logged(client, data_dir, monkeypatch):
         client.post("/api/email-settings/test")
     assert "s3cret-Pa55" not in _log_text(data_dir)
     client.delete("/api/email-settings/password")
+
+
+def test_browser_errors_reach_the_server_log_and_are_capped(client, data_dir):
+    import app.main as m
+    m._client_error_times.clear()
+    r = client.post("/api/client-error", json={
+        "message": "TypeError: x is undefined", "source": "/js/app.js", "line": 120, "column": 7,
+        "stack": "renderRecipeList@/js/app.js:120:7", "page": "/#recipe-3", "user_agent": "iPhone",
+    })
+    assert r.status_code == 204
+    text = _log_text(data_dir)
+    assert "Browser error on /#recipe-3: TypeError: x is undefined (at /js/app.js:120:7)" in text
+    for _ in range(40):
+        client.post("/api/client-error", json={"message": "loop"})
+    assert _log_text(data_dir).count(": loop (at") <= 19   # 20 a minute, one used above
+    m._client_error_times.clear()
+
+
+def test_previously_silent_errors_are_logged(client, data_dir):
+    """Every broad except in the app now logs. Spot check: a draft discard
+    whose file removal fails used to vanish without a trace."""
+    import ast, pathlib
+    silent = []
+    for path in pathlib.Path(__file__).resolve().parents[1].joinpath("app").rglob("*.py"):
+        for h in ast.walk(ast.parse(path.read_text())):
+            if isinstance(h, ast.ExceptHandler) and (h.type is None or ast.unparse(h.type) in ("Exception", "OSError")):
+                if not any(k in ast.unparse(h) for k in ("log.", "scan_log.", "_log.")):
+                    silent.append(f"{path.name}:{h.lineno}")
+    assert silent == [], f"exceptions caught without logging: {silent}"

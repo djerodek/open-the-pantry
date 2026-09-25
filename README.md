@@ -486,8 +486,9 @@ docker compose -f docker-compose.build.yml up -d --build
 
 ## Logs
 
-The app logs every step of email and link ingestion, with full error
-details, to two places:
+The app logs every step of email and link ingestion, every error it
+catches anywhere in the backend (with the traceback), every request that
+fails, and uncaught errors from the browser. It writes to two places:
 
 ```bash
 docker logs open-the-pantry                 # since the container started
@@ -503,11 +504,15 @@ Useful filters:
 docker logs open-the-pantry 2>&1 | grep otp.scan    # what each scan found and did
 docker logs open-the-pantry 2>&1 | grep otp.email   # how each email was read
 docker logs open-the-pantry 2>&1 | grep otp.url     # page fetches: status, redirects, blocks
+docker logs open-the-pantry 2>&1 | grep otp.ocr     # photo orientation, OCR confidence
+docker logs open-the-pantry 2>&1 | grep otp.client  # errors from the app in your browser
 docker logs open-the-pantry 2>&1 | grep -A20 WARNING   # failures, with tracebacks
 ```
 
 Set `RECIPE_APP_LOG_LEVEL: DEBUG` in the compose `environment:` for more
-detail, or `WARNING` for less. Passwords, the encryption key, email bodies
+detail, or `WARNING` for less. At the default level, errors the app
+recovers from routinely (cleanup of a file that's already gone, an optional
+field a recipe page doesn't have) are not shown; DEBUG shows them too. Passwords, the encryption key, email bodies
 and page HTML are never logged. Subjects, senders, attachment names and
 sizes, and URLs are.
 

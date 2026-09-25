@@ -52,3 +52,37 @@ def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     return cv2.warpAffine(
         gray, matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE,
     )
+
+
+def auto_orient(pil_img):
+    """Turn a page that's sideways or upside down the right way up for OCR.
+
+    Returns (image, degrees_rotated_clockwise). deskew_grayscale only
+    corrects small tilts; a photo of a page taken in landscape, or a
+    recipe card photographed on its side, went to OCR at 90 degrees and
+    came back as gibberish. Tesseract's orientation detector (the osd
+    model, installed with tesseract-ocr) says which way is up.
+
+    Below ORIENTATION_MIN_CONF the image is left alone: a wrong rotation
+    is worse than none, and detection needs a fair amount of text.
+    """
+    import pytesseract
+    from ..logging_setup import get_logger
+    log = get_logger("ocr")
+    try:
+        osd = pytesseract.image_to_osd(pil_img, output_type=pytesseract.Output.DICT)
+    except Exception as e:  # "Too few characters", no osd model, etc.
+        log.info("Orientation detection skipped: %s", str(e).strip().splitlines()[0] if str(e).strip() else e)
+        return pil_img, 0
+    rotate = int(osd.get("rotate", 0)) % 360
+    conf = float(osd.get("orientation_conf", 0) or 0)
+    if rotate == 0 or conf < ORIENTATION_MIN_CONF:
+        if rotate:
+            log.info("Orientation: detector says %d degrees but confidence %.1f is too low; not rotating", rotate, conf)
+        return pil_img, 0
+    log.info("Orientation: page was rotated; turning it %d degrees clockwise (confidence %.1f)", rotate, conf)
+    # PIL rotates counter-clockwise; osd "rotate" is the clockwise correction.
+    return pil_img.rotate(-rotate, expand=True, fillcolor=255 if pil_img.mode == "L" else None), rotate
+
+
+ORIENTATION_MIN_CONF = 1.5

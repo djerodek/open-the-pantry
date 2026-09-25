@@ -3,6 +3,35 @@
 
   const API = "/api";
 
+  // Uncaught errors and rejected promises go to the server log
+  // (docker logs / data/logs/app.log, as "otp.client"), so a problem seen
+  // on the phone can be read on the NAS. Best effort: a report that can't
+  // be sent is dropped, and at most 10 are sent per page load.
+  let clientErrorsSent = 0;
+  function reportClientError(message, source, line, column, error) {
+    if (clientErrorsSent >= 10) return;
+    clientErrorsSent += 1;
+    try {
+      const body = JSON.stringify({
+        message: String(message || "").slice(0, 1000),
+        source: String(source || "").slice(0, 300),
+        line: Number.isFinite(line) ? line : null,
+        column: Number.isFinite(column) ? column : null,
+        stack: String((error && error.stack) || "").slice(0, 4000),
+        page: location.pathname + location.hash,
+        user_agent: navigator.userAgent.slice(0, 300),
+      });
+      fetch(`${API}/client-error`, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true })
+        .catch(() => {});
+    } catch { /* never let error reporting throw */ }
+  }
+  window.addEventListener("error", (e) => reportClientError(e.message, e.filename, e.lineno, e.colno, e.error));
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    reportClientError(r && r.message ? `Unhandled promise rejection: ${r.message}` : `Unhandled promise rejection: ${String(r)}`,
+      "", null, null, r);
+  });
+
   // -------------------------------------------------------------------
   // Utilities
   // -------------------------------------------------------------------
@@ -274,6 +303,36 @@
     if (willOpen) await renderEmailSettings();
   });
 
+  // One scan routine for both places it can be started: Settings (next to
+  // the connection settings, for testing) and the + menu (for everyday use).
+  // Shows the summary plus one line per email -- the per-email lines carry
+  // the reason for each failure, and their only other route is the result
+  // email, which can't arrive when sending is what's broken.
+  async function runInboxScan(statusEl, button) {
+    statusEl.textContent = "Checking the inbox\u2026";
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch(`${API}/email-settings/scan`, { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = body.detail || `The scan failed (error ${res.status}).`;
+      } else if (body.scanned === 0 && body.messages.length) {
+        statusEl.textContent = body.messages.join("\n");
+      } else if (body.scanned === 0) {
+        statusEl.textContent = "No new recipe emails.";
+      } else {
+        const summary = `Scanned ${body.scanned}: ${body.succeeded} ingested, ${body.failed} failed.`;
+        statusEl.textContent = [summary, ...(body.messages || [])].join("\n");
+        if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
+      }
+      announce(statusEl.textContent.split("\n")[0]);
+    } catch {
+      statusEl.textContent = "Couldn't reach Open the Pantry to run the scan. Check your connection and try again.";
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function emailField(labelText, input, hint) {
     return el("div", { class: "field" }, [
       el("label", { for: input.id, text: labelText }),
@@ -455,26 +514,7 @@
 
     const scanBtn = el("button", {
       class: "btn-secondary", type: "button", text: "Scan inbox now",
-      onclick: async () => {
-        statusLine.textContent = "Scanning inbox...";
-        try {
-          const res = await fetch(`${API}/email-settings/scan`, { method: "POST" });
-          const body = await res.json();
-          if (body.scanned === 0 && body.messages.length) {
-            statusLine.textContent = body.messages[0];
-          } else {
-            // The per-email lines carry the reason for each failure. They
-            // used to be dropped here, leaving only "1 failed" -- and the
-            // reason's only other route was the result email, which can't
-            // arrive when sending is what's broken.
-            const summary = `Scanned ${body.scanned}: ${body.succeeded} ingested, ${body.failed} failed.`;
-            statusLine.textContent = [summary, ...(body.messages || [])].join("\n");
-            if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
-          }
-        } catch {
-          statusLine.textContent = "Scan failed.";
-        }
-      },
+      onclick: () => runInboxScan(statusLine),
     });
 
     const buttons = [saveBtn, testBtn, scanBtn];
@@ -2081,6 +2121,19 @@
       el("button", { type: "button", text: "\u270d\ufe0f Manual/Handwritten", onclick: showManualForm }),
     ]);
     addBody.appendChild(picker);
+
+    // Only offered once email ingest is switched on; otherwise it would be
+    // a button that can only say "not configured".
+    fetch(`${API}/email-settings`).then((r) => (r.ok ? r.json() : null)).then((settings) => {
+      if (!settings || !settings.enabled || !picker.isConnected) return;
+      const status = el("p", { class: "field-hint scan-status", role: "status" });
+      const btn = el("button", {
+        type: "button", text: "\ud83d\udce5 Check email inbox",
+        onclick: () => runInboxScan(status, btn),
+      });
+      picker.appendChild(btn);
+      addBody.appendChild(status);
+    }).catch(() => {});
   }
 
   function renderBatchResults(container, result) {

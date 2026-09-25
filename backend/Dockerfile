@@ -8,7 +8,9 @@
 FROM python:3.12-slim
 
 # System dependencies:
-# - tesseract-ocr: OCR for screenshots / scanned PDF pages
+# - tesseract-ocr: OCR for screenshots / scanned PDF pages; -osd is the
+#   orientation model that turns sideways photos upright (installed
+#   explicitly: --no-install-recommends must not be allowed to drop it)
 # - libpango/cairo/gdk-pixbuf/libffi: required by WeasyPrint for HTML->PDF export
 # - gosu: drop from root to a non-root user at container start (see
 #   docker-entrypoint.sh) -- needed because a Dockerfile-time chown can't
@@ -16,6 +18,7 @@ FROM python:3.12-slim
 # - curl: container healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
+    tesseract-ocr-osd \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libcairo2 \

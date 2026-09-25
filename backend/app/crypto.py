@@ -1,5 +1,8 @@
 import os
 from cryptography.fernet import Fernet, InvalidToken
+from .logging_setup import get_logger
+
+log = get_logger("crypto")
 
 ENCRYPTION_KEY_ENV_VAR = "RECIPE_APP_ENCRYPTION_KEY"
 
@@ -34,6 +37,7 @@ def _read_key_file() -> str:
         # Missing, unreadable, or not text: treated as "no key file". A
         # save still fails closed in that case; it never falls back to
         # plaintext.
+        log.debug("_read_key_file: caught error, continuing", exc_info=True)
         return ""
 
 
@@ -52,6 +56,7 @@ def key_source() -> str | None:
             Fernet(env_key.encode())
             return "env"
         except Exception:
+            log.debug("key_source: caught error, continuing", exc_info=True)
             return "env_invalid"
     file_key = _read_key_file()
     if file_key:
@@ -59,6 +64,7 @@ def key_source() -> str | None:
             Fernet(file_key.encode())
             return "file"
         except Exception:
+            log.debug("key_source: caught error, continuing", exc_info=True)
             return None
     return None
 

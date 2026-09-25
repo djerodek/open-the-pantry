@@ -54,6 +54,18 @@ class RecipeCreate(BaseModel):
     _check_image_path = field_validator("image_path")(_validate_stored_filename)
 
 
+class ClientErrorReport(BaseModel):
+    """An uncaught error from the browser, for the server log. Every field
+    is capped: this endpoint writes whatever it's given to disk."""
+    message: str = Field("", max_length=1000)
+    source: str = Field("", max_length=300)
+    line: Optional[int] = None
+    column: Optional[int] = None
+    stack: str = Field("", max_length=4000)
+    page: str = Field("", max_length=300)
+    user_agent: str = Field("", max_length=300)
+
+
 class UrlIngestRequest(BaseModel):
     url: str
 

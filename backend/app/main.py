@@ -55,6 +55,7 @@ def _acquire_single_instance_lock():
     try:
         fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        log.debug("_acquire_single_instance_lock: caught error, continuing", exc_info=True)
         raise RuntimeError(
             "Another instance of this app appears to already be running against "
             f"this data directory ({DATA_DIR}). SQLite doesn't support concurrent "
@@ -120,6 +121,7 @@ def _sweep_stale_tmp_files():
                 if os.path.isfile(path) and now - os.path.getmtime(path) > TMP_FILE_MAX_AGE_SECONDS:
                     os.remove(path)
             except OSError:
+                log.debug("_sweep_stale_tmp_files: caught error, continuing", exc_info=True)
                 pass
 
 
@@ -151,6 +153,7 @@ def _sweep_orphaned_upload_files():
                     and now - os.path.getmtime(path) > TMP_FILE_MAX_AGE_SECONDS):
                 os.remove(path)
         except OSError:
+            log.debug("_sweep_orphaned_upload_files: caught error, continuing", exc_info=True)
             pass
 
 
@@ -254,6 +257,29 @@ async def rate_limiter(request: Request, call_next):
     return await call_next(request)
 
 
+_client_log = get_logger("client")
+_client_error_times: list = []
+
+
+@app.post("/api/client-error", status_code=204)
+def report_client_error(report: schemas.ClientErrorReport):
+    """Uncaught JavaScript errors and rejected promises from the app, written
+    to the server log so they can be read alongside everything else. At most
+    20 a minute are kept, so a page stuck in an error loop can't fill the
+    disk."""
+    now = time.monotonic()
+    _client_error_times[:] = [t for t in _client_error_times if now - t < 60]
+    if len(_client_error_times) >= 20:
+        return None
+    _client_error_times.append(now)
+    _client_log.warning(
+        "Browser error on %s: %s (at %s:%s:%s) [%s]%s",
+        report.page or "?", report.message or "?", report.source or "?", report.line, report.column,
+        report.user_agent or "?", ("\n" + report.stack) if report.stack else "",
+    )
+    return None
+
+
 @app.get("/healthz")
 def healthz():
     """Liveness check with no auth requirement and no DB dependency --
@@ -317,6 +343,7 @@ def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, ex
         try:
             reencode_image(tmp_write_path)
         except Exception:
+            log.warning("_save_upload_streaming: request failed", exc_info=True)
             os.remove(tmp_write_path)
             raise HTTPException(status_code=400, detail="File could not be decoded as a valid image.")
     else:
@@ -338,6 +365,7 @@ def _download_and_save_showcase_image(url: str, dest_dir: str, name_prefix: str,
     try:
         resp = safe_get(url, timeout=10)
     except Exception:
+        log.debug("_download_and_save_showcase_image: caught error, continuing", exc_info=True)
         return None
     content = resp.content
     if not content or len(content) > max_bytes:
@@ -352,6 +380,7 @@ def _extract_pdf_showcase_image(pdf_path: str, dest_dir: str, name_prefix: str) 
     try:
         image_bytes = extract_largest_embedded_image(pdf_path)
     except Exception:
+        log.debug("_extract_pdf_showcase_image: caught error, continuing", exc_info=True)
         return None
     if not image_bytes:
         return None
@@ -411,6 +440,7 @@ def _demote_to_tmp(filename: str | None):
         try:
             shutil.move(final_path, tmp_path)
         except OSError:
+            log.debug("_demote_to_tmp: caught error, continuing", exc_info=True)
             pass
 
 
@@ -429,6 +459,7 @@ def _delete_recipe_files(recipe: models.Recipe):
             try:
                 os.remove(path)
             except OSError:
+                log.debug("_delete_recipe_files: caught error, continuing", exc_info=True)
                 pass
 
 
@@ -513,6 +544,7 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
             try:
                 smtp.quit()
             except Exception:
+                log.debug("_flush_notifications: caught error, continuing", exc_info=True)
                 pass
     except Exception:
         scan_log.warning("Result email not sent; %d item(s) stay queued", len(queued), exc_info=True)
@@ -548,6 +580,7 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
         _apply_tags(db, recipe, tag_ins)
         db.commit()
     except Exception:
+        log.debug("_save_email_recipe: caught error, continuing", exc_info=True)
         db.rollback()
         _demote_to_tmp(image_path)
         raise
@@ -602,6 +635,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
     try:
         password = crypto.decrypt_secret(settings.password_encrypted)
     except Exception as e:
+        log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
         return {"scanned": 0, "succeeded": 0, "failed": 0, "messages": [str(e)]}
 
     try:
@@ -629,6 +663,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     try:
                         email_client.mark_seen(imap, msg_id)
                     except Exception:
+                        log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
                         pass
                     continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
@@ -665,11 +700,13 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             try:
                 email_client.mark_seen(imap, msg_id)
             except Exception:
+                log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
                 pass
     finally:
         try:
             imap.logout()
         except Exception:
+            log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
             pass
 
     settings.last_scan_at = datetime.now()
@@ -718,6 +755,7 @@ async def _daily_email_scan_loop():
         except Exception:
             # A scheduled scan failing must never kill the loop -- the
             # next day's attempt should still happen.
+            log.debug("_daily_email_scan_loop: caught error, continuing", exc_info=True)
             pass
 
 
@@ -825,6 +863,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             db.commit()
             succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title})
         except Exception as e:
+            log.warning("ingest_from_url_batch: caught error, continuing", exc_info=True)
             db.rollback()
             if image_path:
                 stray_path = safe_join(UPLOADS_DIR, image_path)
@@ -848,6 +887,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
     except Exception:
         # Any other failure: remove the upload now rather than leaving it
         # for the 24-hour sweep.
+        log.warning("ingest_from_pdf: request failed", exc_info=True)
         if os.path.isfile(temp_path):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not read this PDF.")
@@ -920,6 +960,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
             db.rollback()
             failed.append({"filename": file.filename, "error": e.detail})
         except Exception as e:
+            log.warning("ingest_from_pdf_batch: caught error, continuing", exc_info=True)
             db.rollback()
             failed.append({"filename": file.filename, "error": str(e)})
         finally:
@@ -939,6 +980,7 @@ def ingest_from_image(file: UploadFile = File(...)):
     except Exception:
         # The upload is kept on success (it becomes the draft's image), but
         # a failed OCR leaves nothing to keep it for.
+        log.warning("ingest_from_image: request failed", exc_info=True)
         if os.path.isfile(temp_path):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not read text from this image.")
@@ -1002,6 +1044,7 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
         # than silently combining a partial set -- clean up anything
         # already saved before re-raising. Any exception, not only the
         # validation HTTPException: an OCR crash left the files behind.
+        log.warning("ingest_from_images: request failed", exc_info=True)
         for name in temp_names:
             path = os.path.join(TMP_DIR, name)
             if os.path.isfile(path):
@@ -1107,6 +1150,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
 
         db.commit()
     except Exception:
+        log.debug("create_recipe: caught error, continuing", exc_info=True)
         db.rollback()
         _demote_to_tmp(promoted_image)
         raise
@@ -1282,6 +1326,7 @@ def batch_delete_recipes(payload: schemas.BatchDeleteRequest, db: Session = Depe
             db.delete(recipe)
             db.commit()
         except Exception as e:
+            log.warning("batch_delete_recipes: caught error, continuing", exc_info=True)
             db.rollback()
             failed.append({"id": recipe_id, "error": str(e)})
             continue
@@ -1326,6 +1371,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
 
         db.commit()
     except Exception:
+        log.debug("update_recipe: caught error, continuing", exc_info=True)
         db.rollback()
         # New image was promoted on the assumption this commit would
         # succeed -- demote it back to TMP_DIR rather than leaving an
@@ -1423,6 +1469,7 @@ def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Dep
         recipe.image_path = new_image
         db.commit()
     except Exception:
+        log.debug("update_image: caught error, continuing", exc_info=True)
         db.rollback()
         if new_image and new_image != old_image:
             _demote_to_tmp(new_image)
@@ -1488,8 +1535,10 @@ def create_encryption_key(db: Session = Depends(get_db)):
     except (crypto.KeyAlreadyConfiguredError, FileExistsError):
         # FileExistsError: lost the O_EXCL race to a simultaneous request.
         # Same outcome as the pre-check, so same status.
+        log.warning("create_encryption_key: request failed", exc_info=True)
         raise HTTPException(status_code=409, detail="An encryption key is already set up.")
     except OSError:
+        log.warning("create_encryption_key: request failed", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Couldn't write the key file to the data folder. Check that the folder is writable.",
@@ -1564,6 +1613,7 @@ def test_email_settings(db: Session = Depends(get_db)):
     try:
         password = crypto.decrypt_secret(settings.password_encrypted)
     except Exception as e:
+        log.debug("test_email_settings: caught error, continuing", exc_info=True)
         return schemas.EmailTestResult(success=False, message=str(e))
 
     # Both halves are checked every time and reported separately. This used
@@ -1588,8 +1638,10 @@ def test_email_settings(db: Session = Depends(get_db)):
             try:
                 smtp.quit()
             except Exception:
+                log.debug("test_email_settings: caught error, continuing", exc_info=True)
                 pass
     except Exception as e:
+        log.warning("test_email_settings: caught error, continuing", exc_info=True)
         smtp_ok, smtp_msg = False, f"Sending (SMTP) failed: {e}"
 
     imap_ok, imap_msg = True, "Reading: OK -- logged in to the inbox."
@@ -1600,8 +1652,10 @@ def test_email_settings(db: Session = Depends(get_db)):
         try:
             imap.logout()
         except Exception:
+            log.debug("test_email_settings: caught error, continuing", exc_info=True)
             pass
     except Exception as e:
+        log.warning("test_email_settings: caught error, continuing", exc_info=True)
         imap_ok, imap_msg = False, f"Reading (IMAP) failed: {e}"
 
     if smtp_ok and imap_ok:
@@ -1716,6 +1770,7 @@ def backup_database():
     try:
         _run_heavy(build_database_backup, path)
     except Exception:
+        log.warning("backup_database: request failed", exc_info=True)
         if os.path.isfile(path):
             os.remove(path)
         raise HTTPException(status_code=500, detail="Could not build the backup archive.")
@@ -1745,6 +1800,7 @@ def backup_pdfs(include_notes: bool = True, db: Session = Depends(get_db)):
     try:
         _run_heavy(build_pdf_bundle, recipes, path, include_notes)
     except Exception:
+        log.warning("backup_pdfs: request failed", exc_info=True)
         if os.path.isfile(path):
             os.remove(path)
         raise HTTPException(status_code=500, detail="Could not build the PDF archive.")

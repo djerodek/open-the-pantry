@@ -6,6 +6,9 @@ import socket
 import ssl
 from email.header import decode_header
 from email.mime.text import MIMEText
+from .logging_setup import get_logger
+
+log = get_logger("mail")
 
 
 class EmailConnectionError(Exception):
@@ -18,6 +21,7 @@ def decode_subject(raw_subject) -> str:
     try:
         parts = decode_header(raw_subject)
     except Exception:
+        log.debug("decode_subject: caught error, continuing", exc_info=True)
         return str(raw_subject)
     decoded = ""
     for part, enc in parts:
@@ -25,6 +29,7 @@ def decode_subject(raw_subject) -> str:
             try:
                 decoded += part.decode(enc or "utf-8", errors="replace")
             except (LookupError, TypeError):
+                log.warning("decode_subject: caught error, continuing", exc_info=True)
                 decoded += part.decode("utf-8", errors="replace")
         else:
             decoded += part
@@ -73,6 +78,7 @@ def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bo
         conn.select("INBOX")
         return conn
     except Exception as e:
+        log.debug("connect_imap: caught error, continuing", exc_info=True)
         raise EmailConnectionError(
             f"Could not connect/login to IMAP ({host}:{port}, "
             f"{'implicit TLS' if implicit else 'STARTTLS'}): {e}"
@@ -92,6 +98,7 @@ def connect_smtp(host: str, port: int, username: str, password: str, use_tls: bo
         conn.login(username, password)
         return conn
     except Exception as e:
+        log.debug("connect_smtp: caught error, continuing", exc_info=True)
         raise EmailConnectionError(
             f"Could not connect/login to SMTP ({host}:{port}, "
             f"{'implicit TLS' if implicit else 'STARTTLS'}): {e}"
@@ -117,6 +124,7 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
     try:
         raw = socket.create_connection((host, port), timeout=timeout)
     except OSError:
+        log.debug("probe_port: caught error, continuing", exc_info=True)
         return "unreachable"
     try:
         raw.settimeout(timeout)
@@ -127,11 +135,13 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
         except ssl.SSLCertVerificationError:
             return "cert_error"
         except (ssl.SSLError, OSError):
+            log.debug("probe_port: caught error, continuing", exc_info=True)
             pass
     finally:
         try:
             raw.close()
         except OSError:
+            log.debug("probe_port: caught error, continuing", exc_info=True)
             pass
     # Not TLS from the first byte. Does it greet in the clear?
     try:
@@ -141,6 +151,7 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
             if banner[:3] in (b"220", b"* O"):  # SMTP "220 ...", IMAP "* OK ..."
                 return "plaintext"
     except OSError:
+        log.debug("probe_port: caught error, continuing", exc_info=True)
         pass
     return "silent"
 
@@ -155,6 +166,7 @@ def _diagnose_suffix(host: str, port: int, implicit: bool, err: Exception) -> st
     try:
         found = probe_port(host, port)
     except Exception:
+        log.debug("_diagnose_suffix: caught error, continuing", exc_info=True)
         return ""
     if found == "unreachable":
         return (f" -- Diagnosis: can't open a connection to {host} on port {port} from the "
@@ -237,6 +249,7 @@ def message_size(imap_conn: imaplib.IMAP4, msg_id: bytes):
     try:
         status, data = imap_conn.fetch(msg_id, "(RFC822.SIZE)")
     except Exception:
+        log.debug("message_size: caught error, continuing", exc_info=True)
         return None  # can't tell; the full fetch is still bounded by the server
     if status != "OK" or not data:
         return None

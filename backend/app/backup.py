@@ -26,6 +26,9 @@ from datetime import datetime, timezone
 
 from .database import DB_PATH, UPLOADS_DIR
 from .export import render_recipe_pdf
+from .logging_setup import get_logger
+
+log = get_logger("backup")
 
 
 # Keeps a recipe title usable as a filename on Windows, macOS and Linux
@@ -228,6 +231,7 @@ def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) ->
                     "source_type": recipe.source_type or "",
                 })
             except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+                log.warning("build_pdf_bundle: caught error, continuing", exc_info=True)
                 failures += 1
                 index_rows.append({
                     "id": recipe.id, "title": recipe.title or "",

@@ -1,5 +1,8 @@
 import os
 import re
+from .logging_setup import get_logger
+
+log = get_logger("files")
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB -- generous for a recipe PDF/photo, bounds memory/disk use
 PDF_MAGIC = b"%PDF"
@@ -145,6 +148,7 @@ def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: st
     try:
         reencode_image(dest_path)
     except Exception:
+        log.warning("validate_and_save_image_bytes: caught error, continuing", exc_info=True)
         if os.path.isfile(dest_path):
             os.remove(dest_path)
         return None

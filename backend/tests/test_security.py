@@ -346,3 +346,34 @@ def test_batch_url_ingest_is_capped(client):
     r = client.post("/api/ingest/url/batch", json={"urls": [f"https://example.com/{i}" for i in range(51)]})
     assert r.status_code == 400
     assert "max 50" in r.json()["detail"]
+
+
+def test_sideways_photo_is_turned_upright_for_ocr_and_storage(tmp_path):
+    """Regression: a recipe photographed on its side went to OCR at 90
+    degrees and came back as gibberish (the reported "merce rene neste"),
+    and the stored photo displayed sideways."""
+    import pytest
+    from PIL import Image, ImageDraw, ImageFont
+    from app.ingestion.image_ingest import ingest_image
+
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    except OSError:
+        pytest.skip("DejaVu font not available to draw the test card")
+    lines = ["Spinach and Mushroom Quesadillas", "Ingredients", "8 oz. mushrooms", "1 Tbsp cooking oil",
+             "1/4 tsp garlic powder", "1/2 lb. frozen chopped spinach", "8 oz. mozzarella, shredded",
+             "1/4 cup sour cream", "5 7-inch flour tortillas", "Instructions",
+             "1. Slice the mushrooms and add them to a skillet with the oil.",
+             "2. Thaw the spinach and squeeze out the water.",
+             "3. Spread onto tortillas and fold to close."]
+    card = Image.new("RGB", (1400, 60 + 44 * len(lines)), "white")
+    d = ImageDraw.Draw(card)
+    for i, l in enumerate(lines):
+        d.text((40, 30 + 44 * i), l, fill="black", font=font)
+    path = tmp_path / "sideways.png"
+    card.rotate(90, expand=True).save(path)          # page on its side: taller than wide
+
+    result = ingest_image(str(path))
+    assert "Quesadillas" in result.raw_text and "tortillas" in result.raw_text
+    with Image.open(path) as stored:
+        assert stored.width > stored.height, "stored photo should be upright (landscape, like the card)"

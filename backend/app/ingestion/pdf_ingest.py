@@ -4,7 +4,10 @@ import pdfplumber
 import pytesseract
 from PIL import Image
 
-from .deskew import deskew_grayscale
+from .deskew import deskew_grayscale, auto_orient
+from ..logging_setup import get_logger
+
+log = get_logger("pdf")
 
 MIN_CHARS_PER_PAGE = 20
 MAX_PDF_PAGES = 60  # generous for even a multi-recipe scanned chapter; bounds worst-case OCR time
@@ -36,11 +39,13 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
         from PIL import Image
         import io
     except Exception:
+        log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
         return None
 
     try:
         reader = PdfReader(pdf_path)
     except Exception:
+        log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
         return None
 
     best_bytes = None
@@ -49,12 +54,14 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
         try:
             images = page.images
         except Exception:
+            log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
             continue
         for img in images:
             try:
                 pil_img = Image.open(io.BytesIO(img.data))
                 width, height = pil_img.size
             except Exception:
+                log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
                 continue
             if width < MIN_SHOWCASE_IMAGE_DIMENSION or height < MIN_SHOWCASE_IMAGE_DIMENSION:
                 continue
@@ -120,7 +127,8 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
 def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
     """Grayscale + deskew + upscale to improve Tesseract accuracy on
     borderline images, including scans fed in at a slight angle."""
-    gray_arr = deskew_grayscale(np.array(pil_image.convert("L")))
+    oriented, _ = auto_orient(pil_image.convert("L"))
+    gray_arr = deskew_grayscale(np.array(oriented))
     gray = Image.fromarray(gray_arr)
     if gray.width < 1500:
         scale = 1500 / gray.width
@@ -138,6 +146,7 @@ def _ocr_image(pil_image: Image.Image):
         confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
         avg_conf = sum(confidences) / len(confidences) if confidences else None
     except Exception:
+        log.warning("_ocr_image: caught error, continuing", exc_info=True)
         avg_conf = None
 
     return text, avg_conf
@@ -213,10 +222,11 @@ def _clean_ingredients(lines):
     for line in lines:
         if _is_junk(line):
             continue
+        line = _LABELLED_QTY.sub("", line)
         if _looks_like_section_label(line):
             label = line.rstrip(":").strip()
-            if label.isupper():
-                label = label.capitalize()
+            if label.isupper() or label.istitle():
+                label = label.lower()
             if not label.lower().startswith("for "):
                 label = f"For the {label[0].lower() + label[1:]}"
             out.append(f"{label}:")
@@ -308,6 +318,24 @@ def _guess_title(lines, ing_line_index):
     return "Untitled Recipe"
 
 
+_BULLET = re.compile(r"^\s*(?:[-•*·▪◦‣]\s+)+")
+_EMPHASIS_TIGHT = re.compile(r"\*{1,2}([^*\n]+?)\*{1,2}(?=\S)")
+_EMPHASIS = re.compile(r"\*{1,2}([^*\n]+?)\*{1,2}")
+# "Noodles: 8 oz wheat noodles" -- a label in front of the quantity.
+_LABELLED_QTY = re.compile(r"^([A-Z][\w &/'()-]{0,30}):\s+(?=[\d¼½¾⅓⅔⅛⅜⅝⅞])")
+
+
+def _normalize_line(line: str) -> str:
+    """Plain text written by mail apps: Gmail sends bold as *text* and list
+    items as "   - item". Without this, "- 1 tsp soy sauce" doesn't start
+    with a quantity and "*1.Cook the noodles:*" doesn't start with a step
+    number, and neither is recognized."""
+    line = _BULLET.sub("", line)
+    line = _EMPHASIS_TIGHT.sub(r"\1 ", line)   # "*1.Cook:*Stops" -> "1.Cook: Stops"
+    line = _EMPHASIS.sub(r"\1", line)
+    return line.strip()
+
+
 def segment_raw_text(raw_text: str) -> dict:
     """
     Heuristic segmentation of raw extracted/OCR'd text into title/ingredients/steps.
@@ -318,7 +346,7 @@ def segment_raw_text(raw_text: str) -> dict:
     ingredients before its recipe card), the heading followed by the most
     quantity lines is the one used.
     """
-    lines = [l.strip() for l in raw_text.split("\n")]
+    lines = [_normalize_line(l) for l in raw_text.split("\n")]
     lines = [l for l in lines if l]
 
     ing_idx = [i for i, l in enumerate(lines) if HEADING_INGREDIENTS.match(l)]
@@ -347,6 +375,20 @@ def segment_raw_text(raw_text: str) -> dict:
         _, chosen_ing, ing_block, step_block = best
         ingredients = _clean_ingredients(ing_block)
         steps = _clean_steps(step_block)
+    elif ing_idx:
+        # "Ingredients" but no "Instructions" heading -- common in emails
+        # and notes, where the steps are just a numbered list. The
+        # ingredients end where the first numbered step begins.
+        i = max(ing_idx, key=lambda j: sum(1 for l in lines[j + 1:j + 40] if _QTY_START.match(l)))
+        chosen_ing = i
+        rest = lines[i + 1:]
+        first_step = next((k for k, l in enumerate(rest)
+                           if _STEP_START.match(l) and not _QTY_START.match(_STEP_START.sub("", l))), None)
+        if first_step is not None:
+            ingredients = _clean_ingredients(rest[:first_step])
+            steps = _clean_steps(rest[first_step:])
+        else:
+            ingredients = _clean_ingredients(rest)
     else:
         # No clear headings found -- fall back to line-pattern matching.
         for line in lines[1:]:

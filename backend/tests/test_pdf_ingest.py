@@ -141,3 +141,46 @@ def test_recipe_card_ingredients_win_over_article_mention():
     result = segment_raw_text(text)
     assert result["ingredients"] == ["2 lb beef", "1 onion"]
     assert result["steps"] == ["Brown the beef.", "Simmer."]
+
+
+# The reported email: Gmail plain text, "Ingredients" heading but no
+# "Instructions" heading, bullets as "   - ", bold as *text*.
+GMAIL_BODY = """Garlic Pork, Bok Choy & Carrot Stir-Fry Noodles
+*Prep time:* 15 mins | *Cook time:* 12 mins
+
+Ingredients
+
+   - *Noodles:* 8 oz (225g) wheat noodles, lo mein, or ramen noodles
+
+   - *Pork Marinade (Velveting):*
+
+   - 1 tsp soy sauce
+
+      - 3\\u20134 heads baby bok choy, stems sliced into bite-sized pieces,
+      leaves separated
+
+*1.Cook, rinse, and drain the noodles:*Stops cooking so noodles hold their
+chew during the stir-fry.
+
+*2.Sear the pork:*
+   - *If using sliced pork:* Spread pieces flat, sear for
+   1\\u20132 minutes per side until lightly browned and just cooked.
+"""
+
+
+def test_gmail_body_ingredients():
+    """Only the wrapped fragment "1-2 minutes per side..." used to be found,
+    because it was the one line that started with a digit."""
+    assert segment_raw_text(GMAIL_BODY)["ingredients"] == [
+        "8 oz (225g) wheat noodles, lo mein, or ramen noodles",
+        "For the pork marinade (velveting):",
+        "1 tsp soy sauce",
+        "3\\u20134 heads baby bok choy, stems sliced into bite-sized pieces, leaves separated",
+    ]
+
+
+def test_gmail_body_numbered_steps_without_heading():
+    steps = segment_raw_text(GMAIL_BODY)["steps"]
+    assert len(steps) == 2
+    assert steps[0].startswith("Cook, rinse, and drain the noodles: Stops cooking")
+    assert steps[1].startswith("Sear the pork:") and steps[1].endswith("just cooked.")

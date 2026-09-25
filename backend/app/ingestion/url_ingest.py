@@ -145,16 +145,19 @@ def _try_recipe_scrapers(url: str, html: str):
         try:
             image_url = scraper.image()
         except Exception:
+            log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
             pass
         servings = None
         try:
             servings = str(scraper.yields())
         except Exception:
+            log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
             pass
         total_time = None
         try:
             total_time = str(scraper.total_time())
         except Exception:
+            log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
             pass
 
         return UrlIngestResult(
@@ -178,6 +181,7 @@ def _try_json_ld(html: str):
         try:
             data = json.loads(tag.string or "{}")
         except (json.JSONDecodeError, TypeError):
+            log.debug("_try_json_ld: caught error, continuing", exc_info=True)
             continue
 
         candidates = data if isinstance(data, list) else [data]

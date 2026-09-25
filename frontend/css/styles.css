@@ -1377,3 +1377,7 @@ main {
   min-width: 0;
   flex-shrink: 1;
 }
+
+/* Result of "Check email inbox" in the + menu: one line per email. */
+.scan-status { white-space: pre-line; margin-top: 0.75rem; }
+.source-type-picker button:nth-child(odd):last-child { grid-column: 1 / -1; }

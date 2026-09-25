@@ -65,6 +65,7 @@ def _image_size(payload: bytes):
         with Image.open(io.BytesIO(payload)) as im:
             return im.size
     except Exception:
+        log.debug("_image_size: caught error, continuing", exc_info=True)
         return None
 
 
