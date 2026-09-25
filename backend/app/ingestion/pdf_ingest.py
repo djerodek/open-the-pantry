@@ -143,14 +143,169 @@ def _ocr_image(pil_image: Image.Image):
     return text, avg_conf
 
 
-HEADING_INGREDIENTS = re.compile(r"^\s*ingredients?\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
+# "Ingredients" alone on a line, optionally followed by a recipe card's
+# serving-size buttons ("Ingredients 1X 2X 3X").
+HEADING_INGREDIENTS = re.compile(
+    r"^\s*ingredients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*$", re.IGNORECASE | re.MULTILINE
+)
 HEADING_STEPS = re.compile(
-    r"^\s*(instructions?|directions?|method|steps?)\s*:?\s*$", re.IGNORECASE | re.MULTILINE
+    r"^\s*(instructions?|directions?|method|steps?|preparation)\s*:?\s*$", re.IGNORECASE | re.MULTILINE
 )
 NUMBERED_STEP = re.compile(r"^\s*\d+[\.\)]\s+")
 QUANTITY_LEAD = re.compile(
     r"^\s*\d+[\d/\.\s]*\s*(cups?|tbsp|tsp|g|kg|oz|lb|ml|l|pinch|clove)?\b", re.IGNORECASE
 )
+# Anything starting with a number or a vulgar fraction: "1 ¼ teaspoons",
+# "½ cup". Used to tell a new ingredient from a wrapped continuation line.
+_QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
+# A step marker: "1." / "1)" / "1 " followed by a capital, or a bare number
+# on its own line (some recipe cards put the number in a separate column).
+_STEP_START = re.compile(r"^\s*(\d{1,2})(?:[\.\)]\s*|\s+)(?=[A-Z])")
+_BARE_NUMBER = re.compile(r"^\s*\d{1,2}\s*$")
+
+# Lines that are page furniture, not recipe content. Printed web pages carry
+# the browser's date/time and "Page 1 of 3"; recipe cards carry serving-size
+# and unit toggles.
+_JUNK_LINE = re.compile(
+    r"^\s*("
+    r"\d{4}-\d{2}-\d{2},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"         # 2026-09-25, 1:44 PM
+    r"|\d{1,2}/\d{1,2}/\d{2,4},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"  # 9/25/26, 1:44 PM
+    r"|page \d+ of \d+"
+    r"|https?://\S+"
+    r"|(\d+(\.\d+)?\s*[x×]\s*)+"                               # 1X 2X 3X
+    r"|us customary(\s+metric)?|metric"
+    r"|(save|pin|print|rate|share|jump to recipe)(\s+(save|pin|print|rate|recipe|share))*\s*↓?"
+    r")\s*$",
+    re.IGNORECASE,
+)
+# Where the steps end on a recipe card or printed page.
+_STEPS_END = re.compile(
+    r"^\s*(notes?|recipe notes|nutrition(\s+information|\s+facts)?|video|equipment|"
+    r"did you make this.*|course|cuisine|keyword|author)\s*:?\s*$",
+    re.IGNORECASE,
+)
+_BYLINE = re.compile(r"^\s*by[:\s]", re.IGNORECASE)
+_BREADCRUMB = re.compile(r"\S\s+/\s+\S.*\s+/\s+\S")
+
+
+def _is_junk(line: str) -> bool:
+    return bool(_JUNK_LINE.match(line))
+
+
+def _looks_like_section_label(line: str) -> bool:
+    """"PEPPERED BACON CURE", "For the sauce:", "Topping" -- a sub-heading
+    inside an ingredient list, not an ingredient."""
+    if _QTY_START.match(line) or len(line.split()) > 6:
+        return False
+    return line.isupper() or line.rstrip().endswith(":") or line.lower().startswith("for the ")
+
+
+def _clean_ingredients(lines):
+    """Drop page furniture, join wrapped lines, and label sub-headings.
+
+    A line that doesn't start with a quantity is a continuation of the one
+    before if that one left a bracket open or this one starts in lowercase:
+    "1 ¼ teaspoons Prague powder #1 (curing" + "salt)". Sub-headings are
+    kept -- dropping them loses which ingredients belong to which part --
+    but reworded so they read as a heading, not as an ingredient.
+    """
+    out = []
+    for line in lines:
+        if _is_junk(line):
+            continue
+        if _looks_like_section_label(line):
+            label = line.rstrip(":").strip()
+            if label.isupper():
+                label = label.capitalize()
+            if not label.lower().startswith("for "):
+                label = f"For the {label[0].lower() + label[1:]}"
+            out.append(f"{label}:")
+            continue
+        prev = out[-1] if out else None
+        continues = prev is not None and not prev.endswith(":") and not _QTY_START.match(line) and (
+            prev.count("(") > prev.count(")") or line[:1].islower() or line[:1] in ")],;"
+        )
+        if continues:
+            out[-1] = f"{prev} {line}"
+        else:
+            out.append(line)
+    return out
+
+
+def _clean_steps(lines):
+    """Rebuild whole steps from printed lines.
+
+    Printed and OCR'd text has one line per line of the page, not one per
+    step, so taking each line as a step split every instruction into
+    fragments. If the block has step numbers, each number starts a step and
+    everything up to the next number belongs to it. Without numbers, a line
+    that ends a sentence ends the step. Leading numbers are removed -- the
+    app numbers steps itself.
+    """
+    kept = []
+    for line in lines:
+        if _STEPS_END.match(line):
+            break
+        if not _is_junk(line):
+            kept.append(line)
+
+    numbered = sum(1 for l in kept if _STEP_START.match(l) or _BARE_NUMBER.match(l))
+    steps = []
+    if numbered >= 2 or (numbered == 1 and len(kept) > 1 and (_STEP_START.match(kept[0]) or _BARE_NUMBER.match(kept[0]))):
+        for line in kept:
+            if _BARE_NUMBER.match(line):
+                steps.append("")
+                continue
+            m = _STEP_START.match(line)
+            if m:
+                steps.append(line[m.end():].strip())
+            elif steps:
+                steps[-1] = f"{steps[-1]} {line}".strip()
+            else:
+                steps.append(line)
+    else:
+        for line in kept:
+            line = NUMBERED_STEP.sub("", line)
+            if steps and not re.search(r"[.!?:)]\s*$", steps[-1]):
+                steps[-1] = f"{steps[-1]} {line}"
+            else:
+                steps.append(line)
+    return [s for s in steps if s]
+
+
+def _guess_title(lines, ing_line_index):
+    """The recipe's name, not whatever happens to be the first line.
+
+    Printed web pages start with the date and "Page 1 of 1"; blog pages start
+    with shipping banners and breadcrumbs. In order of preference:
+      1. the line just above the author byline closest before the
+         ingredients -- recipe cards put "Title" then "By: Name";
+      2. a short line that appears more than once (the name is repeated in
+         the article heading, the card, and often the print header);
+      3. the first line that isn't page furniture.
+    """
+    def ok(l):
+        return (not _is_junk(l) and not _BYLINE.match(l) and not _BREADCRUMB.search(l)
+                and 2 <= len(l) <= 80 and not HEADING_INGREDIENTS.match(l) and not HEADING_STEPS.match(l)
+                and not re.search(r"\$\d", l))
+
+    limit = ing_line_index if ing_line_index is not None else len(lines)
+    for i in range(limit - 1, 0, -1):
+        if _BYLINE.match(lines[i]) and ok(lines[i - 1]):
+            return lines[i - 1]
+
+    counts = {}
+    for l in lines:
+        if ok(l) and 1 <= len(l.split()) <= 8 and not l.endswith("."):
+            counts[l.lower()] = counts.get(l.lower(), 0) + 1
+    repeated = [l for l in lines if counts.get(l.lower(), 0) >= 2]
+    if repeated:
+        return repeated[0]
+
+    for l in lines:
+        if ok(l):
+            return l
+    return "Untitled Recipe"
 
 
 def segment_raw_text(raw_text: str) -> dict:
@@ -158,36 +313,52 @@ def segment_raw_text(raw_text: str) -> dict:
     Heuristic segmentation of raw extracted/OCR'd text into title/ingredients/steps.
     No LLM. Used as a starting point for the manual-review screen -- expected to
     need correction on inconsistent layouts, especially OCR output.
+
+    When "Ingredients" appears more than once (a blog post that talks about
+    ingredients before its recipe card), the heading followed by the most
+    quantity lines is the one used.
     """
     lines = [l.strip() for l in raw_text.split("\n")]
     lines = [l for l in lines if l]
 
-    ing_match = HEADING_INGREDIENTS.search(raw_text)
-    step_match = HEADING_STEPS.search(raw_text)
+    ing_idx = [i for i, l in enumerate(lines) if HEADING_INGREDIENTS.match(l)]
+    step_idx = [i for i, l in enumerate(lines) if HEADING_STEPS.match(l)]
 
-    ingredients, steps, title_guess = [], [], (lines[0] if lines else "Untitled Recipe")
+    ingredients, steps = [], []
+    chosen_ing = None
 
-    if ing_match and step_match:
-        ing_start = raw_text.index(ing_match.group())
-        step_start = raw_text.index(step_match.group())
-        if ing_start < step_start:
-            ing_block = raw_text[ing_start + len(ing_match.group()):step_start]
-            step_block = raw_text[step_start + len(step_match.group()):]
-        else:
-            step_block = raw_text[step_start + len(step_match.group()):ing_start]
-            ing_block = raw_text[ing_start + len(ing_match.group()):]
-        ingredients = [l.strip() for l in ing_block.split("\n") if l.strip()]
-        steps = [l.strip() for l in step_block.split("\n") if l.strip()]
+    if ing_idx and step_idx:
+        best = None
+        for i in ing_idx:
+            after = [s for s in step_idx if s > i]
+            before = [s for s in step_idx if s < i]
+            if after:
+                s = after[0]
+                ing_block, step_block = lines[i + 1:s], lines[s + 1:]
+                nxt = [j for j in ing_idx if j > s]
+                if nxt:
+                    step_block = lines[s + 1:nxt[0]]
+            else:
+                s = before[-1]
+                step_block, ing_block = lines[s + 1:i], lines[i + 1:]
+            score = sum(1 for l in ing_block if _QTY_START.match(l))
+            if best is None or score > best[0]:
+                best = (score, i, ing_block, step_block)
+        _, chosen_ing, ing_block, step_block = best
+        ingredients = _clean_ingredients(ing_block)
+        steps = _clean_steps(step_block)
     else:
         # No clear headings found -- fall back to line-pattern matching.
         for line in lines[1:]:
+            if _is_junk(line):
+                continue
             if NUMBERED_STEP.match(line):
                 steps.append(NUMBERED_STEP.sub("", line))
             elif QUANTITY_LEAD.match(line):
                 ingredients.append(line)
 
     return {
-        "title_guess": title_guess,
+        "title_guess": _guess_title(lines, chosen_ing),
         "ingredients": ingredients,
         "steps": steps,
     }

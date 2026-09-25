@@ -13,7 +13,9 @@ def test_segment_handles_ingredients_before_steps():
     )
     result = segment_raw_text(text)
     assert result["ingredients"] == ["2 cups flour", "1 tsp salt"]
-    assert result["steps"] == ["1. Mix", "2. Bake"]
+    # Numbers are stripped: the app numbers steps itself, and keeping them
+    # showed "1. 1. Mix" in the recipe view and export.
+    assert result["steps"] == ["Mix", "Bake"]
 
 
 def test_segment_handles_steps_before_ingredients():
@@ -28,7 +30,7 @@ def test_segment_handles_steps_before_ingredients():
     )
     result = segment_raw_text(text)
     assert result["ingredients"] == ["2 cups flour", "1 tsp salt"]
-    assert result["steps"] == ["1. Do the first thing", "2. Do the second thing"]
+    assert result["steps"] == ["Do the first thing", "Do the second thing"]
 
 
 def test_segment_no_headings_falls_back_to_pattern_matching():
@@ -59,3 +61,83 @@ def test_pdf_page_cap(tmp_path):
 
     with pytest.raises(PdfTooLargeError):
         extract_pdf_text(str(pdf_path))
+
+
+# The reported case: a webpage saved as PDF from iOS and emailed in. Text as
+# the extractor returned it, trimmed of the article body.
+PRINTED_RECIPE_CARD = """2026-09-25, 1:44 PM
+Page 1 of 1
+FREE SHIPPING ON ORDERS OVER $125
+HOME / ALL RECIPES / PORK / HOMEMADE SMOKED BACON
+Homemade Smoked
+Bacon
+BY SUSIE BULLOCH ON JUNE 17, 2021
+Making your own homemade Smoked Bacon is a bit of a process.
+Sweet Rub
+$12.99 - $25.99
+SAVE PIN PRINT
+Homemade Smoked Bacon
+BY: SUSIE BULLOCH (HEYGRILLHEY.COM)
+4.57 from 82 votes
+Ingredients
+1X 2X 3X
+1 5-pound slab pork belly skin removed
+1 Tablespoon cracked black pepper
+PEPPERED BACON CURE
+1 \u00bc teaspoons Prague powder #1 (curing
+salt)
+3 Tablespoons plus 1 teaspoon cracked
+black pepper
+Instructions
+1 Prepare the cure. Combine all
+ingredients for the bacon cure in a bowl.
+It will be a paste-like consistency.
+2 Cure the pork belly. Place your slab of
+pork belly in a large plastic bag.
+Notes
+Maple cure: swap the pepper for maple sugar.
+"""
+
+
+def test_printed_recipe_card_title_is_the_recipe_not_the_print_date():
+    assert segment_raw_text(PRINTED_RECIPE_CARD)["title_guess"] == "Homemade Smoked Bacon"
+
+
+def test_printed_recipe_card_ingredients():
+    assert segment_raw_text(PRINTED_RECIPE_CARD)["ingredients"] == [
+        "1 5-pound slab pork belly skin removed",
+        "1 Tablespoon cracked black pepper",
+        "For the peppered bacon cure:",
+        "1 \u00bc teaspoons Prague powder #1 (curing salt)",
+        "3 Tablespoons plus 1 teaspoon cracked black pepper",
+    ]
+
+
+def test_printed_recipe_card_steps_are_whole_steps():
+    """Each printed line used to become its own step."""
+    assert segment_raw_text(PRINTED_RECIPE_CARD)["steps"] == [
+        "Prepare the cure. Combine all ingredients for the bacon cure in a bowl. "
+        "It will be a paste-like consistency.",
+        "Cure the pork belly. Place your slab of pork belly in a large plastic bag.",
+    ]
+
+
+def test_step_numbers_on_their_own_lines():
+    text = "Soup\nIngredients\n1 onion\nInstructions\n1\nChop the onion\nfinely.\n2\nCook it.\n"
+    assert segment_raw_text(text)["steps"] == ["Chop the onion finely.", "Cook it."]
+
+
+def test_unnumbered_steps_split_at_sentence_ends():
+    text = ("Soup\nIngredients\n1 onion\nInstructions\nChop the onion and\nput it in a pot.\n"
+            "Simmer for ten\nminutes.\n")
+    assert segment_raw_text(text)["steps"] == ["Chop the onion and put it in a pot.", "Simmer for ten minutes."]
+
+
+def test_recipe_card_ingredients_win_over_article_mention():
+    """A blog post with its own "Ingredients" paragraph before the card: the
+    heading followed by actual quantities is the one used."""
+    text = ("Stew\nIngredients\nGood beef matters most here.\nMethod\nRead on.\n"
+            "Stew\nIngredients\n2 lb beef\n1 onion\nInstructions\n1. Brown the beef.\n2. Simmer.\n")
+    result = segment_raw_text(text)
+    assert result["ingredients"] == ["2 lb beef", "1 onion"]
+    assert result["steps"] == ["Brown the beef.", "Simmer."]
