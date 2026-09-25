@@ -55,6 +55,26 @@ IMAGE_MAGICS = [
 ]
 
 
+def detect_image_ext(head: bytes):
+    """Stored extension for an image, from its leading bytes, or None.
+
+    The one place the magic-byte rules live. The streaming upload path had
+    its own copy that lacked the WebP check below, so the two pipelines
+    disagreed about what counted as an image even though both claimed to
+    apply the same rules.
+
+    RIFF is a container format, not WebP specifically -- AVI and WAV share
+    the same leading magic. The WEBP four-CC sits at offset 8. Without this,
+    an .avi would be saved as .webp and then fail in Pillow with a confusing
+    "not a valid image" instead of being rejected up front. `head` must be
+    at least 12 bytes for that check; callers pass 16.
+    """
+    ext = next((mapped for magic, mapped in IMAGE_MAGICS if head.startswith(magic)), None)
+    if ext == ".webp" and head[8:12] != b"WEBP":
+        return None
+    return ext
+
+
 def reencode_image(path: str):
     """Decode and re-save the image via Pillow, discarding anything in the
     file that isn't actual pixel data (EXIF payloads, trailing bytes after
@@ -63,12 +83,21 @@ def reencode_image(path: str):
     that the rest of the file is nothing else. Runs after that check, before
     the file is considered a finished upload.
 
-    Uses getdata()/putdata() into a fresh Image rather than a plain
+    Copies the decoded pixels into a fresh Image rather than a plain
     open-then-save round trip: tested directly against a polyglot file
-    (valid PNG bytes + appended non-image data) and confirmed this survives
-    it, while a plain img.load(); img.save() on the same input reliably
-    raises "broken data stream" and rejects an otherwise-fine upload. Don't
-    simplify this without re-testing against that case.
+    (valid PNG bytes + appended non-image data) and confirmed a fresh image
+    survives it, while a plain img.load(); img.save() on the same input
+    reliably raises "broken data stream" and rejects an otherwise-fine
+    upload. Don't simplify this without re-testing against that case.
+
+    The copy goes through tobytes()/frombytes(), not getdata()/putdata().
+    putdata(list(getdata())) built a Python tuple per pixel: measured 864 MB
+    of heap and 11 s for one 12-megapixel photo, which is what an iPhone
+    sends at full size (newer ones send 24 MP). frombytes copies one buffer.
+    It also lost the palette: a fresh "P" image gets a default greyscale
+    palette, so palette PNGs and GIFs came out with the wrong colours. The
+    palette and palette transparency are carried over; they describe the
+    pixels. Everything else in img.info (EXIF, ICC, comments) is not.
 
     EXIF orientation is applied to the pixel data itself (not carried
     forward as metadata, all of which is still stripped) before the
@@ -83,9 +112,15 @@ def reencode_image(path: str):
         img.load()  # force full decode now, not lazily later
         fmt = img.format  # save() can't infer format from this temp filename
         oriented = ImageOps.exif_transpose(img)  # bakes EXIF rotation into pixels
-        clean = Image.new(oriented.mode, oriented.size)
-        clean.putdata(list(oriented.getdata()))
-        clean.save(path, format=fmt)
+        clean = Image.frombytes(oriented.mode, oriented.size, oriented.tobytes())
+        if oriented.mode in ("P", "PA"):
+            clean.putpalette(oriented.getpalette())
+            if "transparency" in oriented.info:
+                clean.info["transparency"] = oriented.info["transparency"]
+        save_kwargs = {}
+        if fmt in ("PNG", "GIF") and "transparency" in clean.info:
+            save_kwargs["transparency"] = clean.info["transparency"]
+        clean.save(path, format=fmt, **save_kwargs)
 
 
 def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: str) -> str | None:
@@ -100,15 +135,8 @@ def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: st
     ingestion."""
     if not content:
         return None
-    first_chunk = content[:16]
-    ext = next((mapped for magic, mapped in IMAGE_MAGICS if first_chunk.startswith(magic)), None)
+    ext = detect_image_ext(content[:16])
     if ext is None:
-        return None
-    # RIFF is a container format, not WebP specifically -- AVI and WAV share
-    # the same leading magic. The WEBP four-CC sits at offset 8. Without
-    # this, a .avi would be saved as .webp and then fail in Pillow with a
-    # confusing "not a valid image" instead of being rejected up front.
-    if ext == ".webp" and content[8:12] != b"WEBP":
         return None
     final_name = f"{name_prefix}{ext}"
     dest_path = os.path.join(dest_dir, final_name)

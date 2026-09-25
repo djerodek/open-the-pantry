@@ -60,11 +60,15 @@ def safe_get(url: str, timeout: int = 15) -> requests.Response:
     validate_public_url's check on the *original* URL. This validates
     every hop before following it, not just the first one.
 
-    Known residual gap: this only covers requests *this module* makes
-    directly. recipe_scrapers.scrape_me() (the first-tried, most common
-    path) uses its own internal HTTP client, which this app doesn't
-    control -- a redirect during that call isn't covered by this check.
-    Documented in the README rather than silently assumed closed."""
+    Every page fetch in URL ingestion goes through here. recipe_scrapers
+    used to be called with scrape_me(url), which fetches the page with its
+    own HTTP client -- so the most common path skipped these checks, and a
+    public URL redirecting to a LAN address would have been followed. It
+    now gets the HTML this function already fetched (see ingest_url).
+
+    Residual gap, accepted for a LAN app: DNS is resolved once to validate
+    and again by requests to connect, so a hostname that changes its
+    answer in between (DNS rebinding) isn't caught."""
     current_url = url
     for _ in range(MAX_REDIRECTS + 1):
         validate_public_url(current_url)
@@ -96,23 +100,20 @@ class UrlIngestResult:
         self.method = method  # which extraction path succeeded, for debugging/UI
 
 
-def _try_recipe_scrapers(url: str):
+def _try_recipe_scrapers(url: str, html: str):
+    """recipe_scrapers over HTML that safe_get() already fetched -- never
+    scrape_me(), which does its own unguarded fetch. supported_only=False
+    keeps the old two-step behaviour in one call: the site-specific parser
+    for domains the library knows, generic schema.org guessing for the
+    rest."""
     try:
-        from recipe_scrapers import scrape_me
+        from recipe_scrapers import scrape_html
     except ImportError:
         return None
     try:
-        scraper = scrape_me(url)
+        scraper = scrape_html(html, org_url=url, supported_only=False)
     except Exception:
-        # scrape_me() has no wild-mode option in this library version --
-        # wild-mode schema-guessing requires scrape_html() with the raw page
-        # HTML. Fetch it ourselves and retry through that entry point.
-        try:
-            from recipe_scrapers import scrape_html
-            resp = safe_get(url)
-            scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
-        except Exception:
-            return None
+        return None
 
     try:
         ingredients = scraper.ingredients()
@@ -279,12 +280,13 @@ def ingest_url(url: str) -> UrlIngestResult:
     """
     validate_public_url(url)  # SSRF guard -- must run before any fetch, see above
 
-    result = _try_recipe_scrapers(url)
-    if result:
-        return result
-
+    # One fetch, through the guarded client, shared by all three tiers.
     resp = safe_get(url)
     html = resp.text
+
+    result = _try_recipe_scrapers(url, html)
+    if result:
+        return result
 
     result = _try_json_ld(html)
     if result:

@@ -274,3 +274,75 @@ def test_riff_container_that_is_not_webp_is_rejected(tmp_path):
     fake_avi = b"RIFF" + b"\x00\x00\x00\x00" + b"AVI " + b"\x00" * 64
     assert validate_and_save_image_bytes(fake_avi, str(tmp_path), "img-" + "a" * 32) is None
     assert not list(tmp_path.iterdir()), "nothing should be left on disk"
+
+
+def test_recipe_scrapers_never_fetches_on_its_own():
+    """Regression: URL ingestion called recipe_scrapers.scrape_me(url),
+    which fetches with its own HTTP client and bypasses the SSRF-guarded
+    safe_get (so a public URL redirecting to a LAN address was followed).
+    Any request that doesn't go through safe_get now fails the test."""
+    from unittest.mock import patch, MagicMock
+    from app.ingestion import url_ingest
+
+    html = """<html><head><script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"Recipe","name":"Guarded Stew",
+       "recipeIngredient":["1 onion"],"recipeInstructions":[{"@type":"HowToStep","text":"Cook it"}]}
+    </script></head><body></body></html>"""
+    resp = MagicMock(text=html)
+
+    # Recorded rather than raised: the old code wrapped scrape_me() in
+    # `except Exception` and fell back, so an exception here would be
+    # swallowed and the test would pass against the very bug it's for.
+    # recipe_scrapers imports urlopen into its own namespace, so that name
+    # is patched where it's used, not in urllib.
+    unguarded_calls = []
+
+    def unguarded(*a, **k):
+        unguarded_calls.append(a)
+        raise OSError("blocked in test")
+
+    import recipe_scrapers
+    with patch.object(url_ingest, "validate_public_url"), \
+         patch.object(url_ingest, "safe_get", return_value=resp) as guarded, \
+         patch("requests.sessions.Session.request", side_effect=unguarded), \
+         patch.object(recipe_scrapers, "urlopen", side_effect=unguarded, create=True), \
+         patch.object(recipe_scrapers, "scrape_me", side_effect=unguarded):
+        result = url_ingest.ingest_url("https://recipes.example.com/stew")
+    assert unguarded_calls == [], "recipe_scrapers fetched a page itself"
+    assert result.title == "Guarded Stew"
+    guarded.assert_called_once()
+
+
+def test_reencode_keeps_palette_colours(tmp_path):
+    """Regression: re-encoding built a fresh "P" image without copying the
+    palette, so palette PNGs/GIFs came out in the wrong colours (red
+    pixels turned black)."""
+    from PIL import Image
+    from app.file_validation import reencode_image
+
+    for fmt, name in (("PNG", "p.png"), ("GIF", "p.gif")):
+        img = Image.new("P", (8, 8))
+        img.putpalette([255, 0, 0] + [0, 0, 255] * 255)
+        path = tmp_path / name
+        img.save(path, format=fmt)
+        reencode_image(str(path))
+        with Image.open(path) as out:
+            assert out.convert("RGB").getpixel((0, 0)) == (255, 0, 0), fmt
+
+
+def test_streaming_upload_rejects_riff_that_isnt_webp(client):
+    """The streaming upload path accepted any RIFF file as .webp; only the
+    in-memory path checked for the WEBP four-CC. Both use one check now."""
+    avi = b"RIFF" + (1000).to_bytes(4, "little") + b"AVI LIST" + b"\x00" * 200
+    r = client.post("/api/upload-image", files={"file": ("x.webp", avi, "image/webp")})
+    assert r.status_code == 400
+    # Rejected by the magic-byte check, not later by Pillow. The old code
+    # also returned 400 here, but only after saving it as .webp and failing
+    # to decode it -- "could not be decoded" rather than this.
+    assert r.json()["detail"] == "File does not look like a valid image."
+
+
+def test_batch_url_ingest_is_capped(client):
+    r = client.post("/api/ingest/url/batch", json={"urls": [f"https://example.com/{i}" for i in range(51)]})
+    assert r.status_code == 400
+    assert "max 50" in r.json()["detail"]

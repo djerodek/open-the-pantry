@@ -1,12 +1,13 @@
 import asyncio
 import fcntl
+import hmac
 import os
 import shutil
 import threading
 import time
 import uuid
 from collections import defaultdict, deque
-from typing import Literal
+from typing import Literal, Optional
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 import anyio
@@ -15,7 +16,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from sqlalchemy import text, case, asc, desc, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas
 from .database import get_db, engine, SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR, DB_PATH
@@ -79,7 +80,7 @@ def _run_heavy(fn, *args, **kwargs):
 
 from .file_validation import (
     MAX_UPLOAD_BYTES, PDF_MAGIC, IMAGE_MAGICS,
-    reencode_image, validate_and_save_image_bytes, validate_and_save_pdf_bytes,
+    reencode_image, validate_and_save_image_bytes, validate_and_save_pdf_bytes, detect_image_ext,
     is_safe_stored_filename, safe_join,
 )
 
@@ -197,7 +198,9 @@ API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
 async def api_key_auth(request: Request, call_next):
     if not API_KEY or request.url.path == "/healthz":
         return await call_next(request)
-    if request.headers.get("X-API-Key") != API_KEY:
+    # Constant-time comparison: != stops at the first differing byte, which
+    # in principle leaks how much of a guess was right.
+    if not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), API_KEY.encode()):
         return JSONResponse(status_code=401, content={"detail": "Missing or invalid X-API-Key header."})
     return await call_next(request)
 
@@ -290,7 +293,7 @@ def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, ex
             raise HTTPException(status_code=400, detail="File does not look like a valid PDF.")
         ext = ".pdf"
     elif expect == "image":
-        ext = next((mapped for magic, mapped in IMAGE_MAGICS if first_chunk.startswith(magic)), None)
+        ext = detect_image_ext(first_chunk[:16])
         if ext is None:
             os.remove(tmp_write_path)
             raise HTTPException(status_code=400, detail="File does not look like a valid image.")
@@ -437,10 +440,12 @@ def _queue_notification(db: Session, success: bool, message: str):
     db.commit()
 
 
-def _flush_notifications(db: Session, settings: models.EmailIngestSettings, force: bool = False) -> bool:
+def _flush_notifications(db: Session, settings: models.EmailIngestSettings, force: bool = False) -> Optional[bool]:
     """Sends one batched notification email covering everything queued
     since the last one, if the cooldown has elapsed (or force=True).
-    Returns whether an email was actually sent.
+    Returns True if an email was sent, False if there was nothing to send
+    yet (empty queue, cooldown, not configured), and None if sending was
+    attempted and failed -- the case the caller reports to the user.
 
     Queued items are only deleted after the send succeeds -- if SMTP
     fails, they stay queued for the next attempt rather than being lost.
@@ -493,7 +498,7 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
             except Exception:
                 pass
     except Exception:
-        return False  # leave everything queued; next scan retries
+        return None  # leave everything queued; next scan retries
 
     for q in queued:
         db.delete(q)
@@ -593,7 +598,19 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
         for msg_id in msg_ids:
             subject = "(unknown subject)"
             try:
-                msg = email_client.fetch_full_message(imap, msg_id)
+                try:
+                    msg = email_client.fetch_full_message(imap, msg_id)
+                except email_client.MessageTooLargeError as e:
+                    # Won't get smaller on a retry: report and mark read.
+                    failed += 1
+                    line = f"(message {msg_id.decode(errors='replace')}): {e}"
+                    messages.append(f"FAILED: {line}")
+                    _queue_notification(db, False, line)
+                    try:
+                        email_client.mark_seen(imap, msg_id)
+                    except Exception:
+                        pass
+                    continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
                 result = _run_heavy(process_tagged_email, msg, TMP_DIR)
                 if result["success"]:
@@ -608,17 +625,24 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     messages.append(f"FAILED: {line}")
                     _queue_notification(db, False, line)
             except Exception as e:
+                # Something went wrong AROUND the email rather than IN it:
+                # fetching it, saving the recipe, the disk. That can be
+                # temporary, so the email is left unread and the next scan
+                # tries again. If it keeps failing, a [FAILURE] notice goes
+                # out each time, which is noisy but visible.
+                db.rollback()
                 failed += 1
-                line = f"\"{subject}\": {e}"
+                line = f"\"{subject}\": {e} (left unread; the next scan will retry it)"
                 messages.append(f"FAILED: {line}")
                 _queue_notification(db, False, line)
-            finally:
-                # Marked handled either way -- otherwise an email that can
-                # never be parsed would be retried on every future scan.
-                try:
-                    email_client.mark_seen(imap, msg_id)
-                except Exception:
-                    pass
+                continue
+            # Reached for success and for "no recipe in this email". Marked
+            # read in both cases -- otherwise an email that can never be
+            # parsed would be retried on every future scan.
+            try:
+                email_client.mark_seen(imap, msg_id)
+            except Exception:
+                pass
     finally:
         try:
             imap.logout()
@@ -628,7 +652,12 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
     settings.last_scan_at = datetime.now()
     db.commit()
 
-    _flush_notifications(db, settings, force=force_notify)
+    sent = _flush_notifications(db, settings, force=force_notify)
+    if sent is None:
+        messages.append(
+            "The result email couldn't be sent (sending isn't working -- use Send test email "
+            "to see why). It stays queued and goes out once sending works."
+        )
 
     return {"scanned": succeeded + failed, "succeeded": succeeded, "failed": failed, "messages": messages}
 
@@ -719,6 +748,14 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
     }
 
 
+# Per-request caps on the batch endpoints. Each item is a network fetch or
+# a PDF parse (possibly OCR), processed one after another inside a single
+# request, so an unbounded list is an unbounded request. Generous for a
+# person pasting a reading list; the frontend checks the same numbers.
+MAX_BATCH_URLS = 50
+MAX_BATCH_PDFS = 20
+
+
 @app.post("/api/ingest/url/batch")
 def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = Depends(get_db)):
     """Batch add: unlike the single-URL path, results are saved directly
@@ -726,6 +763,8 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
     routed through the manual-review screen -- reviewing N items one at a
     time isn't really a batch operation. Failures are reported per-URL so
     they can be retried individually through the reviewed single-URL flow."""
+    if len([u for u in payload.urls if u.strip()]) > MAX_BATCH_URLS:
+        raise HTTPException(status_code=400, detail=f"Too many links in one batch (max {MAX_BATCH_URLS}). Split the list and send the rest separately.")
     succeeded, failed = [], []
     for url in payload.urls:
         url = url.strip()
@@ -782,6 +821,12 @@ def ingest_from_pdf(file: UploadFile = File(...)):
     except PdfTooLargeError as e:
         os.remove(temp_path)
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        # Any other failure: remove the upload now rather than leaving it
+        # for the 24-hour sweep.
+        if os.path.isfile(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail="Could not read this PDF.")
 
     segmented = segment_raw_text(pdf_result.raw_text)
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
@@ -815,6 +860,8 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
     the URL batch endpoint. The source PDF itself isn't kept as an image
     attachment here (only screenshot/manual entries carry an image) -- only
     its extracted content is saved."""
+    if len(files) > MAX_BATCH_PDFS:
+        raise HTTPException(status_code=400, detail=f"Too many PDFs in one batch (max {MAX_BATCH_PDFS}). Send the rest separately.")
     succeeded, failed = [], []
     for file in files:
         name_prefix = f"pdf-{uuid.uuid4().hex}"
@@ -863,7 +910,14 @@ def ingest_from_image(file: UploadFile = File(...)):
     temp_name = _save_upload_streaming(file, TMP_DIR, name_prefix, expect="image")
     temp_path = os.path.join(TMP_DIR, temp_name)
 
-    segmented = _run_heavy(ingest_and_segment, temp_path)
+    try:
+        segmented = _run_heavy(ingest_and_segment, temp_path)
+    except Exception:
+        # The upload is kept on success (it becomes the draft's image), but
+        # a failed OCR leaves nothing to keep it for.
+        if os.path.isfile(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail="Could not read text from this image.")
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
     tag_suggestions = suggest_tags(
         segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients],
@@ -919,15 +973,18 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
             raw_texts.append(result.raw_text)
             if result.ocr_confidence is not None:
                 confidences.append(result.ocr_confidence)
-    except HTTPException:
+    except Exception as e:
         # A bad file partway through aborts the whole combined draft rather
         # than silently combining a partial set -- clean up anything
-        # already saved before re-raising.
+        # already saved before re-raising. Any exception, not only the
+        # validation HTTPException: an OCR crash left the files behind.
         for name in temp_names:
             path = os.path.join(TMP_DIR, name)
             if os.path.isfile(path):
                 os.remove(path)
-        raise
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=400, detail="Could not read text from one of these images.")
 
     combined_raw_text = "\n\n".join(raw_texts)
     segmented = segment_raw_text(combined_raw_text)
@@ -1438,10 +1495,14 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
     settings.enabled = payload.enabled
     settings.imap_host = payload.imap_host
     settings.imap_port = payload.imap_port
-    settings.imap_use_ssl = payload.imap_use_ssl
+    # Derived from the port here too, not only in the browser: the stored
+    # flag is what every later connection reads, and a client that sends
+    # the wrong one (an old cached app.js, a script) shouldn't be able to
+    # store a combination that can only time out. See email_client.
+    settings.imap_use_ssl = email_client.imap_uses_implicit_tls(payload.imap_port, payload.imap_use_ssl)
     settings.smtp_host = payload.smtp_host
     settings.smtp_port = payload.smtp_port
-    settings.smtp_use_tls = payload.smtp_use_tls
+    settings.smtp_use_tls = not email_client.smtp_uses_implicit_tls(payload.smtp_port, payload.smtp_use_tls)
     settings.username = payload.username
     settings.notify_email = payload.notify_email
     settings.subject_keyword = payload.subject_keyword or "[RECIPE]"
@@ -1481,6 +1542,10 @@ def test_email_settings(db: Session = Depends(get_db)):
     except Exception as e:
         return schemas.EmailTestResult(success=False, message=str(e))
 
+    # Both halves are checked every time and reported separately. This used
+    # to stop at the first failure, so a broken SMTP setup hid whether IMAP
+    # worked at all -- and IMAP is the half that actually ingests recipes.
+    smtp_ok, smtp_msg = True, f"Sending: OK -- a [TEST] email went to {settings.notify_email}."
     try:
         smtp = email_client.connect_smtp(
             settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
@@ -1501,8 +1566,9 @@ def test_email_settings(db: Session = Depends(get_db)):
             except Exception:
                 pass
     except Exception as e:
-        return schemas.EmailTestResult(success=False, message=f"SMTP (sending) failed: {e}")
+        smtp_ok, smtp_msg = False, f"Sending (SMTP) failed: {e}"
 
+    imap_ok, imap_msg = True, "Reading: OK -- logged in to the inbox."
     try:
         imap = email_client.connect_imap(
             settings.imap_host, settings.imap_port, settings.username, password, settings.imap_use_ssl
@@ -1512,15 +1578,16 @@ def test_email_settings(db: Session = Depends(get_db)):
         except Exception:
             pass
     except Exception as e:
-        return schemas.EmailTestResult(
-            success=False,
-            message=f"Sending worked, but IMAP (reading) failed: {e}",
-        )
+        imap_ok, imap_msg = False, f"Reading (IMAP) failed: {e}"
 
-    return schemas.EmailTestResult(
-        success=True,
-        message=f"Sent a [TEST] email to {settings.notify_email} and confirmed inbox access. Check that it arrived.",
-    )
+    if smtp_ok and imap_ok:
+        message = f"{smtp_msg} {imap_msg} Check that the test email arrived."
+    elif imap_ok:
+        message = (f"{smtp_msg}\n{imap_msg} Recipes can still be ingested; only the "
+                   "result notifications can't be sent until sending works.")
+    else:
+        message = f"{smtp_msg}\n{imap_msg}"
+    return schemas.EmailTestResult(success=smtp_ok and imap_ok, message=message)
 
 
 @app.post("/api/email-settings/scan", response_model=schemas.EmailScanResult)
@@ -1639,7 +1706,14 @@ def backup_pdfs(include_notes: bool = True, db: Session = Depends(get_db)):
     This bundle is for you, not for handing to someone else, and notes are
     part of what you'd want to keep.
     """
-    recipes = db.query(models.Recipe).order_by(models.Recipe.id).all()
+    # Relationships preloaded in two queries instead of lazily, one query per
+    # recipe per relationship, while the PDFs are built.
+    recipes = (
+        db.query(models.Recipe)
+        .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
+                 selectinload(models.Recipe.tags))
+        .order_by(models.Recipe.id).all()
+    )
     if not recipes:
         raise HTTPException(status_code=404, detail="There are no recipes to export.")
 

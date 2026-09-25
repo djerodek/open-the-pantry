@@ -366,7 +366,8 @@
     const scanHour = el("input", { type: "number", id: "email-scan-hour", min: "0", max: "23", value: String(settings.daily_scan_hour ?? 3) });
     const cooldown = el("input", { type: "number", id: "email-cooldown", min: "0", value: String(settings.cooldown_minutes ?? 30) });
 
-    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;" });
+    // pre-line: the test result puts sending and reading on separate lines.
+    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
 
     emailPanel.appendChild(el("div", { class: "field" }, [
       el("label", { for: "email-enabled", style: "display:flex;align-items:center;gap:0.5rem;" }, [
@@ -462,7 +463,12 @@
           if (body.scanned === 0 && body.messages.length) {
             statusLine.textContent = body.messages[0];
           } else {
-            statusLine.textContent = `Scanned ${body.scanned}: ${body.succeeded} ingested, ${body.failed} failed.`;
+            // The per-email lines carry the reason for each failure. They
+            // used to be dropped here, leaving only "1 failed" -- and the
+            // reason's only other route was the result email, which can't
+            // arrive when sending is what's broken.
+            const summary = `Scanned ${body.scanned}: ${body.succeeded} ingested, ${body.failed} failed.`;
+            statusLine.textContent = [summary, ...(body.messages || [])].join("\n");
             if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
           }
         } catch {
@@ -1626,7 +1632,8 @@
       value: recipe.tags.map((t) => t.name).join(", "),
     });
 
-    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;" });
+    // pre-line: the test result puts sending and reading on separate lines.
+    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
 
     const saveBtn = el("button", {
       class: "btn-primary", type: "button", text: "Save changes",
@@ -2143,6 +2150,10 @@
           e.preventDefault();
           const urls = textarea.value.split("\n").map((s) => s.trim()).filter(Boolean);
           if (!urls.length) return;
+          if (urls.length > 50) {  // MAX_BATCH_URLS on the server
+            resultsEl.textContent = `That's ${urls.length} links; the limit is 50 per batch. Send the rest separately.`;
+            return;
+          }
           setBusy(true, `Fetching ${urls.length} recipe(s)...`);
           try {
             const res = await fetch(`${API}/ingest/url/batch`, {
@@ -2150,6 +2161,7 @@
               body: JSON.stringify({ urls }),
             });
             const result = await res.json();
+            if (!res.ok) { resultsEl.textContent = result.detail || `Batch import failed (error ${res.status}).`; return; }
             renderBatchResults(resultsEl, result);
             announce(`${result.succeeded.length} added, ${result.failed.length} failed.`);
             await loadTags(); await loadTimeBuckets(); loadRecipes();
@@ -2217,12 +2229,17 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (!input.files.length) return;
+          if (input.files.length > 20) {  // MAX_BATCH_PDFS on the server
+            resultsEl.textContent = `That's ${input.files.length} PDFs; the limit is 20 per batch. Send the rest separately.`;
+            return;
+          }
           setBusy(true, `Processing ${input.files.length} PDF(s)...`);
           try {
             const fd = new FormData();
             for (const f of input.files) fd.append("files", f);
             const res = await fetch(`${API}/ingest/pdf/batch`, { method: "POST", body: fd });
             const result = await res.json();
+            if (!res.ok) { resultsEl.textContent = result.detail || `Batch import failed (error ${res.status}).`; return; }
             renderBatchResults(resultsEl, result);
             announce(`${result.succeeded.length} added, ${result.failed.length} failed.`);
             await loadTags(); await loadTimeBuckets(); loadRecipes();

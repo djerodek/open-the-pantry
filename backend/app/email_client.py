@@ -2,6 +2,7 @@ import email
 import email.utils
 import imaplib
 import smtplib
+import socket
 import ssl
 from email.header import decode_header
 from email.mime.text import MIMEText
@@ -30,14 +31,40 @@ def decode_subject(raw_subject) -> str:
     return decoded
 
 
+# Implicit-TLS ports: the connection is encrypted from the first byte.
+# Everything else starts in the clear and upgrades with STARTTLS. There is
+# no plaintext path either way.
+IMPLICIT_TLS_PORTS = {993, 465}
+
+
+# Flag naming, for both functions below: use_ssl / use_tls choose HOW TLS
+# is established, never WHETHER. IMAP use_ssl=True and SMTP use_tls=False
+# both mean implicit TLS (encrypted from the first byte: 993 / 465). The
+# other value means connect in the clear and upgrade with STARTTLS
+# (143 / 587). The names read the wrong way round for SMTP; kept because
+# they are stored columns.
+#
+# On 993 and 465 the port decides, whatever the stored flag says. A row
+# saved before the frontend derived the flag from the port still says
+# "STARTTLS" for port 465, and STARTTLS against an implicit-TLS listener
+# doesn't fail -- it waits for a greeting that never comes, then times out.
+# That was the reported failure, and it survived the frontend fix because
+# the fix only took effect on the next save.
+def imap_uses_implicit_tls(port: int, use_ssl: bool) -> bool:
+    return port in IMPLICIT_TLS_PORTS or use_ssl
+
+
+def smtp_uses_implicit_tls(port: int, use_tls: bool) -> bool:
+    return port in IMPLICIT_TLS_PORTS or not use_tls
+
+
 def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bool = True) -> imaplib.IMAP4:
-    """Connects and logs in, selecting INBOX. Always uses SSL/TLS -- either
-    a direct SSL connection (typical port 993) or STARTTLS upgrade of a
-    plaintext connection (typical port 143). Raises EmailConnectionError
+    """Connects and logs in, selecting INBOX. Raises EmailConnectionError
     with a clean message on any failure rather than leaking raw
     imaplib/socket exceptions up to callers."""
+    implicit = imap_uses_implicit_tls(port, use_ssl)
     try:
-        if use_ssl:
+        if implicit:
             conn = imaplib.IMAP4_SSL(host, port, timeout=20)
         else:
             conn = imaplib.IMAP4(host, port, timeout=20)
@@ -46,29 +73,109 @@ def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bo
         conn.select("INBOX")
         return conn
     except Exception as e:
-        raise EmailConnectionError(f"Could not connect/login to IMAP ({host}:{port}): {e}")
+        raise EmailConnectionError(
+            f"Could not connect/login to IMAP ({host}:{port}, "
+            f"{'implicit TLS' if implicit else 'STARTTLS'}): {e}"
+            + _diagnose_suffix(host, port, implicit, e)
+        )
 
 
-# Flag naming, for both functions below: use_ssl / use_tls choose HOW TLS
-# is established, never WHETHER. IMAP use_ssl=True and SMTP use_tls=False
-# both mean implicit TLS (encrypted from the first byte: 993 / 465). The
-# other value means connect in the clear and upgrade with STARTTLS
-# (143 / 587). There is no plaintext path. The names read the wrong way
-# round for SMTP; kept because they are stored columns.
 def connect_smtp(host: str, port: int, username: str, password: str, use_tls: bool = True) -> smtplib.SMTP:
-    """Always uses TLS -- either STARTTLS upgrade (typical port 587) or a
-    direct SSL connection (typical port 465, use_tls=False selects this
-    path since 'not STARTTLS' here means 'already encrypted')."""
+    """Connects and logs in. See the flag note above."""
+    implicit = smtp_uses_implicit_tls(port, use_tls)
     try:
-        if use_tls:
+        if implicit:
+            conn = smtplib.SMTP_SSL(host, port, timeout=20, context=ssl.create_default_context())
+        else:
             conn = smtplib.SMTP(host, port, timeout=20)
             conn.starttls(context=ssl.create_default_context())
-        else:
-            conn = smtplib.SMTP_SSL(host, port, timeout=20)
         conn.login(username, password)
         return conn
     except Exception as e:
-        raise EmailConnectionError(f"Could not connect/login to SMTP ({host}:{port}): {e}")
+        raise EmailConnectionError(
+            f"Could not connect/login to SMTP ({host}:{port}, "
+            f"{'implicit TLS' if implicit else 'STARTTLS'}): {e}"
+            + _diagnose_suffix(host, port, implicit, e)
+        )
+
+
+def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
+    """What is actually listening on host:port, independent of settings.
+
+    Returns one of:
+      "unreachable"   -- no TCP connection (firewall, wrong host/port, or the
+                         network path from this container is blocked)
+      "implicit_tls"  -- a TLS handshake succeeds straight away
+      "plaintext"     -- the server speaks first in the clear (a STARTTLS port)
+      "cert_error"    -- TLS is there but the certificate doesn't verify
+      "silent"        -- TCP connects, but neither a TLS handshake nor a
+                         plaintext greeting arrives
+    Used only to explain a failure, never to pick the mode: a probe that
+    could switch the app to a different connection type on its own would be
+    a downgrade path waiting to happen.
+    """
+    try:
+        raw = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return "unreachable"
+    try:
+        raw.settimeout(timeout)
+        ctx = ssl.create_default_context()
+        try:
+            with ctx.wrap_socket(raw, server_hostname=host):
+                return "implicit_tls"
+        except ssl.SSLCertVerificationError:
+            return "cert_error"
+        except (ssl.SSLError, OSError):
+            pass
+    finally:
+        try:
+            raw.close()
+        except OSError:
+            pass
+    # Not TLS from the first byte. Does it greet in the clear?
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as raw2:
+            raw2.settimeout(timeout)
+            banner = raw2.recv(64)
+            if banner[:3] in (b"220", b"* O"):  # SMTP "220 ...", IMAP "* OK ..."
+                return "plaintext"
+    except OSError:
+        pass
+    return "silent"
+
+
+def _diagnose_suffix(host: str, port: int, implicit: bool, err: Exception) -> str:
+    """One plain-language sentence explaining a connection failure, based on
+    probing the port. Only for network-level failures -- a wrong password is
+    reported as-is, and probing wouldn't add anything."""
+    if isinstance(err, (smtplib.SMTPAuthenticationError, imaplib.IMAP4.error)) and \
+            not isinstance(err, imaplib.IMAP4.abort):
+        return ""
+    try:
+        found = probe_port(host, port)
+    except Exception:
+        return ""
+    if found == "unreachable":
+        return (f" -- Diagnosis: can't open a connection to {host} on port {port} from the "
+                "container at all. The app's settings aren't the problem; a firewall, your ISP, "
+                "or the mail host is blocking that port from your network. Try the other port "
+                "your host lists (587 for SMTP, 143 for IMAP), or check the host's docs for "
+                "IP restrictions.")
+    if found == "implicit_tls" and not implicit:
+        return (f" -- Diagnosis: port {port} expects TLS immediately, but the app used STARTTLS.")
+    if found == "plaintext" and implicit:
+        return (f" -- Diagnosis: port {port} is a STARTTLS port (the server greets in plain "
+                "text first), but the app expected TLS immediately.")
+    if found == "cert_error":
+        return (f" -- Diagnosis: {host}:{port} has TLS, but its certificate doesn't verify for "
+                f"that hostname. Use the exact server name from the certificate (shared hosts "
+                "often want their own name, e.g. the server's hostname rather than "
+                "mail.yourdomain), or ask the host.")
+    if found == "silent":
+        return (f" -- Diagnosis: {host}:{port} accepts the connection but never answers. "
+                "Usually a firewall or proxy in between, or the wrong port.")
+    return ""
 
 
 def send_email(smtp_conn: smtplib.SMTP, from_addr: str, to_addr: str, subject: str, body: str):
@@ -113,7 +220,40 @@ def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> 
     return matched
 
 
+# Whole-message ceiling, checked before downloading. Attachments are capped
+# at 20 MB once decoded; base64 adds a third, plus headers and body. Without
+# this the full message is downloaded and parsed in memory before any limit
+# applies.
+MAX_MESSAGE_BYTES = 30 * 1024 * 1024
+
+
+class MessageTooLargeError(Exception):
+    pass
+
+
+def message_size(imap_conn: imaplib.IMAP4, msg_id: bytes):
+    """RFC822.SIZE for one message, or None if the server doesn't say."""
+    import re as _re
+    try:
+        status, data = imap_conn.fetch(msg_id, "(RFC822.SIZE)")
+    except Exception:
+        return None  # can't tell; the full fetch is still bounded by the server
+    if status != "OK" or not data:
+        return None
+    first = data[0][0] if isinstance(data[0], tuple) else data[0]
+    if isinstance(first, bytes):
+        m = _re.search(rb"RFC822\.SIZE (\d+)", first)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def fetch_full_message(imap_conn: imaplib.IMAP4, msg_id: bytes) -> email.message.Message:
+    size = message_size(imap_conn, msg_id)
+    if size is not None and size > MAX_MESSAGE_BYTES:
+        raise MessageTooLargeError(
+            f"email is {size / 1048576:.0f} MB; the limit is {MAX_MESSAGE_BYTES // 1048576} MB"
+        )
     status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[])")
     if status != "OK" or not data or not isinstance(data[0], tuple):
         raise EmailConnectionError(f"Could not fetch message {msg_id!r}")

@@ -159,11 +159,23 @@ docker compose -f docker-compose.build.yml up -d --build
 - Scans run once daily at a configurable hour (default 3:00 AM,
   container-local time), plus an on-demand "Scan inbox now" button in
   Settings for when you don't want to wait.
-- Each tagged email is tried in order: PDF attachment → image attachment
-  → a single link in the body (handed to the existing URL ingestion
+- Each tagged email is tried in order: PDF attachment → photo → links in
+  the body (up to three, in order, handed to the existing URL ingestion
   pipeline) → the body text itself. Every path reuses the same ingestion
   and validation code as its manual equivalent, so an emailed PDF gets
   exactly the same treatment as one uploaded through the UI.
+- Photos and PDFs sent from Apple Mail count even though Apple marks them
+  "inline". An inline image has to be at least 640 px on its long side to
+  be treated as a recipe photo, which keeps signature logos out of OCR.
+  Mail-app footers ("Sent from my iPhone", "Get Outlook for iOS" and its
+  link) and anything after a `-- ` signature line are ignored.
+- If an email can't be turned into a recipe, the reason lists each thing
+  tried and why it gave up. It is shown under "Scan inbox now" and sent in
+  the `[FAILURE]` email. Emails over 30 MB are refused before download.
+- The SMTP/IMAP connection type follows the port: 465 and 993 are
+  encrypted from the start, other ports upgrade with STARTTLS. "Send test
+  email" checks sending and reading separately, and when a connection
+  fails it probes the port and says what it found there.
 - Results are reported by email: `[SUCCESS]`, `[FAILURE]`, or `[PARTIAL]`
   when a scan had both. Results within a configurable cooldown window
   (default 30 min) are batched into one message rather than sent
@@ -422,15 +434,11 @@ docker compose -f docker-compose.build.yml up -d --build
   auto-follow, which would silently bypass the initial check via a 302 to
   an internal address). This is a DNS-resolve-time check, not a
   connection-time one, so it doesn't defend against DNS rebinding.
-  It also only covers requests this app makes directly. The primary
-  ingestion path calls `recipe_scrapers.scrape_me(url)` first, which uses
-  its own internal HTTP client for that request — not `_safe_get` — so a
-  redirect during *that specific call* isn't covered by this guard. (Our
-  own fetch only runs as a fallback, when `scrape_me()` itself raises.)
-  Both gaps are deliberate, documented scope tradeoffs (see `url_ingest.py`)
-  for a personal tool relying on a third-party library's HTTP handling, not
-  oversights — and not something to consider closed without changing that
-  control flow.
+  Every page fetch goes through that guarded client. `recipe_scrapers`
+  used to fetch pages itself via `scrape_me(url)`, outside the guard; it
+  now only parses HTML the app has already fetched (`scrape_html`), and a
+  test asserts it never makes its own request. DNS rebinding remains an
+  accepted gap for a LAN tool.
 - **Recipe content is HTML-escaped on export.** Titles/ingredients/steps can
   originate from arbitrary scraped web pages or OCR output — the HTML/PDF
   export template escapes all of it (Jinja2 autoescape), so injected markup
