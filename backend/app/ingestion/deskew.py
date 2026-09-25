@@ -9,6 +9,33 @@ MAX_DESKEW_ANGLE = 15.0
 MIN_CONTENT_POINTS = 50  # below this, there isn't enough "ink" to trust an angle estimate
 
 
+def _skew_angle(rect) -> float:
+    """Skew in degrees, in the sign getRotationMatrix2D expects, from the
+    rectangle's corner points rather than from rect[2].
+
+    minAreaRect's angle field changed convention in OpenCV 4.5.1 (from
+    [-90, 0) to (0, 90]) and the sign it implies flipped with it. Code
+    calibrated against one version rotates the wrong way on the other --
+    an external review running a different OpenCV saw exactly that, on the
+    negative-angle tests only. The corner points mean the same thing in
+    every version, so the angle is measured from them: of the rectangle's
+    edges, take the one closest to horizontal and measure its slope.
+    """
+    pts = cv2.boxPoints(rect)
+    best = None
+    for i in range(4):
+        (x1, y1), (x2, y2) = pts[i], pts[(i + 1) % 4]
+        if x2 < x1:
+            x1, y1, x2, y2 = x2, y2, x1, y1
+        dx, dy = x2 - x1, y2 - y1
+        if dx == 0 and dy == 0:
+            continue
+        a = float(np.degrees(np.arctan2(dy, dx)))   # image coords: y grows downward
+        if -45 < a <= 45 and (best is None or abs(a) < abs(best)):
+            best = a
+    return best if best is not None else 0.0
+
+
 def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     """
     Detect and correct small rotational skew (a tilted phone photo of a
@@ -29,19 +56,7 @@ def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     if coords is None or len(coords) < MIN_CONTENT_POINTS:
         return gray  # not enough content to estimate an angle reliably
 
-    angle = cv2.minAreaRect(coords)[-1]
-    # minAreaRect's angle convention is inconsistent across OpenCV
-    # versions/builds and isn't reliably documented -- verified empirically
-    # against known rotated test images (in both directions, across several
-    # magnitudes) rather than trusted from convention docs alone. This
-    # build returns angles in [0, 90): values above 45 represent the same
-    # rotation referenced against the rectangle's other pair of edges, and
-    # need -90 applied to collapse to a small, correctly-signed angle --
-    # using them as-is silently produced near-90-degree rotations that
-    # only "worked" on some test cases by coincidence (partial content
-    # overlap), not because the correction was actually right.
-    if angle > 45:
-        angle = angle - 90
+    angle = _skew_angle(cv2.minAreaRect(coords))
 
     if abs(angle) < 0.3 or abs(angle) > MAX_DESKEW_ANGLE:
         return gray  # negligible skew, or the estimate looks unreliable

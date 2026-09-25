@@ -211,3 +211,48 @@ def test_pdf_bundle_404s_when_there_are_no_recipes(client):
     if existing:
         return  # other tests' data present; the empty case is covered elsewhere
     assert client.get("/api/backup/pdfs.zip").status_code == 404
+
+
+def test_backup_contains_exactly_the_photos_the_database_refers_to(client, data_dir):
+    """External review: the archive listed uploads/ after the snapshot, so it
+    could hold photos nothing referred to, or miss one a recipe did. It now
+    takes the list from the snapshot, and reports anything missing."""
+    import io, json, os, zipfile
+    from app.database import UPLOADS_DIR, SessionLocal
+    from app import models
+
+    stray = "img-00000000-0000-4000-8000-000000000001.png"
+    open(os.path.join(UPLOADS_DIR, stray), "wb").write(b"orphan")
+    gone = "img-00000000-0000-4000-8000-000000000002.png"
+    db = SessionLocal()
+    r = models.Recipe(title="Backup Ref Test", source_type="manual", image_path=gone)
+    db.add(r); db.commit(); rid = r.id; db.close()
+    try:
+        resp = client.get("/api/backup/database.zip")
+        assert resp.status_code == 200
+        z = zipfile.ZipFile(io.BytesIO(resp.content))
+        names = z.namelist()
+        manifest = json.loads(z.read("manifest.json"))
+        assert f"uploads/{stray}" not in names
+        assert gone in manifest["missing_uploads"]
+        assert manifest["unreferenced_uploads_left_out"] >= 1
+    finally:
+        os.remove(os.path.join(UPLOADS_DIR, stray))
+        client.post("/api/recipes/batch-delete", json={"ids": [rid]})
+
+
+def test_upload_deletion_waits_for_a_running_backup(tmp_path, monkeypatch):
+    """A delete during a backup waits until the photos are copied."""
+    import threading, time
+    from app import backup
+
+    f = tmp_path / "photo.jpg"
+    f.write_bytes(b"x")
+    done = []
+    with backup.UPLOADS_LOCK:
+        t = threading.Thread(target=lambda: (backup.remove_upload_file(str(f)), done.append(1)))
+        t.start()
+        time.sleep(0.3)
+        assert f.exists() and not done, "delete must not run while the backup holds the lock"
+    t.join(2)
+    assert done and not f.exists()

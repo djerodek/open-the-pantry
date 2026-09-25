@@ -72,3 +72,17 @@ def test_deskew_does_not_crash_on_sparse_content():
     sparse[10:12, 10:12] = 0  # a handful of dark pixels, well under MIN_CONTENT_POINTS
     result = deskew_grayscale(sparse)
     assert np.array_equal(result, sparse)
+
+
+@pytest.mark.parametrize("skew", [-15, -10, -8, -3, 3, 8, 10, 15])
+def test_skew_angle_is_the_same_under_both_opencv_angle_conventions(skew):
+    """minAreaRect's angle field changed convention in OpenCV 4.5.1; an
+    external review on a different OpenCV saw the negative-angle deskew
+    tests fail. The same rectangle can be written as (w, h, a) or
+    (h, w, a - 90) -- the two conventions describe it differently -- and
+    the skew measured from its corners must not depend on which."""
+    from app.ingestion.deskew import _skew_angle
+
+    new_style = ((500.0, 400.0), (600.0, 300.0), float(skew % 90 or 90))
+    old_style = ((500.0, 400.0), (300.0, 600.0), new_style[2] - 90.0)
+    assert _skew_angle(new_style) == pytest.approx(_skew_angle(old_style), abs=1e-3)  # boxPoints is float32

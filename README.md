@@ -116,7 +116,8 @@ docker compose -f docker-compose.build.yml up -d --build
   without one (scanned images) go through Tesseract OCR, with an
   orientation pass (pages that are sideways or upside down are turned
   upright) and a deskew pass for pages fed in at a slight angle. Mixed documents are
-  handled per-page. Individual or batch (up to 20 files, auto-saved). Also
+  handled per-page. Individual or batch (up to 20 files and 100 MB in
+  total, auto-saved). Also
   extracts the largest embedded image across the document as a showcase
   photo, if one is present and large enough to plausibly be a real photo
   rather than a logo/icon.
@@ -245,6 +246,11 @@ docker compose -f docker-compose.build.yml up -d --build
   is a regression test asserting the snapshot contains WAL-committed rows.
   The backup is also checkpointed out of WAL mode before being zipped, so
   what lands in the archive is one self-contained file.
+- The photos in the archive are exactly the ones that database snapshot
+  refers to, and deleting a recipe waits until they've been copied, so a
+  backup never points at a photo it doesn't contain. Photos nothing refers
+  to are left out; a referenced photo that's missing from disk is listed in
+  `manifest.json` and logged rather than silently skipped.
 - **Recipes as PDFs (`.zip`)** — one PDF per recipe, plus an `index.csv`. This is
   the archive that outlives the app: PDFs open on anything, with no Docker
   and no SQLite. It **cannot** be restored from — it's a reading copy, not a

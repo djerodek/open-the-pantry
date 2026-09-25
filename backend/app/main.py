@@ -33,7 +33,7 @@ from .ingestion.ingredient_parser import parse_ingredient_block
 from .ingestion.tagger import suggest_tags
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
-from .backup import build_database_backup, build_pdf_bundle
+from .backup import build_database_backup, build_pdf_bundle, remove_upload_file
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import crypto
@@ -151,7 +151,7 @@ def _sweep_orphaned_upload_files():
         try:
             if (os.path.isfile(path) and name not in referenced
                     and now - os.path.getmtime(path) > TMP_FILE_MAX_AGE_SECONDS):
-                os.remove(path)
+                remove_upload_file(path)
         except OSError:
             log.debug("_sweep_orphaned_upload_files: caught error, continuing", exc_info=True)
             pass
@@ -457,7 +457,7 @@ def _delete_recipe_files(recipe: models.Recipe):
         path = safe_join(UPLOADS_DIR, recipe.image_path)
         if path and os.path.isfile(path):
             try:
-                os.remove(path)
+                remove_upload_file(path)
             except OSError:
                 log.debug("_delete_recipe_files: caught error, continuing", exc_info=True)
                 pass
@@ -816,6 +816,11 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
 # person pasting a reading list; the frontend checks the same numbers.
 MAX_BATCH_URLS = 50
 MAX_BATCH_PDFS = 20
+# Total size of one PDF batch. The count cap alone still allowed 20 x 20 MB.
+# Checked after the upload has arrived (Starlette spools it to disk first),
+# so this bounds the work done, not the bytes received -- a size limit on
+# the request itself belongs in a reverse proxy, if one is in front.
+MAX_BATCH_PDF_BYTES = 100 * 1024 * 1024
 
 
 @app.post("/api/ingest/url/batch")
@@ -868,7 +873,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             if image_path:
                 stray_path = safe_join(UPLOADS_DIR, image_path)
                 if stray_path and os.path.isfile(stray_path):
-                    os.remove(stray_path)
+                    remove_upload_file(stray_path)
             failed.append({"url": url, "error": str(e)})
     return {"succeeded": succeeded, "failed": failed}
 
@@ -926,6 +931,18 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
     its extracted content is saved."""
     if len(files) > MAX_BATCH_PDFS:
         raise HTTPException(status_code=400, detail=f"Too many PDFs in one batch (max {MAX_BATCH_PDFS}). Send the rest separately.")
+    total = 0
+    for f in files:
+        size = getattr(f, "size", None)
+        if size is None:
+            f.file.seek(0, os.SEEK_END); size = f.file.tell(); f.file.seek(0)
+        total += size
+    if total > MAX_BATCH_PDF_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"These PDFs total {total / 1048576:.0f} MB; one batch can be at most "
+                   f"{MAX_BATCH_PDF_BYTES // 1048576} MB. Send them in smaller groups.",
+        )
     succeeded, failed = [], []
     for file in files:
         name_prefix = f"pdf-{uuid.uuid4().hex}"
@@ -1385,7 +1402,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
     if old_image and old_image != new_image:
         old_path = safe_join(UPLOADS_DIR, old_image)
         if old_path and os.path.isfile(old_path):
-            os.remove(old_path)
+            remove_upload_file(old_path)
 
     db.refresh(recipe)
     return recipe
@@ -1479,7 +1496,7 @@ def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Dep
     if old_image and old_image != new_image:
         old_path = safe_join(UPLOADS_DIR, old_image)
         if old_path and os.path.isfile(old_path):
-            os.remove(old_path)
+            remove_upload_file(old_path)
 
     db.refresh(recipe)
     return recipe

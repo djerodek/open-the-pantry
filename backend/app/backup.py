@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import zipfile
 from datetime import datetime, timezone
 
@@ -154,49 +155,91 @@ Notes
 """
 
 
+# Held while a full backup is built, and by every removal of a file from
+# uploads/. Without it, a recipe deleted between the database snapshot and
+# the copying of photos left a backup whose database pointed at a photo the
+# archive didn't contain. Deletes wait (seconds, at most) rather than the
+# backup being inconsistent. RLock: harmless if a holder re-enters.
+UPLOADS_LOCK = threading.RLock()
+
+
+def remove_upload_file(path: str) -> None:
+    """The only way a file in uploads/ should be deleted -- see UPLOADS_LOCK."""
+    with UPLOADS_LOCK:
+        if os.path.isfile(path):
+            os.remove(path)
+
+
 def build_database_backup(dest_zip_path: str) -> dict:
     """Database + uploads, as a restorable zip. Returns manifest counts."""
     tmp_db = dest_zip_path + ".db.tmp"
-    snapshot_database(tmp_db)
-
     try:
-        upload_names = sorted(
-            n for n in os.listdir(UPLOADS_DIR)
-            if os.path.isfile(os.path.join(UPLOADS_DIR, n))
-        ) if os.path.isdir(UPLOADS_DIR) else []
-
-        uploads_bytes = sum(
-            os.path.getsize(os.path.join(UPLOADS_DIR, n)) for n in upload_names
-        )
-
-        with sqlite3.connect(tmp_db) as snap:
-            recipe_count = snap.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
-
-        manifest = {
-            "application": "open-the-pantry",
-            "backup_type": "database",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "recipe_count": recipe_count,
-            "upload_count": len(upload_names),
-            "uploads_bytes": uploads_bytes,
-            "database_bytes": os.path.getsize(tmp_db),
-            "restores_with": "see RESTORE.txt",
-        }
-
-        # ZIP_DEFLATED on a SQLite file is worth it (they compress well);
-        # already-compressed JPEGs and PDFs simply won't shrink much, which
-        # costs a little CPU and no correctness.
-        with zipfile.ZipFile(dest_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(tmp_db, "recipes.db")
-            for name in upload_names:
-                zf.write(os.path.join(UPLOADS_DIR, name), f"uploads/{name}")
-            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
-            zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
-
-        return manifest
+        with UPLOADS_LOCK:
+            return _build_database_backup_locked(dest_zip_path, tmp_db)
     finally:
         if os.path.isfile(tmp_db):
             os.remove(tmp_db)
+
+
+def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
+    """The archive contains exactly the photos the snapshot refers to.
+
+    It used to contain whatever was in uploads/ when the folder was listed,
+    after the snapshot: a photo promoted after the snapshot went in with
+    nothing referring to it, and one deleted in between was referenced but
+    missing. Now the list comes from the snapshot itself, and deletes wait
+    on UPLOADS_LOCK until the copy is done. Anything referenced but absent
+    anyway (removed outside the app) is listed in the manifest and logged,
+    not silently dropped.
+    """
+    from .file_validation import is_safe_stored_filename
+
+    snapshot_database(tmp_db)
+    with sqlite3.connect(tmp_db) as snap:
+        recipe_count = snap.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
+        referenced = sorted({
+            r[0] for r in snap.execute("SELECT image_path FROM recipes WHERE image_path IS NOT NULL")
+        })
+
+    upload_names, missing = [], []
+    for name in referenced:
+        path = os.path.join(UPLOADS_DIR, name)
+        if is_safe_stored_filename(name) and os.path.isfile(path):
+            upload_names.append(name)
+        else:
+            missing.append(name)
+    if missing:
+        log.warning("Backup: %d referenced photo(s) not found in uploads/: %s", len(missing), missing[:20])
+    on_disk = {n for n in os.listdir(UPLOADS_DIR) if os.path.isfile(os.path.join(UPLOADS_DIR, n))} \
+        if os.path.isdir(UPLOADS_DIR) else set()
+    unreferenced = len(on_disk - set(upload_names))
+
+    uploads_bytes = sum(os.path.getsize(os.path.join(UPLOADS_DIR, n)) for n in upload_names)
+
+    manifest = {
+        "application": "open-the-pantry",
+        "backup_type": "database",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "recipe_count": recipe_count,
+        "upload_count": len(upload_names),
+        "uploads_bytes": uploads_bytes,
+        "database_bytes": os.path.getsize(tmp_db),
+        "missing_uploads": missing,
+        "unreferenced_uploads_left_out": unreferenced,
+        "restores_with": "see RESTORE.txt",
+    }
+
+    # ZIP_DEFLATED on a SQLite file is worth it (they compress well);
+    # already-compressed JPEGs and PDFs simply won't shrink much, which
+    # costs a little CPU and no correctness.
+    with zipfile.ZipFile(dest_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(tmp_db, "recipes.db")
+        for name in upload_names:
+            zf.write(os.path.join(UPLOADS_DIR, name), f"uploads/{name}")
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
+
+    return manifest
 
 
 def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) -> dict:
