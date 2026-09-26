@@ -35,6 +35,7 @@ SEED_TAGS = [
 
 NEW_RECIPE_COLUMNS = {
     "tags_text": "TEXT DEFAULT ''",
+    "content_text": "TEXT DEFAULT ''",
     "favorite": "INTEGER NOT NULL DEFAULT 0",
     "tastiness_rating": "INTEGER",
     "cook_time_rating": "TEXT",
@@ -43,28 +44,48 @@ NEW_RECIPE_COLUMNS = {
     "notes": "TEXT",
 }
 
+FTS_COLUMNS = ("title", "raw_text", "tags_text", "content_text", "notes")
+_COLS = ", ".join(FTS_COLUMNS)
+_NEW = ", ".join("new." + c for c in FTS_COLUMNS)
+_OLD = ", ".join("old." + c for c in FTS_COLUMNS)
+FTS_CREATE_SQL = f"CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5({_COLS}, content='recipes', content_rowid='id')"
+
 FTS_TRIGGER_SQL = [
-    """
+    f"""
     CREATE TRIGGER IF NOT EXISTS recipes_ai AFTER INSERT ON recipes BEGIN
-        INSERT INTO recipes_fts(rowid, title, raw_text, tags_text)
-        VALUES (new.id, new.title, new.raw_text, new.tags_text);
+        INSERT INTO recipes_fts(rowid, {_COLS}) VALUES (new.id, {_NEW});
     END;
     """,
-    """
+    f"""
     CREATE TRIGGER IF NOT EXISTS recipes_ad AFTER DELETE ON recipes BEGIN
-        INSERT INTO recipes_fts(recipes_fts, rowid, title, raw_text, tags_text)
-        VALUES ('delete', old.id, old.title, old.raw_text, old.tags_text);
+        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS}) VALUES ('delete', old.id, {_OLD});
     END;
     """,
-    """
+    f"""
     CREATE TRIGGER IF NOT EXISTS recipes_au AFTER UPDATE ON recipes BEGIN
-        INSERT INTO recipes_fts(recipes_fts, rowid, title, raw_text, tags_text)
-        VALUES ('delete', old.id, old.title, old.raw_text, old.tags_text);
-        INSERT INTO recipes_fts(rowid, title, raw_text, tags_text)
-        VALUES (new.id, new.title, new.raw_text, new.tags_text);
+        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS}) VALUES ('delete', old.id, {_OLD});
+        INSERT INTO recipes_fts(rowid, {_COLS}) VALUES (new.id, {_NEW});
     END;
     """,
 ]
+
+# recipes.content_text = all ingredient lines and step texts, in order.
+_CONTENT_SQL = """
+    COALESCE((SELECT group_concat(raw_line, ' ') FROM (SELECT raw_line FROM ingredients
+              WHERE recipe_id = {rid} ORDER BY position)), '')
+    || ' ' ||
+    COALESCE((SELECT group_concat(text, ' ') FROM (SELECT text FROM steps
+              WHERE recipe_id = {rid} ORDER BY position)), '')
+"""
+CONTENT_TRIGGER_SQL = []
+for _table in ("ingredients", "steps"):
+    for _event, _ref in (("INSERT", "new"), ("UPDATE", "new"), ("DELETE", "old")):
+        CONTENT_TRIGGER_SQL.append(f"""
+        CREATE TRIGGER IF NOT EXISTS {_table}_content_{_event.lower()} AFTER {_event} ON {_table} BEGIN
+            UPDATE recipes SET content_text = {_CONTENT_SQL.format(rid=_ref + ".recipe_id")}
+            WHERE id = {_ref}.recipe_id;
+        END;
+        """)
 
 
 def _migrate_and_setup_schema():
@@ -99,40 +120,42 @@ def _migrate_and_setup_schema():
             except sqlite3.OperationalError:
                 pass
 
-            if fts_cols and "tags_text" not in fts_cols:
-                # Backfill tags_text from the existing recipe_tags/tags join
-                # before rebuilding the FTS index against it.
-                cur.execute("""
-                    UPDATE recipes
-                    SET tags_text = COALESCE((
-                        SELECT group_concat(t.name, ' ')
-                        FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id
-                        WHERE rt.recipe_id = recipes.id
-                    ), '')
-                """)
+            if fts_cols and set(FTS_COLUMNS) - fts_cols:
+                # The index is missing a column (older version). Order
+                # matters: drop the index and its triggers FIRST, then
+                # backfill, then rebuild. Backfilling with the triggers in
+                # place makes each UPDATE ask the index to delete entries it
+                # never contained, which corrupts an external-content FTS5
+                # table ("database disk image is malformed") -- caught by
+                # migrating a real old-format database before release.
                 cur.execute("DROP TRIGGER IF EXISTS recipes_ai")
                 cur.execute("DROP TRIGGER IF EXISTS recipes_ad")
                 cur.execute("DROP TRIGGER IF EXISTS recipes_au")
                 cur.execute("DROP TABLE IF EXISTS recipes_fts")
-                cur.execute("""
-                    CREATE VIRTUAL TABLE recipes_fts USING fts5(
-                        title, raw_text, tags_text, content='recipes', content_rowid='id'
-                    )
-                """)
+                if "tags_text" not in fts_cols:
+                    cur.execute("""
+                        UPDATE recipes
+                        SET tags_text = COALESCE((
+                            SELECT group_concat(t.name, ' ')
+                            FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id
+                            WHERE rt.recipe_id = recipes.id
+                        ), '')
+                    """)
+                cur.execute(f"UPDATE recipes SET content_text = {_CONTENT_SQL.format(rid='recipes.id')}")
+                cur.execute(FTS_CREATE_SQL)
+                cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
                 for stmt in FTS_TRIGGER_SQL:
                     cur.execute(stmt)
-                cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
             elif not fts_cols:
                 # recipes table exists but recipes_fts doesn't (shouldn't
                 # normally happen, but handle it defensively)
-                cur.execute("""
-                    CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5(
-                        title, raw_text, tags_text, content='recipes', content_rowid='id'
-                    )
-                """)
+                cur.execute(FTS_CREATE_SQL)
                 for stmt in FTS_TRIGGER_SQL:
                     cur.execute(stmt)
                 cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
+
+            for stmt in CONTENT_TRIGGER_SQL:
+                cur.execute(stmt)
 
         conn.commit()
     finally:
@@ -152,12 +175,8 @@ def init_db():
     # if still missing -- harmless no-op if the migration step above already
     # handled it.
     with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5(
-                title, raw_text, tags_text, content='recipes', content_rowid='id'
-            )
-        """))
-        for stmt in FTS_TRIGGER_SQL:
+        conn.execute(text(FTS_CREATE_SQL))
+        for stmt in FTS_TRIGGER_SQL + CONTENT_TRIGGER_SQL:
             conn.execute(text(stmt))
         conn.commit()
 

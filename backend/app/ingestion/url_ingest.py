@@ -220,6 +220,36 @@ def _try_recipe_scrapers(url: str, html: str):
         return None
 
 
+def _flatten_instructions(node) -> list[str]:
+    """recipeInstructions as a flat list of step texts.
+
+    Sites group steps into HowToSection objects ("For the dough", "For the
+    filling"), each holding its own HowToStep list in itemListElement. Only
+    the section's name used to be kept, so the steps came back as
+    ['For the dough'] with everything inside it dropped. Sections now keep
+    their heading as a step ending in ":" -- the same way ingredient
+    sub-headings read -- followed by their steps.
+    """
+    if isinstance(node, str):
+        return [s.strip() for s in node.split("\n") if s.strip()]
+    if isinstance(node, list):
+        out = []
+        for item in node:
+            out.extend(_flatten_instructions(item))
+        return out
+    if isinstance(node, dict):
+        kind = node.get("@type")
+        kinds = kind if isinstance(kind, list) else [kind]
+        children = node.get("itemListElement")
+        if "HowToSection" in kinds or (children and not node.get("text")):
+            heading = (node.get("name") or "").strip()
+            inner = _flatten_instructions(children or [])
+            return ([heading.rstrip(":") + ":"] if heading and inner else []) + inner
+        text = node.get("text") or node.get("name")
+        return [text.strip()] if isinstance(text, str) and text.strip() else []
+    return []
+
+
 def _try_json_ld(html: str):
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.find_all("script", type="application/ld+json"):
@@ -256,14 +286,8 @@ def _try_json_ld(html: str):
             steps = []
             if isinstance(instructions, str):
                 steps = [s.strip() for s in instructions.split("\n") if s.strip()]
-            elif isinstance(instructions, list):
-                for step in instructions:
-                    if isinstance(step, dict):
-                        text = step.get("text") or step.get("name")
-                        if text:
-                            steps.append(text.strip())
-                    elif isinstance(step, str):
-                        steps.append(step.strip())
+            elif isinstance(instructions, (list, dict)):
+                steps = _flatten_instructions(instructions)
 
             image = item.get("image")
             image_url = None

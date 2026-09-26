@@ -152,6 +152,12 @@ docker compose -f docker-compose.build.yml up -d --build
   image" option — before saving. Batch ingestion saves directly and reports
   per-item success/failure, since reviewing many items one at a time isn't
   really a batch operation.
+- **Ingredients are kept as written.** Each line is stored exactly as
+  entered or extracted, and also parsed into quantity, unit and name
+  ("1½ cups flour" -> 1½ / cup / flour), including lines typed on the
+  review, edit and manual screens. The recipe shows the line as written.
+- Recipe pages that group their steps into sections ("For the dough",
+  "For the filling") keep every step, with the section names as headings.
 - **How extracted text becomes a recipe** (PDF, photo and email text all
   use the same rules): the title is the line above the author byline, or
   a short line the page repeats, never the browser's print date or a
@@ -275,8 +281,12 @@ docker compose -f docker-compose.build.yml up -d --build
   ingredient) plus free-form custom tags. Keyword-based auto-suggestion at
   ingest time; always user-editable. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
-- Full-text search (SQLite FTS5) across recipe text *and* tag names, with
-  each result labeled by which one matched.
+- Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
+  source text *and* tag names, with each result labeled by whether it
+  matched the recipe or a tag. Words match from their start ("chick" finds
+  chicken) in any order, and every word must match. The ingredient and step
+  text is kept in step by database triggers, so edits are searchable
+  immediately.
 - Sort by newest/oldest, title, rating, cook time or difficulty, each
   either way; recipes with no value for the chosen field always go last.
   The choice is remembered. Sorting applies to search results too.

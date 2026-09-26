@@ -32,6 +32,11 @@ class Recipe(Base):
     # tags are set (see main.py). Lets FTS5 search match on tags without
     # complex triggers across the many-to-many recipe_tags table.
     tags_text = Column(Text, nullable=True, default="")
+    # Ingredients and steps as one searchable text column. Maintained by
+    # SQLite triggers on the ingredients/steps tables (see init_db), so every
+    # write path keeps it current -- search used to cover only the title and
+    # raw_text, which manual recipes don't have and edits never update.
+    content_text = Column(Text, nullable=True, default="")
     # Average OCR word confidence (0-100), NULL if not OCR-derived
     ocr_confidence = Column(Float, nullable=True)
 

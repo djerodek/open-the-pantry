@@ -383,7 +383,14 @@ def _fts_phrase(q: str) -> str:
     OperationalError, and characters like `-`, `:`, `{}` have special
     meaning (NOT, column filters) that could change which column is
     searched. Wrapping as an escaped phrase neutralizes all of that."""
-    return '"' + q.replace('"', '""') + '"'
+    # Each word becomes a quoted prefix term ("chick"* matches "chicken"),
+    # all required (FTS5 ANDs adjacent terms). It used to be one phrase, so
+    # "chick" missed "Chicken soup" and word order mattered. Quoting each
+    # word still neutralizes FTS5 syntax: only the * is ours.
+    words = [w for w in re.split(r"\s+", q.strip()) if w]
+    if not words:
+        return '""'
+    return " ".join('"' + w.replace('"', '""') + '"*' for w in words)
 
 
 def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, expect: str,
@@ -485,6 +492,24 @@ def _get_or_create_tags(db: Session, tag_ins: list[schemas.TagIn]) -> list[model
             db.flush()
         tags.append(tag)
     return tags
+
+
+def _ingredient_fields(ing: schemas.IngredientIn) -> dict:
+    """Columns for one ingredient row.
+
+    The review, edit and manual-entry screens send each line as
+    {raw_line: line, name: line} with no quantity or unit, so anything saved
+    from the UI lost its structure. A line that arrives unparsed is parsed
+    here; one that already has a quantity or unit is stored as given.
+    raw_line is always kept exactly as entered.
+    """
+    unparsed = not ing.quantity and not ing.unit and (not ing.name or ing.name.strip() == ing.raw_line.strip())
+    if unparsed:
+        parsed = parse_ingredient_block([ing.raw_line])
+        if parsed:
+            return {"raw_line": ing.raw_line, "quantity": parsed[0]["quantity"],
+                    "unit": parsed[0]["unit"], "name": parsed[0]["name"]}
+    return {"raw_line": ing.raw_line, "quantity": ing.quantity, "unit": ing.unit, "name": ing.name}
 
 
 def _apply_tags(db: Session, recipe: models.Recipe, tag_ins: list[schemas.TagIn]):
@@ -1278,10 +1303,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
         db.flush()
 
         for pos, ing in enumerate(payload.ingredients):
-            db.add(models.Ingredient(
-                recipe_id=recipe.id, position=pos, raw_line=ing.raw_line,
-                quantity=ing.quantity, unit=ing.unit, name=ing.name,
-            ))
+            db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **_ingredient_fields(ing)))
 
         for pos, step_text in enumerate(payload.steps):
             db.add(models.Step(recipe_id=recipe.id, position=pos, text=step_text))
@@ -1312,7 +1334,7 @@ def list_recipes(
     matched_via: dict[int, set[str]] = {}
 
     if q:
-        # SECURITY NOTE: the `{title raw_text}` / `{tags_text}` column-set
+        # SECURITY NOTE: the `{title raw_text content_text notes}` / `{tags_text}` column-set
         # prefixes below are fixed string literals, never derived from user
         # input -- only `phrase` (the escaped, quoted user query) varies.
         # If this ever changes to accept a caller-supplied column name,
@@ -1322,14 +1344,14 @@ def list_recipes(
         phrase = _fts_phrase(q)
         text_rows = db.execute(
             text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{{title raw_text}} : {phrase}"},
+            {"m": f"{{title raw_text content_text notes}} : ({phrase})"},
         ).fetchall()
         for r in text_rows:
             matched_via.setdefault(r[0], set()).add("text")
 
         tag_rows = db.execute(
             text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{{tags_text}} : {phrase}"},
+            {"m": f"{{tags_text}} : ({phrase})"},
         ).fetchall()
         for r in tag_rows:
             matched_via.setdefault(r[0], set()).add("tag")
@@ -1500,10 +1522,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
         db.query(models.Ingredient).filter_by(recipe_id=recipe.id).delete()
         db.query(models.Step).filter_by(recipe_id=recipe.id).delete()
         for pos, ing in enumerate(payload.ingredients):
-            db.add(models.Ingredient(
-                recipe_id=recipe.id, position=pos, raw_line=ing.raw_line,
-                quantity=ing.quantity, unit=ing.unit, name=ing.name,
-            ))
+            db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **_ingredient_fields(ing)))
         for pos, step_text in enumerate(payload.steps):
             db.add(models.Step(recipe_id=recipe.id, position=pos, text=step_text))
 

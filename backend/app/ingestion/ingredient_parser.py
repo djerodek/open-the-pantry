@@ -37,13 +37,15 @@ UNIT_CANONICAL = {
 }
 
 # Quantity: integer, decimal, simple fraction, unicode fraction, or a range ("1-2", "1 to 2")
+_UFRAC = r"[\u00BC-\u00BE\u2150-\u215E]"   # ¼ ½ ¾ ⅓ ⅔ ⅛ ...
 QTY_PATTERN = (
-    r"(\d+\s*\d*/\d+"       # "1 1/2"
+    r"(\d+\s*" + _UFRAC +      # "1½", "1 ½" -- before plain "\d+", or "1 ½" parsed as 1
+    r"|\d+\s*\d*/\d+"       # "1 1/2"
     r"|\d+\.\d+"            # "1.5"
     r"|\d+"                 # "2"
     r"|[\u00BC-\u00BE\u2150-\u215E]"  # unicode fraction chars e.g. ¼ ½ ¾
     r")"
-    r"(?:\s*(?:-|to)\s*\d+\s*\d*/?\d*)?"  # optional range "-2" / "to 2"
+    r"(?:\s*(?:-|–|to)\s*\d+\s*(?:\d*/\d+|" + _UFRAC + r")?)?"  # optional range "-2" / "to 2" / "–2½"
 )
 
 LINE_RE = re.compile(

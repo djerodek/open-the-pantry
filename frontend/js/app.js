@@ -1124,6 +1124,15 @@
     announce(`${currentRecipes.length} recipe${currentRecipes.length === 1 ? "" : "s"} found`);
   }
 
+  // An ingredient as it was written ("3 Tablespoons plus 1 teaspoon maple
+  // syrup"), not rebuilt from the parsed fields ("3 tbsp plus 1 teaspoon
+  // maple syrup"). The parsed quantity/unit/name are for sorting and
+  // filtering; the screens used to show -- and, via the edit form, save --
+  // the rebuilt string, which normalised units and moved parentheticals.
+  function ingredientText(i) {
+    return (i.raw_line || [i.quantity, i.unit, i.name].filter(Boolean).join(" ")).trim();
+  }
+
   function showListError(message) {
     const region = $("#recipe-list-region");
     region.innerHTML = "";
@@ -1711,7 +1720,7 @@
 
     const ingredientsArea = el("textarea", { id: "edit-ingredients", style: "min-height:9rem;" });
     ingredientsArea.value = recipe.ingredients
-      .map((i) => [i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" "))
+      .map((i) => ingredientText(i))
       .join("\n");
 
     const stepsArea = el("textarea", { id: "edit-steps", style: "min-height:9rem;" });
@@ -1866,7 +1875,7 @@
       notesSection(recipe),
       el("h2", { text: "Ingredients" }),
       el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
-        el("li", { text: [i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" ") })
+        el("li", { text: ingredientText(i) })
       )),
       el("h2", { text: "Instructions" }),
       el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
@@ -2024,7 +2033,7 @@
         onclick: async () => {
           onDone();
           const text = `${recipe.title}\n\nIngredients:\n` +
-            recipe.ingredients.map((i) => `- ${[i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" ")}`).join("\n") +
+            recipe.ingredients.map((i) => `- ${ingredientText(i)}`).join("\n") +
             `\n\nInstructions:\n` + recipe.steps.map((s, idx) => `${idx + 1}. ${s.text}`).join("\n");
           try { await navigator.clipboard.writeText(text); announce("Recipe copied as text."); }
           catch { announce("Could not copy to clipboard."); }
@@ -2462,7 +2471,7 @@
     const titleInput = el("input", { type: "text", id: "review-title", value: draft.title || "" });
     const ingredientsArea = el("textarea", { id: "review-ingredients" });
     ingredientsArea.value = (draft.ingredients || [])
-      .map((i) => [i.quantity, i.unit, i.name || i.raw_line].filter(Boolean).join(" "))
+      .map((i) => ingredientText(i))
       .join("\n");
     const stepsArea = el("textarea", { id: "review-steps" });
     stepsArea.value = (draft.steps || []).map((s) => (typeof s === "string" ? s : s.text)).join("\n");
