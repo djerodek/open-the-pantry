@@ -348,6 +348,7 @@
     let settings;
     try {
       const res = await fetch(`${API}/email-settings`);
+      if (!res.ok) throw new Error(String(res.status));
       settings = await res.json();
     } catch {
       emailPanel.innerHTML = "";
@@ -450,7 +451,9 @@
     emailPanel.appendChild(emailField("Send notifications to", notifyEmail));
     emailPanel.appendChild(emailField("Subject keyword", keyword,
       "Only emails whose subject contains this are considered. Everything else is ignored."));
-    emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour, "Container-local time."));
+    emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour,
+      `In the server's time zone${settings.server_timezone ? ` (${settings.server_timezone})` : ""}. ` +
+      "If that isn't yours, set TZ in docker-compose.yml."));
     emailPanel.appendChild(emailField("Notification cooldown (minutes)", cooldown,
       "Results within this window are batched into one email."));
 
@@ -1078,10 +1081,35 @@
     if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
     params.set("sort", state.sort);
     params.set("direction", state.direction);
-    const res = await fetch(`${API}/recipes?${params.toString()}`);
+    // An error used to be parsed as the recipe list, which came out empty
+    // and read "No recipes match" -- e.g. a 429 from the rate limiter.
+    let res;
+    try {
+      res = await fetch(`${API}/recipes?${params.toString()}`);
+    } catch {
+      showListError("Couldn't reach Open the Pantry. Check your connection and try again.");
+      return;
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showListError(res.status === 429
+        ? "The server is busy with too many requests. Wait a moment and try again."
+        : `Couldn't load recipes (${typeof err.detail === "string" ? err.detail : "error " + res.status}).`);
+      return;
+    }
     currentRecipes = await res.json();
     renderRecipeList(currentRecipes);
     announce(`${currentRecipes.length} recipe${currentRecipes.length === 1 ? "" : "s"} found`);
+  }
+
+  function showListError(message) {
+    const region = $("#recipe-list-region");
+    region.innerHTML = "";
+    region.appendChild(el("div", { class: "empty-state", role: "alert" }, [
+      el("p", { text: message }),
+      el("button", { class: "btn-secondary", type: "button", text: "Try again", onclick: () => loadRecipes() }),
+    ]));
+    announce(message);
   }
 
   function sourceBadge(recipe) {
@@ -2565,7 +2593,14 @@
           if (imageInput.files.length) {
             const fd = new FormData(); fd.append("file", imageInput.files[0]);
             const upRes = await fetch(`${API}/upload-image`, { method: "POST", body: fd });
-            if (upRes.ok) storedFile = (await upRes.json()).stored_file;
+            if (!upRes.ok) {
+              // Used to save the recipe without the photo and say nothing.
+              const err = await upRes.json().catch(() => ({}));
+              const why = typeof err.detail === "string" ? err.detail : `error ${upRes.status}`;
+              announce(`The photo couldn't be uploaded (${why}). Nothing was saved; remove the photo or try another.`);
+              return;
+            }
+            storedFile = (await upRes.json()).stored_file;
           }
 
           const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);

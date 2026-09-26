@@ -15,6 +15,14 @@ def _validate_stored_filename(v):
     return v
 
 
+
+def _validate_cook_time(v):
+    from .time_utils import ddhhmm_error
+    err = ddhhmm_error(v)
+    if err:
+        raise ValueError(err)
+    return v
+
 class IngredientIn(BaseModel):
     raw_line: str
     quantity: Optional[str] = None
@@ -43,6 +51,7 @@ class RecipeCreate(BaseModel):
     # wipes them. Notes are managed exclusively through PATCH /notes.
     ocr_confidence: Optional[float] = None
     actual_cook_time: Optional[str] = None  # 'dd:hh:mm', optional, user-entered
+    _check_cook_time = field_validator("actual_cook_time")(_validate_cook_time)
     favorite: bool = False
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
@@ -140,6 +149,7 @@ class RatingUpdate(BaseModel):
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
     actual_cook_time: Optional[str] = None  # 'dd:hh:mm' or '' to clear
+    _check_cook_time = field_validator("actual_cook_time")(_validate_cook_time)
 
 
 class NotesUpdate(BaseModel):
@@ -176,7 +186,7 @@ class EmailSettingsIn(BaseModel):
     notify_email: Optional[str] = None
     subject_keyword: str = "[RECIPE]"
     daily_scan_hour: int = Field(default=3, ge=0, le=23)
-    cooldown_minutes: int = Field(default=30, ge=0)
+    cooldown_minutes: int = Field(default=30, ge=0, le=7 * 24 * 60)  # timedelta overflowed on huge values
 
 
 class EmailSettingsOut(BaseModel):
@@ -201,6 +211,8 @@ class EmailSettingsOut(BaseModel):
     encryption_configured: bool = True  # whether RECIPE_APP_ENCRYPTION_KEY is set at all
     # "env", "file", "env_invalid", or None -- see crypto.key_source().
     encryption_source: Optional[str] = None
+    # The zone the daily scan hour is interpreted in, e.g. "EDT" or "UTC".
+    server_timezone: str = ""
 
 
 class EmailTestResult(BaseModel):

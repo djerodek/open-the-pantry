@@ -170,8 +170,9 @@ docker compose -f docker-compose.build.yml up -d --build
   (default `[RECIPE]`), and Open the Pantry picks it up on its next scan.
   Everything without that keyword is ignored entirely — the app never
   attempts to parse, or even fully read, untagged mail.
-- Scans run once daily at a configurable hour (default 3:00 AM,
-  container-local time), plus on demand: "Check email inbox" in the +
+- Scans run once daily at a configurable hour (default 3:00 AM in the
+  container's time zone -- set `TZ` in `docker-compose.yml`, as the example
+  does, or the container runs on UTC), plus on demand: "Check email inbox" in the +
   menu (shown once email ingest is enabled), or "Scan inbox now" in
   Settings for when you don't want to wait.
 - Each tagged email is tried in order: PDF attachment → photo → links in
@@ -301,7 +302,9 @@ docker compose -f docker-compose.build.yml up -d --build
   clear it.
 - Optional real-world cook time (`dd:hh:mm`), logged separately from
   whatever prep/cook/total time a source states — this is what drives the
-  time filter.
+  time filter. Up to 60 days (long cures and ferments); hours under 24 and
+  minutes under 60. The filter offers 20-minute steps up to a day, then
+  whole days.
 - Free-form notes per recipe (substitutions, timing tweaks, how it turned
   out) via a button on the recipe detail page — visually distinct once
   notes exist versus empty. Managed exclusively through `PATCH /notes`;
@@ -420,8 +423,11 @@ docker compose -f docker-compose.build.yml up -d --build
     is never parsed — but the credential itself would still grant full
     access to that mailbox if compromised, so the right move is to make
     sure that mailbox contains nothing worth taking.
-- **Rate limiting** is on by default (120 requests/minute per IP,
-  configurable via `RECIPE_APP_RATE_LIMIT`) as basic abuse protection. It's
+- **Rate limiting** is on by default (120 API requests/minute per IP,
+  configurable via `RECIPE_APP_RATE_LIMIT`) as basic abuse protection.
+  Photos and the app's own files aren't counted -- they used to be, and
+  scrolling a large library hit the limit. Behind a reverse proxy every
+  client shares the proxy's address. It's
   in-memory and per-process — meaningful for this app's single-instance
   design, not a substitute for real infrastructure-level rate limiting if
   you're expecting real traffic.

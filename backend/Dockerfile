@@ -16,14 +16,17 @@ FROM python:3.12-slim
 #   docker-entrypoint.sh) -- needed because a Dockerfile-time chown can't
 #   fix ownership of a bind-mounted host directory, only a runtime one can
 # - curl: container healthcheck
+# - tzdata: so TZ in the compose file takes effect (the daily scan hour is
+#   container-local time; without zone data the container is always UTC)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-osd \
+    tzdata \
+    libffi-dev \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libcairo2 \
     libgdk-pixbuf-2.0-0 \
-    libffi-dev \
     shared-mime-info \
     fonts-liberation \
     gosu \

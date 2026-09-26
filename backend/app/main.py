@@ -1,6 +1,7 @@
 import asyncio
 import fcntl
 import hmac
+import re
 import os
 import shutil
 import threading
@@ -243,22 +244,45 @@ _rate_limit_lock = threading.Lock()
 
 @app.middleware("http")
 async def rate_limiter(request: Request, call_next):
-    if request.url.path == "/healthz":
+    """Per-IP request budget for the API only.
+
+    It used to count every request, including thumbnails from /uploads and
+    the app's own static files. Scrolling a library of ~100 photo recipes
+    used up the budget, after which /api/recipes answered 429 and the list
+    read "No recipes match". Photos and static files cost nothing to serve
+    and aren't what the limit is for.
+
+    Addresses idle for a full window are forgotten, so the table doesn't
+    grow with every address that has ever connected.
+    """
+    path = request.url.path
+    if not path.startswith("/api/") or path == "/api/client-error":
         return await call_next(request)
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
     with _rate_limit_lock:
-        log = _request_log[client_ip]
-        while log and now - log[0] > RATE_LIMIT_WINDOW_SECONDS:
-            log.popleft()
-        if len(log) >= RATE_LIMIT_MAX_REQUESTS:
+        log_ = _request_log[client_ip]
+        while log_ and now - log_[0] > RATE_LIMIT_WINDOW_SECONDS:
+            log_.popleft()
+        if len(log_) >= RATE_LIMIT_MAX_REQUESTS:
+            if len(log_) == RATE_LIMIT_MAX_REQUESTS:
+                log.warning("Rate limit reached for %s (%d requests/min)", client_ip, RATE_LIMIT_MAX_REQUESTS)
+                log_.append(now)  # marks "already logged" for this window
             return JSONResponse(status_code=429, content={"detail": "Too many requests, slow down."})
-        log.append(now)
+        log_.append(now)
+        global _rate_limit_last_prune
+        if now - _rate_limit_last_prune > RATE_LIMIT_WINDOW_SECONDS:
+            for ip in [ip for ip, q in _request_log.items() if not q or now - q[-1] > RATE_LIMIT_WINDOW_SECONDS]:
+                del _request_log[ip]
+            _rate_limit_last_prune = now
     return await call_next(request)
 
 
+_rate_limit_last_prune = 0.0
+
 _client_log = get_logger("client")
 _client_error_times: list = []
+_client_error_lock = threading.Lock()
 
 
 @app.post("/api/client-error", status_code=204)
@@ -268,14 +292,21 @@ def report_client_error(report: schemas.ClientErrorReport):
     20 a minute are kept, so a page stuck in an error loop can't fill the
     disk."""
     now = time.monotonic()
-    _client_error_times[:] = [t for t in _client_error_times if now - t < 60]
-    if len(_client_error_times) >= 20:
-        return None
-    _client_error_times.append(now)
+    with _client_error_lock:  # handlers run on several threads
+        _client_error_times[:] = [t for t in _client_error_times if now - t < 60]
+        if len(_client_error_times) >= 20:
+            return None
+        _client_error_times.append(now)
+
+    def one_line(v):
+        # The browser supplies these; a newline in them could fake log lines.
+        return str(v).replace("\r", " ").replace("\n", " ") if v else "?"
+
+    stack = "\n".join("    | " + line for line in report.stack.splitlines()) if report.stack else ""
     _client_log.warning(
         "Browser error on %s: %s (at %s:%s:%s) [%s]%s",
-        report.page or "?", report.message or "?", report.source or "?", report.line, report.column,
-        report.user_agent or "?", ("\n" + report.stack) if report.stack else "",
+        one_line(report.page), one_line(report.message), one_line(report.source), report.line, report.column,
+        one_line(report.user_agent), ("\n" + stack) if stack else "",
     )
     return None
 
@@ -406,10 +437,15 @@ def _apply_tags(db: Session, recipe: models.Recipe, tag_ins: list[schemas.TagIn]
     recipe.tags_text = " ".join(t.name for t in recipe.tags)
 
 
-def _promote_temp_file(temp_filename: str | None) -> str | None:
-    """Move a draft file from TMP_DIR into UPLOADS_DIR at save time. If the
-    filename doesn't exist in TMP_DIR (already promoted, or not a temp file
-    reference at all), assume it's already a final uploads-relative name."""
+def _promote_temp_file(temp_filename: str | None, current: str | None = None) -> str | None:
+    """Move a draft file from TMP_DIR into UPLOADS_DIR at save time.
+
+    Accepts only a draft that exists, or `current` -- the image the recipe
+    being updated already has. It used to accept any well-formed name that
+    wasn't a draft, on the assumption it was already the recipe's own. So a
+    recipe could be created pointing at ANOTHER recipe's photo; deleting
+    either one then deleted the file out from under the other, and a failed
+    create could move the other recipe's photo into tmp/ for the sweep."""
     if not temp_filename:
         return None
     # Defense in depth: the schema layer already rejects anything that
@@ -423,7 +459,10 @@ def _promote_temp_file(temp_filename: str | None) -> str | None:
     final_path = safe_join(UPLOADS_DIR, temp_filename)
     if temp_path and final_path and os.path.isfile(temp_path):
         shutil.move(temp_path, final_path)
-    return temp_filename
+        return temp_filename
+    if current and temp_filename == current:
+        return temp_filename
+    raise HTTPException(status_code=400, detail="That photo isn't a pending upload; upload it again.")
 
 
 def _demote_to_tmp(filename: str | None):
@@ -1358,7 +1397,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    new_image = _promote_temp_file(payload.image_path)
+    new_image = _promote_temp_file(payload.image_path, current=recipe.image_path)
     old_image = recipe.image_path
     try:
         recipe.title = payload.title
@@ -1533,6 +1572,7 @@ def _email_settings_out(settings: models.EmailIngestSettings) -> schemas.EmailSe
         last_scan_at=settings.last_scan_at.isoformat() if settings.last_scan_at else None,
         encryption_configured=crypto.encryption_configured(),
         encryption_source=crypto.key_source(),
+        server_timezone=datetime.now().astimezone().tzname() or "",
     )
 
 
@@ -1698,6 +1738,25 @@ def scan_inbox_now():
 # Export / share / print
 # ---------------------------------------------------------------------------
 
+def _attachment_disposition(title: str, ext: str) -> str:
+    """Content-Disposition for a download named after a recipe.
+
+    Headers must be Latin-1. The title went in as-is, so "Grandma’s Pie"
+    (curly apostrophe), an em dash or an emoji -- all common in scraped
+    titles -- raised UnicodeEncodeError and the export returned 500. Now an
+    ASCII fallback name plus the real name in RFC 5987 form, which browsers
+    prefer and the app's own download code already reads.
+    """
+    from urllib.parse import quote
+    import unicodedata
+    base = (title or "recipe").strip()
+    ascii_name = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode("ascii")
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", ascii_name).strip("_") or "recipe"
+    utf8_name = re.sub(r"[\\/:*?\"<>|\r\n]+", "_", base.replace(" ", "_")) or "recipe"
+    return (f'attachment; filename="{ascii_name}.{ext}"; '
+            f"filename*=UTF-8''{quote(utf8_name + '.' + ext, safe='')}")
+
+
 @app.get("/api/recipes/{recipe_id}/export.pdf")
 def export_pdf(recipe_id: int, include_notes: bool = False, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
@@ -1707,11 +1766,11 @@ def export_pdf(recipe_id: int, include_notes: bool = False, db: Session = Depend
     # The showcase image is deliberately never included in the shared PDF --
     # not a query param/user choice, unlike include_notes.
     pdf_bytes = render_recipe_pdf(recipe, abs_image, include_notes=include_notes, include_image=False)
-    filename = f"{recipe.title.replace(' ', '_')}.pdf"
+    disposition = _attachment_disposition(recipe.title, "pdf")
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 
@@ -1722,11 +1781,11 @@ def export_html(recipe_id: int, include_notes: bool = False, db: Session = Depen
         raise HTTPException(status_code=404, detail="Recipe not found")
     abs_image = safe_join(UPLOADS_DIR, recipe.image_path) if recipe.image_path else None
     html_str = render_recipe_html(recipe, abs_image, include_notes=include_notes)
-    filename = f"{recipe.title.replace(' ', '_')}.html"
+    disposition = _attachment_disposition(recipe.title, "html")
     return Response(
         content=html_str,
         media_type="text/html",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 

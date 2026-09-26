@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v22";
+const CACHE_NAME = "open-the-pantry-shell-v23";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -32,6 +32,21 @@ self.addEventListener("activate", (event) => {
 // strategy, so users could be stuck on stale JS/CSS indefinitely even
 // after upgrading the image. CACHE_NAME is still bumped on release so the
 // activate handler prunes the old cache promptly.
+// What's worth keeping for offline use: the app itself, photos, and plain
+// API reads. It used to cache every GET -- including backup zips of
+// hundreds of MB, exports, error responses, and one entry per search URL,
+// none of it ever pruned until CACHE_NAME changed.
+const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/];
+function shouldCache(request, response) {
+  if (!response || !response.ok || response.type !== "basic") return false;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (NEVER_CACHE.some((re) => re.test(url.pathname))) return false;
+  if (url.pathname.startsWith("/api/") && url.search) return false;  // searches, filters, sorts
+  const disposition = response.headers.get("Content-Disposition") || "";
+  return !disposition.startsWith("attachment");
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     event.respondWith(fetch(event.request));
@@ -40,8 +55,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        if (shouldCache(event.request, response)) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME)
+            .then((cache) => cache.put(event.request, copy))
+            .catch(() => {});  // storage full or private mode: caching is optional
+        }
         return response;
       })
       .catch(() =>

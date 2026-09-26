@@ -7,7 +7,10 @@ KEYWORD_MAP = {
         "Chicken": ["chicken", "poultry", "hen"],
         "Pork": ["pork", "bacon", "ham", "prosciutto", "sausage", "chorizo"],
         "Beef": ["beef", "steak", "brisket", "ground beef", "short rib"],
-        "Fish": ["salmon", "tuna", "cod", "halibut", "tilapia", "shrimp", "fish", "shellfish", "crab", "lobster"],
+        "Fish": ["salmon", "tuna", "cod", "halibut", "tilapia", "shrimp", "fish", "shellfish", "crab", "lobster",
+                 "trout", "mackerel", "sardine", "sardines", "anchovy", "anchovies", "prawn", "prawns",
+                 "mussel", "mussels", "moules", "clam", "clams", "oyster", "oysters", "scallop", "scallops",
+                 "squid", "calamari", "octopus", "haddock", "sea bass", "snapper"],
         "Game": ["venison", "elk", "rabbit", "duck", "pheasant", "boar", "bison"],
         "Vegetarian": [],  # handled specially: assigned when no meat/fish keyword matches
     },
@@ -35,6 +38,13 @@ KEYWORD_MAP = {
 }
 
 MEAT_FISH_TAGS = {"Chicken", "Pork", "Beef", "Fish", "Game"}
+
+# Meat with no main-ingredient tag of its own. Matching one assigns no tag,
+# but does stop the Vegetarian suggestion: "Roast Leg of Lamb" and
+# "Thanksgiving Turkey" were tagged Vegetarian, and batch and email imports
+# save tags without review.
+NOT_VEGETARIAN = ["lamb", "mutton", "veal", "goat", "turkey", "quail", "goose", "venison",
+                  "gelatin", "gelatine", "lard", "suet", "fish sauce", "oyster sauce", "bone broth"]
 
 
 def _text_contains(haystack: str, keyword: str) -> bool:
@@ -65,6 +75,9 @@ def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -
                     if tag_name in MEAT_FISH_TAGS:
                         matched_meat_or_fish = True
                     break
+
+    if not matched_meat_or_fish and any(_text_contains(haystack, kw) for kw in NOT_VEGETARIAN):
+        matched_meat_or_fish = True
 
     if not matched_meat_or_fish:
         # No meat/fish keyword found anywhere in the recipe text -- suggest

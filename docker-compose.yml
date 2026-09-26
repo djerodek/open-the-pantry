@@ -7,7 +7,10 @@ services:
     volumes:
       - ./data:/app/data     # SQLite DB + uploaded images/PDFs, persists across updates
     restart: unless-stopped
-    # environment:
+    environment:
+      # Your time zone, so the daily email scan runs at the hour you set.
+      # Without it the container runs on UTC (3 = 11 PM in Toronto in summer).
+      TZ: "America/Toronto"
     #   # Optional. Email ingest can create its own key from Settings
     #   # (stored as encryption.key in ./data). Set this instead only if you
     #   # want the key kept outside the data folder. Generate one with:

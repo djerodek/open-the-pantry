@@ -20,7 +20,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            tesseract-ocr tesseract-ocr-osd libpango-1.0-0 libpangocairo-1.0-0 libcairo2 \
+            tesseract-ocr tesseract-ocr-osd tzdata libpango-1.0-0 libpangocairo-1.0-0 libcairo2 \
             libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info fonts-liberation
 
       - name: Install Python dependencies
