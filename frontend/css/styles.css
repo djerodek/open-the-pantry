@@ -562,22 +562,102 @@ main {
   border-left: 2px solid var(--color-border);
 }
 
-.active-filters-summary {
-  font-size: 0.82rem;
+/* Header (title + x) and footer (summary, Clear filters, Done): the panel
+   used to have no way out except the Filters button back at the top. */
+.filter-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.filter-panel-title {
+  font-size: 1rem;
+  margin: 0;
+}
+.filter-panel-close {
+  background: none;
+  border: none;
   color: var(--color-ink-muted);
-  margin-top: 0.5rem;
+  font-size: 1.6rem;
+  line-height: 1;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.6rem -0.6rem -0.6rem 0;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.filter-panel-close:hover { color: var(--color-ink); }
+/* Sticky, so Done is on screen however far down the chips go. */
+.filter-panel-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  margin: 1rem -1rem -0.9rem;
+  padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  background: var(--color-bg-raised);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
-.active-filters-summary button {
-  background: none;
-  border: none;
-  color: var(--color-focus);
-  cursor: pointer;
+.filter-panel-summary {
   font-size: 0.82rem;
-  text-decoration: underline;
+  color: var(--color-ink-muted);
+}
+.filter-panel-footer .btn-primary { min-width: 6rem; }
+
+/* On/off switch: a real checkbox (role="switch"), so keyboard, screen
+   readers and the label click all work as normal. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.switch {
+  -webkit-appearance: none;
+  appearance: none;
+  flex-shrink: 0;
+  position: relative;
+  width: 2.9rem;
+  height: 1.7rem;
+  margin: 0;
+  border-radius: 999px;
+  /* Off: a mid-tone track, clearly visible in both themes (the border
+     colour was nearly invisible on the light background). */
+  background: var(--color-ink-muted);
+  border: 1px solid var(--color-ink-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translateY(-50%);
+  transition: transform 0.15s ease;
+}
+.switch:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.switch:checked::before { transform: translate(1.2rem, -50%); }
+.switch:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch, .switch::before { transition: none; }
 }
 
 /* ---------------------------------------------------------------------

@@ -70,9 +70,6 @@
         <button type="button" id="clear-filters-btn" class="btn-secondary btn-clear-filters" hidden>
           Clear filters
         </button>
-        <button type="button" id="thumbnails-toggle" class="btn-secondary" aria-pressed="true">
-          Thumbnails
-        </button>
         <label class="visually-hidden" for="sort-select">Sort recipes by</label>
         <select id="sort-select" class="btn-secondary sort-select">
           <option value="created|desc">Newest first</option>
@@ -212,11 +209,20 @@
       </div>
     </div>
 
+    <div class="filter-section">
+      <div class="filter-section-title">Recipe list</div>
+      <label class="switch-row" for="thumbnails-setting">
+        <span>Show photos on recipe cards</span>
+        <input type="checkbox" role="switch" id="thumbnails-setting" class="switch">
+      </label>
+      <div class="field-hint">Off shows a compact list of titles. Remembered on this device.</div>
+    </div>
+
     <div class="filter-section" id="wakelock-setting" hidden>
       <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
-      <label for="wakelock-default" style="display:flex;align-items:center;gap:0.5rem;">
-        <input type="checkbox" id="wakelock-default">
+      <label class="switch-row" for="wakelock-default">
         <span>Keep screen awake when viewing a recipe</span>
+        <input type="checkbox" role="switch" id="wakelock-default" class="switch">
       </label>
       <div class="field-hint">
         Applies automatically to every recipe you open. You can still toggle it

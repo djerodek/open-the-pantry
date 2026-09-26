@@ -228,8 +228,8 @@ docker compose -f docker-compose.build.yml up -d --build
 - Auto-captured from URL and PDF ingestion (see above), or uploaded/
   replaced/removed manually at any time from the recipe detail page —
   works the same whether the recipe originally had an image or not.
-- A toolbar toggle shows or hides thumbnails across the whole list, saved
-  as a preference.
+- Settings → Recipe list → "Show photos on recipe cards" switches
+  thumbnails on or off for the whole list, remembered on each device.
 - Never included in the shared PDF (see Share/print below); the exported
   HTML file and the in-app print view still include it.
 
@@ -304,6 +304,8 @@ docker compose -f docker-compose.build.yml up -d --build
 - Pace filter (Quick / Moderate / Long, from the pace rating on each
   recipe). Picking more than one shows recipes with any of them; it
   stacks with tags, cook time and search.
+- Filters apply as you tap them. Done (always at the bottom of the panel),
+  the × or Escape closes the panel and keeps them.
 
 **Rating & tracking**
 - Favorite toggle, plus three independent ratings (tastiness 1–5, pace

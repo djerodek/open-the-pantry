@@ -908,6 +908,11 @@
     const panel = $("#filter-panel");
     panel.innerHTML = "";
 
+    panel.appendChild(el("div", { class: "filter-panel-header" }, [
+      el("h2", { class: "filter-panel-title", id: "filter-panel-title", text: "Filters" }),
+      el("button", { class: "filter-panel-close", type: "button", "aria-label": "Close filters", text: "\u00d7", onclick: closeFilterPanel }),
+    ]));
+
     const categories = [
       ["meal_type", "Meal Type"],
       ["cooking_style", "Cooking Style"],
@@ -982,21 +987,39 @@
     }
     panel.appendChild(timeSection);
 
-    if (activeFilterCount()) {
-      const bits = [];
-      if (state.filterTags.size) bits.push(`${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}`);
-      if (state.pace.size) bits.push("pace filter");
-      if (state.maxMinutes != null) bits.push("time filter");
-      if (state.query) bits.push("search");
-      panel.appendChild(el("div", { class: "active-filters-summary" }, [
-        el("span", { text: `${bits.join(" + ")} active` }),
-        el("button", {
-          type: "button", class: "btn-secondary", text: "Clear filters",
-          onclick: clearAllFilters,
-        }),
-      ]));
-    }
+    // Footer: filters apply as they're tapped, so "Done" only closes the
+    // panel -- but it's the obvious way out, where a thumb reaches after
+    // scrolling through the chips.
+    const bits = [];
+    if (state.filterTags.size) bits.push(`${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}`);
+    if (state.pace.size) bits.push("pace filter");
+    if (state.maxMinutes != null) bits.push("time filter");
+    if (state.query) bits.push("search");
+    // Done on the left: the + button covers the bottom-right corner.
+    panel.appendChild(el("div", { class: "filter-panel-footer" }, [
+      el("button", { type: "button", class: "btn-primary", text: "Done", onclick: closeFilterPanel }),
+      activeFilterCount()
+        ? el("button", { type: "button", class: "btn-secondary", text: "Clear filters", onclick: clearAllFilters })
+        : null,
+      el("span", { class: "filter-panel-summary", text: bits.length ? `${bits.join(" + ")} active` : "No filters active" }),
+    ]));
   }
+
+  function closeFilterPanel() {
+    const panel = $("#filter-panel");
+    if (panel.hidden) return;
+    panel.hidden = true;
+    const toggle = $("#filters-toggle");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.focus();
+  }
+
+  // Escape closes the panel too, unless a dialog is open (it has its own).
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || $("#filter-panel").hidden) return;
+    if ($$(".modal-overlay").some((o) => !o.hidden)) return;
+    closeFilterPanel();
+  });
 
   $("#filters-toggle").addEventListener("click", () => {
     const panel = $("#filter-panel");
@@ -1081,13 +1104,15 @@
     renderRecipeList(currentRecipes);
   });
 
-  $("#thumbnails-toggle").addEventListener("click", () => {
-    state.showThumbnails = !state.showThumbnails;
-    localStorage.setItem("recipe-app-show-thumbnails", String(state.showThumbnails));
-    $("#thumbnails-toggle").setAttribute("aria-pressed", String(state.showThumbnails));
+  // Photos on/off: a switch in Settings (it was a toolbar button). The list
+  // behind the Settings dialog updates as soon as it's flipped.
+  const thumbnailsSetting = $("#thumbnails-setting");
+  thumbnailsSetting.checked = state.showThumbnails;
+  thumbnailsSetting.addEventListener("change", () => {
+    state.showThumbnails = thumbnailsSetting.checked;
+    try { localStorage.setItem("recipe-app-show-thumbnails", String(state.showThumbnails)); } catch { /* private mode */ }
     renderRecipeList(currentRecipes);
   });
-  $("#thumbnails-toggle").setAttribute("aria-pressed", String(state.showThumbnails));
 
   $("#batch-cancel-btn").addEventListener("click", () => {
     state.selectMode = false;
