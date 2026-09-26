@@ -66,3 +66,14 @@ def test_needs_the_app_header(client):
     from app.main import app
     bare = TestClient(app)
     assert bare.post("/api/tags/auto-apply?dry_run=true").status_code == 403
+
+
+def test_only_ticked_suggestions_are_added(client):
+    a = _make(client, "Auto Pick Salmon", ["2 salmon fillets"])          # would get Fish, Stovetop
+    b = _make(client, "Auto Pick Shrimp", ["1 lb shrimp"])              # would get Fish, Stovetop
+    client.post("/api/tags/auto-apply", json={"selections": [
+        {"id": a, "tags": ["Fish", "Made Up Tag"]},   # Stovetop unticked; a name the tagger didn't suggest
+    ]})
+    names_a = {n for n, _ in _tags(client, a)}
+    assert "Fish" in names_a and "Stovetop" not in names_a and "Made Up Tag" not in names_a
+    assert not {n for n, _ in _tags(client, b)}      # b not ticked at all: unchanged

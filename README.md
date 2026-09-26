@@ -290,10 +290,11 @@ docker compose -f docker-compose.build.yml up -d --build
   stock", "fish sauce") don't count as the main ingredient, though they do
   rule out Vegetarian. Suggestions apply when a recipe is added; tags on
   recipes you already have aren't changed unless you use Settings → Tags →
-  "Add suggested tags to all recipes". That shows what it would add, then
-  adds only tags a recipe doesn't have (never Vegetarian next to a meat or
-  fish tag) and removes nothing. Running it again later re-adds a
-  suggestion you removed. Cocktail-specific cooking-style tags
+  "Add suggested tags to all recipes". That lists each recipe's missing
+  suggestions with a checkbox per recipe and per tag (all ticked to start);
+  only what's left ticked is added. It never adds a tag a recipe already
+  has, or Vegetarian next to a meat or fish tag, and removes nothing.
+  Unticked or removed suggestions are offered again on the next run. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it

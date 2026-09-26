@@ -105,6 +105,17 @@ class AutoTagChange(BaseModel):
     added: list[str]
 
 
+class AutoTagSelection(BaseModel):
+    id: int
+    tags: list[str] = Field(default_factory=list, max_length=50)
+
+
+class AutoTagApply(BaseModel):
+    # Omitted = add every suggestion. Otherwise only these; anything not
+    # currently suggested for that recipe is ignored.
+    selections: Optional[list[AutoTagSelection]] = Field(default=None, max_length=5000)
+
+
 class AutoTagResult(BaseModel):
     dry_run: bool
     recipes_scanned: int

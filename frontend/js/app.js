@@ -1158,15 +1158,51 @@
       autotagBtn.disabled = false;
       return;
     }
-    const summary = `Adds ${preview.tags_added} tag${preview.tags_added === 1 ? "" : "s"} to ` +
-      `${preview.recipes_changed} of ${preview.recipes_scanned} recipes.`;
+    // One checkbox per suggested tag, grouped under a checkbox per recipe
+    // (which ticks or unticks all of that recipe's tags). All start ticked.
+    const summaryEl = el("p", {});
+    const tagBoxes = [];
+    const list = el("ul", { class: "autotag-pick" }, preview.changes.map((c) => {
+      const recipeBox = el("input", { type: "checkbox", checked: "", "aria-label": `All suggested tags for ${c.title}` });
+      const boxes = c.added.map((name) => {
+        const b = el("input", { type: "checkbox", checked: "" });
+        b.dataset.recipe = String(c.id); b.dataset.tag = name;
+        tagBoxes.push(b);
+        return b;
+      });
+      const sync = () => {
+        const n = boxes.filter((b) => b.checked).length;
+        recipeBox.checked = n === boxes.length;
+        recipeBox.indeterminate = n > 0 && n < boxes.length;
+        updateSummary();
+      };
+      recipeBox.addEventListener("change", () => { boxes.forEach((b) => { b.checked = recipeBox.checked; }); sync(); });
+      boxes.forEach((b) => b.addEventListener("change", sync));
+      return el("li", {}, [
+        el("label", { class: "autotag-recipe" }, [recipeBox, el("span", { text: c.title })]),
+        el("div", { class: "autotag-tags" }, boxes.map((b) =>
+          el("label", { class: "autotag-tag" }, [b, el("span", { text: b.dataset.tag })]))),
+      ]);
+    }));
+    function updateSummary() {
+      const ticked = tagBoxes.filter((b) => b.checked);
+      const recipes = new Set(ticked.map((b) => b.dataset.recipe)).size;
+      summaryEl.textContent = `Adds ${ticked.length} of ${tagBoxes.length} suggested tags to ${recipes} ` +
+        `recipe${recipes === 1 ? "" : "s"}. Untick any that don't apply.`;
+      apply.disabled = ticked.length === 0;   // only called once apply exists
+    }
     const cancel = el("button", { type: "button", class: "btn-secondary", text: "Cancel", onclick: () => {
       autotagResult.innerHTML = ""; autotagBtn.disabled = false; autotagBtn.focus();
     } });
     const apply = el("button", { type: "button", class: "btn-primary", text: "Add tags", onclick: async () => {
       apply.disabled = cancel.disabled = true;
       try {
-        const res = await fetch(`${API}/tags/auto-apply`, { method: "POST" });
+        const selections = {};
+        for (const b of tagBoxes) if (b.checked) (selections[b.dataset.recipe] ||= []).push(b.dataset.tag);
+        const res = await fetch(`${API}/tags/auto-apply`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selections: Object.entries(selections).map(([id, tags]) => ({ id: Number(id), tags })) }),
+        });
         if (!res.ok) throw new Error(`error ${res.status}`);
         const done = await res.json();
         autotagResult.innerHTML = "";
@@ -1184,8 +1220,9 @@
       }
       autotagBtn.disabled = false;
     } });
-    autotagResult.appendChild(el("p", { text: summary }));
-    autotagResult.appendChild(autotagChangeList(preview.changes));
+    autotagResult.appendChild(summaryEl);
+    autotagResult.appendChild(list);
+    updateSummary();
     autotagResult.appendChild(el("div", { class: "autotag-actions" }, [apply, cancel]));
     apply.focus();
   });

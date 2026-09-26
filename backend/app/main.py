@@ -1690,7 +1690,8 @@ def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Dep
 # ---------------------------------------------------------------------------
 
 @app.post("/api/tags/auto-apply", response_model=schemas.AutoTagResult)
-def auto_apply_tags(dry_run: bool = False, db: Session = Depends(get_db)):
+def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagApply] = None,
+                    db: Session = Depends(get_db)):
     """Run the tagger over every recipe and add the suggested tags each one
     is missing. Only adds -- tags already on a recipe, including ones added
     by hand, are left as they are, and removing unwanted ones is up to the
@@ -1706,6 +1707,7 @@ def auto_apply_tags(dry_run: bool = False, db: Session = Depends(get_db)):
                .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
                         selectinload(models.Recipe.tags))
                .order_by(models.Recipe.id).all())
+    picks = {s.id: set(s.tags) for s in (payload.selections or [])} if payload else {}
     changes = []
     for r in recipes:
         have = {(t.name, t.category) for t in r.tags}
@@ -1717,6 +1719,12 @@ def auto_apply_tags(dry_run: bool = False, db: Session = Depends(get_db)):
         )
         new = [(n, c, sg) for n, c, sg in suggested
                if (n, c) not in have and not (n == "Vegetarian" and has_meat)]
+        if payload is not None and payload.selections is not None and not dry_run:
+            # Only what was left ticked in the preview. Names are checked
+            # against the fresh suggestions, so the category always comes
+            # from the tagger and a stale or made-up entry does nothing.
+            picked = picks.get(r.id, set())
+            new = [t for t in new if t[0] in picked]
         if new:
             changes.append((r, new))
 
