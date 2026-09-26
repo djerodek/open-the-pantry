@@ -11,7 +11,9 @@ FROM python:3.12-slim
 # - tesseract-ocr: OCR for screenshots / scanned PDF pages; -osd is the
 #   orientation model that turns sideways photos upright (installed
 #   explicitly: --no-install-recommends must not be allowed to drop it)
-# - libpango/cairo/gdk-pixbuf/libffi: required by WeasyPrint for HTML->PDF export
+# - libpango/cairo/gdk-pixbuf/libffi/harfbuzz-subset: required by WeasyPrint
+#   for HTML->PDF export (harfbuzz-subset: font subsetting; WeasyPrint 70
+#   warns that future versions will require it)
 # - gosu: drop from root to a non-root user at container start (see
 #   docker-entrypoint.sh) -- needed because a Dockerfile-time chown can't
 #   fix ownership of a bind-mounted host directory, only a runtime one can
@@ -26,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libcairo2 \
+    libharfbuzz-subset0 \
     libgdk-pixbuf-2.0-0 \
     shared-mime-info \
     fonts-liberation \

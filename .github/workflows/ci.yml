@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             tesseract-ocr tesseract-ocr-osd tzdata libpango-1.0-0 libpangocairo-1.0-0 libcairo2 \
-            libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info fonts-liberation
+            libgdk-pixbuf-2.0-0 libharfbuzz-subset0 libffi-dev shared-mime-info fonts-liberation
 
       - name: Install Python dependencies
         run: pip install -r backend/requirements-test.txt
@@ -32,10 +32,11 @@ jobs:
       - name: Dependency audit
         run: |
           pip install pip-audit
-          pip-audit -r backend/requirements.txt || true
-        # informational for now (|| true) -- some transitive advisories in
-        # this dependency set are noise for a self-hosted personal app;
-        # remove the `|| true` if you want this to fail the build instead
+          pip-audit -r backend/requirements.txt
+        # Fails the build. It used to end in `|| true`, so 167 advisories
+        # accumulated unseen across the libraries that parse uploads, email
+        # and downloaded pages. If an advisory can't be fixed yet, ignore it
+        # explicitly with --ignore-vuln <ID> and a comment saying why.
 
   docker-build:
     runs-on: ubuntu-latest
