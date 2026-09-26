@@ -1337,6 +1337,9 @@ def list_recipes(
     q: str | None = None,
     tags: list[str] | None = Query(default=None),        # repeated ?tags=A&tags=B, AND logic
     max_minutes: int | None = None,        # actual_cook_time_minutes <= max_minutes
+    # Pace rating: repeated ?pace=quick&pace=moderate, OR logic (a recipe has
+    # one pace, so AND across values could never match).
+    pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
     favorite: bool | None = None,
     sort: Literal["created", "title", "rating", "cook_time", "difficulty"] = "created",
     direction: Literal["asc", "desc"] = "desc",
@@ -1375,6 +1378,9 @@ def list_recipes(
 
     if favorite:
         query = query.filter(models.Recipe.favorite.is_(True))
+
+    if pace:
+        query = query.filter(models.Recipe.cook_time_rating.in_(pace))
 
     if max_minutes is not None:
         query = query.filter(

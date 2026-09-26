@@ -661,6 +661,7 @@
     query: "",
     filterTags: new Set(),   // stacked AND tag filters -- shared by sidebar and filter panel
     maxMinutes: null,        // time filter ceiling (minutes), null = no limit
+    pace: new Set(),         // pace-rating filter: 'quick' | 'moderate' | 'long', OR logic
     grouping: "all",         // 'all' | 'meal_type' | 'cooking_style' | 'main_ingredient'
     allTags: [],
     timeBuckets: [],
@@ -693,6 +694,7 @@
   function activeFilterCount() {
     return state.filterTags.size
       + (state.maxMinutes != null ? 1 : 0)
+      + (state.pace.size ? 1 : 0)
       + (state.query ? 1 : 0);
   }
 
@@ -700,6 +702,7 @@
     state.filterTags.clear();
     state.maxMinutes = null;
     uiTimeLevel1 = null;
+    state.pace.clear();
     state.query = "";
     const searchInput = $("#search-input");
     if (searchInput) searchInput.value = "";
@@ -920,6 +923,25 @@
       ]));
     }
 
+    // Pace: the quick / moderate / long rating set from the card or detail
+    // view. Selecting more than one shows recipes with any of them.
+    panel.appendChild(el("div", { class: "filter-section" }, [
+      el("div", { class: "filter-section-title", text: "Pace" }),
+      el("div", { class: "filter-chip-row" }, ["quick", "moderate", "long"].map((v) =>
+        el("button", {
+          class: "filter-chip", type: "button",
+          "aria-pressed": String(state.pace.has(v)),
+          text: v.charAt(0).toUpperCase() + v.slice(1),
+          onclick: () => {
+            if (state.pace.has(v)) state.pace.delete(v); else state.pace.add(v);
+            renderFilterPanel();
+            syncClearFiltersButton();
+            loadRecipes();
+          },
+        })
+      )),
+    ]));
+
     const timeSection = el("div", { class: "filter-section" });
     timeSection.appendChild(el("div", { class: "filter-section-title", text: "Cook Time" }));
     if (!state.timeBuckets.length) {
@@ -963,6 +985,7 @@
     if (activeFilterCount()) {
       const bits = [];
       if (state.filterTags.size) bits.push(`${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}`);
+      if (state.pace.size) bits.push("pace filter");
       if (state.maxMinutes != null) bits.push("time filter");
       if (state.query) bits.push("search");
       panel.appendChild(el("div", { class: "active-filters-summary" }, [
@@ -1142,6 +1165,7 @@
     if (state.query) params.set("q", state.query);
     for (const t of state.filterTags) params.append("tags", t);
     if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
+    for (const p of state.pace) params.append("pace", p);
     params.set("sort", state.sort);
     params.set("direction", state.direction);
     // An error used to be parsed as the recipe list, which came out empty

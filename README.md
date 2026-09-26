@@ -290,8 +290,8 @@ docker compose -f docker-compose.build.yml up -d --build
 - Sort by newest/oldest, title, rating, cook time or difficulty, each
   either way; recipes with no value for the chosen field always go last.
   The choice is remembered. Sorting applies to search results too.
-- "Clear filters" appears (with a count) whenever tags, a cook-time range
-  or a search are active: in the toolbar, and at the top of the sidebar,
+- "Clear filters" appears (with a count) whenever tags, a pace, a cook-time
+  range or a search are active: in the toolbar, and at the top of the sidebar,
   kept apart from the tags themselves.
 - Cards without a photo show just the title, no empty placeholder. Source
   and OCR-quality badges are on the recipe's own page, not on cards.
@@ -301,6 +301,9 @@ docker compose -f docker-compose.build.yml up -d --build
   selected tag) plus a nested cook-time filter (coarse hour buckets that
   drill down to 20-minute increments), available options generated only
   from cook times actually logged, no dead filter options.
+- Pace filter (Quick / Moderate / Long, from the pace rating on each
+  recipe). Picking more than one shows recipes with any of them; it
+  stacks with tags, cook time and search.
 
 **Rating & tracking**
 - Favorite toggle, plus three independent ratings (tastiness 1–5, pace
