@@ -104,7 +104,7 @@ def test_tall_scanned_pages_render_within_the_pixel_budget():
     from app.ingestion.pdf_ingest import _ocr_resolution, MAX_OCR_PIXELS
     for w, h in [(612, 14400), (393, 14400), (14400, 14400)]:
         dpi = _ocr_resolution(w, h)
-        assert (w / 72 * dpi) * (h / 72 * dpi) <= MAX_OCR_PIXELS * 1.02 or dpi == 72
+        assert (w / 72 * dpi) * (h / 72 * dpi) <= MAX_OCR_PIXELS * 1.02
     assert _ocr_resolution(612, 792) == 300          # an ordinary page is unchanged
 
 

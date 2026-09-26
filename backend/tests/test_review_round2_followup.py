@@ -27,18 +27,24 @@ def test_preprocess_for_ocr_caps_extreme_upscale():
 
 
 def test_preprocess_for_ocr_downscales_an_already_oversized_render():
-    """MIN_OCR_DPI is a floor: a very large page still renders over budget
-    at that floor (a 200x200in page at 72 dpi is 207 MP against the 35 MP
-    budget). The old code only ever upscaled narrow images, so an
-    already-too-big render passed through untouched."""
+    """Safety net for an image that reaches preprocessing over budget: the
+    old code only ever upscaled narrow images, so an already-too-big one
+    passed through untouched."""
     from PIL import Image
     from app.ingestion import pdf_ingest
 
-    # Just over the 35 MP budget; the real case (200in @ 72dpi = 14400 px
-    # square, 207 MP) takes the same path, only slower to test.
     oversized = Image.new("L", (6200, 6200), color=255)
     result = pdf_ingest._preprocess_for_ocr(oversized)
     assert result.width * result.height <= pdf_ingest.MAX_OCR_PIXELS * 1.02
+
+
+def test_huge_page_renders_within_budget():
+    """The first attempt only shrank the image after rendering: a 200 x 200
+    inch page still rendered at 72 dpi (the old floor), 14400 x 14400 =
+    207 MP, 1.7 GB peak, before the cap could apply."""
+    from app.ingestion.pdf_ingest import _ocr_resolution, MAX_OCR_PIXELS
+    dpi = _ocr_resolution(14400, 14400)
+    assert (200 * dpi) ** 2 <= MAX_OCR_PIXELS
 
 
 def test_image_preprocess_caps_extreme_upscale(tmp_path):

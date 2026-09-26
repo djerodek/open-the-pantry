@@ -130,17 +130,21 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
 # Rendering budget for one scanned page. 300 dpi on a letter page is
 # ~8.4 MP; an 8.5 x 200 inch page (the iOS full-page-screenshot maximum)
 # was 153 MP and 1.25 GB before OCR even started, with up to three OCR jobs
-# at once. Tall pages get a lower dpi instead.
+# at once. Large pages get a lower dpi instead.
 MAX_OCR_PIXELS = 35_000_000
 OCR_DPI = 300
-MIN_OCR_DPI = 72
 
 
 def _ocr_resolution(width_pt: float, height_pt: float) -> int:
-    """dpi for rendering a page of this size (in points) within the budget."""
+    """dpi for rendering a page of this size (in points) within the budget.
+
+    No minimum dpi: a floor of 72 let a 200 x 200 inch page render at
+    207 MP (1.7 GB peak) before anything could shrink it. A page that big
+    comes out at under 72 dpi and probably OCRs badly, which beats the
+    memory it would otherwise take."""
     area_in2 = max(width_pt, 1) / 72 * max(height_pt, 1) / 72
     dpi = int((MAX_OCR_PIXELS / area_in2) ** 0.5)
-    return max(MIN_OCR_DPI, min(OCR_DPI, dpi))
+    return max(1, min(OCR_DPI, dpi))
 
 
 def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
@@ -150,10 +154,9 @@ def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
     The upscale-to-1500px-wide step below is unconditional on its own --
     for an extreme aspect ratio (a 12 x 60000 px render of a 3 x 14400 pt
     page) it multiplies out to billions of pixels even though the render
-    itself stayed inside MAX_OCR_PIXELS. This also catches the render
-    already exceeding the budget (MIN_OCR_DPI has a floor below which the
-    resolution won't drop, so a very large page can still render over
-    budget) by downscaling instead of upscaling in that case."""
+    itself stayed inside MAX_OCR_PIXELS. An image already over the budget
+    is scaled down instead (the render is sized to fit, so this is a
+    safety net)."""
     oriented, _ = auto_orient(pil_image.convert("L"))
     gray_arr = deskew_grayscale(np.array(oriented))
     gray = Image.fromarray(gray_arr)

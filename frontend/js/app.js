@@ -74,7 +74,9 @@
       document.body.appendChild(region);
     }
     region.innerHTML = "";
-    region.appendChild(el("div", { class: "toast toast-error", role: "alert" }, [
+    // No role="alert": announce() above already reaches screen readers, and
+    // both together read every error out twice.
+    region.appendChild(el("div", { class: "toast toast-error" }, [
       el("span", { text: msg }),
       el("button", { class: "toast-dismiss", type: "button", "aria-label": "Dismiss", text: "×", onclick: () => dismissToast() }),
     ]));
@@ -474,7 +476,7 @@
     const cooldown = el("input", { type: "number", id: "email-cooldown", min: "0", value: String(settings.cooldown_minutes ?? 30) });
 
     // pre-line: the test result puts sending and reading on separate lines.
-    const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
+    const statusLine = el("div", { id: "email-status-line", class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
 
     emailPanel.appendChild(el("div", { class: "field" }, [
       el("label", { for: "email-enabled", style: "display:flex;align-items:center;gap:0.5rem;" }, [
@@ -549,9 +551,12 @@
           const msg = body.password_cleared
             ? "Saved. The stored password was cleared because the server or username changed — enter it again if you still need email ingest."
             : "Saved.";
-          statusLine.textContent = msg;
           if (body.password_cleared) announceError(msg); else announce("Email settings saved.");
+          // renderEmailSettings() rebuilds the panel, status line included,
+          // so the message is written to the new one afterwards.
           await renderEmailSettings();
+          const newStatus = $("#email-status-line");
+          if (newStatus) newStatus.textContent = msg;
         } else {
           const err = await res.json().catch(() => ({}));
           statusLine.textContent = err.detail || "Could not save.";
