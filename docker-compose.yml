@@ -18,6 +18,11 @@ services:
     #   # If set, it overrides encryption.key.
     #   RECIPE_APP_ENCRYPTION_KEY: "paste-generated-key-here"
     #
+    #   # Only if you reach the app by a host name with a dot in it that
+    #   # isn't .local/.lan/.home.arpa (e.g. behind a reverse proxy). See
+    #   # README "Other websites can't use the app through your browser".
+    #   RECIPE_APP_ALLOWED_HOSTS: "pantry.example.com"
+    #
     #   # Strongly recommended if you enable email ingest -- see the README's
     #   # security notes. Requires a client or reverse proxy that sends the
     #   # X-API-Key header.

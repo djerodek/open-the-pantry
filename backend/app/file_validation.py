@@ -111,7 +111,7 @@ def reencode_image(path: str):
     recipe photos aren't a real use case here, so that's an accepted
     simplification, not an oversight."""
     from PIL import Image, ImageOps
-    with Image.open(path) as img:
+    with Image.open(path, formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
         img.load()  # force full decode now, not lazily later
         fmt = img.format  # save() can't infer format from this temp filename
         oriented = ImageOps.exif_transpose(img)  # bakes EXIF rotation into pixels

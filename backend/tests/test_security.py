@@ -160,7 +160,7 @@ def test_ssrf_guard_blocks_redirect_to_private_address():
 
     real_getaddrinfo = socket.getaddrinfo
 
-    def fake_get(url, headers=None, timeout=None, allow_redirects=None):
+    def fake_get(url, headers=None, timeout=None, allow_redirects=None, **kwargs):
         resp = MagicMock()
         if "evil-redirect.example.com" in url:
             resp.is_redirect = True

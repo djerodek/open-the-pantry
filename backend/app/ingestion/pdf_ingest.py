@@ -107,7 +107,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
 
             # No usable text layer on this page -- render to image and OCR it.
             ocr_pages.append(i + 1)
-            pil_image = page.to_image(resolution=300).original
+            pil_image = page.to_image(resolution=_ocr_resolution(page.width, page.height)).original
             ocr_text, confidence = _ocr_image(pil_image)
             page_texts.append(ocr_text)
             if confidence is not None:
@@ -122,6 +122,22 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
         ocr_used_on_pages=ocr_pages,
         avg_ocr_confidence=avg_confidence,
     )
+
+
+# Rendering budget for one scanned page. 300 dpi on a letter page is
+# ~8.4 MP; an 8.5 x 200 inch page (the iOS full-page-screenshot maximum)
+# was 153 MP and 1.25 GB before OCR even started, with up to three OCR jobs
+# at once. Tall pages get a lower dpi instead.
+MAX_OCR_PIXELS = 35_000_000
+OCR_DPI = 300
+MIN_OCR_DPI = 72
+
+
+def _ocr_resolution(width_pt: float, height_pt: float) -> int:
+    """dpi for rendering a page of this size (in points) within the budget."""
+    area_in2 = max(width_pt, 1) / 72 * max(height_pt, 1) / 72
+    dpi = int((MAX_OCR_PIXELS / area_in2) ** 0.5)
+    return max(MIN_OCR_DPI, min(OCR_DPI, dpi))
 
 
 def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:

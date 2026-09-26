@@ -185,6 +185,7 @@ class EmailSettingsIn(BaseModel):
     password: Optional[str] = None
     notify_email: Optional[str] = None
     subject_keyword: str = "[RECIPE]"
+    allowed_senders: str = Field(default="", max_length=2000)
     daily_scan_hour: int = Field(default=3, ge=0, le=23)
     cooldown_minutes: int = Field(default=30, ge=0, le=7 * 24 * 60)  # timedelta overflowed on huge values
 
@@ -205,6 +206,7 @@ class EmailSettingsOut(BaseModel):
     password_set: bool = False
     notify_email: Optional[str] = None
     subject_keyword: str
+    allowed_senders: str = ""
     daily_scan_hour: int
     cooldown_minutes: int
     last_scan_at: Optional[str] = None

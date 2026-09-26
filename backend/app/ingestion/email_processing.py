@@ -59,10 +59,16 @@ def _leaf_parts(msg):
 def _image_size(payload: bytes):
     """(width, height) from the image header, or None if Pillow can't read
     it. Header only -- no pixel decode, so a huge photo costs nothing."""
+    # Magic bytes first, and only the four formats the app accepts: this
+    # runs on images from inbound email before any other validation, and a
+    # bare Image.open() would hand them to every decoder Pillow has.
+    from ..file_validation import detect_image_ext
+    if detect_image_ext(payload[:16]) is None:
+        return None
     try:
         import io
         from PIL import Image
-        with Image.open(io.BytesIO(payload)) as im:
+        with Image.open(io.BytesIO(payload), formats=["JPEG", "PNG", "GIF", "WEBP"]) as im:
             return im.size
     except Exception:
         log.debug("_image_size: caught error, continuing", exc_info=True)

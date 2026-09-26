@@ -3,6 +3,22 @@
 
   const API = "/api";
 
+  // Every state-changing request to the API must carry X-Requested-With;
+  // the server refuses writes without it (cross_site_guard in main.py), which
+  // stops other websites from making changes through your browser. Added
+  // here once, for every fetch the app makes to its own API.
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const url = typeof input === "string" ? input : input.url;
+    const method = (init.method || (typeof input !== "string" && input.method) || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && new URL(url, location.href).origin === location.origin) {
+      const headers = new Headers(init.headers || (typeof input !== "string" ? input.headers : undefined));
+      headers.set("X-Requested-With", "OpenThePantry");
+      init = { ...init, headers };
+    }
+    return nativeFetch(input, init);
+  };
+
   // Uncaught errors and rejected promises go to the server log
   // (docker logs / data/logs/app.log, as "otp.client"), so a problem seen
   // on the phone can be read on the NAS. Best effort: a report that can't
@@ -423,6 +439,8 @@
     if (!settings.encryption_configured) password.disabled = true;
     const notifyEmail = el("input", { type: "email", id: "email-notify", value: settings.notify_email || "" });
     const keyword = el("input", { type: "text", id: "email-keyword", value: settings.subject_keyword || "[RECIPE]" });
+    const senders = el("input", { type: "text", id: "email-senders", value: settings.allowed_senders || "",
+      placeholder: "you@example.com, @family.example" });
     const scanHour = el("input", { type: "number", id: "email-scan-hour", min: "0", max: "23", value: String(settings.daily_scan_hour ?? 3) });
     const cooldown = el("input", { type: "number", id: "email-cooldown", min: "0", value: String(settings.cooldown_minutes ?? 30) });
 
@@ -451,6 +469,9 @@
     emailPanel.appendChild(emailField("Send notifications to", notifyEmail));
     emailPanel.appendChild(emailField("Subject keyword", keyword,
       "Only emails whose subject contains this are considered. Everything else is ignored."));
+    emailPanel.appendChild(emailField("Only accept email from", senders,
+      "Addresses, or @domain for a whole domain, separated by commas. Leave empty to accept anyone " +
+      "who knows the address and keyword. Recommended: list the addresses you send from."));
     emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour,
       `In the server's time zone${settings.server_timezone ? ` (${settings.server_timezone})` : ""}. ` +
       "If that isn't yours, set TZ in docker-compose.yml."));
@@ -482,6 +503,7 @@
           username: username.value.trim() || null,
           notify_email: notifyEmail.value.trim() || null,
           subject_keyword: keyword.value.trim() || "[RECIPE]",
+          allowed_senders: senders.value.trim(),
           daily_scan_hour: parseInt(scanHour.value, 10) || 0,
           cooldown_minutes: parseInt(cooldown.value, 10) || 0,
         };

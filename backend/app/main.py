@@ -215,6 +215,63 @@ async def log_unhandled_errors(request: Request, call_next):
         raise
 
 
+# --- Browser-borne requests from other sites -------------------------------
+# "Only people on my network can reach it" doesn't cover web pages those
+# people visit: a page elsewhere can send requests to the NAS through their
+# browser. Two checks close the common routes (Opus 5 review):
+#
+# 1. Host header. DNS rebinding points an attacker's own domain at the NAS's
+#    IP, so the browser treats the app as that domain and lets the page read
+#    responses. Such requests arrive with the attacker's hostname in Host.
+#    Accepted by default: IP addresses, localhost, and local-style names
+#    (no dot, or ending .local / .lan / .home.arpa / .internal). Anything
+#    else -- e.g. a reverse-proxy name like pantry.example.com -- must be
+#    listed in RECIPE_APP_ALLOWED_HOSTS (comma-separated).
+# 2. A custom header on every state-changing API request. A cross-site page
+#    can POST a form or an empty body without the browser asking first; it
+#    can't add a custom header without a CORS preflight, which this app never
+#    approves. The app's own pages add it automatically (see app.js).
+ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("RECIPE_APP_ALLOWED_HOSTS", "").split(",") if h.strip()}
+_LOCAL_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localhost")
+WRITE_HEADER = "x-requested-with"
+
+
+def _host_allowed(host_header: str) -> bool:
+    import ipaddress as _ip
+    host = (host_header or "").strip().lower()
+    if host.startswith("["):                      # [::1]:8090
+        host = host[1:host.find("]")] if "]" in host else host
+    elif host.count(":") == 1:                    # name:port / 1.2.3.4:port
+        host = host.rsplit(":", 1)[0]
+    if not host:
+        return False
+    if "*" in ALLOWED_HOSTS or host in ALLOWED_HOSTS:
+        return True
+    try:
+        _ip.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    return "." not in host or host.endswith(_LOCAL_SUFFIXES)
+
+
+@app.middleware("http")
+async def cross_site_guard(request: Request, call_next):
+    if request.url.path == "/healthz":
+        return await call_next(request)
+    if not _host_allowed(request.headers.get("host", "")):
+        log.warning("Refused request for host %r from %s (not in RECIPE_APP_ALLOWED_HOSTS)",
+                    request.headers.get("host"), request.client.host if request.client else "?")
+        return JSONResponse(status_code=400, content={
+            "detail": "This host name isn't allowed. Add it to RECIPE_APP_ALLOWED_HOSTS in docker-compose.yml."})
+    if (request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/")
+            and not request.headers.get(WRITE_HEADER)):
+        log.warning("Refused %s %s without the %s header", request.method, request.url.path, WRITE_HEADER)
+        return JSONResponse(status_code=403, content={
+            "detail": "Missing X-Requested-With header. Requests that change data must send it."})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def api_key_auth(request: Request, call_next):
     if not API_KEY or request.url.path == "/healthz":
@@ -394,7 +451,7 @@ def _download_and_save_showcase_image(url: str, dest_dir: str, name_prefix: str,
     shared magic-byte/re-encode validation. Never raises -- a failed
     thumbnail fetch shouldn't fail the whole recipe ingestion."""
     try:
-        resp = safe_get(url, timeout=10)
+        resp = safe_get(url, timeout=10, max_bytes=MAX_UPLOAD_BYTES)
     except Exception:
         log.debug("_download_and_save_showcase_image: caught error, continuing", exc_info=True)
         return None
@@ -661,6 +718,24 @@ def run_email_scan(force_notify: bool = False) -> dict:
         _email_scan_lock.release()
 
 
+def _parse_allowed_senders(raw: str) -> list[str]:
+    return [p.strip().lower() for p in re.split(r"[,;\s]+", raw or "") if p.strip()]
+
+
+def _sender_allowed(from_header: str, allowed: list[str]) -> bool:
+    """Empty list = anyone. Otherwise the From address must match an entry
+    exactly, or end with an "@domain" entry. The From header can be forged,
+    so this keeps out strangers who learn the address and keyword -- not a
+    determined attacker; a dedicated, unguessable address still matters."""
+    if not allowed:
+        return True
+    import email.utils
+    addr = email.utils.parseaddr(from_header or "")[1].lower()
+    if not addr:
+        return False
+    return any(addr == a or (a.startswith("@") and addr.endswith(a)) for a in allowed)
+
+
 def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
     settings = _get_email_settings(db)
     if not settings.enabled:
@@ -706,6 +781,15 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                         pass
                     continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
+                if not _sender_allowed(msg.get("From", ""), _parse_allowed_senders(settings.allowed_senders)):
+                    scan_log.warning("Scan: ignored %r from %s: sender not in the allowed list",
+                                     subject, msg.get("From", "?"))
+                    messages.append(f"IGNORED: \"{subject}\" from {msg.get('From', '?')}: sender isn't on the allowed list.")
+                    try:
+                        email_client.mark_seen(imap, msg_id)
+                    except Exception:
+                        scan_log.debug("mark_seen failed for ignored message", exc_info=True)
+                    continue
                 scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
                 result = _run_heavy(process_tagged_email, msg, TMP_DIR)
                 if result["success"]:
@@ -1567,6 +1651,7 @@ def _email_settings_out(settings: models.EmailIngestSettings) -> schemas.EmailSe
         password_set=bool(settings.password_encrypted),
         notify_email=settings.notify_email,
         subject_keyword=settings.subject_keyword,
+        allowed_senders=settings.allowed_senders or "",
         daily_scan_hour=settings.daily_scan_hour,
         cooldown_minutes=settings.cooldown_minutes,
         last_scan_at=settings.last_scan_at.isoformat() if settings.last_scan_at else None,
@@ -1607,6 +1692,20 @@ def create_encryption_key(db: Session = Depends(get_db)):
 def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depends(get_db)):
     settings = _get_email_settings(db)
 
+    # A saved password belongs to one account on one server. If the server
+    # or username changes without a new password in the same request, the
+    # old one is dropped: otherwise anyone who can reach this API could
+    # point the hosts at their own server, press "Send test email", and
+    # receive the password in the login. (Opus 5 review, reproduced.)
+    moved = (
+        (settings.imap_host or None) != (payload.imap_host or None)
+        or (settings.smtp_host or None) != (payload.smtp_host or None)
+        or (settings.username or None) != (payload.username or None)
+    )
+    if moved and settings.password_encrypted and not payload.password:
+        settings.password_encrypted = None
+        log.warning("Email server or username changed without a new password; saved password cleared")
+
     if payload.password:
         # Fails closed if no encryption key is configured -- a credential is
         # never written in plaintext as a fallback.
@@ -1636,6 +1735,7 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
     settings.username = payload.username
     settings.notify_email = payload.notify_email
     settings.subject_keyword = payload.subject_keyword or "[RECIPE]"
+    settings.allowed_senders = ", ".join(_parse_allowed_senders(payload.allowed_senders))
     settings.daily_scan_hour = payload.daily_scan_hour
     settings.cooldown_minutes = payload.cooldown_minutes
 

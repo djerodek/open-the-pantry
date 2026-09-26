@@ -378,6 +378,37 @@ docker compose -f docker-compose.build.yml up -d --build
   itself, or a reverse proxy configured to inject it. A reverse-proxy auth
   layer (basic auth, Tailscale, etc.) remains the more complete option for
   exposing this beyond your LAN.
+- **Other websites can't use the app through your browser.** "Only my
+  network can reach it" doesn't cover web pages that people on the network
+  visit: such a page can send requests to the NAS from their browser. Two
+  checks close that:
+  - **Host names.** Requests are accepted for IP addresses, `localhost`, and
+    local-style names (no dot, or ending `.local`, `.lan`, `.home.arpa`,
+    `.internal`). Any other name -- e.g. `pantry.example.com` behind a
+    reverse proxy -- must be listed in `RECIPE_APP_ALLOWED_HOSTS`
+    (comma-separated) in the compose file, or requests for it get a 400
+    that says so. This blocks DNS rebinding, where a site points its own
+    domain at your NAS's address.
+  - **Writes need an `X-Requested-With` header.** Every request that
+    changes data must carry it; the app's pages add it automatically. A
+    page on another site can't add a custom header without the browser
+    asking the app first, and the app never agrees. Scripts that call the
+    API directly need to send it too (any value).
+- **Changing the email server or username clears the saved password**
+  unless a new one is entered in the same save. Otherwise anyone who can
+  reach the API could point the settings at their own server and press
+  "Send test email" to receive the password.
+- **Email from strangers can be ignored.** Settings → Email ingest → "Only
+  accept email from" takes addresses and `@domain` entries. Other senders'
+  tagged emails are marked read and listed as IGNORED in the scan results.
+  Empty means anyone, as before. The From header can be forged, so this
+  keeps out people who stumble on the address and keyword -- a dedicated,
+  unguessable address still matters.
+- **Page downloads are bounded:** 10 MB per page (20 MB for photos), 30
+  seconds in total including redirects, and only public internet addresses
+  (anything not globally routable is refused, including the `100.64.0.0/10`
+  range Tailscale uses). Scanned PDF pages are rendered for OCR within a
+  35-megapixel budget, so an extremely tall page can't exhaust memory.
 - **Email credentials (if you use email ingest)** are encrypted at rest
   with Fernet (AES-128-CBC + HMAC). The key comes from one of two places:
 

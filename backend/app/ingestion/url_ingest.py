@@ -49,15 +49,50 @@ def validate_public_url(url: str):
         raise UrlValidationError("Could not resolve host.")
 
     for family, _, _, _, sockaddr in addrinfo:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        ip = ipaddress.ip_address(sockaddr[0].split("%")[0])
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        # is_global rather than a list of is_private / is_loopback / ...:
+        # the list missed 100.64.0.0/10 (carrier-grade NAT, which Tailscale
+        # uses, 100.100.100.100 included) and similar non-public ranges.
+        if not ip.is_global or ip.is_multicast:
             raise UrlValidationError("URLs resolving to private/internal network addresses aren't allowed.")
 
 
 MAX_REDIRECTS = 5
 
 
-def safe_get(url: str, timeout: int = 15) -> requests.Response:
+# A recipe page is well under 1 MB; photos are capped at 20 MB by the caller.
+MAX_PAGE_BYTES = 10 * 1024 * 1024
+# Whole-request budget. requests' timeout applies per read, so a server
+# trickling one byte every 14 seconds could otherwise hold a worker forever.
+TOTAL_FETCH_SECONDS = 30
+
+
+class FetchTooLargeError(UrlValidationError):
+    pass
+
+
+def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
+    import time as _time
+    declared = resp.headers.get("Content-Length")
+    if declared and declared.isdigit() and int(declared) > max_bytes:
+        resp.close()
+        raise FetchTooLargeError(f"{url} is {int(declared) // 1048576} MB; the limit is {max_bytes // 1048576} MB.")
+    chunks, total = [], 0
+    for chunk in resp.iter_content(64 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            resp.close()
+            raise FetchTooLargeError(f"{url} is larger than {max_bytes // 1048576} MB.")
+        if _time.monotonic() > deadline:
+            resp.close()
+            raise UrlValidationError(f"{url} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> requests.Response:
     """requests.get()'s default (allow_redirects=True) follows redirects
     without re-validating them -- a page could return a 302 to
     169.254.169.254 or an internal address, completely bypassing
@@ -73,13 +108,23 @@ def safe_get(url: str, timeout: int = 15) -> requests.Response:
     Residual gap, accepted for a LAN app: DNS is resolved once to validate
     and again by requests to connect, so a hostname that changes its
     answer in between (DNS rebinding) isn't caught."""
+    import time as _time
+    deadline = _time.monotonic() + TOTAL_FETCH_SECONDS
     current_url = url
     for _ in range(MAX_REDIRECTS + 1):
         validate_public_url(current_url)
         try:
-            resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout, allow_redirects=False)
+            # stream=True: the body is read by _read_limited, which stops at
+            # max_bytes and at the overall deadline, instead of requests
+            # loading the whole response into memory first.
+            resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
+                                allow_redirects=False, stream=True)
+            resp._content = _read_limited(resp, current_url, max_bytes, deadline)
         except requests.RequestException as e:
             log.warning("GET %s failed: %s: %s", current_url, type(e).__name__, e)
+            raise
+        except UrlValidationError as e:
+            log.warning("GET %s stopped: %s", current_url, e)
             raise
         log.info("GET %s -> %s (%s bytes, %s)", current_url, resp.status_code,
                  len(resp.content), resp.headers.get("Content-Type", "?"))

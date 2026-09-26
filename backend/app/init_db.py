@@ -84,6 +84,10 @@ def _migrate_and_setup_schema():
         existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(recipes)")}
         table_exists = bool(existing_cols)
 
+        email_cols = {row[1] for row in cur.execute("PRAGMA table_info(email_ingest_settings)")}
+        if email_cols and "allowed_senders" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN allowed_senders TEXT NOT NULL DEFAULT ''")
+
         if table_exists:
             for col, decl in NEW_RECIPE_COLUMNS.items():
                 if col not in existing_cols:

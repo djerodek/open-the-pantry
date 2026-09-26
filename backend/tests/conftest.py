@@ -28,7 +28,9 @@ def client(data_dir):
     from fastapi.testclient import TestClient
     from app.main import app
 
-    with TestClient(app) as c:  # context-manager form actually runs lifespan
+    # X-Requested-With: every write from the app's own pages carries it (see
+    # cross_site_guard); tests act as the app.
+    with TestClient(app, headers={"X-Requested-With": "OpenThePantry"}) as c:  # context-manager form actually runs lifespan
         yield c
 
 

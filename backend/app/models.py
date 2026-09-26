@@ -126,6 +126,9 @@ class EmailIngestSettings(Base):
 
     notify_email = Column(String, nullable=True)  # where success/failure notifications are sent
     subject_keyword = Column(String, nullable=False, default="[RECIPE]")
+    # Comma-separated addresses ("me@example.com") and/or domains
+    # ("@example.com"). Empty = accept any sender, as before.
+    allowed_senders = Column(Text, nullable=False, default="")
     daily_scan_hour = Column(Integer, nullable=False, default=3)  # 0-23, container-local time
     cooldown_minutes = Column(Integer, nullable=False, default=30)
 
