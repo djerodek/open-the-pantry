@@ -139,6 +139,12 @@ class EmailIngestSettings(Base):
 
     last_notification_sent_at = Column(DateTime(timezone=True), nullable=True)
     last_scan_at = Column(DateTime(timezone=True), nullable=True)
+    # What went wrong on the latest scan that couldn't finish its job
+    # (couldn't read the inbox, or the result email didn't go out), shown in
+    # Settings. The 3 AM scan has no other way to tell anyone: if SMTP is
+    # the broken part, the notification email is exactly what can't arrive.
+    last_problem = Column(Text, nullable=True)
+    last_problem_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class EmailNotificationQueueItem(Base):

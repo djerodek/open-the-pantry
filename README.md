@@ -198,6 +198,13 @@ docker compose -f docker-compose.build.yml up -d --build
   encrypted from the start, other ports upgrade with STARTTLS. "Send test
   email" checks sending and reading separately, and when a connection
   fails it probes the port and says what it found there.
+- If the overnight scan can't read the inbox, or its result email can't be
+  sent, Settings → Email ingest says so at the top, with the error and how
+  many results are waiting to be emailed. (A broken sending setup can't
+  email you that it's broken.) The warning clears after the next scan or
+  test that goes through. The same errors are in `data/logs/app.log`.
+- A link in an email imports the recipe but not the page's photo (the
+  in-app "Add from URL" does fetch it). Add one from the recipe's page.
 - Results are reported by email: `[SUCCESS]`, `[FAILURE]`, or `[PARTIAL]`
   when a scan had both. Results within a configurable cooldown window
   (default 30 min) are batched into one message rather than sent
@@ -279,7 +286,10 @@ docker compose -f docker-compose.build.yml up -d --build
 **Organizing & finding**
 - Three structured tag categories (meal type, cooking style, main
   ingredient) plus free-form custom tags. Keyword-based auto-suggestion at
-  ingest time; always user-editable. Cocktail-specific cooking-style tags
+  ingest time; always user-editable. Stocks, broths and sauces ("chicken
+  stock", "fish sauce") don't count as the main ingredient, though they do
+  rule out Vegetarian. Suggestions apply when a recipe is added; tags on
+  recipes you already have aren't changed. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it

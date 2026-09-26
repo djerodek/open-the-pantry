@@ -6,7 +6,8 @@ KEYWORD_MAP = {
     "main_ingredient": {
         "Chicken": ["chicken", "poultry", "hen"],
         "Pork": ["pork", "bacon", "ham", "prosciutto", "sausage", "chorizo"],
-        "Beef": ["beef", "steak", "brisket", "ground beef", "short rib"],
+        "Beef": ["beef", "steak", "brisket", "ground beef", "short rib", "oxtail", "chuck", "blade roast",
+                 "pot roast", "prime rib", "ribeye", "rib eye", "sirloin", "flank steak"],
         "Fish": ["salmon", "tuna", "cod", "halibut", "tilapia", "shrimp", "fish", "shellfish", "crab", "lobster",
                  "trout", "mackerel", "sardine", "sardines", "anchovy", "anchovies", "prawn", "prawns",
                  "mussel", "mussels", "moules", "clam", "clams", "oyster", "oysters", "scallop", "scallops",
@@ -44,7 +45,20 @@ MEAT_FISH_TAGS = {"Chicken", "Pork", "Beef", "Fish", "Game"}
 # "Thanksgiving Turkey" were tagged Vegetarian, and batch and email imports
 # save tags without review.
 NOT_VEGETARIAN = ["lamb", "mutton", "veal", "goat", "turkey", "quail", "goose", "venison",
-                  "gelatin", "gelatine", "lard", "suet", "fish sauce", "oyster sauce", "bone broth"]
+                  "gelatin", "gelatine", "lard", "suet", "fish sauce", "oyster sauce", "bone broth",
+                  # "bone marrow", not "marrow": vegetable marrow is a squash.
+                  "bone marrow"]
+
+
+# Stocks, broths and sauces made from an animal flavour a dish; they aren't
+# its main ingredient. Found in real recipes: "chicken stock" tagged an
+# Irish beef stew and a pork noodle dish Chicken, and "oyster sauce" tagged
+# a pork stir-fry Fish. These phrases are taken out before the main
+# ingredient is looked for -- but still rule out Vegetarian.
+_FLAVOURING = re.compile(
+    r"\b(chicken|beef|pork|veal|turkey|ham|bone|fish|oyster|clam|shrimp|prawn|anchovy|crab|lobster)"
+    r"\s+(stock|broth|bouillon|base|sauce|paste|cubes?|consomm\u00e9|consomme|fat|drippings|juice)\b"
+)
 
 
 def _text_contains(haystack: str, keyword: str) -> bool:
@@ -63,20 +77,23 @@ def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -
 
     suggestions: list[tuple[str, str, str | None]] = []
     matched_meat_or_fish = False
+    animal_flavouring = _FLAVOURING.search(haystack) is not None
+    main_haystack = _FLAVOURING.sub(" ", haystack)
 
     for category, tag_map in KEYWORD_MAP.items():
+        text = main_haystack if category == "main_ingredient" else haystack
         for tag_name, keywords in tag_map.items():
             if tag_name == "Vegetarian":
                 continue  # decided below, after checking meat/fish matches
             for kw in keywords:
-                if _text_contains(haystack, kw):
+                if _text_contains(text, kw):
                     subgroup = "cocktail" if tag_name in {"Shaken", "Stirred", "Built", "Blended"} else None
                     suggestions.append((tag_name, category, subgroup))
                     if tag_name in MEAT_FISH_TAGS:
                         matched_meat_or_fish = True
                     break
 
-    if not matched_meat_or_fish and any(_text_contains(haystack, kw) for kw in NOT_VEGETARIAN):
+    if not matched_meat_or_fish and (animal_flavouring or any(_text_contains(haystack, kw) for kw in NOT_VEGETARIAN)):
         matched_meat_or_fish = True
 
     if not matched_meat_or_fish:

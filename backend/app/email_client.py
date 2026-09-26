@@ -115,17 +115,25 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
       "implicit_tls"  -- a TLS handshake succeeds straight away
       "plaintext"     -- the server speaks first in the clear (a STARTTLS port)
       "cert_error"    -- TLS is there but the certificate doesn't verify
+      "tls_error"     -- a TLS handshake was attempted and failed for a reason
+                         other than the certificate (e.g. no protocol version
+                         in common), and there's no plaintext greeting either
       "silent"        -- TCP connects, but neither a TLS handshake nor a
                          plaintext greeting arrives
     Used only to explain a failure, never to pick the mode: a probe that
     could switch the app to a different connection type on its own would be
     a downgrade path waiting to happen.
+
+    Deliberately outside url_ingest's public-address check: it only ever
+    connects to the mail host and port saved in Settings, which is usually
+    meant to be reachable (a LAN mail server is legitimate here).
     """
     try:
         raw = socket.create_connection((host, port), timeout=timeout)
     except OSError:
         log.debug("probe_port: caught error, continuing", exc_info=True)
         return "unreachable"
+    tls_failed = False
     try:
         raw.settimeout(timeout)
         ctx = ssl.create_default_context()
@@ -134,7 +142,12 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
                 return "implicit_tls"
         except ssl.SSLCertVerificationError:
             return "cert_error"
-        except (ssl.SSLError, OSError):
+        except ssl.SSLError:
+            # A plaintext server answering the ClientHello also lands here,
+            # so this only means something if no greeting follows below.
+            log.debug("probe_port: TLS handshake failed", exc_info=True)
+            tls_failed = True
+        except OSError:
             log.debug("probe_port: caught error, continuing", exc_info=True)
             pass
     finally:
@@ -153,7 +166,7 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
     except OSError:
         log.debug("probe_port: caught error, continuing", exc_info=True)
         pass
-    return "silent"
+    return "tls_error" if tls_failed else "silent"
 
 
 def _diagnose_suffix(host: str, port: int, implicit: bool, err: Exception) -> str:
@@ -184,6 +197,10 @@ def _diagnose_suffix(host: str, port: int, implicit: bool, err: Exception) -> st
                 f"that hostname. Use the exact server name from the certificate (shared hosts "
                 "often want their own name, e.g. the server's hostname rather than "
                 "mail.yourdomain), or ask the host.")
+    if found == "tls_error":
+        return (f" -- Diagnosis: {host}:{port} speaks TLS, but the handshake failed for a reason "
+                "other than the certificate (often a very old server with no TLS version in "
+                "common). Try the host's other port, or check its TLS settings.")
     if found == "silent":
         return (f" -- Diagnosis: {host}:{port} accepts the connection but never answers. "
                 "Usually a firewall or proxy in between, or the wrong port.")

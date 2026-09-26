@@ -609,6 +609,18 @@ def _queue_notification(db: Session, success: bool, message: str):
     db.commit()
 
 
+def _pending_notification_count(settings: models.EmailIngestSettings) -> int:
+    from sqlalchemy.orm import object_session
+    s = object_session(settings)
+    return s.query(models.EmailNotificationQueueItem).count() if s is not None else 0
+
+
+def _record_scan_problem(db: Session, settings: models.EmailIngestSettings, text: str):
+    settings.last_problem = text[:1000]
+    settings.last_problem_at = datetime.now()
+    db.commit()
+
+
 def _flush_notifications(db: Session, settings: models.EmailIngestSettings, force: bool = False) -> Optional[bool]:
     """Sends one batched notification email covering everything queued
     since the last one, if the cooldown has elapsed (or force=True).
@@ -667,8 +679,9 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
             except Exception:
                 log.debug("_flush_notifications: caught error, continuing", exc_info=True)
                 pass
-    except Exception:
+    except Exception as e:
         scan_log.warning("Result email not sent; %d item(s) stay queued", len(queued), exc_info=True)
+        _record_scan_problem(db, settings, f"The result email couldn't be sent: {e}")
         return None  # leave everything queued; next scan retries
 
     for q in queued:
@@ -785,7 +798,8 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
     try:
         password = crypto.decrypt_secret(settings.password_encrypted)
     except Exception as e:
-        log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
+        log.warning("_run_email_scan_inner: password could not be decrypted", exc_info=True)
+        _record_scan_problem(db, settings, f"The saved password couldn't be decrypted: {e}")
         return {"scanned": 0, "succeeded": 0, "failed": 0, "messages": [str(e)]}
 
     try:
@@ -794,6 +808,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
         )
     except Exception as e:
         scan_log.warning("Scan: IMAP connection failed: %s", e)
+        _record_scan_problem(db, settings, f"Couldn't connect to the inbox: {e}")
         return {"scanned": 0, "succeeded": 0, "failed": 0, "messages": [f"Could not connect: {e}"]}
 
     try:
@@ -877,6 +892,13 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             "The result email couldn't be sent (sending isn't working -- use Send test email "
             "to see why). It stays queued and goes out once sending works."
         )
+    elif settings.last_problem and (sent or _pending_notification_count(settings) == 0):
+        # The inbox was read, and nothing is stuck waiting to be emailed.
+        # (sent=False with items still queued is a cooldown or missing
+        # notify address: a send problem may not be fixed yet.)
+        settings.last_problem = None
+        settings.last_problem_at = None
+        db.commit()
 
     return {"scanned": succeeded + failed, "succeeded": succeeded, "failed": failed, "messages": messages}
 
@@ -1694,6 +1716,9 @@ def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: 
         daily_scan_hour=settings.daily_scan_hour,
         cooldown_minutes=settings.cooldown_minutes,
         last_scan_at=settings.last_scan_at.isoformat() if settings.last_scan_at else None,
+        last_problem=settings.last_problem,
+        last_problem_at=settings.last_problem_at.isoformat() if settings.last_problem_at else None,
+        pending_notifications=_pending_notification_count(settings),
         encryption_configured=crypto.encryption_configured(),
         encryption_source=crypto.key_source(),
         server_timezone=datetime.now().astimezone().tzname() or "",
@@ -1869,6 +1894,12 @@ def test_email_settings(db: Session = Depends(get_db)):
     except Exception as e:
         log.warning("test_email_settings: caught error, continuing", exc_info=True)
         imap_ok, imap_msg = False, f"Reading (IMAP) failed: {e}"
+
+    if smtp_ok and imap_ok and settings.last_problem:
+        # Both halves work now; an old scan problem would only mislead.
+        settings.last_problem = None
+        settings.last_problem_at = None
+        db.commit()
 
     if smtp_ok and imap_ok:
         message = f"{smtp_msg} {imap_msg} Check that the test email arrived."

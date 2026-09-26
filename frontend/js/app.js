@@ -94,7 +94,10 @@
     for (const [k, v] of Object.entries(attrs)) {
       if (v === null || v === undefined) continue;
       if (k === "text") node.textContent = v;
-      else if (k === "html") node.innerHTML = v;
+      // Only for fixed markup written in this file (the share icon). Named
+      // so it can't be mistaken for a general option: recipe data must go
+      // through `text`, never here.
+      else if (k === "trustedStaticHtml") node.innerHTML = v;
       else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
       else node.setAttribute(k, v);
     }
@@ -484,6 +487,24 @@
         el("span", { text: "Enable daily inbox scan" }),
       ]),
     ]));
+
+    // The overnight scan can't email you that emailing is broken; this is
+    // where it says so instead.
+    if (settings.last_problem || settings.pending_notifications) {
+      const lines = [];
+      if (settings.last_problem) {
+        const when = settings.last_problem_at ? new Date(settings.last_problem_at).toLocaleString() : "the last scan";
+        lines.push(el("strong", { text: `Problem during the scan at ${when}` }));
+        lines.push(el("p", { text: settings.last_problem }));
+      }
+      if (settings.pending_notifications) {
+        lines.push(el("p", { text: `${settings.pending_notifications} scan result${settings.pending_notifications === 1 ? "" : "s"} waiting to be emailed.` }));
+      }
+      if (settings.last_problem) {
+        lines.push(el("p", { class: "field-hint", text: "Send test email checks both halves; this clears once a scan or test goes through." }));
+      }
+      emailPanel.appendChild(el("div", { class: "email-problem", role: "status" }, lines));
+    }
 
     emailPanel.appendChild(emailField("IMAP host (reading)", imapHost, "e.g. imap.gmail.com"));
     emailPanel.appendChild(emailField("IMAP port", imapPort,
@@ -1440,7 +1461,7 @@
         type: "button", class: "card-share-btn",
         "aria-label": `Share ${recipe.title}`,
         title: "Share",
-        html: SHARE_ICON_SVG,
+        trustedStaticHtml: SHARE_ICON_SVG,
         onclick: (e) => { e.preventDefault(); e.stopPropagation(); openShareSheet(recipe); },
       }));
     }
@@ -2149,7 +2170,7 @@
     const toggleBtn = el("button", {
       class: "btn-secondary share-toggle", type: "button", "aria-haspopup": "true",
       "aria-expanded": "false", "aria-label": "Share recipe",
-      html: `${SHARE_ICON_SVG}<span>Share</span>`,
+      trustedStaticHtml: `${SHARE_ICON_SVG}<span>Share</span>`,
       onclick: () => {
         const willOpen = menu.hidden;
         menu.hidden = !willOpen;

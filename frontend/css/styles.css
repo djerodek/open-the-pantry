@@ -1503,3 +1503,14 @@ main {
 /* Result of "Check email inbox" in the + menu: one line per email. */
 .scan-status { white-space: pre-line; margin-top: 0.75rem; }
 .source-type-picker button:nth-child(odd):last-child { grid-column: 1 / -1; }
+
+/* Email settings: what went wrong on the last scan (see renderEmailSettings). */
+.email-problem {
+  border: 1px solid var(--color-accent);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+.email-problem p { margin: 0.3rem 0 0; overflow-wrap: anywhere; }

@@ -215,6 +215,9 @@ class EmailSettingsOut(BaseModel):
     daily_scan_hour: int
     cooldown_minutes: int
     last_scan_at: Optional[str] = None
+    last_problem: Optional[str] = None       # see models.EmailIngestSettings.last_problem
+    last_problem_at: Optional[str] = None
+    pending_notifications: int = 0           # result lines waiting for the next email
     encryption_configured: bool = True  # whether RECIPE_APP_ENCRYPTION_KEY is set at all
     # "env", "file", "env_invalid", or None -- see crypto.key_source().
     encryption_source: Optional[str] = None

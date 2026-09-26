@@ -108,6 +108,10 @@ def _migrate_and_setup_schema():
         email_cols = {row[1] for row in cur.execute("PRAGMA table_info(email_ingest_settings)")}
         if email_cols and "allowed_senders" not in email_cols:
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN allowed_senders TEXT NOT NULL DEFAULT ''")
+        if email_cols and "last_problem" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN last_problem TEXT")
+        if email_cols and "last_problem_at" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN last_problem_at DATETIME")
 
         if table_exists:
             for col, decl in NEW_RECIPE_COLUMNS.items():
@@ -121,6 +125,7 @@ def _migrate_and_setup_schema():
                 pass
 
             if fts_cols and set(FTS_COLUMNS) - fts_cols:
+                # DO NOT REORDER THE STATEMENTS IN THIS BLOCK.
                 # The index is missing a column (older version). Order
                 # matters: drop the index and its triggers FIRST, then
                 # backfill, then rebuild. Backfilling with the triggers in

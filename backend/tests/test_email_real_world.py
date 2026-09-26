@@ -259,8 +259,9 @@ def test_failure_message_explains_starttls_port_used_as_implicit():
     srv = _listen(b"220 mail.example.com ESMTP\r\n")
     port = srv.getsockname()[1]
     try:
-        with patch.object(email_client, "probe_port", wraps=lambda h, p: email_client.probe_port.__wrapped__(h, p) if hasattr(email_client.probe_port, "__wrapped__") else "plaintext"):
-            suffix = email_client._diagnose_suffix("127.0.0.1", port, True, TimeoutError("timed out"))
+        # The real probe against the real listener (the old patch here always
+        # returned "plaintext", so the probe itself wasn't exercised).
+        suffix = email_client._diagnose_suffix("127.0.0.1", port, True, TimeoutError("timed out"))
     finally:
         srv.close()
     assert "STARTTLS port" in suffix

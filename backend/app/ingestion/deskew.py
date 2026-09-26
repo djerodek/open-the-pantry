@@ -100,4 +100,9 @@ def auto_orient(pil_img):
     return pil_img.rotate(-rotate, expand=True, fillcolor=255 if pil_img.mode == "L" else None), rotate
 
 
+# Measured on this project's 29 real screenshots and photos, each also turned
+# 90/180/270 degrees (116 cases): the one wrong rotation came at confidence
+# 5.9, so a higher threshold wouldn't have prevented it; 3 or 4 only left
+# 8-16 more sideways or upside-down pages unfixed. Raise it only with
+# examples of wrong rotations below the new value.
 ORIENTATION_MIN_CONF = 1.5
