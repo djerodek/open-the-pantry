@@ -58,7 +58,10 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
             continue
         for img in images:
             try:
-                pil_img = Image.open(io.BytesIO(img.data))
+                # Same format allowlist as the upload and email paths: this
+                # only reads the size, but opening lets Pillow pick any of
+                # its ~40 decoders for bytes taken from an untrusted PDF.
+                pil_img = Image.open(io.BytesIO(img.data), formats=["JPEG", "PNG", "GIF", "WEBP"])
                 width, height = pil_img.size
             except Exception:
                 log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
@@ -142,13 +145,27 @@ def _ocr_resolution(width_pt: float, height_pt: float) -> int:
 
 def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
     """Grayscale + deskew + upscale to improve Tesseract accuracy on
-    borderline images, including scans fed in at a slight angle."""
+    borderline images, including scans fed in at a slight angle.
+
+    The upscale-to-1500px-wide step below is unconditional on its own --
+    for an extreme aspect ratio (a 12 x 60000 px render of a 3 x 14400 pt
+    page) it multiplies out to billions of pixels even though the render
+    itself stayed inside MAX_OCR_PIXELS. This also catches the render
+    already exceeding the budget (MIN_OCR_DPI has a floor below which the
+    resolution won't drop, so a very large page can still render over
+    budget) by downscaling instead of upscaling in that case."""
     oriented, _ = auto_orient(pil_image.convert("L"))
     gray_arr = deskew_grayscale(np.array(oriented))
     gray = Image.fromarray(gray_arr)
-    if gray.width < 1500:
-        scale = 1500 / gray.width
-        gray = gray.resize((int(gray.width * scale), int(gray.height * scale)), Image.LANCZOS)
+
+    scale = 1500 / gray.width if gray.width < 1500 else 1.0
+    current_pixels = gray.width * gray.height
+    if current_pixels * scale * scale > MAX_OCR_PIXELS:
+        scale = (MAX_OCR_PIXELS / current_pixels) ** 0.5
+    if scale != 1.0:
+        new_w = max(1, int(gray.width * scale))
+        new_h = max(1, int(gray.height * scale))
+        gray = gray.resize((new_w, new_h), Image.LANCZOS)
     return gray
 
 

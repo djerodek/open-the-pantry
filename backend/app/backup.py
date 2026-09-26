@@ -26,6 +26,7 @@ import zipfile
 from datetime import datetime, timezone
 
 from .database import DB_PATH, UPLOADS_DIR
+from .file_validation import safe_join
 from .export import render_recipe_pdf
 from .logging_setup import get_logger
 
@@ -258,8 +259,12 @@ def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) ->
             try:
                 image_path = None
                 if recipe.image_path:
-                    candidate = os.path.join(UPLOADS_DIR, recipe.image_path)
-                    if os.path.isfile(candidate):
+                    # safe_join, like every other place a stored filename
+                    # meets the filesystem: image_path is validated on the
+                    # way in, but a database restored from an older backup
+                    # or edited by hand isn't.
+                    candidate = safe_join(UPLOADS_DIR, recipe.image_path)
+                    if candidate and os.path.isfile(candidate):
                         image_path = candidate
                 # The showcase image IS included here, unlike the share
                 # export: this is your own archive, not something handed to

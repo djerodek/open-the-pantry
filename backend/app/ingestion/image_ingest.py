@@ -3,8 +3,9 @@ import numpy as np
 from PIL import Image
 import pytesseract
 
-from .pdf_ingest import segment_raw_text  # reuse the same heuristic segmentation
+from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS  # reuse the same heuristic segmentation and pixel budget
 from .deskew import deskew_grayscale, auto_orient
+from ..file_validation import JPEG_QUALITY
 from ..logging_setup import get_logger
 
 log = get_logger("ocr")
@@ -30,9 +31,17 @@ def _preprocess(image_path: str):
     gray = deskew_grayscale(np.array(oriented))
 
     h, w = gray.shape
-    if w < 1500:
-        scale = 1500 / w
-        gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
+    # As in pdf_ingest._preprocess_for_ocr: cap the upscale (and any
+    # already-oversized upload) at the same pixel budget, so an extreme
+    # aspect ratio -- a 20 x 40000 px upload -- can't multiply out to
+    # gigapixels before Tesseract ever sees it.
+    scale = 1500 / w if w < 1500 else 1.0
+    current_pixels = w * h
+    if current_pixels * scale * scale > MAX_OCR_PIXELS:
+        scale = (MAX_OCR_PIXELS / current_pixels) ** 0.5
+    if scale != 1.0:
+        new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+        gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
     # Otsu thresholding -- binarizes text vs. background, helps with low-contrast
     # screenshots (e.g. stylized recipe-card graphics with text over a photo).
@@ -49,7 +58,9 @@ def _rotate_stored_file(image_path: str, degrees_clockwise: int):
             im.load()
             fmt = im.format
             turned = im.rotate(-degrees_clockwise, expand=True)
-        turned.save(image_path, format=fmt)
+        # A second JPEG encode (the upload was already re-encoded once);
+        # at Pillow's default quality 75 the loss compounded visibly.
+        turned.save(image_path, format=fmt, **({"quality": JPEG_QUALITY} if fmt == "JPEG" else {}))
     except Exception:
         log.warning("Couldn't rotate stored image %s", image_path, exc_info=True)
 

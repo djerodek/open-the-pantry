@@ -177,8 +177,8 @@ docker compose -f docker-compose.build.yml up -d --build
   Everything without that keyword is ignored entirely — the app never
   attempts to parse, or even fully read, untagged mail.
 - Scans run once daily at a configurable hour (default 3:00 AM in the
-  container's time zone -- set `TZ` in `docker-compose.yml`, as the example
-  does, or the container runs on UTC), plus on demand: "Check email inbox" in the +
+  container's time zone -- set `TZ` in `docker-compose.yml` to yours, e.g.
+  `America/Toronto`; the example ships with `UTC`), plus on demand: "Check email inbox" in the +
   menu (shown once email ingest is enabled), or "Scan inbox now" in
   Settings for when you don't want to wait.
 - Each tagged email is tried in order: PDF attachment → photo → links in
@@ -395,10 +395,11 @@ docker compose -f docker-compose.build.yml up -d --build
   - **Host names.** Requests are accepted for IP addresses, `localhost`, and
     local-style names (no dot, or ending `.local`, `.lan`, `.home.arpa`,
     `.internal`). Any other name -- e.g. `pantry.example.com` behind a
-    reverse proxy -- must be listed in `RECIPE_APP_ALLOWED_HOSTS`
-    (comma-separated) in the compose file, or requests for it get a 400
-    that says so. This blocks DNS rebinding, where a site points its own
-    domain at your NAS's address.
+    reverse proxy, or a Tailscale MagicDNS name like `nas.tail1234.ts.net`
+    -- must be listed in `RECIPE_APP_ALLOWED_HOSTS` (comma-separated) in
+    the compose file, or requests for it get a 400 that says so. This
+    blocks DNS rebinding, where a site points its own domain at your NAS's
+    address.
   - **Writes need an `X-Requested-With` header.** Every request that
     changes data must carry it; the app's pages add it automatically. A
     page on another site can't add a custom header without the browser
@@ -409,16 +410,19 @@ docker compose -f docker-compose.build.yml up -d --build
   reach the API could point the settings at their own server and press
   "Send test email" to receive the password.
 - **Email from strangers can be ignored.** Settings → Email ingest → "Only
-  accept email from" takes addresses and `@domain` entries. Other senders'
-  tagged emails are marked read and listed as IGNORED in the scan results.
-  Empty means anyone, as before. The From header can be forged, so this
-  keeps out people who stumble on the address and keyword -- a dedicated,
-  unguessable address still matters.
+  accept email from" takes addresses and domains, with or without the
+  leading `@` (`example.com` and `@example.com` are the same entry). Other
+  senders' tagged emails are marked read and listed as IGNORED in the scan
+  results. Empty means anyone, as before. The From header can be forged,
+  so this keeps out people who stumble on the address and keyword -- a
+  dedicated, unguessable address still matters.
 - **Page downloads are bounded:** 10 MB per page (20 MB for photos), 30
-  seconds in total including redirects, and only public internet addresses
-  (anything not globally routable is refused, including the `100.64.0.0/10`
-  range Tailscale uses). Scanned PDF pages are rendered for OCR within a
-  35-megapixel budget, so an extremely tall page can't exhaust memory.
+  seconds in total including redirects even against a server that trickles
+  data slowly rather than going silent outright, and only public internet
+  addresses (anything not globally routable is refused, including the
+  `100.64.0.0/10` range Tailscale uses). Scanned PDF pages and uploaded
+  photos are rendered/upscaled for OCR within a 35-megapixel budget, so an
+  extremely tall or narrow page or image can't exhaust memory.
 - **Email credentials (if you use email ingest)** are encrypted at rest
   with Fernet (AES-128-CBC + HMAC). The key comes from one of two places:
 

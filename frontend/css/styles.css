@@ -1302,6 +1302,48 @@ main {
   color: var(--color-ink-muted);
 }
 
+/* Visible counterpart to #status-region (screen-reader only, see
+   announceError() in app.js): a failed save, rating, notes or photo
+   update, or a failed delete, used to leave the screen showing nothing
+   at all for anyone not using a screen reader. */
+/* Spans the screen with a 16px gutter (a left: 50% + translate version
+   could only shrink-wrap to half the viewport), and sits above the +
+   button (.fab: 3.5rem tall, 1.25rem from the bottom) instead of over it. */
+.toast-region {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: 28rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 10px var(--shadow-color);
+  font-size: 0.95rem;
+}
+.toast-error {
+  background: #8a2a2a;
+  color: #fff;
+}
+.toast-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
 /* ---------------------------------------------------------------------
    Motion: respect reduced-motion preference
 --------------------------------------------------------------------- */

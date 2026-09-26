@@ -58,6 +58,35 @@
     $("#status-region").textContent = msg;
   }
 
+  // announce() only reaches screen readers (#status-region sits at
+  // left: -9999px). A failed save, rating, notes or photo update, or a
+  // failed delete, used to leave the screen showing nothing at all --
+  // announceError() also puts the message in a visible toast, so a
+  // sighted user finds out too. Kept separate from announce() rather than
+  // making that one function visible, since most of its callers are
+  // routine status ("3 recipes found") that shouldn't pop up a toast.
+  let toastTimer = null;
+  function announceError(msg) {
+    announce(msg);
+    let region = $("#toast-region");
+    if (!region) {
+      region = el("div", { id: "toast-region", class: "toast-region" });
+      document.body.appendChild(region);
+    }
+    region.innerHTML = "";
+    region.appendChild(el("div", { class: "toast toast-error", role: "alert" }, [
+      el("span", { text: msg }),
+      el("button", { class: "toast-dismiss", type: "button", "aria-label": "Dismiss", text: "×", onclick: () => dismissToast() }),
+    ]));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(dismissToast, 8000);
+  }
+  function dismissToast() {
+    clearTimeout(toastTimer);
+    const region = $("#toast-region");
+    if (region) region.innerHTML = "";
+  }
+
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -470,7 +499,7 @@
     emailPanel.appendChild(emailField("Subject keyword", keyword,
       "Only emails whose subject contains this are considered. Everything else is ignored."));
     emailPanel.appendChild(emailField("Only accept email from", senders,
-      "Addresses, or @domain for a whole domain, separated by commas. Leave empty to accept anyone " +
+      "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone " +
       "who knows the address and keyword. Recommended: list the addresses you send from."));
     emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour,
       `In the server's time zone${settings.server_timezone ? ` (${settings.server_timezone})` : ""}. ` +
@@ -513,8 +542,15 @@
           body: JSON.stringify(payload),
         });
         if (res.ok) {
-          statusLine.textContent = "Saved.";
-          announce("Email settings saved.");
+          const body = await res.json().catch(() => ({}));
+          // Changing the host/username without retyping the password
+          // clears it -- previously the only visible sign was the password
+          // field's placeholder changing, easy to miss.
+          const msg = body.password_cleared
+            ? "Saved. The stored password was cleared because the server or username changed — enter it again if you still need email ingest."
+            : "Saved.";
+          statusLine.textContent = msg;
+          if (body.password_cleared) announceError(msg); else announce("Email settings saved.");
           await renderEmailSettings();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -549,7 +585,7 @@
         onclick: async () => {
           if (!confirm("Remove the stored email password? This also disables email ingest.")) return;
           const result = await fetchWithTimeout(`${API}/email-settings/password`, { method: "DELETE" });
-          if (!result.ok) { announce(writeFailureMessage(result, "The stored password")); return; }
+          if (!result.ok) { announceError(writeFailureMessage(result, "The stored password")); return; }
           announce("Stored email password removed.");
           await renderEmailSettings();
         },
@@ -1055,7 +1091,7 @@
       // alongside an unconditional "deleted" message, so a failed batch told
       // you it had worked AND threw away the selection you would need to
       // retry with.
-      announce(writeFailureMessage(result, "The selected recipes"));
+      announceError(writeFailureMessage(result, "The selected recipes"));
       if (result.timedOut) loadRecipes();
       return;
     }
@@ -1244,7 +1280,7 @@
           closeModal(overlay);
           const ok = await patchRating(recipe.id, { [field]: opt });
           if (ok) applyRating(recipe, field, opt, btn, icon, compactRatingLabel);
-          else announce("Could not save rating.");
+          else announceError("Could not save rating.");
         },
       }));
     }
@@ -1259,7 +1295,7 @@
           closeModal(overlay);
           const ok = await patchRating(recipe.id, { [field]: null });
           if (ok) applyRating(recipe, field, null, btn, icon, compactRatingLabel);
-          else announce("Could not clear rating.");
+          else announceError("Could not clear rating.");
         },
       }));
     }
@@ -1306,7 +1342,7 @@
           btn.setAttribute("aria-expanded", "false");
           const ok = await patchRating(recipe.id, { [field]: opt });
           if (ok) applyRating(recipe, field, opt, btn, icon, shortLabel);
-          else announce("Could not save rating.");
+          else announceError("Could not save rating.");
         },
       }));
     }
@@ -1513,7 +1549,7 @@
 
   async function openRecipeDetail(id) {
     const res = await fetch(`${API}/recipes/${id}`);
-    if (!res.ok) { announce("Could not load recipe."); return; }
+    if (!res.ok) { announceError("Could not load recipe."); return; }
     const recipe = await res.json();
     renderRecipeDetail(recipe);
     openModal(detailOverlay);
@@ -1602,7 +1638,7 @@
           toggleBtn.setAttribute("aria-expanded", "false");
           announce("Notes saved.");
         } else {
-          announce("Could not save notes.");
+          announceError("Could not save notes.");
         }
       },
     });
@@ -1643,7 +1679,7 @@
         announce("Uploading photo...");
         const fd = new FormData(); fd.append("file", fileInput.files[0]);
         const upRes = await fetch(`${API}/upload-image`, { method: "POST", body: fd });
-        if (!upRes.ok) { announce("Could not upload photo."); return; }
+        if (!upRes.ok) { announceError("Could not upload photo."); return; }
         const { stored_file } = await upRes.json();
         const patchRes = await fetch(`${API}/recipes/${recipe.id}/image`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -1656,7 +1692,7 @@
           loadRecipes();  // keep the list thumbnail in sync
         } else {
           fetch(`${API}/ingest/draft/${encodeURIComponent(stored_file)}`, { method: "DELETE" }).catch(() => {});
-          announce("Could not save photo.");
+          announceError("Could not save photo.");
         }
       });
 
@@ -1682,7 +1718,7 @@
               render();
               loadRecipes();
             } else {
-              announce("Could not remove photo.");
+              announceError("Could not remove photo.");
             }
           },
         }));
@@ -1925,7 +1961,7 @@
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
       announce("Download started.");
     } catch (err) {
-      announce("Could not prepare the download; opening it instead.");
+      announceError("Could not prepare the download; opening it instead.");
       window.open(url, "_blank", "noopener");
     }
   }
@@ -2036,7 +2072,7 @@
             recipe.ingredients.map((i) => `- ${ingredientText(i)}`).join("\n") +
             `\n\nInstructions:\n` + recipe.steps.map((s, idx) => `${idx + 1}. ${s.text}`).join("\n");
           try { await navigator.clipboard.writeText(text); announce("Recipe copied as text."); }
-          catch { announce("Could not copy to clipboard."); }
+          catch { announceError("Could not copy to clipboard."); }
         },
       }),
     ];
@@ -2137,7 +2173,7 @@
       // "N recipes found", which would otherwise immediately overwrite the
       // explanation and leave the user with no idea what happened.
       await loadRecipes();
-      announce(writeFailureMessage(result, "That recipe"));
+      announceError(writeFailureMessage(result, "That recipe"));
       return;
     }
 
@@ -2146,7 +2182,7 @@
     // the modal rather than claiming either result -- again announcing last.
     restore();
     if (result.timedOut) await loadRecipes();
-    announce(writeFailureMessage(result, "The recipe"));
+    announceError(writeFailureMessage(result, "The recipe"));
   }
 
   // -------------------------------------------------------------------
@@ -2628,7 +2664,7 @@
               // Used to save the recipe without the photo and say nothing.
               const err = await upRes.json().catch(() => ({}));
               const why = typeof err.detail === "string" ? err.detail : `error ${upRes.status}`;
-              announce(`The photo couldn't be uploaded (${why}). Nothing was saved; remove the photo or try another.`);
+              announceError(`The photo couldn't be uploaded (${why}). Nothing was saved; remove the photo or try another.`);
               return;
             }
             storedFile = (await upRes.json()).stored_file;

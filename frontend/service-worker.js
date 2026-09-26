@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v25";
+const CACHE_NAME = "open-the-pantry-shell-v26";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -42,7 +42,19 @@ function shouldCache(request, response) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
   if (NEVER_CACHE.some((re) => re.test(url.pathname))) return false;
-  if (url.pathname.startsWith("/api/") && url.search) return false;  // searches, filters, sorts
+  if (url.pathname.startsWith("/api/") && url.search) {
+    // loadRecipes() always sends ?sort=&direction=, even with no search or
+    // filter active -- excluding every querystring meant the plain
+    // unfiltered list was never cached, so offline always showed "Couldn't
+    // load recipes" instead of the last-seen list. An actual search or
+    // filter (q, tags, max_minutes) is still excluded: those are
+    // unbounded, one cache entry per search, and a stale result for a
+    // search reads as a wrong answer in a way a stale full list doesn't.
+    const plainListKeys = new Set(["sort", "direction"]);
+    const isPlainList = url.pathname === "/api/recipes" &&
+      [...url.searchParams.keys()].every((k) => plainListKeys.has(k));
+    if (!isPlainList) return false;
+  }
   const disposition = response.headers.get("Content-Disposition") || "";
   return !disposition.startsWith("attachment");
 }

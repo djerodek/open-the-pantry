@@ -11,8 +11,8 @@ services:
     restart: unless-stopped
     environment:
       # Your time zone, so the daily email scan runs at the hour you set.
-      # Without it the container runs on UTC (3 = 11 PM in Toronto in summer).
-      TZ: "America/Toronto"
+      # Change to yours, e.g. America/Toronto, Europe/Paris.
+      TZ: "UTC"
     #   # Optional; Settings can create encryption.key instead. See README.
     #   RECIPE_APP_ENCRYPTION_KEY: "paste-generated-key-here"
     #   RECIPE_APP_API_KEY: "choose-a-long-random-string"

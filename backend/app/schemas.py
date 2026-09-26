@@ -204,6 +204,11 @@ class EmailSettingsOut(BaseModel):
     smtp_use_tls: bool
     username: Optional[str] = None
     password_set: bool = False
+    # True only on the response to the save that just cleared it (changing
+    # the host or username without a new password) -- lets the frontend
+    # show that plainly instead of the only visible sign being the
+    # password field's placeholder going from "saved" to empty.
+    password_cleared: bool = False
     notify_email: Optional[str] = None
     subject_keyword: str
     allowed_senders: str = ""

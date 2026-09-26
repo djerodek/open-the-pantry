@@ -73,7 +73,11 @@
   <ul class="ingredients">
     {% for ing in recipe.ingredients %}
     <li>
-      {% if ing.quantity %}{{ ing.quantity }} {% endif %}{% if ing.unit %}{{ ing.unit }} {% endif %}{{ ing.name or ing.raw_line }}
+      {# Matches ingredientText() in app.js: the line as the person typed it,
+         falling back to the parsed fields only for rows saved before
+         raw_line existed. Rendering quantity/unit/name here instead
+         reordered and reworded lines the screen shows unchanged. #}
+      {% if ing.raw_line %}{{ ing.raw_line }}{% else %}{% if ing.quantity %}{{ ing.quantity }} {% endif %}{% if ing.unit %}{{ ing.unit }} {% endif %}{{ ing.name }}{% endif %}
     </li>
     {% endfor %}
   </ul>

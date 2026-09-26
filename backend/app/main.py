@@ -744,7 +744,18 @@ def run_email_scan(force_notify: bool = False) -> dict:
 
 
 def _parse_allowed_senders(raw: str) -> list[str]:
-    return [p.strip().lower() for p in re.split(r"[,;\s]+", raw or "") if p.strip()]
+    """"example.com" was silently ignored: _sender_allowed only matches a
+    full address or an explicit "@domain" entry, so an address at that
+    domain (the entry's obvious intent) never matched and every sender
+    was rejected. A bare domain (no "@") is normalized to "@domain" here,
+    the one place both saving and matching read the list from."""
+    out = []
+    for p in re.split(r"[,;\s]+", raw or ""):
+        p = p.strip().lower()
+        if not p:
+            continue
+        out.append(p if "@" in p else f"@{p}")
+    return out
 
 
 def _sender_allowed(from_header: str, allowed: list[str]) -> bool:
@@ -1382,7 +1393,9 @@ def list_recipes(
                 )
             )
 
-    results = query.order_by(*_sort_clauses(sort, direction)).all()
+    # selectinload: the summaries below read each recipe's tags, which
+    # otherwise costs one extra query per recipe in the list.
+    results = query.options(selectinload(models.Recipe.tags)).order_by(*_sort_clauses(sort, direction)).all()
 
     summaries = []
     for r in results:
@@ -1657,7 +1670,7 @@ def list_tags(db: Session = Depends(get_db)):
 # Email ingest (optional feature)
 # ---------------------------------------------------------------------------
 
-def _email_settings_out(settings: models.EmailIngestSettings) -> schemas.EmailSettingsOut:
+def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: bool = False) -> schemas.EmailSettingsOut:
     return schemas.EmailSettingsOut(
         enabled=settings.enabled,
         imap_host=settings.imap_host,
@@ -1668,6 +1681,7 @@ def _email_settings_out(settings: models.EmailIngestSettings) -> schemas.EmailSe
         smtp_use_tls=settings.smtp_use_tls,
         username=settings.username,
         password_set=bool(settings.password_encrypted),
+        password_cleared=password_cleared,
         notify_email=settings.notify_email,
         subject_keyword=settings.subject_keyword,
         allowed_senders=settings.allowed_senders or "",
@@ -1721,7 +1735,15 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
         or (settings.smtp_host or None) != (payload.smtp_host or None)
         or (settings.username or None) != (payload.username or None)
     )
-    if moved and settings.password_encrypted and not payload.password:
+    # Kept separate from the act of clearing below: if this request also
+    # fails the "enabled needs a password" check further down, the error
+    # needs to say a password was just cleared rather than the generic
+    # "a password is required" -- that read as though the save had failed
+    # and lost the stored password outright, when the stored one was
+    # actually untouched (nothing is committed until the end of this
+    # request).
+    password_will_clear = bool(moved and settings.password_encrypted and not payload.password)
+    if password_will_clear:
         settings.password_encrypted = None
         log.warning("Email server or username changed without a new password; saved password cleared")
 
@@ -1735,6 +1757,14 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
     # An omitted/blank password leaves the stored one untouched.
 
     if payload.enabled and not (payload.imap_host and payload.username and settings.password_encrypted):
+        if password_will_clear:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Changing the mail server or username clears the saved password. "
+                    "Enter the password again to keep email ingest enabled."
+                ),
+            )
         raise HTTPException(
             status_code=400,
             detail="IMAP host, username, and a password are all required before enabling email ingest.",
@@ -1760,7 +1790,7 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
 
     db.commit()
     db.refresh(settings)
-    return _email_settings_out(settings)
+    return _email_settings_out(settings, password_cleared=password_will_clear)
 
 
 @app.delete("/api/email-settings/password")

@@ -161,7 +161,13 @@ def test_ssrf_guard_blocks_redirect_to_private_address():
     real_getaddrinfo = socket.getaddrinfo
 
     def fake_get(url, headers=None, timeout=None, allow_redirects=None, **kwargs):
+        import io
         resp = MagicMock()
+        # A real (empty) body: _read_limited reads resp.raw.read1(), and a
+        # bare MagicMock never returns EOF -- the fetch would run to the 30 s
+        # deadline and raise UrlValidationError, passing this test for the
+        # wrong reason.
+        resp.raw = io.BytesIO(b"")
         if "evil-redirect.example.com" in url:
             resp.is_redirect = True
             resp.is_permanent_redirect = False
@@ -182,8 +188,8 @@ def test_ssrf_guard_blocks_redirect_to_private_address():
         try:
             safe_get("http://evil-redirect.example.com/recipe")
             assert False, "redirect to a private/metadata address should have been blocked"
-        except UrlValidationError:
-            pass
+        except UrlValidationError as e:
+            assert "private" in str(e), f"blocked for the wrong reason: {e}"
 
 
 # ---------------------------------------------------------------------------

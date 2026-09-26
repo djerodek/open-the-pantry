@@ -434,10 +434,18 @@ def test_blocked_page_is_diagnosable_from_the_log(client, data_dir, tmp_path):
     from app.ingestion import url_ingest
     from app.ingestion.email_processing import process_tagged_email
 
-    blocked = MagicMock(status_code=403, is_redirect=False, is_permanent_redirect=False,
-                        text="<html><title>Just a moment...</title></html>",
-                        content=b"x" * 50, headers={"Content-Type": "text/html", "Server": "cloudflare"})
-    blocked.raise_for_status.side_effect = url_ingest.requests.HTTPError("403 Client Error: Forbidden")
+    # A real streaming Response (not a bare MagicMock) for .raw: the body is
+    # now read via resp.raw.read1() (see url_ingest._read_limited), and an
+    # unconfigured MagicMock attribute answers that with endless truthy
+    # Mocks instead of ever hitting EOF -- it used to work only because
+    # iter_content() on a MagicMock happened to iterate as empty.
+    from requests.structures import CaseInsensitiveDict
+    body = "<html><title>Just a moment...</title></html>".encode()
+    blocked = url_ingest.requests.Response()
+    blocked.status_code = 403
+    blocked.raw = io.BytesIO(body)
+    blocked.headers = CaseInsensitiveDict({"Content-Type": "text/html", "Server": "cloudflare"})
+    blocked.encoding = "utf-8"
 
     m = EmailMessage()
     m["Subject"] = "[RECIPE]"

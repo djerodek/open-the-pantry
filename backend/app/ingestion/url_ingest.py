@@ -79,15 +79,31 @@ def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
     if declared and declared.isdigit() and int(declared) > max_bytes:
         resp.close()
         raise FetchTooLargeError(f"{url} is {int(declared) // 1048576} MB; the limit is {max_bytes // 1048576} MB.")
+
+    def _read_chunk():
+        # iter_content(64 KB) blocks until a full 64 KB chunk has arrived,
+        # so a server trickling a byte at a time defeats the deadline check
+        # below by never completing one -- read1 returns as soon as any
+        # data at all is available. decode_content=True matches what
+        # iter_content did (transparent gzip/deflate); a plain file-like
+        # object (as tests use) doesn't take that argument.
+        try:
+            return resp.raw.read1(64 * 1024, decode_content=True)
+        except TypeError:
+            return resp.raw.read1(64 * 1024)
+
     chunks, total = [], 0
-    for chunk in resp.iter_content(64 * 1024):
+    while True:
+        if _time.monotonic() > deadline:
+            resp.close()
+            raise UrlValidationError(f"{url} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
+        chunk = _read_chunk()
+        if not chunk:
+            break
         total += len(chunk)
         if total > max_bytes:
             resp.close()
             raise FetchTooLargeError(f"{url} is larger than {max_bytes // 1048576} MB.")
-        if _time.monotonic() > deadline:
-            resp.close()
-            raise UrlValidationError(f"{url} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
         chunks.append(chunk)
     return b"".join(chunks)
 
