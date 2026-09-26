@@ -31,7 +31,7 @@ from .ingestion.url_ingest import ingest_url, safe_get
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
 from .ingestion.image_ingest import ingest_and_segment, ingest_image
 from .ingestion.ingredient_parser import parse_ingredient_block
-from .ingestion.tagger import suggest_tags
+from .ingestion.tagger import suggest_tags, MEAT_FISH_TAGS
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
 from .backup import build_database_backup, build_pdf_bundle, remove_upload_file
@@ -1688,6 +1688,54 @@ def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Dep
 # ---------------------------------------------------------------------------
 # Tags
 # ---------------------------------------------------------------------------
+
+@app.post("/api/tags/auto-apply", response_model=schemas.AutoTagResult)
+def auto_apply_tags(dry_run: bool = False, db: Session = Depends(get_db)):
+    """Run the tagger over every recipe and add the suggested tags each one
+    is missing. Only adds -- tags already on a recipe, including ones added
+    by hand, are left as they are, and removing unwanted ones is up to the
+    user. dry_run=true reports what would be added without saving, for the
+    confirmation step in Settings.
+
+    Suggestions are otherwise made only when a recipe is added, so recipes
+    saved before a tagger fix keep the old result (e.g. clams tagged
+    Vegetarian before shellfish counted as Fish). The saved steps stand in
+    for the page text used at import; imported page text includes site
+    navigation that would add noise."""
+    recipes = (db.query(models.Recipe)
+               .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
+                        selectinload(models.Recipe.tags))
+               .order_by(models.Recipe.id).all())
+    changes = []
+    for r in recipes:
+        have = {(t.name, t.category) for t in r.tags}
+        # Vegetarian is the tagger's "no meat keyword found"; if a meat or fish
+        # tag is already on the recipe (say, added by hand), it's wrong.
+        has_meat = any(t.category == "main_ingredient" and t.name in MEAT_FISH_TAGS for t in r.tags)
+        suggested = suggest_tags(
+            r.title, [i.name or i.raw_line for i in r.ingredients], " ".join(s.text for s in r.steps)
+        )
+        new = [(n, c, sg) for n, c, sg in suggested
+               if (n, c) not in have and not (n == "Vegetarian" and has_meat)]
+        if new:
+            changes.append((r, new))
+
+    if not dry_run and changes:
+        for r, new in changes:
+            r.tags.extend(_get_or_create_tags(
+                db, [schemas.TagIn(name=n, category=c, subgroup=sg) for n, c, sg in new]))
+            r.tags_text = " ".join(t.name for t in r.tags)   # search column, see _apply_tags
+        db.commit()
+        log.info("Auto-tag: added %d tag(s) to %d recipe(s)", sum(len(n) for _, n in changes), len(changes))
+
+    return schemas.AutoTagResult(
+        dry_run=dry_run,
+        recipes_scanned=len(recipes),
+        recipes_changed=len(changes),
+        tags_added=sum(len(n) for _, n in changes),
+        changes=[schemas.AutoTagChange(id=r.id, title=r.title, added=[n for n, _, _ in new]) for r, new in changes],
+    )
+
 
 @app.get("/api/tags", response_model=list[schemas.TagOut])
 def list_tags(db: Session = Depends(get_db)):

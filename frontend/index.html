@@ -218,6 +218,17 @@
       <div class="field-hint">Off shows a compact list of titles. Remembered on this device.</div>
     </div>
 
+    <div class="filter-section">
+      <div class="filter-section-title">Tags</div>
+      <button type="button" id="autotag-btn" class="btn-secondary">Add suggested tags to all recipes</button>
+      <div class="field-hint">
+        Runs the automatic tagger over every recipe and adds any suggested tag
+        a recipe doesn't already have. Nothing is removed. You'll see what
+        would be added before anything changes.
+      </div>
+      <div id="autotag-result" role="status"></div>
+    </div>
+
     <div class="filter-section" id="wakelock-setting" hidden>
       <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
       <label class="switch-row" for="wakelock-default">

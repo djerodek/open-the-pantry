@@ -1125,6 +1125,71 @@
     renderRecipeList(currentRecipes);
   });
 
+  // Settings -> Tags: preview, then add, the tagger's suggestions for every
+  // recipe (POST /api/tags/auto-apply). Two steps inside the dialog rather
+  // than a browser confirm(), which would block the page.
+  const autotagBtn = $("#autotag-btn");
+  const autotagResult = $("#autotag-result");
+  function autotagChangeList(changes) {
+    return el("details", { class: "autotag-details" }, [
+      el("summary", { text: "Show each recipe" }),
+      el("ul", {}, changes.map((c) => el("li", { text: `${c.title}: ${c.added.join(", ")}` }))),
+    ]);
+  }
+  autotagBtn.addEventListener("click", async () => {
+    autotagBtn.disabled = true;
+    autotagResult.innerHTML = "";
+    autotagResult.appendChild(el("p", { class: "field-hint", text: "Checking every recipe..." }));
+    let preview;
+    try {
+      const res = await fetch(`${API}/tags/auto-apply?dry_run=true`, { method: "POST" });
+      if (!res.ok) throw new Error(`error ${res.status}`);
+      preview = await res.json();
+    } catch (e) {
+      autotagResult.innerHTML = "";
+      announceError(`Couldn't check the recipes (${e.message}).`);
+      autotagBtn.disabled = false;
+      return;
+    }
+    autotagResult.innerHTML = "";
+    if (!preview.tags_added) {
+      autotagResult.appendChild(el("p", { text: `All ${preview.recipes_scanned} recipes already have their suggested tags.` }));
+      announce("Nothing to add.");
+      autotagBtn.disabled = false;
+      return;
+    }
+    const summary = `Adds ${preview.tags_added} tag${preview.tags_added === 1 ? "" : "s"} to ` +
+      `${preview.recipes_changed} of ${preview.recipes_scanned} recipes.`;
+    const cancel = el("button", { type: "button", class: "btn-secondary", text: "Cancel", onclick: () => {
+      autotagResult.innerHTML = ""; autotagBtn.disabled = false; autotagBtn.focus();
+    } });
+    const apply = el("button", { type: "button", class: "btn-primary", text: "Add tags", onclick: async () => {
+      apply.disabled = cancel.disabled = true;
+      try {
+        const res = await fetch(`${API}/tags/auto-apply`, { method: "POST" });
+        if (!res.ok) throw new Error(`error ${res.status}`);
+        const done = await res.json();
+        autotagResult.innerHTML = "";
+        autotagResult.appendChild(el("p", { text:
+          `Added ${done.tags_added} tag${done.tags_added === 1 ? "" : "s"} to ${done.recipes_changed} recipe${done.recipes_changed === 1 ? "" : "s"}. ` +
+          "Remove any you don't want from each recipe's page." }));
+        if (done.changes.length) autotagResult.appendChild(autotagChangeList(done.changes));
+        announce(`Added ${done.tags_added} tags.`);
+        await loadTags();
+        loadRecipes();
+      } catch (e) {
+        announceError(`Couldn't add the tags (${e.message}). Nothing was changed.`);
+        apply.disabled = cancel.disabled = false;
+        return;
+      }
+      autotagBtn.disabled = false;
+    } });
+    autotagResult.appendChild(el("p", { text: summary }));
+    autotagResult.appendChild(autotagChangeList(preview.changes));
+    autotagResult.appendChild(el("div", { class: "autotag-actions" }, [apply, cancel]));
+    apply.focus();
+  });
+
   // Photos on/off: a switch in Settings (it was a toolbar button). The list
   // behind the Settings dialog updates as soon as it's flipped.
   const thumbnailsSetting = $("#thumbnails-setting");

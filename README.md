@@ -289,7 +289,11 @@ docker compose -f docker-compose.build.yml up -d --build
   ingest time; always user-editable. Stocks, broths and sauces ("chicken
   stock", "fish sauce") don't count as the main ingredient, though they do
   rule out Vegetarian. Suggestions apply when a recipe is added; tags on
-  recipes you already have aren't changed. Cocktail-specific cooking-style tags
+  recipes you already have aren't changed unless you use Settings → Tags →
+  "Add suggested tags to all recipes". That shows what it would add, then
+  adds only tags a recipe doesn't have (never Vegetarian next to a meat or
+  fish tag) and removes nothing. Running it again later re-adds a
+  suggestion you removed. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it

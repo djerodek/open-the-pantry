@@ -1514,3 +1514,9 @@ main {
   font-size: 0.9rem;
 }
 .email-problem p { margin: 0.3rem 0 0; overflow-wrap: anywhere; }
+
+/* Settings -> Tags: preview and result of "Add suggested tags". */
+#autotag-result p { margin: 0.6rem 0 0; }
+.autotag-details { margin-top: 0.4rem; font-size: 0.88rem; }
+.autotag-details ul { margin: 0.4rem 0 0; padding-left: 1.2rem; max-height: 14rem; overflow-y: auto; }
+.autotag-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; }

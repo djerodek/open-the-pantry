@@ -99,6 +99,20 @@ class TagOut(TagIn):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AutoTagChange(BaseModel):
+    id: int
+    title: str
+    added: list[str]
+
+
+class AutoTagResult(BaseModel):
+    dry_run: bool
+    recipes_scanned: int
+    recipes_changed: int
+    tags_added: int
+    changes: list[AutoTagChange]
+
+
 class RecipeOut(BaseModel):
     id: int
     title: str
