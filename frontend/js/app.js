@@ -54,6 +54,10 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  // Pinch zoom: Safari has ignored user-scalable=no since iOS 10, so the
+  // gesture is cancelled here as well. Settings -> Text size replaces it.
+  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+
   function announce(msg) {
     $("#status-region").textContent = msg;
   }
@@ -1153,7 +1157,8 @@
     }
     autotagResult.innerHTML = "";
     if (!preview.tags_added) {
-      autotagResult.appendChild(el("p", { text: `All ${preview.recipes_scanned} recipes already have their suggested tags.` }));
+      autotagResult.appendChild(el("p", { text: `All ${preview.recipes_scanned} recipes checked already have their suggested tags` +
+        (preview.recipes_ignored ? ` (${preview.recipes_ignored} skipped).` : ".") }));
       announce("Nothing to add.");
       autotagBtn.disabled = false;
       return;
@@ -1178,8 +1183,27 @@
       };
       recipeBox.addEventListener("change", () => { boxes.forEach((b) => { b.checked = recipeBox.checked; }); sync(); });
       boxes.forEach((b) => b.addEventListener("change", sync));
+      const skipBtn = el("button", {
+        type: "button", class: "autotag-skip", text: "Skip in future scans",
+        "aria-label": `Leave ${c.title} out of future tag scans`,
+        onclick: async () => {
+          skipBtn.disabled = true;
+          const res = await fetch(`${API}/recipes/${c.id}/autotag-ignore`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ignored: true }),
+          }).catch(() => null);
+          if (!res || !res.ok) { skipBtn.disabled = false; announceError("Couldn't skip that recipe."); return; }
+          boxes.forEach((b) => { const i = tagBoxes.indexOf(b); if (i >= 0) tagBoxes.splice(i, 1); });
+          skipBtn.closest("li").remove();
+          announce(`${c.title} will be left out of tag scans.`);
+          updateSummary();
+        },
+      });
       return el("li", {}, [
-        el("label", { class: "autotag-recipe" }, [recipeBox, el("span", { text: c.title })]),
+        el("div", { class: "autotag-row" }, [
+          el("label", { class: "autotag-recipe" }, [recipeBox, el("span", { text: c.title })]),
+          skipBtn,
+        ]),
         el("div", { class: "autotag-tags" }, boxes.map((b) =>
           el("label", { class: "autotag-tag" }, [b, el("span", { text: b.dataset.tag })]))),
       ]);
@@ -1188,7 +1212,9 @@
       const ticked = tagBoxes.filter((b) => b.checked);
       const recipes = new Set(ticked.map((b) => b.dataset.recipe)).size;
       summaryEl.textContent = `Adds ${ticked.length} of ${tagBoxes.length} suggested tags to ${recipes} ` +
-        `recipe${recipes === 1 ? "" : "s"}. Untick any that don't apply.`;
+        `recipe${recipes === 1 ? "" : "s"}. Untick any that don't apply.` +
+        (preview.recipes_ignored ? ` ${preview.recipes_ignored} recipe${preview.recipes_ignored === 1 ? " is" : "s are"} skipped` +
+          " (each recipe's edit screen can include it again, or suggest tags for it)." : "");
       apply.disabled = ticked.length === 0;   // only called once apply exists
     }
     const cancel = el("button", { type: "button", class: "btn-secondary", text: "Cancel", onclick: () => {
@@ -1943,6 +1969,39 @@
       type: "text", id: "edit-tags",
       value: recipe.tags.map((t) => t.name).join(", "),
     });
+    // Suggested tags keep the tagger's category (Oven is a cooking style),
+    // not "custom", when saved -- including ones that don't exist yet.
+    const suggestedCats = new Map();
+    const currentTagNames = () => tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    const suggestHint = el("div", { class: "field-hint", role: "status" });
+    const suggestBtn = el("button", {
+      type: "button", class: "btn-secondary btn-small", text: "Suggest tags",
+      onclick: async () => {
+        suggestBtn.disabled = true;
+        try {
+          const res = await fetch(`${API}/tags/suggest`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: titleInput.value, current_tags: currentTagNames(),
+              ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim()),
+              steps: stepsArea.value.split("\n").filter((l) => l.trim()),
+            }),
+          });
+          if (!res.ok) throw new Error(`error ${res.status}`);
+          const found = await res.json();
+          found.forEach((t) => suggestedCats.set(t.name.toLowerCase(), t));
+          if (found.length) tagsInput.value = [...currentTagNames(), ...found.map((t) => t.name)].join(", ");
+          suggestHint.textContent = found.length
+            ? `Added ${found.map((t) => t.name).join(", ")}. Remove any that don't fit, then save.`
+            : "No new suggestions.";
+        } catch (e) {
+          suggestHint.textContent = `Couldn't get suggestions (${e.message}).`;
+        }
+        suggestBtn.disabled = false;
+      },
+    });
+    const includeScan = el("input", { type: "checkbox", id: "edit-autotag-include" });
+    includeScan.checked = !recipe.autotag_ignored;
 
     // pre-line: the test result puts sending and reading on separate lines.
     const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
@@ -1953,6 +2012,8 @@
         statusLine.textContent = "Saving...";
         const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
         const tagObjs = tagNames.map((name) => {
+          const sug = suggestedCats.get(name.toLowerCase());
+          if (sug) return { name: sug.name, category: sug.category, subgroup: sug.subgroup || null };
           const known = state.allTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
           return known
             ? { name: known.name, category: known.category, subgroup: known.subgroup }
@@ -1988,7 +2049,15 @@
             body: JSON.stringify(payload),
           });
           if (!res.ok) throw new Error("Could not save changes.");
-          const updated = await res.json();
+          let updated = await res.json();
+          if (includeScan.checked === !!recipe.autotag_ignored) {
+            const r2 = await fetch(`${API}/recipes/${recipe.id}/autotag-ignore`, {
+              method: "PATCH", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ignored: !includeScan.checked }),
+            });
+            if (r2.ok) updated = await r2.json();
+            else announceError("Saved, but the tag-scan setting couldn't be changed.");
+          }
           announce("Recipe updated.");
           renderRecipeDetail(updated);
           await loadTags();
@@ -2016,7 +2085,11 @@
       ]),
       el("div", { class: "field" }, [
         el("label", { for: "edit-tags", text: "Tags (comma or semicolon separated)" }),
-        tagsInput,
+        el("div", { class: "tags-with-button" }, [tagsInput, suggestBtn]),
+        suggestHint,
+        el("label", { class: "inline-check", for: "edit-autotag-include" }, [
+          includeScan, el("span", { text: "Include in Settings \u2192 Tags scans" }),
+        ]),
       ]),
       el("div", { class: "field" }, [el("label", { for: "edit-servings", text: "Servings" }), servingsInput]),
       el("div", { class: "field" }, [el("label", { for: "edit-prep", text: "Prep time" }), prepInput]),
@@ -2595,7 +2668,7 @@
 
     function renderSingle() {
       formArea.innerHTML = "";
-      const input = el("input", { type: "file", id: "image-input", accept: "image/*", capture: "environment", required: "" });
+      const input = el("input", { type: "file", id: "image-input", accept: "image/*", required: "" });  // no capture=: that forced the camera; iOS now offers Photo Library, Take Photo or Choose File
       formArea.appendChild(el("form", {
         onsubmit: async (e) => {
           e.preventDefault();

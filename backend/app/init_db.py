@@ -42,6 +42,7 @@ NEW_RECIPE_COLUMNS = {
     "difficulty_rating": "TEXT",
     "actual_cook_time_minutes": "INTEGER",
     "notes": "TEXT",
+    "autotag_ignored": "INTEGER NOT NULL DEFAULT 0",
 }
 
 FTS_COLUMNS = ("title", "raw_text", "tags_text", "content_text", "notes")

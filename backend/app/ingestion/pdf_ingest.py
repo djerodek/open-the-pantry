@@ -189,12 +189,18 @@ def _ocr_image(pil_image: Image.Image):
 
 
 # "Ingredients" alone on a line, optionally followed by a recipe card's
-# serving-size buttons ("Ingredients 1X 2X 3X").
+# serving-size buttons ("Ingredients 1X 2X 3X") or a count, as grocery and
+# recipe apps show it ("Ingredients 13 total", "Method 2 steps"). Without
+# the count, a screenshot's steps were never found.
+_HEADING_COUNT = r"(?:\(?\d+\)?\s*(?:total|items?|steps?|ingredients?)?)?"
 HEADING_INGREDIENTS = re.compile(
-    r"^\s*ingredients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*$", re.IGNORECASE | re.MULTILINE
+    r"^\s*ingredients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*" + _HEADING_COUNT + r"\s*$",
+    re.IGNORECASE | re.MULTILINE
 )
 HEADING_STEPS = re.compile(
-    r"^\s*(instructions?|directions?|method|steps?|preparation)\s*:?\s*$", re.IGNORECASE | re.MULTILINE
+    # (?!step N): "Step 1" is a step's label, not the section heading.
+    r"^(?!\s*step\s*\d)\s*(instructions?|directions?|method|steps?|preparation)\s*:?\s*" + _HEADING_COUNT + r"\s*$",
+    re.IGNORECASE | re.MULTILINE
 )
 NUMBERED_STEP = re.compile(r"^\s*\d+[\.\)]\s+")
 QUANTITY_LEAD = re.compile(
@@ -205,8 +211,9 @@ QUANTITY_LEAD = re.compile(
 _QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
 # A step marker: "1." / "1)" / "1 " followed by a capital, or a bare number
 # on its own line (some recipe cards put the number in a separate column).
-_STEP_START = re.compile(r"^\s*(\d{1,2})(?:[\.\)]\s*|\s+)(?=[A-Z])")
-_BARE_NUMBER = re.compile(r"^\s*\d{1,2}\s*$")
+_STEP_START = re.compile(r"^\s*(?:[Ss]tep\s*)?(\d{1,2})(?:[\.\):]\s*|\s+)(?=[A-Z])")
+# A step number alone on its line: "3", or an app's "Step 3" label.
+_BARE_NUMBER = re.compile(r"^\s*(?:step\s*)?\d{1,2}\s*:?\s*$", re.IGNORECASE)
 
 # Lines that are page furniture, not recipe content. Printed web pages carry
 # the browser's date/time and "Page 1 of 3"; recipe cards carry serving-size
@@ -216,6 +223,9 @@ _JUNK_LINE = re.compile(
     r"\d{4}-\d{2}-\d{2},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"         # 2026-09-25, 1:44 PM
     r"|\d{1,2}/\d{1,2}/\d{2,4},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"  # 9/25/26, 1:44 PM
     r"|page \d+ of \d+"
+    r"|[LJIl|\[\]_]{1,3}"                                     # an OCR'd empty checkbox: "LJ", "L"
+    r"|(?:\S+\s+){0,4}[\w-]+\.(?:com|ca|net|org|co\.uk|io)"      # a site footer: "AA & a recipetineats.com"
+    r"|\d{1,2}:\d{2}(\s+\S{1,3}){0,5}"                           # phone status bar: "7:38 a 7 @®"
     r"|https?://\S+"
     r"|(\d+(\.\d+)?\s*[x×]\s*)+"                               # 1X 2X 3X
     r"|us customary(\s+metric)?|metric"
@@ -226,7 +236,8 @@ _JUNK_LINE = re.compile(
 # Where the steps end on a recipe card or printed page.
 _STEPS_END = re.compile(
     r"^\s*(notes?|recipe notes|nutrition(\s+information|\s+facts)?|video|equipment|"
-    r"did you make this.*|course|cuisine|keyword|author)\s*:?\s*$",
+    r"did you make this.*|course|cuisine|keyword|author|"
+    r"(ratings?|reviews?|comments?)(\s*\(\d+\))?|\d+\s+(ratings?|reviews?|comments?))\s*:?\s*$",
     re.IGNORECASE,
 )
 _BYLINE = re.compile(r"^\s*by[:\s]", re.IGNORECASE)
@@ -369,7 +380,40 @@ def _normalize_line(line: str) -> str:
     line = _BULLET.sub("", line)
     line = _EMPHASIS_TIGHT.sub(r"\1 ", line)   # "*1.Cook:*Stops" -> "1.Cook: Stops"
     line = _EMPHASIS.sub(r"\1", line)
+    # Tesseract's usual misread of "tbsp" (seen on a real screenshot).
+    line = re.sub(r"\bt[o0]sp\b", "tbsp", line)
     return line.strip()
+
+
+# Leftovers of a step number drawn in a circle, as OCR reads it: "@ Add",
+# "9 Cover", "© Skim", "faa) Serve", "3) Return".
+_MARKER_GARBAGE = re.compile(r"^\s*(?:[^\w\s]{1,2}|\w{1,3}\)|\d{1,2}[\.\)]?)\s+(?=[A-Z])")
+
+
+def _is_prose(line: str) -> bool:
+    """A line of method text rather than an ingredient: several words and
+    a verb-like start, or a sentence end. "2 large celery stalks" isn't;
+    "Cut the beef into 5cm/2" chunks. Pat dry" is."""
+    words = line.split()
+    if len(words) < 4:
+        return False
+    stripped = _MARKER_GARBAGE.sub("", line)
+    return bool(re.search(r"[.!?]\s*$", line)) or (bool(stripped) and stripped[0].isupper() and not _QTY_START.match(stripped))
+
+
+def _prose_steps(lines):
+    steps = []
+    for line in lines:
+        if _STEPS_END.match(line):
+            break
+        line = _MARKER_GARBAGE.sub("", line).strip()
+        if not line:
+            continue
+        if steps and not re.search(r"[.!?]\s*$", steps[-1]):
+            steps[-1] = f"{steps[-1]} {line}"
+        else:
+            steps.append(line)
+    return steps
 
 
 def segment_raw_text(raw_text: str) -> dict:
@@ -426,14 +470,24 @@ def segment_raw_text(raw_text: str) -> dict:
         else:
             ingredients = _clean_ingredients(rest)
     else:
-        # No clear headings found -- fall back to line-pattern matching.
-        for line in lines[1:]:
-            if _is_junk(line):
-                continue
-            if NUMBERED_STEP.match(line):
-                steps.append(NUMBERED_STEP.sub("", line))
-            elif QUANTITY_LEAD.match(line):
-                ingredients.append(line)
+        # No headings at all: an app screenshot with a checklist of
+        # ingredients, then the method. Ingredients are the quantity lines;
+        # the steps are the prose after the last of them. Apps draw step
+        # numbers in circles, which OCR reads as "@", "9", "©" or "faa)",
+        # so steps are split at sentence ends rather than by number.
+        body = [l for l in lines[1:] if not _is_junk(l)]
+        qty = [k for k, l in enumerate(body) if QUANTITY_LEAD.match(l) and not _is_prose(l)]
+        prose = [k for k, l in enumerate(body) if _is_prose(l)]
+        if qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:
+            first = next(k for k in prose if k > qty[-1])
+            ingredients = [body[k] for k in qty if k < first]
+            steps = _prose_steps(body[first:])
+        else:
+            for line in body:
+                if NUMBERED_STEP.match(line):
+                    steps.append(NUMBERED_STEP.sub("", line))
+                elif QUANTITY_LEAD.match(line):
+                    ingredients.append(line)
 
     return {
         "title_guess": _guess_title(lines, chosen_ing),

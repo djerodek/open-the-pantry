@@ -1708,6 +1708,8 @@ def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagAppl
                         selectinload(models.Recipe.tags))
                .order_by(models.Recipe.id).all())
     picks = {s.id: set(s.tags) for s in (payload.selections or [])} if payload else {}
+    ignored = [r for r in recipes if r.autotag_ignored]
+    recipes = [r for r in recipes if not r.autotag_ignored]
     changes = []
     for r in recipes:
         have = {(t.name, t.category) for t in r.tags}
@@ -1738,11 +1740,38 @@ def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagAppl
 
     return schemas.AutoTagResult(
         dry_run=dry_run,
+        recipes_ignored=len(ignored),
         recipes_scanned=len(recipes),
         recipes_changed=len(changes),
         tags_added=sum(len(n) for _, n in changes),
         changes=[schemas.AutoTagChange(id=r.id, title=r.title, added=[n for n, _, _ in new]) for r, new in changes],
     )
+
+
+@app.patch("/api/recipes/{recipe_id}/autotag-ignore", response_model=schemas.RecipeOut)
+def set_autotag_ignored(recipe_id: int, payload: schemas.AutoTagIgnore, db: Session = Depends(get_db)):
+    """Leave a recipe out of (or put it back into) the Settings tag scan, so
+    the list doesn't fill up with suggestions already turned down."""
+    recipe = db.get(models.Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe.autotag_ignored = payload.ignored
+    db.commit()
+    db.refresh(recipe)
+    return recipe
+
+
+@app.post("/api/tags/suggest", response_model=list[schemas.TagIn])
+def suggest_tags_for_form(payload: schemas.TagSuggestRequest):
+    """The edit form's Suggest tags button: suggestions for what's typed in
+    the form (saved or not), minus tags it already lists. Saves nothing.
+    Works for recipes skipped by the Settings scan too."""
+    current = {t.strip().lower() for t in payload.current_tags}
+    suggested = suggest_tags(payload.title, payload.ingredients, " ".join(payload.steps))
+    has_meat = any(t.lower() in {m.lower() for m in MEAT_FISH_TAGS} for t in current) or \
+        any(n in MEAT_FISH_TAGS for n, _, _ in suggested)
+    return [schemas.TagIn(name=n, category=c, subgroup=sg) for n, c, sg in suggested
+            if n.lower() not in current and not (n == "Vegetarian" and has_meat)]
 
 
 @app.get("/api/tags", response_model=list[schemas.TagOut])

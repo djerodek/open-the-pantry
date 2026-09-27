@@ -294,7 +294,11 @@ docker compose -f docker-compose.build.yml up -d --build
   suggestions with a checkbox per recipe and per tag (all ticked to start);
   only what's left ticked is added. It never adds a tag a recipe already
   has, or Vegetarian next to a meat or fish tag, and removes nothing.
-  Unticked or removed suggestions are offered again on the next run. Cocktail-specific cooking-style tags
+  Unticked or removed suggestions are offered again on the next run,
+  unless the recipe is set to "Skip in future scans" (a button on each row
+  of the list). A skipped recipe's edit screen can include it again, and
+  its "Suggest tags" button adds suggestions for that one recipe to the
+  tag field any time -- skipped or not -- for you to trim before saving. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it
@@ -372,8 +376,11 @@ docker compose -f docker-compose.build.yml up -d --build
 - Light / dark / system theme (Settings menu). Dark mode is true black
   (`#000000`), not a dark-gray substitute — surface separation comes from
   hairline borders, not a lighter fill.
-- Adjustable in-app text size, layered on top of normal browser zoom / OS
-  text-size settings (never disabled).
+- Adjustable in-app text size (Settings), layered on top of the OS
+  text-size setting. Page zoom is turned off -- pinch, double-tap, and the
+  automatic zoom iOS does when you tap a small text field -- because it
+  kept pushing buttons off screen; text fields are at least 16px so iOS
+  has no reason to zoom.
 - **Keep screen awake while reading a recipe** — useful when your hands are
   busy and the phone is propped on the counter. Set it as a default for
   every recipe in Settings, and/or toggle it per recipe from the detail

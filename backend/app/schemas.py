@@ -116,8 +116,21 @@ class AutoTagApply(BaseModel):
     selections: Optional[list[AutoTagSelection]] = Field(default=None, max_length=5000)
 
 
+class AutoTagIgnore(BaseModel):
+    ignored: bool
+
+
+class TagSuggestRequest(BaseModel):
+    """What's in the edit form right now, saved or not."""
+    title: str = Field("", max_length=500)
+    ingredients: list[str] = Field(default_factory=list, max_length=500)
+    steps: list[str] = Field(default_factory=list, max_length=500)
+    current_tags: list[str] = Field(default_factory=list, max_length=200)
+
+
 class AutoTagResult(BaseModel):
     dry_run: bool
+    recipes_ignored: int = 0
     recipes_scanned: int
     recipes_changed: int
     tags_added: int
@@ -139,6 +152,7 @@ class RecipeOut(BaseModel):
     ocr_confidence: Optional[float] = None
     actual_cook_time: Optional[str] = None
     favorite: bool = False
+    autotag_ignored: bool = False
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None

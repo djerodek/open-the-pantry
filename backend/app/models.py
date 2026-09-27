@@ -41,6 +41,9 @@ class Recipe(Base):
     ocr_confidence = Column(Float, nullable=True)
 
     favorite = Column(Boolean, nullable=False, default=False)
+    # Left out of Settings -> Tags -> "Add suggested tags" (the per-recipe
+    # Suggest tags button in the edit form still works).
+    autotag_ignored = Column(Boolean, nullable=False, default=False)
     tastiness_rating = Column(Integer, nullable=True)  # 1-5
     cook_time_rating = Column(String, nullable=True)  # 'quick' | 'moderate' | 'long'
     difficulty_rating = Column(String, nullable=True)  # 'easy' | 'medium' | 'hard'

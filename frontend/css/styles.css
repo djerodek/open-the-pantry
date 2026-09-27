@@ -1528,3 +1528,24 @@ main {
 .autotag-recipe { font-weight: 600; }
 .autotag-recipe input, .autotag-tag input { width: 1.15rem; height: 1.15rem; margin: 0; }
 .autotag-tags { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; margin: 0.35rem 0 0 1.6rem; font-size: 0.9rem; }
+.autotag-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.autotag-skip { background: none; border: none; color: var(--color-ink-muted); font-size: 0.8rem;
+  text-decoration: underline; cursor: pointer; padding: 0.3rem 0; white-space: nowrap; }
+.tags-with-button { display: flex; gap: 0.5rem; align-items: center; }
+.tags-with-button input { flex: 1; min-width: 0; }
+.btn-small { padding: 0.4rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
+.inline-check { display: inline-flex; align-items: center; gap: 0.45rem; margin-top: 0.4rem; font-size: 0.9rem; font-weight: normal; }
+
+/* No zooming (see the viewport tag in index.html; Settings has text size).
+   iOS zooms the page into any text field whose font is under 16px when it's
+   tapped -- that was the zoom that happened during normal use, since fields
+   here were 0.9rem (14.4px). touch-action stops double-tap zoom. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select,
+.field input[type="text"], .field input[type="url"], .field input[type="password"],
+.field input[type="email"], .field input[type="number"], .field textarea,
+.search-form input[type="search"] {
+  font-size: max(16px, 1rem);
+}
+html { touch-action: manipulation; }
