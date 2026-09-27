@@ -646,6 +646,12 @@ sizes, and URLs are.
 
 ## Deployment notes
 
+**Resource limits.** The app bounds its own work (at most three OCR/PDF
+jobs at once, 35 MP per page, batch size caps), but Docker doesn't cap the
+container. Measured worst case is about 3.4 GB (three large scans at once);
+idle is about 160 MB. The compose files have commented-out `mem_limit`,
+`cpus` and `pids_limit` lines if you want a hard ceiling.
+
 - The published image is a normal Docker image — it runs anywhere Docker
   runs: a home NAS, a VPS, a Raspberry Pi, behind a reverse proxy (Apache/
   Nginx/Caddy) with a domain, or over a VPN back to a home network. It does
@@ -671,7 +677,11 @@ sizes, and URLs are.
   For reproducible upgrades (and to control exactly when a new version
   applies), pin a version tag instead, e.g.
   `image: djerodek/open-the-pantry:1.2.0`, and bump it deliberately. Version
-  tags are published by pushing a `vX.Y.Z` git tag.
+  tags are published by pushing a `vX.Y.Z` git tag
+  (`git tag v1.0.0 && git push origin v1.0.0` gives `:1.0.0` and `:1.0`).
+  The base image (`python:3.12-slim`) is deliberately not pinned: each
+  build picks up Debian security updates, and the CI dependency audit fails
+  the build on a known vulnerability.
 - A `HEALTHCHECK` is included (hitting a dedicated `/healthz` endpoint, not
   a real-data one), so `docker ps` / orchestration tooling can tell a
   hung-but-still-listening process apart from a genuinely healthy one.

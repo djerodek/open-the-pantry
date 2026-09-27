@@ -1,5 +1,8 @@
 services:
   open-the-pantry:
+    # :main follows every change. To stay on a build you've tested, use a
+    # release tag instead, e.g. djerodek/open-the-pantry:1.0.0 (README,
+    # "Deployment notes").
     image: djerodek/open-the-pantry:main
     container_name: open-the-pantry
     ports:
@@ -7,6 +10,13 @@ services:
     volumes:
       - ./data:/app/data     # SQLite DB + uploaded images/PDFs, persists across updates
     restart: unless-stopped
+    # Optional resource limits. Measured worst case: about 3.4 GB with three
+    # big scans being OCR'd at once (the app runs at most three); idle is
+    # about 160 MB. Over the limit, Docker stops the container and
+    # restart: brings it back.
+    # mem_limit: 4g
+    # cpus: 2
+    # pids_limit: 256
     environment:
       # Your time zone, so the daily email scan runs at the hour you set.
       # Change to yours, e.g. America/Toronto, Europe/Paris.
