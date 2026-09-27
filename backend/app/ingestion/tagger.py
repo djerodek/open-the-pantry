@@ -67,6 +67,24 @@ def _text_contains(haystack: str, keyword: str) -> bool:
     return re.search(rf"\b{re.escape(keyword)}\b", haystack) is not None
 
 
+# Keywords added in Settings -> Tag groups: (name, category, subgroup,
+# [keywords], rules_out_vegetarian). Loaded from the tags table by
+# main.refresh_user_keywords() at startup and after every change there;
+# replaced as a whole, so readers never see a half-built list.
+_user_keywords: list[tuple[str, str, str | None, list[str], bool]] = []
+
+
+def set_user_keywords(entries):
+    global _user_keywords
+    _user_keywords = list(entries)
+
+
+def meat_tag_names() -> set[str]:
+    """Main-ingredient tags that rule out Vegetarian: the built-in meats
+    and fish plus any tag marked that way in Settings."""
+    return set(MEAT_FISH_TAGS) | {n for n, c, _, _, rov in _user_keywords if rov and c == "main_ingredient"}
+
+
 def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -> list[tuple[str, str, str | None]]:
     """
     Returns a list of (tag_name, category, subgroup) suggestions based on simple
@@ -92,6 +110,19 @@ def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -
                     if tag_name in MEAT_FISH_TAGS:
                         matched_meat_or_fish = True
                     break
+
+    # Keywords added in Settings. A built-in tag can get extra words too, so
+    # skip any tag already suggested above.
+    have = {(n, c) for n, c, _ in suggestions}
+    for name, category, subgroup, keywords, rules_out_veg in _user_keywords:
+        if (name, category) in have:
+            continue
+        text = main_haystack if category == "main_ingredient" else haystack
+        if any(_text_contains(text, kw) for kw in keywords):
+            suggestions.append((name, category, subgroup))
+            have.add((name, category))
+            if rules_out_veg or name in MEAT_FISH_TAGS:
+                matched_meat_or_fish = True
 
     if not matched_meat_or_fish and (animal_flavouring or any(_text_contains(haystack, kw) for kw in NOT_VEGETARIAN)):
         matched_meat_or_fish = True

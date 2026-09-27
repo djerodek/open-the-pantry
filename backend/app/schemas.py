@@ -95,6 +95,9 @@ class StepOut(BaseModel):
 
 class TagOut(TagIn):
     id: int
+    keywords: str = ""
+    rules_out_vegetarian: bool = False
+    user_defined: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,6 +117,30 @@ class AutoTagApply(BaseModel):
     # Omitted = add every suggestion. Otherwise only these; anything not
     # currently suggested for that recipe is ignored.
     selections: Optional[list[AutoTagSelection]] = Field(default=None, max_length=5000)
+
+
+class TagGroupOut(BaseModel):
+    key: str
+    label: str
+    builtin: bool
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TagGroupIn(BaseModel):
+    label: str = Field(..., min_length=1, max_length=40)
+
+
+class TagDefIn(BaseModel):
+    """A tag added (or updated) in Settings -> Tag groups."""
+    name: str = Field(..., min_length=1, max_length=40)
+    category: str = Field(..., min_length=1, max_length=60)
+    keywords: str = Field("", max_length=1000)
+    rules_out_vegetarian: bool = False
+
+
+class TagDefUpdate(BaseModel):
+    keywords: str = Field("", max_length=1000)
+    rules_out_vegetarian: bool = False
 
 
 class AutoTagIgnore(BaseModel):

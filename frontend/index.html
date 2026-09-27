@@ -228,6 +228,17 @@
         would be added before anything changes.
       </div>
       <div id="autotag-result" role="status"></div>
+
+      <button type="button" id="taggroups-toggle" class="btn-secondary" aria-expanded="false"
+              aria-controls="taggroups-panel" style="margin-top:0.9rem">Manage tag groups and keywords</button>
+      <div id="taggroups-panel" hidden>
+        <div class="field-hint">
+          Add groups (like Cuisine) and tags, and the words that make the
+          tagger suggest a tag. Built-in tags already know their usual words
+          (Chicken knows chicken, poultry); keywords here are extra.
+        </div>
+        <div id="taggroups-list"></div>
+      </div>
     </div>
 
     <div class="filter-section" id="wakelock-setting" hidden>

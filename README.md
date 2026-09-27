@@ -298,7 +298,15 @@ docker compose -f docker-compose.build.yml up -d --build
   unless the recipe is set to "Skip in future scans" (a button on each row
   of the list). A skipped recipe's edit screen can include it again, and
   its "Suggest tags" button adds suggestions for that one recipe to the
-  tag field any time -- skipped or not -- for you to trim before saving. Cocktail-specific cooking-style tags
+  tag field any time -- skipped or not -- for you to trim before saving.
+- Settings → Tags → "Manage tag groups and keywords": add groups (e.g.
+  Cuisine) and tags in any group, each with the words that make the
+  tagger suggest it ("Thai: lemongrass, galangal, fish sauce"). Built-in
+  tags can take extra words too (Beef: bavette). A main-ingredient tag can
+  be marked as meaning the dish isn't vegetarian. New groups get their own
+  button next to Meal Type / Cooking Style / Main Ingredient once they have
+  tags. Groups and tags added there can be deleted, which removes them from
+  recipes; built-in ones can't. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it

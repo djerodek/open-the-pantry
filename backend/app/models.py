@@ -105,8 +105,28 @@ class Tag(Base):
     category = Column(String, nullable=False)
     # e.g. 'cocktail' for shaken/stirred/built/blended under cooking_style; NULL otherwise
     subgroup = Column(String, nullable=True)
+    # Extra words the tagger looks for, comma-separated, on top of its
+    # built-in list (tagger.KEYWORD_MAP). Set from Settings -> Tag groups.
+    keywords = Column(Text, nullable=False, default="")
+    # Main-ingredient tags only: a match means the recipe isn't Vegetarian.
+    rules_out_vegetarian = Column(Boolean, nullable=False, default=False)
+    # Added in Settings (can be deleted there); built-in and recipe-created
+    # tags can't.
+    user_defined = Column(Boolean, nullable=False, default=False)
 
     recipes = relationship("Recipe", secondary=recipe_tags, back_populates="tags")
+
+
+class TagGroup(Base):
+    """A tag category: the three built in (meal_type, cooking_style,
+    main_ingredient), "custom", and any added in Settings. Tag.category
+    holds the key."""
+    __tablename__ = "tag_groups"
+
+    key = Column(String, primary_key=True)
+    label = Column(String, nullable=False)
+    position = Column(Integer, nullable=False, default=100)
+    builtin = Column(Boolean, nullable=False, default=False)
 
 
 class EmailIngestSettings(Base):

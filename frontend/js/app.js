@@ -805,10 +805,38 @@
     return el("div", { class: "tag-group" }, [header, body]);
   }
 
+  // Tag groups (Meal Type, Cooking Style, Main Ingredient, Custom, and any
+  // added in Settings) come from the server; this list is only the
+  // fallback if that request fails.
+  const BUILTIN_GROUPS = [
+    { key: "meal_type", label: "Meal Type", builtin: true },
+    { key: "cooking_style", label: "Cooking Style", builtin: true },
+    { key: "main_ingredient", label: "Main Ingredient", builtin: true },
+    { key: "custom", label: "Custom", builtin: true },
+  ];
+  function tagGroups() {
+    return (state.tagGroups && state.tagGroups.length ? state.tagGroups : BUILTIN_GROUPS).map((g) => [g.key, g.label]);
+  }
+
   async function loadTags() {
-    const res = await fetch(`${API}/tags`);
+    const [res, gres] = await Promise.all([fetch(`${API}/tags`), fetch(`${API}/tag-groups`).catch(() => null)]);
     state.allTags = await res.json();
+    if (gres && gres.ok) state.tagGroups = await gres.json();
+    renderGroupingToggle();
     renderSidebar();
+  }
+
+  // "All" plus one button per group that has tags ("Custom" stays in the
+  // sidebar and filter panel only, as before).
+  function renderGroupingToggle() {
+    const wrap = $(".grouping-toggle");
+    if (!wrap) return;
+    const groups = tagGroups().filter(([k]) => k !== "custom" && state.allTags.some((t) => t.category === k));
+    if (state.grouping !== "all" && !groups.some(([k]) => k === state.grouping)) state.grouping = "all";
+    wrap.innerHTML = "";
+    for (const [key, label] of [["all", "All"], ...groups]) {
+      wrap.appendChild(el("button", { type: "button", "data-group": key, "aria-pressed": String(state.grouping === key), text: label }));
+    }
   }
 
   async function loadTimeBuckets() {
@@ -819,12 +847,7 @@
   function renderSidebar() {
     const container = $("#tag-tree");
     container.innerHTML = "";
-    const categories = [
-      ["meal_type", "Meal Type"],
-      ["cooking_style", "Cooking Style"],
-      ["main_ingredient", "Main Ingredient"],
-      ["custom", "Custom"],
-    ];
+    const categories = tagGroups();
 
     // Expand/collapse everything at once -- with all groups closed by
     // default this is the one control that makes the whole tree browsable
@@ -938,12 +961,7 @@
       el("button", { class: "filter-panel-close", type: "button", "aria-label": "Close filters", text: "\u00d7", onclick: closeFilterPanel }),
     ]));
 
-    const categories = [
-      ["meal_type", "Meal Type"],
-      ["cooking_style", "Cooking Style"],
-      ["main_ingredient", "Main Ingredient"],
-      ["custom", "Custom"],
-    ];
+    const categories = tagGroups();
     for (const [catKey, catLabel] of categories) {
       const tagsInCat = state.allTags.filter((t) => t.category === catKey);
       if (!tagsInCat.length) continue;
@@ -1067,15 +1085,16 @@
   // -------------------------------------------------------------------
   // Grouping toggle
   // -------------------------------------------------------------------
-  $$(".grouping-toggle button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.grouping = btn.dataset.group;
-      $$(".grouping-toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-      const filtersToggle = $("#filters-toggle");
-      filtersToggle.hidden = state.grouping !== "all";
-      if (state.grouping !== "all") $("#filter-panel").hidden = true;
-      renderRecipeList(currentRecipes);
-    });
+  // One listener on the container: the buttons are rebuilt when groups change.
+  $(".grouping-toggle").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-group]");
+    if (!btn) return;
+    state.grouping = btn.dataset.group;
+    $$(".grouping-toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    const filtersToggle = $("#filters-toggle");
+    filtersToggle.hidden = state.grouping !== "all";
+    if (state.grouping !== "all") $("#filter-panel").hidden = true;
+    renderRecipeList(currentRecipes);
   });
 
   // -------------------------------------------------------------------
@@ -1252,6 +1271,120 @@
     autotagResult.appendChild(el("div", { class: "autotag-actions" }, [apply, cancel]));
     apply.focus();
   });
+
+  // Settings -> Tags -> Manage tag groups and keywords.
+  const tgToggle = $("#taggroups-toggle");
+  const tgPanel = $("#taggroups-panel");
+  const tgOpen = new Set();   // which groups are expanded, kept across re-renders
+  tgToggle.addEventListener("click", () => {
+    tgPanel.hidden = !tgPanel.hidden;
+    tgToggle.setAttribute("aria-expanded", String(!tgPanel.hidden));
+    if (!tgPanel.hidden) renderTagGroupsPanel();
+  });
+
+  async function tgRequest(url, method, body) {
+    const res = await fetch(url, {
+      method, headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      const err = res ? await res.json().catch(() => ({})) : {};
+      announceError(typeof err.detail === "string" ? err.detail : "Couldn't save that change.");
+      return null;
+    }
+    return res.json();
+  }
+
+  async function tgReload() {
+    await loadTags();
+    if (!$("#filter-panel").hidden) renderFilterPanel();
+    renderTagGroupsPanel();
+  }
+
+  function renderTagGroupsPanel() {
+    const list = $("#taggroups-list");
+    list.innerHTML = "";
+    const groups = state.tagGroups && state.tagGroups.length ? state.tagGroups : BUILTIN_GROUPS;
+    for (const g of groups) {
+      const tags = state.allTags.filter((t) => t.category === g.key)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const isMain = g.key === "main_ingredient";
+      const rows = tags.map((t) => {
+        const kw = el("input", { type: "text", value: t.keywords || "", placeholder: "extra words, comma separated",
+          "aria-label": `Keywords for ${t.name}` });
+        const rov = isMain && t.name !== "Vegetarian"
+          ? el("input", { type: "checkbox", "aria-label": `${t.name} rules out Vegetarian` }) : null;
+        if (rov) rov.checked = !!t.rules_out_vegetarian;
+        const save = el("button", { type: "button", class: "btn-secondary btn-small", text: "Save", hidden: "",
+          onclick: async () => {
+            if (await tgRequest(`${API}/tags/${t.id}`, "PUT", { keywords: kw.value, rules_out_vegetarian: rov ? rov.checked : false })) {
+              announce(`Saved keywords for ${t.name}.`); await tgReload();
+            }
+          } });
+        const dirty = () => { save.hidden = false; };
+        kw.addEventListener("input", dirty); if (rov) rov.addEventListener("change", dirty);
+        const del = t.user_defined ? el("button", { type: "button", class: "tg-delete", text: "Delete",
+          "aria-label": `Delete tag ${t.name}`,
+          onclick: async () => {
+            if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Tap again to delete"; return; }
+            const r = await tgRequest(`${API}/tags/${t.id}`, "DELETE");
+            if (r) { announce(`Deleted ${t.name}${r.recipes_changed ? ` (removed from ${r.recipes_changed} recipes)` : ""}.`); await tgReload(); }
+          } }) : null;
+        return el("li", { class: "tg-tag" }, [
+          el("div", { class: "tg-tag-head" }, [el("strong", { text: t.name }), del]),
+          el("div", { class: "tg-tag-edit" }, [kw, save]),
+          rov ? el("label", { class: "inline-check" }, [rov, el("span", { text: "Means it's not vegetarian" })]) : null,
+        ]);
+      });
+
+      const newName = el("input", { type: "text", placeholder: "New tag name", "aria-label": `New tag in ${g.label}`, maxlength: "40" });
+      const newKw = el("input", { type: "text", placeholder: "keywords, comma separated", "aria-label": "Keywords for the new tag" });
+      const newRov = isMain ? el("input", { type: "checkbox" }) : null;
+      const add = el("button", { type: "button", class: "btn-primary btn-small", text: "Add tag", onclick: async () => {
+        if (!newName.value.trim()) { newName.focus(); return; }
+        const r = await tgRequest(`${API}/tags`, "POST", { name: newName.value, category: g.key, keywords: newKw.value,
+          rules_out_vegetarian: newRov ? newRov.checked : false });
+        if (r) { tgOpen.add(g.key); announce(`Added ${r.name} to ${g.label}.`); await tgReload(); }
+      } });
+      const addRow = el("div", { class: "tg-add" }, [
+        newName, newKw,
+        newRov ? el("label", { class: "inline-check" }, [newRov, el("span", { text: "Means it's not vegetarian" })]) : null,
+        add,
+      ]);
+
+      const delGroup = g.builtin ? null : el("button", { type: "button", class: "tg-delete", text: "Delete group",
+        onclick: async (e) => {
+          e.preventDefault();
+          if (delGroup.dataset.armed !== "1") {
+            delGroup.dataset.armed = "1";
+            delGroup.textContent = tags.length ? `Delete group and its ${tags.length} tag${tags.length === 1 ? "" : "s"}?` : "Tap again to delete";
+            return;
+          }
+          const r = await tgRequest(`${API}/tag-groups/${encodeURIComponent(g.key)}`, "DELETE");
+          if (r) { announce(`Deleted ${g.label}.`); await tgReload(); }
+        } });
+
+      const det = el("details", { class: "tg-group" }, [
+        el("summary", {}, [el("span", { text: `${g.label} (${tags.length})` })]),
+        delGroup,
+        el("ul", { class: "tg-tags" }, rows),
+        addRow,
+      ]);
+      if (tgOpen.has(g.key)) det.open = true;
+      det.addEventListener("toggle", () => { if (det.open) tgOpen.add(g.key); else tgOpen.delete(g.key); });
+      list.appendChild(det);
+    }
+
+    const groupName = el("input", { type: "text", placeholder: "New group, e.g. Cuisine", maxlength: "40", "aria-label": "New group name" });
+    list.appendChild(el("div", { class: "tg-add tg-add-group" }, [
+      groupName,
+      el("button", { type: "button", class: "btn-primary btn-small", text: "Add group", onclick: async () => {
+        if (!groupName.value.trim()) { groupName.focus(); return; }
+        const r = await tgRequest(`${API}/tag-groups`, "POST", { label: groupName.value });
+        if (r) { tgOpen.add(r.key); announce(`Added the ${r.label} group. Add tags to it below.`); await tgReload(); }
+      } }),
+    ]));
+  }
 
   // Photos on/off: a switch in Settings (it was a toolbar button). The list
   // behind the Settings dialog updates as soon as it's flipped.

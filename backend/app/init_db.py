@@ -33,6 +33,13 @@ SEED_TAGS = [
     ("Game", "main_ingredient", None),
 ]
 
+BUILTIN_GROUPS = [
+    ("meal_type", "Meal Type"),
+    ("cooking_style", "Cooking Style"),
+    ("main_ingredient", "Main Ingredient"),
+    ("custom", "Custom"),   # always last; tags typed in the edit screen land here
+]
+
 NEW_RECIPE_COLUMNS = {
     "tags_text": "TEXT DEFAULT ''",
     "content_text": "TEXT DEFAULT ''",
@@ -114,6 +121,13 @@ def _migrate_and_setup_schema():
         if email_cols and "last_problem_at" not in email_cols:
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN last_problem_at DATETIME")
 
+        tag_cols = {row[1] for row in cur.execute("PRAGMA table_info(tags)")}
+        for col, decl in (("keywords", "TEXT NOT NULL DEFAULT ''"),
+                          ("rules_out_vegetarian", "INTEGER NOT NULL DEFAULT 0"),
+                          ("user_defined", "INTEGER NOT NULL DEFAULT 0")):
+            if tag_cols and col not in tag_cols:
+                cur.execute(f"ALTER TABLE tags ADD COLUMN {col} {decl}")
+
         if table_exists:
             for col, decl in NEW_RECIPE_COLUMNS.items():
                 if col not in existing_cols:
@@ -194,6 +208,10 @@ def init_db():
             existing = db.query(models.Tag).filter_by(name=name, category=category).first()
             if not existing:
                 db.add(models.Tag(name=name, category=category, subgroup=subgroup))
+        for pos, (key, label) in enumerate(BUILTIN_GROUPS):
+            if not db.get(models.TagGroup, key):
+                db.add(models.TagGroup(key=key, label=label, builtin=True,
+                                           position=1000 if key == "custom" else pos))
         db.commit()
     finally:
         db.close()

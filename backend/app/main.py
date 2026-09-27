@@ -31,7 +31,7 @@ from .ingestion.url_ingest import ingest_url, safe_get
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
 from .ingestion.image_ingest import ingest_and_segment, ingest_image
 from .ingestion.ingredient_parser import parse_ingredient_block
-from .ingestion.tagger import suggest_tags, MEAT_FISH_TAGS
+from .ingestion.tagger import suggest_tags, set_user_keywords, meat_tag_names
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
 from .backup import build_database_backup, build_pdf_bundle, remove_upload_file
@@ -67,6 +67,27 @@ def _acquire_single_instance_lock():
 
 _acquire_single_instance_lock()
 init_db()
+
+
+def _split_keywords(raw: str) -> list[str]:
+    return [k.strip().lower() for k in re.split(r"[,;\n]", raw or "") if k.strip()]
+
+
+def refresh_user_keywords(db=None):
+    """Hand the tagger the keywords set in Settings -> Tag groups."""
+    own = db is None
+    db = db or SessionLocal()
+    try:
+        rows = db.query(models.Tag).filter(
+            (models.Tag.keywords != "") | (models.Tag.rules_out_vegetarian.is_(True))).all()
+        set_user_keywords([(t.name, t.category, t.subgroup, _split_keywords(t.keywords), bool(t.rules_out_vegetarian))
+                           for t in rows])
+    finally:
+        if own:
+            db.close()
+
+
+refresh_user_keywords()
 
 TMP_FILE_MAX_AGE_SECONDS = 24 * 60 * 60
 TMP_SWEEP_INTERVAL_SECONDS = 6 * 60 * 60  # re-sweep periodically, not just at startup
@@ -1708,6 +1729,7 @@ def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagAppl
                         selectinload(models.Recipe.tags))
                .order_by(models.Recipe.id).all())
     picks = {s.id: set(s.tags) for s in (payload.selections or [])} if payload else {}
+    meat_names = meat_tag_names()
     ignored = [r for r in recipes if r.autotag_ignored]
     recipes = [r for r in recipes if not r.autotag_ignored]
     changes = []
@@ -1715,7 +1737,7 @@ def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagAppl
         have = {(t.name, t.category) for t in r.tags}
         # Vegetarian is the tagger's "no meat keyword found"; if a meat or fish
         # tag is already on the recipe (say, added by hand), it's wrong.
-        has_meat = any(t.category == "main_ingredient" and t.name in MEAT_FISH_TAGS for t in r.tags)
+        has_meat = any(t.category == "main_ingredient" and t.name in meat_names for t in r.tags)
         suggested = suggest_tags(
             r.title, [i.name or i.raw_line for i in r.ingredients], " ".join(s.text for s in r.steps)
         )
@@ -1768,10 +1790,113 @@ def suggest_tags_for_form(payload: schemas.TagSuggestRequest):
     Works for recipes skipped by the Settings scan too."""
     current = {t.strip().lower() for t in payload.current_tags}
     suggested = suggest_tags(payload.title, payload.ingredients, " ".join(payload.steps))
-    has_meat = any(t.lower() in {m.lower() for m in MEAT_FISH_TAGS} for t in current) or \
-        any(n in MEAT_FISH_TAGS for n, _, _ in suggested)
+    meat = meat_tag_names()
+    has_meat = any(t in {m.lower() for m in meat} for t in current) or any(n in meat for n, _, _ in suggested)
     return [schemas.TagIn(name=n, category=c, subgroup=sg) for n, c, sg in suggested
             if n.lower() not in current and not (n == "Vegetarian" and has_meat)]
+
+
+# ---------------------------------------------------------------------------
+# Tag groups and tag definitions (Settings -> Tag groups)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tag-groups", response_model=list[schemas.TagGroupOut])
+def list_tag_groups(db: Session = Depends(get_db)):
+    return db.query(models.TagGroup).order_by(models.TagGroup.position, models.TagGroup.label).all()
+
+
+@app.post("/api/tag-groups", response_model=schemas.TagGroupOut)
+def create_tag_group(payload: schemas.TagGroupIn, db: Session = Depends(get_db)):
+    label = payload.label.strip()
+    if db.query(models.TagGroup).filter(func.lower(models.TagGroup.label) == label.lower()).first():
+        raise HTTPException(status_code=409, detail=f'There is already a group called "{label}".')
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "group"
+    key, n = f"g-{slug}", 2
+    while db.get(models.TagGroup, key):
+        key, n = f"g-{slug}-{n}", n + 1
+    group = models.TagGroup(key=key, label=label, builtin=False,
+                            position=100 + db.query(models.TagGroup).count())
+    db.add(group)
+    db.commit()
+    return group
+
+
+@app.delete("/api/tag-groups/{key}")
+def delete_tag_group(key: str, db: Session = Depends(get_db)):
+    """Deletes a group added in Settings and its tags, which are removed
+    from any recipes that have them. Built-in groups can't be deleted."""
+    group = db.get(models.TagGroup, key)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if group.builtin:
+        raise HTTPException(status_code=400, detail="Built-in groups can't be deleted.")
+    tags = db.query(models.Tag).filter_by(category=key).all()
+    touched = _remove_tags(db, tags)
+    db.delete(group)
+    db.commit()
+    refresh_user_keywords(db)
+    return {"deleted_tags": len(tags), "recipes_changed": touched}
+
+
+def _remove_tags(db: Session, tags: list) -> int:
+    """Detach tags from their recipes (keeping each recipe's search column
+    right) and delete them. Returns how many recipes changed."""
+    touched = set()
+    for tag in tags:
+        for r in list(tag.recipes):
+            r.tags.remove(tag)
+            r.tags_text = " ".join(t.name for t in r.tags)
+            touched.add(r.id)
+        db.delete(tag)
+    return len(touched)
+
+
+@app.post("/api/tags", response_model=schemas.TagOut)
+def create_tag(payload: schemas.TagDefIn, db: Session = Depends(get_db)):
+    """Add a tag to a group, with the words the tagger should look for.
+    If the tag already exists there, its keywords are updated instead."""
+    if not db.get(models.TagGroup, payload.category):
+        raise HTTPException(status_code=400, detail="No such group.")
+    name = payload.name.strip()
+    tag = db.query(models.Tag).filter(models.Tag.category == payload.category,
+                                      func.lower(models.Tag.name) == name.lower()).first()
+    if not tag:
+        tag = models.Tag(name=name, category=payload.category, subgroup=None, user_defined=True)
+        db.add(tag)
+    tag.keywords = ", ".join(_split_keywords(payload.keywords))
+    tag.rules_out_vegetarian = payload.rules_out_vegetarian and payload.category == "main_ingredient"
+    db.commit()
+    db.refresh(tag)
+    refresh_user_keywords(db)
+    return tag
+
+
+@app.put("/api/tags/{tag_id}", response_model=schemas.TagOut)
+def update_tag(tag_id: int, payload: schemas.TagDefUpdate, db: Session = Depends(get_db)):
+    """Change the extra keywords of any tag, built-in ones included."""
+    tag = db.get(models.Tag, tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    tag.keywords = ", ".join(_split_keywords(payload.keywords))
+    tag.rules_out_vegetarian = payload.rules_out_vegetarian and tag.category == "main_ingredient"
+    db.commit()
+    db.refresh(tag)
+    refresh_user_keywords(db)
+    return tag
+
+
+@app.delete("/api/tags/{tag_id}")
+def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+    """Delete a tag added in Settings, removing it from any recipes."""
+    tag = db.get(models.Tag, tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    if not tag.user_defined:
+        raise HTTPException(status_code=400, detail="Only tags added in Settings can be deleted here.")
+    touched = _remove_tags(db, [tag])
+    db.commit()
+    refresh_user_keywords(db)
+    return {"recipes_changed": touched}
 
 
 @app.get("/api/tags", response_model=list[schemas.TagOut])
