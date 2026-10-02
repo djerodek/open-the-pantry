@@ -501,7 +501,10 @@ docker compose -f docker-compose.build.yml up -d --build
   choosing, to any address. That is the same trust boundary as the rest of
   the app, but the result leaves your network under your name, so it's
   capped: at most five recipients per email and 10 emails per hour. It's
-  only available once the email-ingest account has a saved password.
+  only available once the email-ingest account has a saved password. If
+  anyone you don't fully trust can reach the app, set `RECIPE_APP_API_KEY`
+  or put it behind a VPN or an authenticating reverse proxy before setting
+  up email.
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
   reach the API could point the settings at their own server and press
@@ -578,12 +581,12 @@ docker compose -f docker-compose.build.yml up -d --build
   the same `./data` — SQLite doesn't support concurrent writers safely, and
   this turns a silent corruption risk (e.g. an accidental multi-replica
   deployment) into a clear startup failure instead.
-- **No CSRF middleware, deliberately.** CSRF protection exists to stop a
-  malicious site from riding a *victim's existing authenticated session* to
-  make requests on their behalf. This app has no session or cookie-based
-  auth to ride — every request is already anonymous/unauthenticated by
-  design (or authenticated via a static header, which CSRF doesn't apply to
-  either). Adding CSRF tokens here would protect nothing real.
+- **No CSRF tokens; cross-site requests are blocked another way.** CSRF
+  tokens stop a malicious site from riding a victim's logged-in session,
+  and this app has no session or cookie to ride. The risk that does apply
+  -- a page on another site sending requests to the NAS from a browser on
+  your network -- is handled by the host-name check and the required
+  `X-Requested-With` header described above, not by tokens.
 - **Upload handling**: size-capped (20MB) and magic-byte validated before
   any parsing/OCR touches the file; uploads are streamed to disk rather
   than buffered fully in memory; saved filenames use an extension derived
