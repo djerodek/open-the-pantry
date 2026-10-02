@@ -38,6 +38,7 @@ from .backup import build_database_backup, build_pdf_bundle, remove_upload_file
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import crypto
+from . import i18n
 
 _lock_file_handle = None
 
@@ -389,6 +390,79 @@ def report_client_error(report: schemas.ClientErrorReport):
     return None
 
 
+# The app's own files (index.html, app.js, styles.css, the service worker)
+# are sent with Cache-Control: no-cache: the browser keeps them but asks the
+# server each time (a 304 when nothing changed). Without it iOS kept old
+# copies for hours after an update. Photos (unique file names) and API
+# responses are left alone.
+@app.middleware("http")
+async def app_files_revalidate(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if request.method == "GET" and not path.startswith(("/api/", "/uploads/", "/tmp-preview/")) and path != "/healthz":
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+# Interface language (see i18n.py). Registered last, so it is the outermost
+# middleware: the language is known to everything inside, and messages the
+# other middlewares return (a 429, a refused write) are translated too.
+# Only JSON bodies of a modest size are rewritten; recipe lists and files
+# pass straight through.
+_TRANSLATE_MAX_BYTES = 256 * 1024
+
+
+@app.middleware("http")
+async def interface_language(request: Request, call_next):
+    lang = i18n.normalize(request.headers.get("x-app-lang") or request.query_params.get("lang"))
+    token = i18n.current_lang.set(lang)
+    try:
+        response = await call_next(request)
+    finally:
+        i18n.current_lang.reset(token)
+    if lang == "en" or not response.headers.get("content-type", "").startswith("application/json"):
+        return response
+    length = response.headers.get("content-length")
+    if not length or int(length) > _TRANSLATE_MAX_BYTES:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    try:
+        import json as _json
+        payload = i18n.translate_payload(_json.loads(body), lang)
+        body = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    except ValueError:
+        log.debug("interface_language: response wasn't JSON after all", exc_info=True)
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=body, status_code=response.status_code, headers=headers,
+                    background=response.background)
+
+
+def _frontend_version() -> str:
+    """A fingerprint of the app's own files, so the page can tell whether
+    the server has a newer version than the one it's running (pull to
+    refresh)."""
+    import hashlib
+    h = hashlib.sha256()
+    static = os.path.join(os.path.dirname(__file__), "..", "static")
+    for root, _, files in sorted(os.walk(static)):
+        for f in sorted(files):
+            if f.endswith((".js", ".css", ".html", ".json")):
+                try:
+                    with open(os.path.join(root, f), "rb") as fh:
+                        h.update(f.encode()); h.update(fh.read())
+                except OSError:
+                    log.debug("_frontend_version: unreadable %s", f, exc_info=True)
+    return h.hexdigest()[:16]
+
+
+FRONTEND_VERSION = _frontend_version()
+
+
+@app.get("/api/version")
+def app_version():
+    return {"frontend": FRONTEND_VERSION}
+
+
 @app.get("/healthz")
 def healthz():
     """Liveness check with no auth requirement and no DB dependency --
@@ -631,12 +705,17 @@ def _queue_notification(db: Session, success: bool, message: str):
 
 
 def _pending_notification_count(settings: models.EmailIngestSettings) -> int:
+    """Queued result lines. Every caller passes a settings row attached to
+    a session; the 0 for a detached one only keeps the settings response
+    from failing."""
     from sqlalchemy.orm import object_session
     s = object_session(settings)
     return s.query(models.EmailNotificationQueueItem).count() if s is not None else 0
 
 
 def _record_scan_problem(db: Session, settings: models.EmailIngestSettings, text: str):
+    # The only writer, so the 1000-character cap here is the cap on what
+    # Settings displays.
     settings.last_problem = text[:1000]
     settings.last_problem_at = datetime.now()
     db.commit()
@@ -669,21 +748,28 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
 
     successes = [q for q in queued if q.success]
     failures = [q for q in queued if not q.success]
+    # The [PARTIAL]/[FAILURE]/[SUCCESS] markers stay the same in both
+    # languages, so a mail filter written for them keeps working.
+    lang = settings.language or "en"
+    fr = lang == "fr"
     if failures and successes:
-        subject = f"[PARTIAL] Open the Pantry: {len(successes)} ingested, {len(failures)} failed"
+        subject = (f"[PARTIAL] Open the Pantry : {len(successes)} reçue(s), {len(failures)} en échec" if fr else
+                   f"[PARTIAL] Open the Pantry: {len(successes)} ingested, {len(failures)} failed")
     elif failures:
-        subject = f"[FAILURE] Open the Pantry: unable to parse {len(failures)} email(s)"
+        subject = (f"[FAILURE] Open the Pantry : impossible de traiter {len(failures)} courriel(s)" if fr else
+                   f"[FAILURE] Open the Pantry: unable to parse {len(failures)} email(s)")
     else:
-        subject = f"[SUCCESS] Open the Pantry: {len(successes)} recipe(s) ingested"
+        subject = (f"[SUCCESS] Open the Pantry : {len(successes)} recette(s) reçue(s)" if fr else
+                   f"[SUCCESS] Open the Pantry: {len(successes)} recipe(s) ingested")
 
     body_lines = []
     if successes:
-        body_lines.append("Ingested:")
-        body_lines.extend(f"  - {q.message}" for q in successes)
+        body_lines.append(i18n.t("Ingested:", lang))
+        body_lines.extend(f"  - {i18n.translate(q.message, lang)}" for q in successes)
         body_lines.append("")
     if failures:
-        body_lines.append("Failed:")
-        body_lines.extend(f"  - {q.message}" for q in failures)
+        body_lines.append(i18n.t("Failed:", lang))
+        body_lines.extend(f"  - {i18n.translate(q.message, lang)}" for q in failures)
 
     try:
         password = crypto.decrypt_secret(settings.password_encrypted)
@@ -1449,6 +1535,7 @@ def list_recipes(
     summaries = []
     for r in results:
         summary = schemas.RecipeSummaryOut.model_validate(r)
+        summary.has_notes = bool((r.notes or "").strip())
         if r.id in matched_via:
             summary.matched_via = sorted(matched_via[r.id])
         summaries.append(summary)
@@ -1908,6 +1995,19 @@ def list_tags(db: Session = Depends(get_db)):
 # Email ingest (optional feature)
 # ---------------------------------------------------------------------------
 
+def _can_send_email(settings: models.EmailIngestSettings) -> bool:
+    return bool(settings.smtp_host and settings.username and settings.password_encrypted)
+
+
+def _recent_recipients(settings: models.EmailIngestSettings) -> list[str]:
+    import json
+    try:
+        value = json.loads(settings.recent_recipients or "[]")
+    except ValueError:
+        return []
+    return [a for a in value if isinstance(a, str)] if isinstance(value, list) else []
+
+
 def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: bool = False) -> schemas.EmailSettingsOut:
     return schemas.EmailSettingsOut(
         enabled=settings.enabled,
@@ -1932,6 +2032,8 @@ def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: 
         encryption_configured=crypto.encryption_configured(),
         encryption_source=crypto.key_source(),
         server_timezone=datetime.now().astimezone().tzname() or "",
+        can_send=_can_send_email(settings),
+        recent_recipients=_recent_recipients(settings),
     )
 
 
@@ -2028,6 +2130,7 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
     settings.allowed_senders = ", ".join(_parse_allowed_senders(payload.allowed_senders))
     settings.daily_scan_hour = payload.daily_scan_hour
     settings.cooldown_minutes = payload.cooldown_minutes
+    settings.language = i18n.current_lang.get()
 
     db.commit()
     db.refresh(settings)
@@ -2072,15 +2175,24 @@ def test_email_settings(db: Session = Depends(get_db)):
             settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
         )
         try:
-            email_client.send_email(
-                smtp, settings.username, settings.notify_email,
-                "[TEST] Open the Pantry email ingest",
-                "This is a test message from Open the Pantry.\n\n"
-                "Receiving it means outgoing notifications are working. "
-                f"Open the Pantry will scan for emails whose subject contains "
-                f"\"{settings.subject_keyword}\" once daily at "
-                f"{settings.daily_scan_hour:02d}:00.",
-            )
+            if i18n.current_lang.get() == "fr":
+                subject, body = (
+                    "[TEST] Réception par courriel d'Open the Pantry",
+                    "Ceci est un message de test d'Open the Pantry.\n\n"
+                    "Si vous le recevez, l'envoi des avis fonctionne. Open the Pantry "
+                    f"vérifiera une fois par jour, à {settings.daily_scan_hour:02d} h 00, les courriels "
+                    f"dont l'objet contient « {settings.subject_keyword} ».",
+                )
+            else:
+                subject, body = (
+                    "[TEST] Open the Pantry email ingest",
+                    "This is a test message from Open the Pantry.\n\n"
+                    "Receiving it means outgoing notifications are working. "
+                    f"Open the Pantry will scan for emails whose subject contains "
+                    f"\"{settings.subject_keyword}\" once daily at "
+                    f"{settings.daily_scan_hour:02d}:00.",
+                )
+            email_client.send_email(smtp, settings.username, settings.notify_email, subject, body)
         finally:
             try:
                 smtp.quit()
@@ -2168,6 +2280,127 @@ def export_pdf(recipe_id: int, include_notes: bool = False, db: Session = Depend
         media_type="application/pdf",
         headers={"Content-Disposition": disposition},
     )
+
+
+# ---------------------------------------------------------------------------
+# Share -> Email PDF
+# ---------------------------------------------------------------------------
+# Sent through the email-ingest account's SMTP login, From that account. Up
+# to MAX_EMAIL_RECIPIENTS addresses per send and MAX_RECIPE_EMAILS_PER_HOUR
+# sends per hour across the app: enough for sharing with family, and a cap
+# on what anyone who can reach the app could send through your account.
+MAX_EMAIL_RECIPIENTS = 5
+MAX_RECIPE_EMAILS_PER_HOUR = 10
+MAX_RECENT_RECIPIENTS = 20
+_recipe_email_times: deque = deque()
+_recipe_email_lock = threading.Lock()
+# Deliberately plain: one @, no spaces, commas, angle brackets or control
+# characters, and a dot in the domain. The mail server is the real judge.
+_EMAIL_ADDRESS_RE = re.compile(r"^[^@\s,;<>\"()\[\]\\]+@[^@\s,;<>\"()\[\]\\]+\.[^@\s,;<>\"()\[\]\\]+$")
+
+
+def _clean_addresses(raw: list[str]) -> list[str]:
+    """Trimmed, de-duplicated (case-insensitively), in the order given.
+    Raises 400 naming the first entry that isn't an address."""
+    out, seen = [], set()
+    for a in raw:
+        a = (a or "").strip()
+        if not a:
+            continue
+        if len(a) > 254 or not _EMAIL_ADDRESS_RE.match(a):
+            shown = re.sub(r"[\x00-\x1f\x7f]+", " ", a)[:80]
+            raise HTTPException(status_code=400, detail=f'"{shown}" isn\'t an email address.')
+        if a.lower() not in seen:
+            seen.add(a.lower())
+            out.append(a)
+    return out
+
+
+def _remember_recipients(settings: models.EmailIngestSettings, addresses: list[str]):
+    import json
+    lowered = {a.lower() for a in addresses}
+    merged = addresses + [a for a in _recent_recipients(settings) if a.lower() not in lowered]
+    settings.recent_recipients = json.dumps(merged[:MAX_RECENT_RECIPIENTS])
+
+
+@app.put("/api/email-settings/recipients", response_model=schemas.RecentRecipients)
+def update_recent_recipients(payload: schemas.RecentRecipients, db: Session = Depends(get_db)):
+    """Settings -> Email ingest: edit the list of recent recipients."""
+    import json
+    settings = _get_email_settings(db)
+    addresses = _clean_addresses(payload.recipients)[:MAX_RECENT_RECIPIENTS]
+    settings.recent_recipients = json.dumps(addresses)
+    db.commit()
+    return {"recipients": addresses}
+
+
+@app.post("/api/recipes/{recipe_id}/email")
+def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Session = Depends(get_db)):
+    """The same PDF as Share -> Download PDF, sent as an attachment."""
+    recipe = db.get(models.Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    settings = _get_email_settings(db)
+    if not _can_send_email(settings):
+        raise HTTPException(status_code=400, detail=(
+            "Sending email isn't set up. Fill in the SMTP host, username and password under "
+            "Settings → Email ingest."))
+    to = _clean_addresses(payload.to)
+    if not to:
+        raise HTTPException(status_code=400, detail="Add at least one recipient.")
+    if len(to) > MAX_EMAIL_RECIPIENTS:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_EMAIL_RECIPIENTS} recipients at a time.")
+
+    now = time.monotonic()
+    with _recipe_email_lock:
+        while _recipe_email_times and now - _recipe_email_times[0] > 3600:
+            _recipe_email_times.popleft()
+        if len(_recipe_email_times) >= MAX_RECIPE_EMAILS_PER_HOUR:
+            raise HTTPException(status_code=429, detail=(
+                f"That's {len(_recipe_email_times)} recipe emails in the last hour; the limit is "
+                f"{MAX_RECIPE_EMAILS_PER_HOUR}. Try again later."))
+        # Counted up front so two sends at once can't both slip under the cap.
+        _recipe_email_times.append(now)
+
+    abs_image = safe_join(UPLOADS_DIR, recipe.image_path) if recipe.image_path else None
+    try:
+        pdf_bytes = render_recipe_pdf(recipe, abs_image, include_notes=payload.include_notes, include_image=False)
+    except Exception:
+        log.warning("email_recipe_pdf: PDF render failed for recipe %s", recipe_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Couldn't build the PDF.")
+
+    title = re.sub(r"[\r\n\t]+", " ", recipe.title or "").strip() or "Recipe"
+    fr = i18n.current_lang.get() == "fr"
+    subject = f"Recette : {title}" if fr else f"Recipe: {title}"
+    footer = "Envoyé depuis Open the Pantry." if fr else "Sent from Open the Pantry."
+    message = payload.message.strip()
+    body = f"{message}\n\n-- \n{footer}\n" if message else f"{footer}\n"
+    filename = _attachment_disposition(recipe.title, "pdf").split("filename*=UTF-8''", 1)[1]
+    from urllib.parse import unquote
+    filename = unquote(filename)
+
+    try:
+        password = crypto.decrypt_secret(settings.password_encrypted)
+        smtp = email_client.connect_smtp(
+            settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
+        )
+        try:
+            email_client.send_email_with_attachment(
+                smtp, settings.username, to, subject, body, pdf_bytes, filename,
+            )
+        finally:
+            try:
+                smtp.quit()
+            except Exception:
+                log.debug("email_recipe_pdf: quit failed", exc_info=True)
+    except Exception as e:
+        log.warning("email_recipe_pdf: send failed for recipe %s", recipe_id, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"The email wasn't sent: {e}")
+
+    _remember_recipients(settings, to)
+    db.commit()
+    log.info("Recipe %s emailed to %d recipient(s)", recipe_id, len(to))
+    return {"sent_to": to, "recent_recipients": _recent_recipients(settings)}
 
 
 @app.get("/api/recipes/{recipe_id}/export.html")

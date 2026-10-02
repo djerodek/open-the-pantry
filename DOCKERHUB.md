@@ -1,17 +1,8 @@
-# Docker Hub overview — copy/paste
-
-Docker Hub's repository "Overview" field is edited on the website and does
-**not** sync from GitHub automatically. Paste the block below into it
-(Repository → Manage → Overview).
-
----
-
-```markdown
 # Open the Pantry
 
 Self-hosted, searchable recipe manager. Add recipes by URL, PDF, screenshot,
 or manual entry; browse, filter, rate, and export clean printable copies.
-No LLM dependency.
+Interface in English or French. No LLM dependency.
 
 ---
 
@@ -23,7 +14,8 @@ no user accounts.
 
 **Do not expose it to the internet.** Run it on your LAN, or reach it remotely
 via VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse proxy that enforces
-authentication itself.
+authentication itself. If email is set up, anyone who can reach it can also
+send recipe PDFs from that account (capped at 10 an hour).
 
 This isn't theoretical: a vulnerability letting any unauthenticated caller read
 arbitrary files from the container and delete the app's own database was found
@@ -77,13 +69,22 @@ updates apply.
 - Ingest from URL (100+ site parsers, JSON-LD, heuristic fallback), PDF
   (text-layer detection, OCR only where needed), screenshots (single or
   combined multi-screenshot), or manual entry
-- Tag categories: meal type, cooking style (incl. cocktails), main ingredient
-- Full-text search across recipes and tags; stacked filters; cook-time filter;
-  sort by date, title, rating, cook time or difficulty
-- Ratings, favorites, per-recipe notes, showcase images
-- Print, PDF, and self-contained HTML export
-- PWA: installable, offline shell, light/dark (true black) themes, adjustable
-  text size, keyboard and screen-reader accessible
+- Reads English and French recipes: headings, units, and English + French
+  OCR
+- Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
+  plus your own groups and keywords; automatic tag suggestions (English and
+  French words), applied to new recipes or, after a review, to all of them
+- Full-text search across recipes and tags; stacked filters; pace and
+  cook-time filters; sort by date, title, rating, cook time or difficulty
+- Ratings, favorites, per-recipe notes (marked on the recipe cards),
+  showcase images
+- Print, PDF, and self-contained HTML export; email the PDF to someone
+  straight from the Share menu
+- English or French (Quebec) interface, chosen per device, including
+  exports and notification emails
+- PWA: installable, offline shell, pull down to refresh (and pick up a new
+  version), light/dark (true black) themes, adjustable text size, keyboard
+  and screen-reader accessible
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
 - Full backup (restorable) or every recipe as PDFs, from Settings
@@ -91,4 +92,3 @@ updates apply.
 
 Full documentation, source, and security notes:
 https://github.com/djerodek/open-the-pantry
-```

@@ -4,6 +4,8 @@ import os
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 
+from . import i18n
+
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
 
@@ -36,7 +38,11 @@ def render_recipe_html(recipe, absolute_image_path: str | None = None, include_n
     template = _env.get_template("recipe_export.html")
     image_data_uri = _image_to_data_uri(absolute_image_path) if (absolute_image_path and include_image) else None
     show_notes = include_notes and bool(recipe.notes)
-    return template.render(recipe=recipe, image_data_uri=image_data_uri, show_notes=show_notes)
+    # Labels in the language of the request that asked for the export.
+    lang = i18n.current_lang.get()
+    return template.render(recipe=recipe, image_data_uri=image_data_uri, show_notes=show_notes,
+                           lang=lang, t=lambda text: i18n.t(text, lang),
+                           colon="\u00a0:" if lang == "fr" else ":")
 
 
 def render_recipe_pdf(recipe, absolute_image_path: str | None = None, include_notes: bool = False,

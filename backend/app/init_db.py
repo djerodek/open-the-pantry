@@ -120,6 +120,10 @@ def _migrate_and_setup_schema():
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN last_problem TEXT")
         if email_cols and "last_problem_at" not in email_cols:
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN last_problem_at DATETIME")
+        if email_cols and "language" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN language VARCHAR NOT NULL DEFAULT 'en'")
+        if email_cols and "recent_recipients" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN recent_recipients TEXT NOT NULL DEFAULT '[]'")
 
         tag_cols = {row[1] for row in cur.execute("PRAGMA table_info(tags)")}
         for col, decl in (("keywords", "TEXT NOT NULL DEFAULT ''"),
@@ -198,6 +202,9 @@ def init_db():
         conn.execute(text(FTS_CREATE_SQL))
         for stmt in FTS_TRIGGER_SQL + CONTENT_TRIGGER_SQL:
             conn.execute(text(stmt))
+        # Recipes added from a page with no yield before that was fixed in
+        # url_ingest hold the text "None" as their servings.
+        conn.execute(text("UPDATE recipes SET servings = NULL WHERE servings = 'None'"))
         conn.commit()
 
     # 4. Seed tag data.
@@ -208,6 +215,19 @@ def init_db():
             existing = db.query(models.Tag).filter_by(name=name, category=category).first()
             if not existing:
                 db.add(models.Tag(name=name, category=category, subgroup=subgroup))
+        # A tag whose group row is gone (deleted outside the app, or a restored
+        # database) would vanish from the sidebar while still on recipes:
+        # move it to Custom. (DeepSeek review.)
+        known = {g.key for g in db.query(models.TagGroup).all()} | {k for k, _ in BUILTIN_GROUPS}
+        for tag in db.query(models.Tag).filter(models.Tag.category.notin_(known)).all():
+            clash = db.query(models.Tag).filter_by(name=tag.name, category="custom").first()
+            if clash:
+                for r in list(tag.recipes):
+                    if clash not in r.tags:
+                        r.tags.append(clash)
+                db.delete(tag)
+            else:
+                tag.category = "custom"
         for pos, (key, label) in enumerate(BUILTIN_GROUPS):
             if not db.get(models.TagGroup, key):
                 db.add(models.TagGroup(key=key, label=label, builtin=True,

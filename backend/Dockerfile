@@ -10,7 +10,8 @@ FROM python:3.12-slim
 # System dependencies:
 # - tesseract-ocr: OCR for screenshots / scanned PDF pages; -osd is the
 #   orientation model that turns sideways photos upright (installed
-#   explicitly: --no-install-recommends must not be allowed to drop it)
+#   explicitly: --no-install-recommends must not be allowed to drop it);
+#   -fra is French, so OCR reads accented French (text is read as eng+fra)
 # - libpango/cairo/gdk-pixbuf/libffi/harfbuzz-subset: required by WeasyPrint
 #   for HTML->PDF export (harfbuzz-subset: font subsetting; WeasyPrint 70
 #   warns that future versions will require it)
@@ -23,6 +24,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-osd \
+    tesseract-ocr-fra \
     tzdata \
     libffi-dev \
     libpango-1.0-0 \

@@ -223,6 +223,26 @@ def send_email(smtp_conn: smtplib.SMTP, from_addr: str, to_addr: str, subject: s
     smtp_conn.sendmail(from_addr, [to_addr], msg.as_string())
 
 
+def send_email_with_attachment(smtp_conn: smtplib.SMTP, from_addr: str, to_addrs: list[str], subject: str,
+                               body: str, attachment: bytes, filename: str,
+                               maintype: str = "application", subtype: str = "pdf"):
+    """A plain-text message with one attachment (Share -> Email PDF).
+
+    EmailMessage with the default policy refuses CR/LF in header values, so
+    a recipe title can't add headers; the caller strips them anyway. The
+    filename goes out RFC 2231-encoded when it isn't ASCII."""
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(to_addrs)
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    msg["Message-ID"] = email.utils.make_msgid()
+    msg.set_content(body, charset="utf-8")
+    msg.add_attachment(attachment, maintype=maintype, subtype=subtype, filename=filename)
+    smtp_conn.send_message(msg, from_addr=from_addr, to_addrs=to_addrs)
+
+
 def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> list[bytes]:
     """Returns message IDs for UNSEEN emails whose subject contains
     subject_keyword (case-insensitive substring match). Uses a broad

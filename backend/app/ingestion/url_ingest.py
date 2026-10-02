@@ -210,7 +210,10 @@ def _try_recipe_scrapers(url: str, html: str):
             pass
         servings = None
         try:
-            servings = str(scraper.yields())
+            # yields() returns None when the page has no yield; str() of
+            # that stored the word "None", shown as "Servings: None".
+            y = scraper.yields()
+            servings = str(y).strip() if y else None
         except Exception:
             log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
             pass

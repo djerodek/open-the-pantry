@@ -3,7 +3,8 @@
 Self-hosted, searchable recipe manager. Add recipes by URL, PDF, screenshot/photo,
 or manual entry; browse by meal type, cooking style, or main ingredient; filter
 and search; rate and favorite; print or export a clean, ad-free share card.
-Single Docker image, no LLM dependency required for any ingestion path.
+Interface in English or French (Quebec), chosen per device. Single Docker
+image, no LLM dependency required for any ingestion path.
 
 ---
 
@@ -168,6 +169,16 @@ docker compose -f docker-compose.build.yml up -d --build
   and end at "Notes" or "Nutrition". Plain-text email formatting (Gmail's
   `*bold*` and `-` bullets) is understood, and numbered steps are found
   even without an "Instructions" heading.
+- **French recipes are understood too.** French headings (Ingrédients,
+  Préparation, Étapes, Mode de préparation...), step numbers ("Étape 2"),
+  units ("2 c. à soupe", "250 ml", "1,5 tasse") and accented capitals are
+  read the same way as their English equivalents. OCR reads English and
+  French together (the image includes Tesseract's French data); English
+  screenshots come out the same as before, and OCR takes roughly half as
+  long again.
+- In a recipe with no headings at all, a line without a quantity ("Salt
+  and pepper to taste", "Sel et poivre au goût") stays with the
+  ingredients rather than becoming step 1.
 - Uploads (PDF/image) are capped at 20MB and are validated by magic bytes,
   not just file extension, before any parsing/OCR is attempted.
 
@@ -205,6 +216,9 @@ docker compose -f docker-compose.build.yml up -d --build
   test that goes through. The same errors are in `data/logs/app.log`.
 - A link in an email imports the recipe but not the page's photo (the
   in-app "Add from URL" does fetch it). Add one from the recipe's page.
+- Result emails are written in the language of whoever last saved the
+  email settings (English or French). The `[SUCCESS]`, `[FAILURE]` and
+  `[PARTIAL]` markers stay the same in both, so mail filters keep working.
 - Results are reported by email: `[SUCCESS]`, `[FAILURE]`, or `[PARTIAL]`
   when a scan had both. Results within a configurable cooldown window
   (default 30 min) are batched into one message rather than sent
@@ -286,7 +300,10 @@ docker compose -f docker-compose.build.yml up -d --build
 **Organizing & finding**
 - Three structured tag categories (meal type, cooking style, main
   ingredient) plus free-form custom tags. Keyword-based auto-suggestion at
-  ingest time; always user-editable. Stocks, broths and sauces ("chicken
+  ingest time; always user-editable. The built-in tags know French words
+  as well as English ones ("au four" suggests Oven, "poulet" Chicken,
+  "souper" Dinner), with or without accents. Meal words follow Quebec
+  usage: déjeuner is breakfast, dîner is lunch, souper is supper. Stocks, broths and sauces ("chicken
   stock", "fish sauce") don't count as the main ingredient, though they do
   rule out Vegetarian. Suggestions apply when a recipe is added; tags on
   recipes you already have aren't changed unless you use Settings → Tags →
@@ -306,7 +323,9 @@ docker compose -f docker-compose.build.yml up -d --build
   be marked as meaning the dish isn't vegetarian. New groups get their own
   button next to Meal Type / Cooking Style / Main Ingredient once they have
   tags. Groups and tags added there can be deleted, which removes them from
-  recipes; built-in ones can't. Cocktail-specific cooking-style tags
+  recipes; built-in ones can't. A tag left in a group that no longer
+  exists (a database edited outside the app, say) is moved to Custom at
+  startup. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it
@@ -320,9 +339,12 @@ docker compose -f docker-compose.build.yml up -d --build
 - "Clear filters" appears (with a count) whenever tags, a pace, a cook-time
   range or a search are active: in the toolbar, and at the top of the sidebar,
   kept apart from the tags themselves.
+- A small notes icon on a card (photo or list view) marks recipes that
+  have notes.
 - Cards without a photo show just the title, no empty placeholder. Source
   and OCR-quality badges are on the recipe's own page, not on cards.
-- On a phone the category sidebar is a drawer that closes when you tap
+- The ☰ button opens "Browse by tag": the tag groups, where tapping tags
+  filters the list. On a phone it's a drawer that closes when you tap
   outside it.
 - Stacked tag filters (AND logic — narrows to recipes matching every
   selected tag) plus a nested cook-time filter (coarse hour buckets that
@@ -378,9 +400,43 @@ docker compose -f docker-compose.build.yml up -d --build
 - The PDF export never includes the showcase image (not a toggle — always
   excluded). The exported HTML file and the in-app print view still
   include it.
+- Exports use the interface language for their labels (Ingrédients,
+  Préparation, Portions...); the recipe itself is exported as written.
+
+**Email a recipe (Share → Email PDF)**
+- Sends the same PDF as Download PDF, as an attachment, through the email
+  account set up under Settings → Email ingest. It appears in the Share
+  menu once that account has an SMTP server, a username and a saved
+  password; the daily inbox scan doesn't have to be on.
+- From is the email-ingest account (shown, not editable). To takes up to
+  five addresses separated by commas, with an optional message, and a
+  checkbox to include your notes when the recipe has any. The subject is
+  "Recipe: <title>" ("Recette : <title>" in French).
+- "Choose from contacts" opens the phone's contact picker where the
+  browser has one (Chrome on Android). Everywhere else, addresses you've
+  sent to are offered as one-tap suggestions; Settings → Email ingest →
+  Recent recipients lists them, and you can remove or add addresses there.
+- If sending fails, the message says why, including the same connection
+  diagnosis as "Send test email".
+- At most 10 recipe emails per hour across the app (see Security notes).
 
 **Interface**
+- **English or French.** Settings → Language. Defaults to the device's
+  language (French if it's set to any French, otherwise English) and is
+  remembered per device, so two phones in the same house can differ.
+  Everything is translated: menus, messages from the server, dates, the
+  exported PDF and HTML, the backup's restore instructions, and the result
+  emails (see Email ingest). French is Quebec French. Built-in tags and
+  groups are shown in French (Four, Souper, Mode de cuisson) but stored
+  under their English names, so switching language changes nothing in
+  the library; tags you create are shown as you typed them.
 - PWA: installable, offline app-shell caching via a service worker.
+- **Updates show up on the next open.** The app's own files are served
+  with `Cache-Control: no-cache`, so the browser checks for a newer copy
+  every time instead of keeping an old one for hours (iOS did). Pulling
+  down at the top of the recipe list reloads the recipes, and if the
+  server has a newer version of the app (`GET /api/version`), reloads the
+  page into it.
 - Light / dark / system theme (Settings menu). Dark mode is true black
   (`#000000`), not a dark-gray substitute — surface separation comes from
   hairline borders, not a lighter fill.
@@ -440,6 +496,12 @@ docker compose -f docker-compose.build.yml up -d --build
     page on another site can't add a custom header without the browser
     asking the app first, and the app never agrees. Scripts that call the
     API directly need to send it too (any value).
+- **Share → Email PDF sends from your email account.** Anyone who can
+  reach the app can use it to send a recipe PDF, with a message of their
+  choosing, to any address. That is the same trust boundary as the rest of
+  the app, but the result leaves your network under your name, so it's
+  capped: at most five recipients per email and 10 emails per hour. It's
+  only available once the email-ingest account has a saved password.
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
   reach the API could point the settings at their own server and press
@@ -592,6 +654,14 @@ docker compose -f docker-compose.build.yml up -d --build
 
 ## Known limitations
 
+- **The language setting translates the app, not your recipes.** A recipe
+  added in English stays in English in the French interface, and the
+  reverse. Tag and group names you create are shown as typed.
+- **"Choose from contacts" is Android-only for now.** The Contact Picker
+  API exists in Chrome on Android; Safari on iOS doesn't offer it to web
+  apps, so on an iPhone you type the address once and pick it from the
+  recent list after that.
+
 - **Email ingest needs a certificate the system trusts.** Connections
   verify the mail server's certificate and hostname. A self-signed
   certificate, or a host name that doesn't match the certificate (common
@@ -702,9 +772,10 @@ idle is about 160 MB. The compose files have commented-out `mem_limit`,
   hung-but-still-listening process apart from a genuinely healthy one.
 - **When releasing a new version**: bump `CACHE_NAME` in
   `frontend/service-worker.js`. The fetch strategy is network-first (falling
-  back to cache only when offline), so this mostly matters for pruning old
-  cached entries promptly rather than correctness — but it's still good
-  practice to bump on every release.
+  back to cache only when offline), and the app's own files are fetched
+  with revalidation, so this mostly matters for pruning old cached entries
+  promptly rather than correctness — but it's still good practice to bump
+  on every release.
 
 ## Testing
 
@@ -753,6 +824,12 @@ a Docker build check on every push/PR.
 4. Push to `main` (publishes `latest`) or push a tag like `v1.0.0` (publishes
    that version tag too) — `.github/workflows/docker-publish.yml` handles the
    rest.
+5. The same workflow copies `DOCKERHUB.md` into the Docker Hub repository's
+   Overview on each push to `main`. That needs a token with the **Read,
+   Write, Delete** scope (Docker Hub refuses description updates from a
+   Read & Write token). With a narrower token the step fails on its own and
+   the image is still published; paste `DOCKERHUB.md` into Repository →
+   Overview by hand instead.
 
 ## Project layout
 
@@ -780,6 +857,8 @@ backend/
     backup.py                               full backup (SQLite online backup
                                              API) and the PDF bundle
     logging_setup.py                        stdout + rotating data/logs/app.log
+    i18n.py                                 server messages, exports and
+                                             result emails in French
     ingestion/
       url_ingest.py                    recipe-scrapers -> JSON-LD ->
                                         heuristic HTML
@@ -816,9 +895,11 @@ frontend/
   manifest.json
   service-worker.js
   css/styles.css                design tokens incl. light/dark theme vars
+  js/i18n.js                      English/French: language choice and the
+                                  French text for every interface string
   js/app.js                       all client logic (single file, no build step)
 LICENSE                       MIT
-DOCKERHUB.md                   paste-ready Docker Hub overview text
+DOCKERHUB.md                   Docker Hub overview (synced by docker-publish.yml)
 docker-compose.yml            pulls published image
 docker-compose.build.yml       builds from source
 .github/workflows/

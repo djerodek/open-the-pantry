@@ -114,8 +114,9 @@ class AutoTagSelection(BaseModel):
 
 
 class AutoTagApply(BaseModel):
-    # Omitted = add every suggestion. Otherwise only these; anything not
-    # currently suggested for that recipe is ignored.
+    # Omitted (None) = add every suggestion. A list = only these; an empty
+    # list adds nothing. Anything not currently suggested for that recipe is
+    # ignored.
     selections: Optional[list[AutoTagSelection]] = Field(default=None, max_length=5000)
 
 
@@ -205,6 +206,7 @@ class RecipeSummaryOut(BaseModel):
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
     tags: list[TagOut] = []
     matched_via: list[str] = []  # 'text' and/or 'tag', only populated on search
+    has_notes: bool = False      # for the card's notes icon; the notes themselves aren't in the list
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -256,6 +258,18 @@ class EmailSettingsIn(BaseModel):
     cooldown_minutes: int = Field(default=30, ge=0, le=7 * 24 * 60)  # timedelta overflowed on huge values
 
 
+class RecipeEmailRequest(BaseModel):
+    """Share -> Email PDF. Addresses are checked in main.py so the error
+    can name the one that's wrong."""
+    to: list[str] = Field(default_factory=list, max_length=20)
+    message: str = Field(default="", max_length=2000)
+    include_notes: bool = False
+
+
+class RecentRecipients(BaseModel):
+    recipients: list[str] = Field(default_factory=list, max_length=50)
+
+
 class EmailSettingsOut(BaseModel):
     """Never includes the password, encrypted or otherwise -- only whether
     one is currently set, so the frontend can render the field correctly
@@ -289,6 +303,10 @@ class EmailSettingsOut(BaseModel):
     encryption_source: Optional[str] = None
     # The zone the daily scan hour is interpreted in, e.g. "EDT" or "UTC".
     server_timezone: str = ""
+    # Share -> Email PDF: shown when sending can work (an SMTP host, a
+    # username and a saved password), whether or not the daily scan is on.
+    can_send: bool = False
+    recent_recipients: list[str] = []
 
 
 class EmailTestResult(BaseModel):

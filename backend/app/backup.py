@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from .database import DB_PATH, UPLOADS_DIR
 from .file_validation import safe_join
 from .export import render_recipe_pdf
+from . import i18n
 from .logging_setup import get_logger
 
 log = get_logger("backup")
@@ -156,6 +157,67 @@ Notes
 """
 
 
+RESTORE_INSTRUCTIONS_FR = """\
+Open the Pantry -- restaurer cette sauvegarde
+=============================================
+
+Cette archive contient une copie complète de votre bibliothèque de recettes :
+
+  recipes.db    la base de données (recettes, étiquettes, notes, évaluations, paramètres)
+  uploads/      toutes les photos et tous les PDF envoyés
+  manifest.json son contenu, et la date de la sauvegarde
+
+Pour restaurer
+--------------
+
+1. Arrêtez l'application :
+
+       docker compose down
+
+2. Trouvez le dossier de données : c'est le côté GAUCHE de la ligne « volumes: »
+   dans docker-compose.yml (./data par défaut). Décompressez cette archive
+   dedans, en remplaçant ce qui s'y trouve, pour que recipes.db et uploads/
+   soient directement dans ce dossier, et non dans un sous-dossier :
+
+       unzip -o open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip -d ./data
+
+3. Redémarrez l'application :
+
+       docker compose up -d
+
+L'application est arrêtée à l'étape 2 exprès. Remplacer la base de données
+pendant que l'application fonctionne peut la corrompre : le processus garde
+le fichier précédent ouvert.
+
+Restaurer vers un autre disque ou un autre chemin
+-------------------------------------------------
+
+Mêmes étapes, mais décompressez dans le nouveau dossier et modifiez le côté
+gauche de la ligne du volume pour qu'il y mène. Ne touchez pas au côté droit
+(/app/data) :
+
+    volumes:
+      - /chemin/vers/nouveau/dossier:/app/data
+
+Remarques
+---------
+
+* La restauration REMPLACE la bibliothèque actuelle. Tout ce qui a été ajouté
+  depuis cette sauvegarde disparaît. En cas de doute, copiez d'abord votre
+  dossier de données actuel ailleurs.
+* recipes.db est une base de données SQLite ordinaire. N'importe quel outil
+  SQLite peut l'ouvrir si vous voulez récupérer les données sans cette
+  application.
+* Réception par courriel : cette archive ne contient volontairement PAS
+  encryption.key; elle n'expose donc aucun mot de passe de courriel. Pour que
+  le mot de passe enregistré continue de fonctionner, copiez encryption.key
+  de l'ancien dossier de données vers le nouveau (ou gardez la même valeur
+  pour RECIPE_APP_ENCRYPTION_KEY, si vous l'avez définie ainsi). Sinon,
+  configurez de nouveau le chiffrement dans les Paramètres et entrez le mot
+  de passe à nouveau. Tout le reste se restaure quand même.
+"""
+
+
 # Held while a full backup is built, and by every removal of a file from
 # uploads/. Without it, a recipe deleted between the database snapshot and
 # the copying of photos left a backup whose database pointed at a photo the
@@ -227,7 +289,7 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
         "database_bytes": os.path.getsize(tmp_db),
         "missing_uploads": missing,
         "unreferenced_uploads_left_out": unreferenced,
-        "restores_with": "see RESTORE.txt",
+        "restores_with": "voir RESTAURER.txt" if i18n.current_lang.get() == "fr" else "see RESTORE.txt",
     }
 
     # ZIP_DEFLATED on a SQLite file is worth it (they compress well);
@@ -238,7 +300,11 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
         for name in upload_names:
             zf.write(os.path.join(UPLOADS_DIR, name), f"uploads/{name}")
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
-        zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
+        # In the language of the request that asked for the backup.
+        if i18n.current_lang.get() == "fr":
+            zf.writestr("RESTAURER.txt", RESTORE_INSTRUCTIONS_FR)
+        else:
+            zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
 
     return manifest
 

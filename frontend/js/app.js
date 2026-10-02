@@ -3,17 +3,25 @@
 
   const API = "/api";
 
+  // Interface language helpers (js/i18n.js). Static page text is
+  // translated first, before anything is rendered from script.
+  const { lang: LANG, setLang, tx, txn, tagLabel, groupLabel, valueLabel, fmtDateTime, durationLabel, translateStatic } = window.OTP_I18N;
+  translateStatic(document.body);
+
   // Every state-changing request to the API must carry X-Requested-With;
   // the server refuses writes without it (cross_site_guard in main.py), which
   // stops other websites from making changes through your browser. Added
   // here once, for every fetch the app makes to its own API.
   const nativeFetch = window.fetch.bind(window);
+  // X-App-Lang tells the server which language to answer in (error
+  // messages, exports); it goes on every request to our own origin.
   window.fetch = (input, init = {}) => {
     const url = typeof input === "string" ? input : input.url;
     const method = (init.method || (typeof input !== "string" && input.method) || "GET").toUpperCase();
-    if (method !== "GET" && method !== "HEAD" && new URL(url, location.href).origin === location.origin) {
+    if (new URL(url, location.href).origin === location.origin) {
       const headers = new Headers(init.headers || (typeof input !== "string" ? input.headers : undefined));
-      headers.set("X-Requested-With", "OpenThePantry");
+      headers.set("X-App-Lang", LANG);
+      if (method !== "GET" && method !== "HEAD") headers.set("X-Requested-With", "OpenThePantry");
       init = { ...init, headers };
     }
     return nativeFetch(input, init);
@@ -82,7 +90,7 @@
     // both together read every error out twice.
     region.appendChild(el("div", { class: "toast toast-error" }, [
       el("span", { text: msg }),
-      el("button", { class: "toast-dismiss", type: "button", "aria-label": "Dismiss", text: "×", onclick: () => dismissToast() }),
+      el("button", { class: "toast-dismiss", type: "button", "aria-label": tx("Dismiss"), text: "×", onclick: () => dismissToast() }),
     ]));
     clearTimeout(toastTimer);
     toastTimer = setTimeout(dismissToast, 8000);
@@ -92,6 +100,10 @@
     const region = $("#toast-region");
     if (region) region.innerHTML = "";
   }
+
+  // Notes icon for recipe cards (a page with lines). Fixed markup.
+  const NOTE_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" ' +
+    'stroke-width="1.8" stroke-linejoin="round" d="M6 3h9l4 4v14H6z M14 3v5h5 M9 12h7 M9 15.5h7 M9 19h4"/></svg>';
 
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
@@ -109,9 +121,13 @@
     return node;
   }
 
-  let lastFocusedBeforeModal = null;
+  // Modals can stack (Email PDF opens over a recipe), so the focus to go
+  // back to is kept per modal, and Escape and Tab act on the top one: the
+  // last open overlay in the page, which is also the one drawn on top.
+  const focusBeforeModal = new Map();
+  const topOverlay = () => $$(".modal-overlay").filter((o) => !o.hidden).pop();
   function openModal(overlay) {
-    lastFocusedBeforeModal = document.activeElement;
+    focusBeforeModal.set(overlay, document.activeElement);
     overlay.hidden = false;
     const focusable = overlay.querySelector("button, input, textarea, select, a[href]");
     (focusable || overlay).focus();
@@ -119,12 +135,14 @@
   }
   function closeModal(overlay) {
     overlay.hidden = true;
-    document.removeEventListener("keydown", trapFocus);
-    if (lastFocusedBeforeModal) lastFocusedBeforeModal.focus();
+    if (!topOverlay()) document.removeEventListener("keydown", trapFocus);
+    const back = focusBeforeModal.get(overlay);
+    focusBeforeModal.delete(overlay);
+    if (back && document.contains(back)) back.focus();
   }
   function trapFocus(e) {
     if (e.key === "Escape") {
-      const openOverlay = $$(".modal-overlay").find((o) => !o.hidden);
+      const openOverlay = topOverlay();
       if (openOverlay === addOverlay) discardCurrentDraftFiles();
       // Escape is a third way out of the recipe detail -- release the
       // wake lock here too, or the screen stays on after dismissal.
@@ -133,7 +151,7 @@
       return;
     }
     if (e.key !== "Tab") return;
-    const openOverlay = $$(".modal-overlay").find((o) => !o.hidden);
+    const openOverlay = topOverlay();
     if (!openOverlay) return;
     const focusables = $$('button, input, textarea, select, a[href]', openOverlay)
       .filter((n) => !n.disabled && n.offsetParent !== null);
@@ -194,6 +212,26 @@
   $$("#theme-switch button").forEach((btn) => {
     btn.addEventListener("click", () => applyTheme(btn.dataset.themeChoice));
   });
+
+  // Language: stored per device; changing it reloads the page so every
+  // string, including ones already rendered, comes up in the new language.
+  $$("#language-switch button").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.dataset.langChoice === LANG));
+    btn.addEventListener("click", () => {
+      if (btn.dataset.langChoice === LANG) return;
+      setLang(btn.dataset.langChoice);
+      location.reload();
+    });
+  });
+
+  // A tag typed in an edit form, matched back to a stored tag by its stored
+  // name or by the label shown for it ("Poulet" finds Chicken).
+  function findTagByLabel(name) {
+    const want = name.trim().toLowerCase();
+    return state.allTags.find((t) => t.name.toLowerCase() === want)
+      || state.allTags.find((t) => tagLabel(t).toLowerCase() === want)
+      || null;
+  }
 
   // -------------------------------------------------------------------
   // Settings modal
@@ -305,26 +343,26 @@
         const includeNotes = $("#backup-pdf-notes").checked;
         url = `${API}/backup/pdfs.zip?include_notes=${includeNotes}`;
         fallbackName = "open-the-pantry-pdfs.zip";
-        status.textContent = "Building a PDF of every recipe. This can take a while.";
+        status.textContent = tx("Building a PDF of every recipe. This can take a while.");
       } else {
         url = `${API}/backup/database.zip`;
         fallbackName = "open-the-pantry-backup.zip";
-        status.textContent = "Preparing your backup…";
+        status.textContent = tx("Preparing your backup…");
       }
       backupDownloadBtn.disabled = true;
       const original = backupDownloadBtn.textContent;
-      backupDownloadBtn.textContent = "Preparing…";
+      backupDownloadBtn.textContent = tx("Preparing…");
       try {
         const res = await fetch(url);
         if (!res.ok) {
-          status.textContent = `The server couldn't build the file (error ${res.status}). Nothing was downloaded.`;
+          status.textContent = tx("The server couldn't build the file (error {1}). Nothing was downloaded.", { 1: res.status });
           return;
         }
         const blob = await res.blob();
         saveBlob(blob, filenameFromResponse(res) || fallbackName);
-        status.textContent = `Ready: ${formatBytes(blob.size)}. Check your downloads.`;
+        status.textContent = tx("Ready: {1}. Check your downloads.", { 1: formatBytes(blob.size) });
       } catch {
-        status.textContent = "Couldn't reach Open the Pantry, so nothing was downloaded. Check your connection and try again.";
+        status.textContent = tx("Couldn't reach Open the Pantry, so nothing was downloaded. Check your connection and try again.");
       } finally {
         backupDownloadBtn.disabled = false;
         backupDownloadBtn.textContent = original;
@@ -339,6 +377,10 @@
   const shareSheetOverlay = $("#share-sheet-overlay");
   $("#share-sheet-close").addEventListener("click", () => closeModal(shareSheetOverlay));
   shareSheetOverlay.addEventListener("click", (e) => { if (e.target === shareSheetOverlay) closeModal(shareSheetOverlay); });
+
+  const emailSheetOverlay = $("#email-sheet-overlay");
+  $("#email-sheet-close").addEventListener("click", () => closeModal(emailSheetOverlay));
+  emailSheetOverlay.addEventListener("click", (e) => { if (e.target === emailSheetOverlay) closeModal(emailSheetOverlay); });
 
   const ratingSheetOverlay = $("#rating-sheet-overlay");
   $("#rating-sheet-close").addEventListener("click", () => closeModal(ratingSheetOverlay));
@@ -363,25 +405,25 @@
   // the reason for each failure, and their only other route is the result
   // email, which can't arrive when sending is what's broken.
   async function runInboxScan(statusEl, button) {
-    statusEl.textContent = "Checking the inbox\u2026";
+    statusEl.textContent = tx("Checking the inbox\u2026");
     if (button) button.disabled = true;
     try {
       const res = await fetch(`${API}/email-settings/scan`, { method: "POST" });
       const body = await res.json();
       if (!res.ok) {
-        statusEl.textContent = body.detail || `The scan failed (error ${res.status}).`;
+        statusEl.textContent = body.detail || tx("The scan failed (error {1}).", { 1: res.status });
       } else if (body.scanned === 0 && body.messages.length) {
         statusEl.textContent = body.messages.join("\n");
       } else if (body.scanned === 0) {
-        statusEl.textContent = "No new recipe emails.";
+        statusEl.textContent = tx("No new recipe emails.");
       } else {
-        const summary = `Scanned ${body.scanned}: ${body.succeeded} ingested, ${body.failed} failed.`;
+        const summary = tx("Scanned {1}: {2} ingested, {3} failed.", { 1: body.scanned, 2: body.succeeded, 3: body.failed });
         statusEl.textContent = [summary, ...(body.messages || [])].join("\n");
         if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
       }
       announce(statusEl.textContent.split("\n")[0]);
     } catch {
-      statusEl.textContent = "Couldn't reach Open the Pantry to run the scan. Check your connection and try again.";
+      statusEl.textContent = tx("Couldn't reach Open the Pantry to run the scan. Check your connection and try again.");
     } finally {
       if (button) button.disabled = false;
     }
@@ -389,15 +431,15 @@
 
   function emailField(labelText, input, hint) {
     return el("div", { class: "field" }, [
-      el("label", { for: input.id, text: labelText }),
+      el("label", { for: input.id, text: tx(labelText) }),
       input,
-      hint ? el("div", { class: "field-hint", text: hint }) : null,
+      hint ? el("div", { class: "field-hint", text: tx(hint) }) : null,
     ]);
   }
 
   async function renderEmailSettings() {
     emailPanel.innerHTML = "";
-    emailPanel.appendChild(el("div", { class: "field-hint", text: "Loading..." }));
+    emailPanel.appendChild(el("div", { class: "field-hint", text: tx("Loading...") }));
 
     let settings;
     try {
@@ -406,7 +448,7 @@
       settings = await res.json();
     } catch {
       emailPanel.innerHTML = "";
-      emailPanel.appendChild(el("div", { class: "field-hint", text: "Could not load email settings." }));
+      emailPanel.appendChild(el("div", { class: "field-hint", text: tx("Could not load email settings.") }));
       return;
     }
 
@@ -421,36 +463,32 @@
       const setupStatus = el("p", { class: "field-hint", role: "status" });
       const box = el("div", { class: "setup-callout" });
       if (settings.encryption_source === "env_invalid") {
-        box.appendChild(el("strong", { text: "Encryption key is invalid" }));
+        box.appendChild(el("strong", { text: tx("Encryption key is invalid") }));
         box.appendChild(el("p", {
-          text: "RECIPE_APP_ENCRYPTION_KEY is set in your compose file, but its value isn't a valid key. " +
-                "Fix it or delete that line, then restart the container.",
+          text: tx("RECIPE_APP_ENCRYPTION_KEY is set in your compose file, but its value isn't a valid key. Fix it or delete that line, then restart the container."),
         }));
       } else {
-        box.appendChild(el("strong", { text: "Step 1: set up encryption" }));
+        box.appendChild(el("strong", { text: tx("Step 1: set up encryption") }));
         box.appendChild(el("p", {
-          text: "Your email password is stored encrypted, so a key has to exist first. " +
-                "This creates one in the app's data folder (encryption.key). " +
-                "If you ever move the data folder, the key goes with it. The backup zip leaves it out, " +
-                "so after restoring from a backup on a new install you re-enter the password.",
+          text: tx("Your email password is stored encrypted, so a key has to exist first. This creates one in the app's data folder (encryption.key). If you ever move the data folder, the key goes with it. The backup zip leaves it out, so after restoring from a backup on a new install you re-enter the password."),
         }));
         box.appendChild(el("button", {
-          class: "btn-primary", type: "button", text: "Set up encryption",
+          class: "btn-primary", type: "button", text: tx("Set up encryption"),
           onclick: async (e) => {
             const btn = e.currentTarget;
             btn.disabled = true;
-            setupStatus.textContent = "Creating key\u2026";
+            setupStatus.textContent = tx("Creating key\u2026");
             try {
               const res = await fetch(`${API}/email-settings/encryption-key`, { method: "POST" });
               if (res.ok || res.status === 409) {
-                announce("Encryption is set up. You can now enter the email password.");
+                announce(tx("Encryption is set up. You can now enter the email password."));
                 await renderEmailSettings();
                 return;
               }
               const err = await res.json().catch(() => ({}));
-              setupStatus.textContent = err.detail || `Couldn't create the key (error ${res.status}).`;
+              setupStatus.textContent = err.detail || tx("Couldn't create the key (error {1}).", { 1: res.status });
             } catch {
-              setupStatus.textContent = "Couldn't reach Open the Pantry. Check your connection and try again.";
+              setupStatus.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
             }
             btn.disabled = false;
           },
@@ -471,14 +509,14 @@
     const password = el("input", {
       type: "password", id: "email-password", autocomplete: "new-password",
       placeholder: !settings.encryption_configured
-        ? "Set up encryption first (above)"
-        : settings.password_set ? "Saved \u2014 leave blank to keep" : "App password",
+        ? tx("Set up encryption first (above)")
+        : settings.password_set ? tx("Saved \u2014 leave blank to keep") : tx("App password"),
     });
     if (!settings.encryption_configured) password.disabled = true;
     const notifyEmail = el("input", { type: "email", id: "email-notify", value: settings.notify_email || "" });
     const keyword = el("input", { type: "text", id: "email-keyword", value: settings.subject_keyword || "[RECIPE]" });
     const senders = el("input", { type: "text", id: "email-senders", value: settings.allowed_senders || "",
-      placeholder: "you@example.com, @family.example" });
+      placeholder: tx("you@example.com, @family.example") });
     const scanHour = el("input", { type: "number", id: "email-scan-hour", min: "0", max: "23", value: String(settings.daily_scan_hour ?? 3) });
     const cooldown = el("input", { type: "number", id: "email-cooldown", min: "0", value: String(settings.cooldown_minutes ?? 30) });
 
@@ -488,7 +526,7 @@
     emailPanel.appendChild(el("div", { class: "field" }, [
       el("label", { for: "email-enabled", style: "display:flex;align-items:center;gap:0.5rem;" }, [
         enabledInput,
-        el("span", { text: "Enable daily inbox scan" }),
+        el("span", { text: tx("Enable daily inbox scan") }),
       ]),
     ]));
 
@@ -497,28 +535,25 @@
     if (settings.last_problem || settings.pending_notifications) {
       const lines = [];
       if (settings.last_problem) {
-        const when = settings.last_problem_at ? new Date(settings.last_problem_at).toLocaleString() : "the last scan";
-        lines.push(el("strong", { text: `Problem during the scan at ${when}` }));
+        const when = settings.last_problem_at ? fmtDateTime(settings.last_problem_at) : tx("the last scan");
+        lines.push(el("strong", { text: tx("Problem during the scan at {1}", { 1: when }) }));
         lines.push(el("p", { text: settings.last_problem }));
       }
       if (settings.pending_notifications) {
-        lines.push(el("p", { text: `${settings.pending_notifications} scan result${settings.pending_notifications === 1 ? "" : "s"} waiting to be emailed.` }));
+        lines.push(el("p", { text: txn(settings.pending_notifications, "{n} scan result waiting to be emailed.", "{n} scan results waiting to be emailed.") }));
       }
       if (settings.last_problem) {
-        lines.push(el("p", { class: "field-hint", text: "Send test email checks both halves; this clears once a scan or test goes through." }));
+        lines.push(el("p", { class: "field-hint", text: tx("Send test email checks both halves; this clears once a scan or test goes through.") }));
       }
       emailPanel.appendChild(el("div", { class: "email-problem", role: "status" }, lines));
     }
 
     emailPanel.appendChild(emailField("IMAP host (reading)", imapHost, "e.g. imap.gmail.com"));
     emailPanel.appendChild(emailField("IMAP port", imapPort,
-      "993 connects with TLS from the start (implicit TLS). Any other port starts " +
-      "unencrypted and upgrades via STARTTLS -- that's how port 143 is normally used."));
+      "993 connects with TLS from the start (implicit TLS). Any other port starts unencrypted and upgrades via STARTTLS -- that's how port 143 is normally used."));
     emailPanel.appendChild(emailField("SMTP host (notifications)", smtpHost, "e.g. smtp.gmail.com"));
     emailPanel.appendChild(emailField("SMTP port", smtpPort,
-      "465 connects with TLS from the start (implicit TLS). Any other port -- typically " +
-      "587 -- starts unencrypted and upgrades via STARTTLS. Guessed from the port " +
-      "number above; there's no separate setting for it."));
+      "465 connects with TLS from the start (implicit TLS). Any other port -- typically 587 -- starts unencrypted and upgrades via STARTTLS. Guessed from the port number above; there's no separate setting for it."));
     emailPanel.appendChild(emailField("Username", username, "Used for both IMAP and SMTP."));
     emailPanel.appendChild(emailField("Password", password,
       "Stored encrypted. Use an app-specific password, not your main account password."));
@@ -526,22 +561,22 @@
     emailPanel.appendChild(emailField("Subject keyword", keyword,
       "Only emails whose subject contains this are considered. Everything else is ignored."));
     emailPanel.appendChild(emailField("Only accept email from", senders,
-      "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone " +
-      "who knows the address and keyword. Recommended: list the addresses you send from."));
+      "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone who knows the address and keyword. Recommended: list the addresses you send from."));
     emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour,
-      `In the server's time zone${settings.server_timezone ? ` (${settings.server_timezone})` : ""}. ` +
-      "If that isn't yours, set TZ in docker-compose.yml."));
+      settings.server_timezone
+        ? tx("In the server's time zone ({1}). If that isn't yours, set TZ in docker-compose.yml.", { 1: settings.server_timezone })
+        : tx("In the server's time zone. If that isn't yours, set TZ in docker-compose.yml.")));
     emailPanel.appendChild(emailField("Notification cooldown (minutes)", cooldown,
       "Results within this window are batched into one email."));
 
     if (settings.last_scan_at) {
-      emailPanel.appendChild(el("div", { class: "field-hint", text: `Last scan: ${new Date(settings.last_scan_at).toLocaleString()}` }));
+      emailPanel.appendChild(el("div", { class: "field-hint", text: tx("Last scan: {1}", { 1: fmtDateTime(settings.last_scan_at) }) }));
     }
 
     const saveBtn = el("button", {
-      class: "btn-primary", type: "button", text: "Save",
+      class: "btn-primary", type: "button", text: tx("Save"),
       onclick: async () => {
-        statusLine.textContent = "Saving...";
+        statusLine.textContent = tx("Saving...");
         const payload = {
           enabled: enabledInput.checked,
           imap_host: imapHost.value.trim() || null,
@@ -574,9 +609,9 @@
           // clears it -- previously the only visible sign was the password
           // field's placeholder changing, easy to miss.
           const msg = body.password_cleared
-            ? "Saved. The stored password was cleared because the server or username changed — enter it again if you still need email ingest."
-            : "Saved.";
-          if (body.password_cleared) announceError(msg); else announce("Email settings saved.");
+            ? tx("Saved. The stored password was cleared because the server or username changed — enter it again if you still need email ingest.")
+            : tx("Saved.");
+          if (body.password_cleared) announceError(msg); else announce(tx("Email settings saved."));
           // renderEmailSettings() rebuilds the panel, status line included,
           // so the message is written to the new one afterwards.
           await renderEmailSettings();
@@ -584,39 +619,39 @@
           if (newStatus) newStatus.textContent = msg;
         } else {
           const err = await res.json().catch(() => ({}));
-          statusLine.textContent = err.detail || "Could not save.";
+          statusLine.textContent = err.detail || tx("Could not save.");
         }
       },
     });
 
     const testBtn = el("button", {
-      class: "btn-secondary", type: "button", text: "Send test email",
+      class: "btn-secondary", type: "button", text: tx("Send test email"),
       onclick: async () => {
-        statusLine.textContent = "Testing...";
+        statusLine.textContent = tx("Testing...");
         try {
           const res = await fetch(`${API}/email-settings/test`, { method: "POST" });
           const body = await res.json();
           statusLine.textContent = (body.success ? "\u2713 " : "\u2717 ") + body.message;
         } catch {
-          statusLine.textContent = "Test failed.";
+          statusLine.textContent = tx("Test failed.");
         }
       },
     });
 
     const scanBtn = el("button", {
-      class: "btn-secondary", type: "button", text: "Scan inbox now",
+      class: "btn-secondary", type: "button", text: tx("Scan inbox now"),
       onclick: () => runInboxScan(statusLine),
     });
 
     const buttons = [saveBtn, testBtn, scanBtn];
     if (settings.password_set) {
       buttons.push(el("button", {
-        class: "btn-secondary", type: "button", text: "Clear password",
+        class: "btn-secondary", type: "button", text: tx("Clear password"),
         onclick: async () => {
-          if (!confirm("Remove the stored email password? This also disables email ingest.")) return;
+          if (!confirm(tx("Remove the stored email password? This also disables email ingest."))) return;
           const result = await fetchWithTimeout(`${API}/email-settings/password`, { method: "DELETE" });
-          if (!result.ok) { announceError(writeFailureMessage(result, "The stored password")); return; }
-          announce("Stored email password removed.");
+          if (!result.ok) { announceError(writeFailureMessage(result, tx("The stored password"))); return; }
+          announce(tx("Stored email password removed."));
           await renderEmailSettings();
         },
       }));
@@ -624,6 +659,206 @@
 
     emailPanel.appendChild(el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem;" }, buttons));
     emailPanel.appendChild(statusLine);
+
+    setMailState(settings);
+    if (settings.can_send || (settings.recent_recipients || []).length) {
+      emailPanel.appendChild(recentRecipientsEditor());
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Share -> Email PDF
+  // -------------------------------------------------------------------
+  const MAX_EMAIL_RECIPIENTS = 5;
+
+  function setMailState(settings) {
+    state.mail = {
+      canSend: Boolean(settings.can_send),
+      from: settings.username || "",
+      recent: settings.recent_recipients || [],
+    };
+  }
+
+  async function loadMailState() {
+    try {
+      const res = await fetch(`${API}/email-settings`);
+      if (res.ok) setMailState(await res.json());
+    } catch { /* offline: the Email PDF action just stays hidden */ }
+  }
+
+  async function saveRecentRecipients(list) {
+    const res = await fetch(`${API}/email-settings/recipients`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients: list }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(typeof err.detail === "string" ? err.detail : tx("Could not save."));
+    }
+    state.mail.recent = (await res.json()).recipients;
+  }
+
+  // Settings -> Email ingest: the addresses offered in the Email PDF form.
+  function recentRecipientsEditor() {
+    const wrap = el("div", { class: "recipients-editor" });
+    const status = el("div", { class: "field-hint", role: "status" });
+    const render = () => {
+      wrap.innerHTML = "";
+      wrap.appendChild(el("div", { class: "filter-section-title", text: tx("Recent recipients") }));
+      wrap.appendChild(el("div", { class: "field-hint", text: tx("Offered when you email a recipe from Share. Addresses are added here each time you send.") }));
+      const list = el("ul", { class: "recipients-list" });
+      for (const addr of state.mail.recent) {
+        list.appendChild(el("li", {}, [
+          el("span", { text: addr }),
+          el("button", {
+            type: "button", class: "btn-secondary btn-small", text: tx("Remove"),
+            "aria-label": tx("Remove {1}", { 1: addr }),
+            onclick: async () => {
+              try {
+                await saveRecentRecipients(state.mail.recent.filter((a) => a !== addr));
+                announce(tx("Removed {1}.", { 1: addr }));
+                render();
+              } catch (err) { status.textContent = err.message; }
+            },
+          }),
+        ]));
+      }
+      if (!state.mail.recent.length) list.appendChild(el("li", { class: "field-hint", text: tx("None yet.") }));
+      wrap.appendChild(list);
+      const input = el("input", { type: "email", placeholder: tx("name@example.com"), "aria-label": tx("Add an address"), autocomplete: "email" });
+      const add = el("button", {
+        type: "button", class: "btn-secondary", text: tx("Add"),
+        onclick: async () => {
+          const addr = input.value.trim();
+          if (!addr) return;
+          try {
+            await saveRecentRecipients([addr, ...state.mail.recent]);
+            announce(tx("Added {1}.", { 1: addr }));
+            render();
+          } catch (err) { status.textContent = err.message; }
+        },
+      });
+      wrap.appendChild(el("div", { class: "recipients-add" }, [input, add]));
+      wrap.appendChild(status);
+    };
+    render();
+    return wrap;
+  }
+
+  function splitAddresses(text) {
+    return text.split(/[,;\s]+/).map((a) => a.trim()).filter(Boolean);
+  }
+
+  // The Contact Picker API: Chrome on Android. Elsewhere the button is left
+  // out and the recent-recipient list is the shortcut.
+  const contactPickerAvailable = () =>
+    "contacts" in navigator && "ContactsManager" in window && typeof navigator.contacts.select === "function";
+
+  function openEmailSheet(recipe) {
+    const overlay = emailSheetOverlay;
+    $("#email-sheet-title").textContent = recipe.title;
+    const body = $("#email-sheet-body");
+    body.innerHTML = "";
+
+    const status = el("div", { class: "field-hint email-sheet-status", role: "status" });
+    const toInput = el("input", {
+      type: "email", id: "email-sheet-to", multiple: "", autocomplete: "email", inputmode: "email",
+      placeholder: tx("name@example.com, …"),
+    });
+    const addAddress = (addr) => {
+      const current = splitAddresses(toInput.value);
+      if (current.some((a) => a.toLowerCase() === addr.toLowerCase())) return;
+      toInput.value = [...current, addr].join(", ");
+    };
+
+    body.appendChild(el("div", { class: "field" }, [
+      el("label", { for: "email-sheet-from", text: tx("From") }),
+      el("input", { type: "text", id: "email-sheet-from", value: state.mail.from, readonly: "", tabindex: "-1" }),
+    ]));
+    body.appendChild(el("div", { class: "field" }, [
+      el("label", { for: "email-sheet-to", text: tx("To") }),
+      toInput,
+      el("div", { class: "field-hint", text: tx("Up to {1} addresses, separated by commas.", { 1: MAX_EMAIL_RECIPIENTS }) }),
+    ]));
+
+    if (contactPickerAvailable()) {
+      body.appendChild(el("button", {
+        type: "button", class: "btn-secondary email-contacts", text: tx("Choose from contacts"),
+        onclick: async () => {
+          try {
+            const picked = await navigator.contacts.select(["email"], { multiple: true });
+            for (const c of picked) if (c.email && c.email[0]) addAddress(c.email[0]);
+          } catch { /* closed without choosing */ }
+        },
+      }));
+    }
+
+    if (state.mail.recent.length) {
+      body.appendChild(el("div", { class: "email-recent" }, [
+        el("div", { class: "field-hint", text: tx("Recent:") }),
+        el("div", { class: "email-recent-list" }, state.mail.recent.slice(0, 8).map((addr) =>
+          el("button", { type: "button", class: "chip", text: addr,
+            "aria-label": tx("Add {1}", { 1: addr }), onclick: () => addAddress(addr) }))),
+      ]));
+    }
+
+    const messageInput = el("textarea", { id: "email-sheet-message", rows: "3", maxlength: "2000" });
+    body.appendChild(el("div", { class: "field" }, [
+      el("label", { for: "email-sheet-message", text: tx("Message (optional)") }),
+      messageInput,
+    ]));
+
+    let notesBox = null;
+    if (recipe.notes) {
+      notesBox = el("input", { type: "checkbox", id: "email-sheet-notes" });
+      body.appendChild(el("label", { class: "checkbox-row", for: "email-sheet-notes" }, [
+        notesBox, el("span", { text: tx("Include my notes") })]));
+    }
+
+    const sendBtn = el("button", {
+      type: "button", class: "btn-primary", text: tx("Send"),
+      onclick: async () => {
+        const to = splitAddresses(toInput.value);
+        if (!to.length) { status.textContent = tx("Add at least one recipient."); toInput.focus(); return; }
+        if (to.length > MAX_EMAIL_RECIPIENTS) {
+          status.textContent = tx("Up to {1} addresses, separated by commas.", { 1: MAX_EMAIL_RECIPIENTS });
+          return;
+        }
+        sendBtn.disabled = true;
+        status.textContent = tx("Sending…");
+        try {
+          const res = await fetch(`${API}/recipes/${recipe.id}/email`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to, message: messageInput.value, include_notes: Boolean(notesBox && notesBox.checked) }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            // The full reason (often a long SMTP diagnosis) goes in the
+            // toast; the form keeps a short line so it stays usable.
+            const msg = typeof data.detail === "string" ? data.detail : tx("The email wasn't sent (error {1}).", { 1: res.status });
+            status.textContent = tx("The email wasn't sent (error {1}).", { 1: res.status });
+            announceError(msg);
+            return;
+          }
+          state.mail.recent = data.recent_recipients || state.mail.recent;
+          closeModal(overlay);
+          announce(tx("Sent to {1}.", { 1: data.sent_to.join(", ") }));
+        } catch {
+          const msg = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+          status.textContent = msg;
+          announceError(msg);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      },
+    });
+    body.appendChild(el("div", { class: "email-sheet-actions" }, [
+      el("button", { type: "button", class: "btn-secondary", text: tx("Cancel"), onclick: () => closeModal(overlay) }),
+      sendBtn,
+    ]));
+    body.appendChild(status);
+    openModal(overlay);
+    toInput.focus();
   }
 
   // -------------------------------------------------------------------
@@ -704,6 +939,9 @@
     // read your library, not a per-visit choice.
     sort: localStorage.getItem("recipe-app-sort") || "created",
     direction: localStorage.getItem("recipe-app-sort-dir") || "desc",
+    // Share -> Email PDF: whether sending is set up, the From address, and
+    // recent recipients. Read from the email settings at start-up.
+    mail: { canSend: false, from: "", recent: [] },
   };
   let uiTimeLevel1 = null;   // UI-only: which coarse hour bucket is expanded in the time filter
 
@@ -735,7 +973,7 @@
     if (!$("#filter-panel").hidden) renderFilterPanel();
     syncClearFiltersButton();
     loadRecipes();
-    announce("Filters cleared.");
+    announce(tx("Filters cleared."));
   }
 
   // The toolbar button carries the count and hides itself when nothing is
@@ -746,7 +984,7 @@
     if (!btn) return;
     const n = activeFilterCount();
     btn.hidden = n === 0;
-    btn.textContent = `Clear filters (${n})`;
+    btn.textContent = tx("Clear filters ({1})", { 1: n });
   }
 
   // -------------------------------------------------------------------
@@ -809,13 +1047,13 @@
   // added in Settings) come from the server; this list is only the
   // fallback if that request fails.
   const BUILTIN_GROUPS = [
-    { key: "meal_type", label: "Meal Type", builtin: true },
-    { key: "cooking_style", label: "Cooking Style", builtin: true },
-    { key: "main_ingredient", label: "Main Ingredient", builtin: true },
-    { key: "custom", label: "Custom", builtin: true },
+    { key: "meal_type", label: tx("Meal Type"), builtin: true },
+    { key: "cooking_style", label: tx("Cooking Style"), builtin: true },
+    { key: "main_ingredient", label: tx("Main Ingredient"), builtin: true },
+    { key: "custom", label: tx("Custom"), builtin: true },
   ];
   function tagGroups() {
-    return (state.tagGroups && state.tagGroups.length ? state.tagGroups : BUILTIN_GROUPS).map((g) => [g.key, g.label]);
+    return (state.tagGroups && state.tagGroups.length ? state.tagGroups : BUILTIN_GROUPS).map((g) => [g.key, groupLabel(g.key, g.label)]);
   }
 
   async function loadTags() {
@@ -834,7 +1072,7 @@
     const groups = tagGroups().filter(([k]) => k !== "custom" && state.allTags.some((t) => t.category === k));
     if (state.grouping !== "all" && !groups.some(([k]) => k === state.grouping)) state.grouping = "all";
     wrap.innerHTML = "";
-    for (const [key, label] of [["all", "All"], ...groups]) {
+    for (const [key, label] of [["all", tx("All")], ...groups]) {
       wrap.appendChild(el("button", { type: "button", "data-group": key, "aria-pressed": String(state.grouping === key), text: label }));
     }
   }
@@ -864,7 +1102,7 @@
       container.appendChild(el("div", { class: "sidebar-clear-region" }, [
         el("button", {
           type: "button", class: "btn-secondary btn-clear-filters",
-          text: `Clear filters (${activeFilterCount()})`,
+          text: tx("Clear filters ({1})", { 1: activeFilterCount() }),
           onclick: clearAllFilters,
         }),
       ]));
@@ -873,7 +1111,7 @@
     container.appendChild(el("div", { class: "tag-tree-actions" }, [
       el("button", {
         type: "button", class: "tag-tree-expand-all",
-        text: anyOpen ? "Collapse all" : "Expand all",
+        text: anyOpen ? tx("Collapse all") : tx("Expand all"),
         onclick: () => {
           if (anyOpen) state.expandedGroups.clear();
           else {
@@ -905,7 +1143,7 @@
         const sgActive = sgTags.filter((t) => state.filterTags.has(t.name)).length;
         children.push(collapsibleSection(
           sgKey,
-          sg === "cocktail" ? "Cocktail Prep" : sg,
+          sg === "cocktail" ? tx("Cocktail Prep") : sg,
           { sub: true, activeCount: sgActive, forceOpen: sgActive > 0 },
           sgTags.map(makeTagButton),
         ));
@@ -934,7 +1172,7 @@
       class: "tag-node",
       type: "button",
       "aria-pressed": String(pressed),
-      text: tag.name,
+      text: tagLabel(tag),
       onclick: () => toggleTagFilter(tag.name),
     });
   }
@@ -947,7 +1185,7 @@
     return el("button", {
       class: "filter-chip", type: "button",
       "aria-pressed": String(pressed),
-      text: tag.name,
+      text: tagLabel(tag),
       onclick: () => toggleTagFilter(tag.name),
     });
   }
@@ -957,8 +1195,8 @@
     panel.innerHTML = "";
 
     panel.appendChild(el("div", { class: "filter-panel-header" }, [
-      el("h2", { class: "filter-panel-title", id: "filter-panel-title", text: "Filters" }),
-      el("button", { class: "filter-panel-close", type: "button", "aria-label": "Close filters", text: "\u00d7", onclick: closeFilterPanel }),
+      el("h2", { class: "filter-panel-title", id: "filter-panel-title", text: tx("Filters") }),
+      el("button", { class: "filter-panel-close", type: "button", "aria-label": tx("Close filters"), text: "\u00d7", onclick: closeFilterPanel }),
     ]));
 
     const categories = tagGroups();
@@ -974,12 +1212,12 @@
     // Pace: the quick / moderate / long rating set from the card or detail
     // view. Selecting more than one shows recipes with any of them.
     panel.appendChild(el("div", { class: "filter-section" }, [
-      el("div", { class: "filter-section-title", text: "Pace" }),
+      el("div", { class: "filter-section-title", text: tx("Pace") }),
       el("div", { class: "filter-chip-row" }, ["quick", "moderate", "long"].map((v) =>
         el("button", {
           class: "filter-chip", type: "button",
           "aria-pressed": String(state.pace.has(v)),
-          text: v.charAt(0).toUpperCase() + v.slice(1),
+          text: valueLabel(v),
           onclick: () => {
             if (state.pace.has(v)) state.pace.delete(v); else state.pace.add(v);
             renderFilterPanel();
@@ -991,16 +1229,16 @@
     ]));
 
     const timeSection = el("div", { class: "filter-section" });
-    timeSection.appendChild(el("div", { class: "filter-section-title", text: "Cook Time" }));
+    timeSection.appendChild(el("div", { class: "filter-section-title", text: tx("Cook Time") }));
     if (!state.timeBuckets.length) {
-      timeSection.appendChild(el("div", { class: "field-hint", text: "No logged cook times yet \u2014 this filter appears once recipes have a real-world time logged." }));
+      timeSection.appendChild(el("div", { class: "field-hint", text: tx("No logged cook times yet \u2014 this filter appears once recipes have a real-world time logged.") }));
     } else {
       const hourBuckets = state.timeBuckets.filter((b) => b.minutes % 60 === 0);
       timeSection.appendChild(el("div", { class: "time-filter-row" }, hourBuckets.map((b) =>
         el("button", {
           class: "filter-chip", type: "button",
           "aria-pressed": String(uiTimeLevel1 === b.minutes),
-          text: `\u2264 ${b.label}`,
+          text: `\u2264 ${durationLabel(b.minutes)}`,
           onclick: () => {
             uiTimeLevel1 = uiTimeLevel1 === b.minutes ? null : b.minutes;
             state.maxMinutes = uiTimeLevel1;
@@ -1017,7 +1255,7 @@
           el("button", {
             class: "filter-chip", type: "button",
             "aria-pressed": String(state.maxMinutes === b.minutes),
-            text: `\u2264 ${b.label}`,
+            text: `\u2264 ${durationLabel(b.minutes)}`,
             onclick: () => {
               state.maxMinutes = state.maxMinutes === b.minutes ? uiTimeLevel1 : b.minutes;
               renderFilterPanel();
@@ -1034,17 +1272,17 @@
     // panel -- but it's the obvious way out, where a thumb reaches after
     // scrolling through the chips.
     const bits = [];
-    if (state.filterTags.size) bits.push(`${state.filterTags.size} tag filter${state.filterTags.size === 1 ? "" : "s"}`);
-    if (state.pace.size) bits.push("pace filter");
-    if (state.maxMinutes != null) bits.push("time filter");
-    if (state.query) bits.push("search");
+    if (state.filterTags.size) bits.push(txn(state.filterTags.size, "{n} tag filter", "{n} tag filters"));
+    if (state.pace.size) bits.push(tx("pace filter"));
+    if (state.maxMinutes != null) bits.push(tx("time filter"));
+    if (state.query) bits.push(tx("search"));
     // Done on the left: the + button covers the bottom-right corner.
     panel.appendChild(el("div", { class: "filter-panel-footer" }, [
-      el("button", { type: "button", class: "btn-primary", text: "Done", onclick: closeFilterPanel }),
+      el("button", { type: "button", class: "btn-primary", text: tx("Done"), onclick: closeFilterPanel }),
       activeFilterCount()
-        ? el("button", { type: "button", class: "btn-secondary", text: "Clear filters", onclick: clearAllFilters })
+        ? el("button", { type: "button", class: "btn-secondary", text: tx("Clear filters"), onclick: clearAllFilters })
         : null,
-      el("span", { class: "filter-panel-summary", text: bits.length ? `${bits.join(" + ")} active` : "No filters active" }),
+      el("span", { class: "filter-panel-summary", text: bits.length ? tx("{1} active", { 1: bits.join(" + ") }) : tx("No filters active") }),
     ]));
   }
 
@@ -1101,7 +1339,7 @@
   // Select mode / batch delete
   // -------------------------------------------------------------------
   function updateBatchBar() {
-    $("#batch-count").textContent = `${state.selectedIds.size} selected`;
+    $("#batch-count").textContent = tx("{1} selected", { 1: state.selectedIds.size });
     const barVisible = state.selectMode && state.selectedIds.size > 0;
     $("#batch-bar").hidden = !barVisible;
     // The bar and the + button share the bottom edge; on a phone the bar is
@@ -1155,14 +1393,14 @@
   const autotagResult = $("#autotag-result");
   function autotagChangeList(changes) {
     return el("details", { class: "autotag-details" }, [
-      el("summary", { text: "Show each recipe" }),
-      el("ul", {}, changes.map((c) => el("li", { text: `${c.title}: ${c.added.join(", ")}` }))),
+      el("summary", { text: tx("Show each recipe") }),
+      el("ul", {}, changes.map((c) => el("li", { text: `${c.title}: ${c.added.map((n) => tagLabel(n)).join(", ")}` }))),
     ]);
   }
   autotagBtn.addEventListener("click", async () => {
     autotagBtn.disabled = true;
     autotagResult.innerHTML = "";
-    autotagResult.appendChild(el("p", { class: "field-hint", text: "Checking every recipe..." }));
+    autotagResult.appendChild(el("p", { class: "field-hint", text: tx("Checking every recipe...") }));
     let preview;
     try {
       const res = await fetch(`${API}/tags/auto-apply?dry_run=true`, { method: "POST" });
@@ -1170,15 +1408,15 @@
       preview = await res.json();
     } catch (e) {
       autotagResult.innerHTML = "";
-      announceError(`Couldn't check the recipes (${e.message}).`);
+      announceError(tx("Couldn't check the recipes ({1}).", { 1: e.message }));
       autotagBtn.disabled = false;
       return;
     }
     autotagResult.innerHTML = "";
     if (!preview.tags_added) {
-      autotagResult.appendChild(el("p", { text: `All ${preview.recipes_scanned} recipes checked already have their suggested tags` +
+      autotagResult.appendChild(el("p", { text: tx("All {1} recipes checked already have their suggested tags", { 1: preview.recipes_scanned }) +
         (preview.recipes_ignored ? ` (${preview.recipes_ignored} skipped).` : ".") }));
-      announce("Nothing to add.");
+      announce(tx("Nothing to add."));
       autotagBtn.disabled = false;
       return;
     }
@@ -1187,7 +1425,7 @@
     const summaryEl = el("p", {});
     const tagBoxes = [];
     const list = el("ul", { class: "autotag-pick" }, preview.changes.map((c) => {
-      const recipeBox = el("input", { type: "checkbox", checked: "", "aria-label": `All suggested tags for ${c.title}` });
+      const recipeBox = el("input", { type: "checkbox", checked: "", "aria-label": tx("All suggested tags for {1}", { 1: c.title }) });
       const boxes = c.added.map((name) => {
         const b = el("input", { type: "checkbox", checked: "" });
         b.dataset.recipe = String(c.id); b.dataset.tag = name;
@@ -1203,18 +1441,18 @@
       recipeBox.addEventListener("change", () => { boxes.forEach((b) => { b.checked = recipeBox.checked; }); sync(); });
       boxes.forEach((b) => b.addEventListener("change", sync));
       const skipBtn = el("button", {
-        type: "button", class: "autotag-skip", text: "Skip in future scans",
-        "aria-label": `Leave ${c.title} out of future tag scans`,
+        type: "button", class: "autotag-skip", text: tx("Skip in future scans"),
+        "aria-label": tx("Leave {1} out of future tag scans", { 1: c.title }),
         onclick: async () => {
           skipBtn.disabled = true;
           const res = await fetch(`${API}/recipes/${c.id}/autotag-ignore`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ignored: true }),
           }).catch(() => null);
-          if (!res || !res.ok) { skipBtn.disabled = false; announceError("Couldn't skip that recipe."); return; }
+          if (!res || !res.ok) { skipBtn.disabled = false; announceError(tx("Couldn't skip that recipe.")); return; }
           boxes.forEach((b) => { const i = tagBoxes.indexOf(b); if (i >= 0) tagBoxes.splice(i, 1); });
           skipBtn.closest("li").remove();
-          announce(`${c.title} will be left out of tag scans.`);
+          announce(tx("{1} will be left out of tag scans.", { 1: c.title }));
           updateSummary();
         },
       });
@@ -1224,22 +1462,23 @@
           skipBtn,
         ]),
         el("div", { class: "autotag-tags" }, boxes.map((b) =>
-          el("label", { class: "autotag-tag" }, [b, el("span", { text: b.dataset.tag })]))),
+          el("label", { class: "autotag-tag" }, [b, el("span", { text: tagLabel(b.dataset.tag) })]))),
       ]);
     }));
     function updateSummary() {
       const ticked = tagBoxes.filter((b) => b.checked);
       const recipes = new Set(ticked.map((b) => b.dataset.recipe)).size;
-      summaryEl.textContent = `Adds ${ticked.length} of ${tagBoxes.length} suggested tags to ${recipes} ` +
-        `recipe${recipes === 1 ? "" : "s"}. Untick any that don't apply.` +
-        (preview.recipes_ignored ? ` ${preview.recipes_ignored} recipe${preview.recipes_ignored === 1 ? " is" : "s are"} skipped` +
-          " (each recipe's edit screen can include it again, or suggest tags for it)." : "");
+      summaryEl.textContent = txn(recipes, "Adds {1} of {2} suggested tags to {n} recipe. Untick any that don't apply.",
+        "Adds {1} of {2} suggested tags to {n} recipes. Untick any that don't apply.", { 1: ticked.length, 2: tagBoxes.length }) +
+        (preview.recipes_ignored ? " " + txn(preview.recipes_ignored,
+          "{n} recipe is skipped (each recipe's edit screen can include it again, or suggest tags for it).",
+          "{n} recipes are skipped (each recipe's edit screen can include it again, or suggest tags for it).") : "");
       apply.disabled = ticked.length === 0;   // only called once apply exists
     }
-    const cancel = el("button", { type: "button", class: "btn-secondary", text: "Cancel", onclick: () => {
+    const cancel = el("button", { type: "button", class: "btn-secondary", text: tx("Cancel"), onclick: () => {
       autotagResult.innerHTML = ""; autotagBtn.disabled = false; autotagBtn.focus();
     } });
-    const apply = el("button", { type: "button", class: "btn-primary", text: "Add tags", onclick: async () => {
+    const apply = el("button", { type: "button", class: "btn-primary", text: tx("Add tags"), onclick: async () => {
       apply.disabled = cancel.disabled = true;
       try {
         const selections = {};
@@ -1252,14 +1491,13 @@
         const done = await res.json();
         autotagResult.innerHTML = "";
         autotagResult.appendChild(el("p", { text:
-          `Added ${done.tags_added} tag${done.tags_added === 1 ? "" : "s"} to ${done.recipes_changed} recipe${done.recipes_changed === 1 ? "" : "s"}. ` +
-          "Remove any you don't want from each recipe's page." }));
+          tx("Added {1} tag(s) to {2} recipe(s). Remove any you don't want from each recipe's page.", { 1: done.tags_added, 2: done.recipes_changed }) }));
         if (done.changes.length) autotagResult.appendChild(autotagChangeList(done.changes));
-        announce(`Added ${done.tags_added} tags.`);
+        announce(tx("Added {1} tags.", { 1: done.tags_added }));
         await loadTags();
         loadRecipes();
       } catch (e) {
-        announceError(`Couldn't add the tags (${e.message}). Nothing was changed.`);
+        announceError(tx("Couldn't add the tags ({1}). Nothing was changed.", { 1: e.message }));
         apply.disabled = cancel.disabled = false;
         return;
       }
@@ -1289,7 +1527,7 @@
     }).catch(() => null);
     if (!res || !res.ok) {
       const err = res ? await res.json().catch(() => ({})) : {};
-      announceError(typeof err.detail === "string" ? err.detail : "Couldn't save that change.");
+      announceError(typeof err.detail === "string" ? err.detail : tx("Couldn't save that change."));
       return null;
     }
     return res.json();
@@ -1310,62 +1548,62 @@
         .sort((a, b) => a.name.localeCompare(b.name));
       const isMain = g.key === "main_ingredient";
       const rows = tags.map((t) => {
-        const kw = el("input", { type: "text", value: t.keywords || "", placeholder: "extra words, comma separated",
-          "aria-label": `Keywords for ${t.name}` });
-        const rov = isMain && t.name !== "Vegetarian"
-          ? el("input", { type: "checkbox", "aria-label": `${t.name} rules out Vegetarian` }) : null;
+        const kw = el("input", { type: "text", value: t.keywords || "", placeholder: tx("extra words, comma separated"),
+          "aria-label": tx("Keywords for {1}", { 1: tagLabel(t) }) });
+        const rov = isMain && t.name !== "Vegetarian"   // stored name, not shown
+          ? el("input", { type: "checkbox", "aria-label": tx("{1} rules out Vegetarian", { 1: tagLabel(t) }) }) : null;
         if (rov) rov.checked = !!t.rules_out_vegetarian;
-        const save = el("button", { type: "button", class: "btn-secondary btn-small", text: "Save", hidden: "",
+        const save = el("button", { type: "button", class: "btn-secondary btn-small", text: tx("Save"), hidden: "",
           onclick: async () => {
             if (await tgRequest(`${API}/tags/${t.id}`, "PUT", { keywords: kw.value, rules_out_vegetarian: rov ? rov.checked : false })) {
-              announce(`Saved keywords for ${t.name}.`); await tgReload();
+              announce(tx("Saved keywords for {1}.", { 1: tagLabel(t) })); await tgReload();
             }
           } });
         const dirty = () => { save.hidden = false; };
         kw.addEventListener("input", dirty); if (rov) rov.addEventListener("change", dirty);
-        const del = t.user_defined ? el("button", { type: "button", class: "tg-delete", text: "Delete",
-          "aria-label": `Delete tag ${t.name}`,
+        const del = t.user_defined ? el("button", { type: "button", class: "tg-delete", text: tx("Delete"),
+          "aria-label": tx("Delete tag {1}", { 1: tagLabel(t) }),
           onclick: async () => {
-            if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Tap again to delete"; return; }
+            if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = tx("Tap again to delete"); return; }
             const r = await tgRequest(`${API}/tags/${t.id}`, "DELETE");
-            if (r) { announce(`Deleted ${t.name}${r.recipes_changed ? ` (removed from ${r.recipes_changed} recipes)` : ""}.`); await tgReload(); }
+            if (r) { announce(r.recipes_changed ? tx("Deleted {1} (removed from {2} recipes).", { 1: tagLabel(t), 2: r.recipes_changed }) : tx("Deleted {1}.", { 1: tagLabel(t) })); await tgReload(); }
           } }) : null;
         return el("li", { class: "tg-tag" }, [
-          el("div", { class: "tg-tag-head" }, [el("strong", { text: t.name }), del]),
+          el("div", { class: "tg-tag-head" }, [el("strong", { text: tagLabel(t) }), del]),
           el("div", { class: "tg-tag-edit" }, [kw, save]),
-          rov ? el("label", { class: "inline-check" }, [rov, el("span", { text: "Means it's not vegetarian" })]) : null,
+          rov ? el("label", { class: "inline-check" }, [rov, el("span", { text: tx("Means it's not vegetarian") })]) : null,
         ]);
       });
 
-      const newName = el("input", { type: "text", placeholder: "New tag name", "aria-label": `New tag in ${g.label}`, maxlength: "40" });
-      const newKw = el("input", { type: "text", placeholder: "keywords, comma separated", "aria-label": "Keywords for the new tag" });
+      const newName = el("input", { type: "text", placeholder: tx("New tag name"), "aria-label": tx("New tag in {1}", { 1: groupLabel(g.key, g.label) }), maxlength: "40" });
+      const newKw = el("input", { type: "text", placeholder: tx("keywords, comma separated"), "aria-label": tx("Keywords for the new tag") });
       const newRov = isMain ? el("input", { type: "checkbox" }) : null;
-      const add = el("button", { type: "button", class: "btn-primary btn-small", text: "Add tag", onclick: async () => {
+      const add = el("button", { type: "button", class: "btn-primary btn-small", text: tx("Add tag"), onclick: async () => {
         if (!newName.value.trim()) { newName.focus(); return; }
         const r = await tgRequest(`${API}/tags`, "POST", { name: newName.value, category: g.key, keywords: newKw.value,
           rules_out_vegetarian: newRov ? newRov.checked : false });
-        if (r) { tgOpen.add(g.key); announce(`Added ${r.name} to ${g.label}.`); await tgReload(); }
+        if (r) { tgOpen.add(g.key); announce(tx("Added {1} to {2}.", { 1: tagLabel(r), 2: groupLabel(g.key, g.label) })); await tgReload(); }
       } });
       const addRow = el("div", { class: "tg-add" }, [
         newName, newKw,
-        newRov ? el("label", { class: "inline-check" }, [newRov, el("span", { text: "Means it's not vegetarian" })]) : null,
+        newRov ? el("label", { class: "inline-check" }, [newRov, el("span", { text: tx("Means it's not vegetarian") })]) : null,
         add,
       ]);
 
-      const delGroup = g.builtin ? null : el("button", { type: "button", class: "tg-delete", text: "Delete group",
+      const delGroup = g.builtin ? null : el("button", { type: "button", class: "tg-delete", text: tx("Delete group"),
         onclick: async (e) => {
           e.preventDefault();
           if (delGroup.dataset.armed !== "1") {
             delGroup.dataset.armed = "1";
-            delGroup.textContent = tags.length ? `Delete group and its ${tags.length} tag${tags.length === 1 ? "" : "s"}?` : "Tap again to delete";
+            delGroup.textContent = tags.length ? txn(tags.length, "Delete group and its {n} tag?", "Delete group and its {n} tags?") : tx("Tap again to delete");
             return;
           }
           const r = await tgRequest(`${API}/tag-groups/${encodeURIComponent(g.key)}`, "DELETE");
-          if (r) { announce(`Deleted ${g.label}.`); await tgReload(); }
+          if (r) { announce(tx("Deleted {1}.", { 1: g.label })); await tgReload(); }
         } });
 
       const det = el("details", { class: "tg-group" }, [
-        el("summary", {}, [el("span", { text: `${g.label} (${tags.length})` })]),
+        el("summary", {}, [el("span", { text: `${groupLabel(g.key, g.label)} (${tags.length})` })]),
         delGroup,
         el("ul", { class: "tg-tags" }, rows),
         addRow,
@@ -1375,13 +1613,13 @@
       list.appendChild(det);
     }
 
-    const groupName = el("input", { type: "text", placeholder: "New group, e.g. Cuisine", maxlength: "40", "aria-label": "New group name" });
+    const groupName = el("input", { type: "text", placeholder: tx("New group, e.g. Cuisine"), maxlength: "40", "aria-label": tx("New group name") });
     list.appendChild(el("div", { class: "tg-add tg-add-group" }, [
       groupName,
-      el("button", { type: "button", class: "btn-primary btn-small", text: "Add group", onclick: async () => {
+      el("button", { type: "button", class: "btn-primary btn-small", text: tx("Add group"), onclick: async () => {
         if (!groupName.value.trim()) { groupName.focus(); return; }
         const r = await tgRequest(`${API}/tag-groups`, "POST", { label: groupName.value });
-        if (r) { tgOpen.add(r.key); announce(`Added the ${r.label} group. Add tags to it below.`); await tgReload(); }
+        if (r) { tgOpen.add(r.key); announce(tx("Added the {1} group. Add tags to it below.", { 1: r.label })); await tgReload(); }
       } }),
     ]));
   }
@@ -1406,12 +1644,12 @@
 
   $("#batch-delete-btn").addEventListener("click", async () => {
     if (!state.selectedIds.size) return;
-    if (!confirm(`Delete ${state.selectedIds.size} recipe(s)? This cannot be undone.`)) return;
+    if (!confirm(tx("Delete {1} recipe(s)? This cannot be undone.", { 1: state.selectedIds.size }))) return;
     const ids = [...state.selectedIds];
     const btn = $("#batch-delete-btn");
     btn.disabled = true;
     const label = btn.textContent;
-    btn.textContent = "Deleting…";
+    btn.textContent = tx("Deleting…");
 
     const result = await fetchWithTimeout(`${API}/recipes/batch-delete`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1426,7 +1664,7 @@
       // alongside an unconditional "deleted" message, so a failed batch told
       // you it had worked AND threw away the selection you would need to
       // retry with.
-      announceError(writeFailureMessage(result, "The selected recipes"));
+      announceError(writeFailureMessage(result, tx("The selected recipes")));
       if (result.timedOut) loadRecipes();
       return;
     }
@@ -1437,9 +1675,9 @@
     let summary;
     try {
       const body = await result.res.json();
-      const parts = [`${body.deleted.length} deleted`];
-      if (body.missing.length) parts.push(`${body.missing.length} already gone`);
-      if (body.failed.length) parts.push(`${body.failed.length} failed`);
+      const parts = [tx("{1} deleted", { 1: body.deleted.length })];
+      if (body.missing.length) parts.push(tx("{1} already gone", { 1: body.missing.length }));
+      if (body.failed.length) parts.push(tx("{1} failed", { 1: body.failed.length }));
       summary = parts.join(", ") + ".";
       if (!body.failed.length) {
         state.selectedIds.clear();
@@ -1481,19 +1719,19 @@
     try {
       res = await fetch(`${API}/recipes?${params.toString()}`);
     } catch {
-      showListError("Couldn't reach Open the Pantry. Check your connection and try again.");
+      showListError(tx("Couldn't reach Open the Pantry. Check your connection and try again."));
       return;
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       showListError(res.status === 429
-        ? "The server is busy with too many requests. Wait a moment and try again."
-        : `Couldn't load recipes (${typeof err.detail === "string" ? err.detail : "error " + res.status}).`);
+        ? tx("The server is busy with too many requests. Wait a moment and try again.")
+        : tx("Couldn't load recipes ({1}).", { 1: typeof err.detail === "string" ? err.detail : tx("error {1}", { 1: res.status }) }));
       return;
     }
     currentRecipes = await res.json();
     renderRecipeList(currentRecipes);
-    announce(`${currentRecipes.length} recipe${currentRecipes.length === 1 ? "" : "s"} found`);
+    announce(txn(currentRecipes.length, "{n} recipe found", "{n} recipes found"));
   }
 
   // An ingredient as it was written ("3 Tablespoons plus 1 teaspoon maple
@@ -1510,13 +1748,13 @@
     region.innerHTML = "";
     region.appendChild(el("div", { class: "empty-state", role: "alert" }, [
       el("p", { text: message }),
-      el("button", { class: "btn-secondary", type: "button", text: "Try again", onclick: () => loadRecipes() }),
+      el("button", { class: "btn-secondary", type: "button", text: tx("Try again"), onclick: () => loadRecipes() }),
     ]));
     announce(message);
   }
 
   function sourceBadge(recipe) {
-    const label = { url: "Web", pdf: "PDF", screenshot: "Screenshot", manual: "Handwritten/Manual", email: "Email" }[recipe.source_type] || recipe.source_type;
+    const label = { url: tx("Web"), pdf: "PDF", screenshot: tx("Screenshot"), manual: tx("Handwritten/Manual"), email: tx("Email") }[recipe.source_type] || recipe.source_type;
     return el("span", { class: `badge badge-source-${recipe.source_type}`, text: label });
   }
 
@@ -1524,13 +1762,13 @@
     if (recipe.ocr_confidence == null) return null;
     const c = recipe.ocr_confidence;
     const tier = c >= 80 ? "high" : c >= 55 ? "med" : "low";
-    const label = tier === "low" ? "OCR quality: low" : tier === "med" ? "OCR quality: fair" : "OCR quality: good";
+    const label = tier === "low" ? tx("OCR quality: low") : tier === "med" ? tx("OCR quality: fair") : tx("OCR quality: good");
     return el("span", { class: `badge badge-confidence-${tier}`, text: label });
   }
 
   function matchedViaBadge(recipe) {
     if (!recipe.matched_via || !recipe.matched_via.length) return null;
-    return el("span", { class: "badge badge-matched", text: `matched: ${recipe.matched_via.join(", ")}` });
+    return el("span", { class: "badge badge-matched", text: tx("matched: {1}", { 1: recipe.matched_via.join(", ") }) });
   }
 
   // -------------------------------------------------------------------
@@ -1565,15 +1803,21 @@
   });
 
   const RATING_TITLES = {
-    tastiness_rating: "How good was it?",
-    cook_time_rating: "How long does it take?",
-    difficulty_rating: "How hard is it?",
+    tastiness_rating: tx("How good was it?"),
+    cook_time_rating: tx("How long does it take?"),
+    difficulty_rating: tx("How hard is it?"),
+  };
+
+  const RATING_FIELD_NAMES = {
+    tastiness_rating: () => tx("Rating"),
+    cook_time_rating: () => tx("Cook time"),
+    difficulty_rating: () => tx("Difficulty"),
   };
 
   function ratingOptionLabel(field, opt) {
     return field === "tastiness_rating"
       ? "\u2b50".repeat(opt)
-      : opt.charAt(0).toUpperCase() + opt.slice(1);
+      : valueLabel(opt);
   }
 
   // Rating controls come in two shapes for the same reason the share button
@@ -1589,7 +1833,7 @@
   // form -- the icon already says which rating it is, and the sheet spells
   // the value out in full. The detail page has the room, so it keeps words.
   function compactRatingLabel(v) {
-    return typeof v === "number" ? String(v) : String(v).charAt(0).toUpperCase();
+    return typeof v === "number" ? String(v) : valueLabel(v).charAt(0).toUpperCase();
   }
 
   function applyRating(recipe, field, opt, btn, icon, shortLabel) {
@@ -1602,7 +1846,7 @@
 
   function openRatingSheet(recipe, field, icon, options, shortLabel, btn) {
     const overlay = $("#rating-sheet-overlay");
-    $("#rating-sheet-heading").textContent = RATING_TITLES[field] || "Rating";
+    $("#rating-sheet-heading").textContent = RATING_TITLES[field] || tx("Rating");
     $("#rating-sheet-title").textContent = recipe.title;
     const actions = $("#rating-sheet-actions");
     actions.innerHTML = "";
@@ -1616,7 +1860,7 @@
           closeModal(overlay);
           const ok = await patchRating(recipe.id, { [field]: opt });
           if (ok) applyRating(recipe, field, opt, btn, icon, compactRatingLabel);
-          else announceError("Could not save rating.");
+          else announceError(tx("Could not save rating."));
         },
       }));
     }
@@ -1626,12 +1870,12 @@
     if (recipe[field] != null) {
       actions.appendChild(el("button", {
         type: "button", class: "rating-clear",
-        text: "Clear rating",
+        text: tx("Clear rating"),
         onclick: async () => {
           closeModal(overlay);
           const ok = await patchRating(recipe.id, { [field]: null });
           if (ok) applyRating(recipe, field, null, btn, icon, compactRatingLabel);
-          else announceError("Could not clear rating.");
+          else announceError(tx("Could not clear rating."));
         },
       }));
     }
@@ -1646,8 +1890,8 @@
       type: "button", "data-has-value": String(current != null),
       "aria-haspopup": "true", "aria-expanded": "false",
       text: current != null ? `${icon} ${label(current)}` : icon,
-      "aria-label": `Set ${field.replace(/_/g, " ")}`,
-      title: current != null ? `${field.replace(/_/g, " ")}: ${current}` : null,
+      "aria-label": tx("Set {1}", { 1: RATING_FIELD_NAMES[field]().toLowerCase() }),
+      title: current != null ? `${RATING_FIELD_NAMES[field]()}: ${typeof current === "number" ? current : valueLabel(current)}` : null,
     });
 
     if (!inline) {
@@ -1678,7 +1922,7 @@
           btn.setAttribute("aria-expanded", "false");
           const ok = await patchRating(recipe.id, { [field]: opt });
           if (ok) applyRating(recipe, field, opt, btn, icon, shortLabel);
-          else announceError("Could not save rating.");
+          else announceError(tx("Could not save rating."));
         },
       }));
     }
@@ -1695,7 +1939,7 @@
     const favBtn = el("button", {
       type: "button", class: "favorite-btn",
       "aria-pressed": String(!!recipe.favorite),
-      "aria-label": recipe.favorite ? "Remove from favorites" : "Add to favorites",
+      "aria-label": recipe.favorite ? tx("Remove from favorites") : tx("Add to favorites"),
       text: recipe.favorite ? "\u2665" : "\u2661",
       onclick: async () => {
         const newVal = !recipe.favorite;
@@ -1710,8 +1954,8 @@
     wrap.appendChild(favBtn);
 
     wrap.appendChild(ratingPopoverControl(recipe, "tastiness_rating", "\u2b50", [1, 2, 3, 4, 5], (v) => String(v), inline));
-    wrap.appendChild(ratingPopoverControl(recipe, "cook_time_rating", "\u23f1", ["quick", "moderate", "long"], (v) => v.charAt(0).toUpperCase() + v.slice(1), inline));
-    wrap.appendChild(ratingPopoverControl(recipe, "difficulty_rating", "\ud83c\udf9a", ["easy", "medium", "hard"], (v) => v.charAt(0).toUpperCase() + v.slice(1), inline));
+    wrap.appendChild(ratingPopoverControl(recipe, "cook_time_rating", "\u23f1", ["quick", "moderate", "long"], valueLabel, inline));
+    wrap.appendChild(ratingPopoverControl(recipe, "difficulty_rating", "\ud83c\udf9a", ["easy", "medium", "hard"], valueLabel, inline));
 
     // Icon-only share, pushed to the far end of the row so it sits opposite
     // the ratings. Only on list cards -- the detail page has its own
@@ -1720,8 +1964,8 @@
     if (!inline) {
       wrap.appendChild(el("button", {
         type: "button", class: "card-share-btn",
-        "aria-label": `Share ${recipe.title}`,
-        title: "Share",
+        "aria-label": tx("Share {1}", { 1: recipe.title }),
+        title: tx("Share"),
         trustedStaticHtml: SHARE_ICON_SVG,
         onclick: (e) => { e.preventDefault(); e.stopPropagation(); openShareSheet(recipe); },
       }));
@@ -1765,7 +2009,7 @@
     if (state.selectMode) {
       const checkboxAttrs = {
         type: "checkbox", class: "card-select-box",
-        "aria-label": `Select ${recipe.title}`,
+        "aria-label": tx("Select {1}", { 1: recipe.title }),
         onclick: (e) => { e.stopPropagation(); e.preventDefault(); toggleSelect(recipe.id); },
       };
       if (isSelected) checkboxAttrs.checked = "";
@@ -1780,7 +2024,11 @@
     // sized for touch without ever colliding with text again.
     const matched = matchedViaBadge(recipe);
     card.appendChild(el("div", { class: "recipe-card-body" }, [
-      el("h3", { class: "recipe-card-title recipe-title", text: recipe.title }),
+      el("h3", { class: "recipe-card-title recipe-title" }, [
+        document.createTextNode(recipe.title),
+        recipe.has_notes ? el("span", { class: "card-notes-icon", role: "img", "aria-label": tx("Has notes"),
+          title: tx("Has notes"), trustedStaticHtml: NOTE_ICON_SVG }) : null,
+      ]),
       matched ? el("div", { class: "card-matched-row" }, [matched]) : null,
       state.selectMode ? null : cardQuickControls(recipe),
     ]));
@@ -1793,7 +2041,7 @@
     $$(".recipe-grid").forEach((g) => g.dataset && (g.dataset.selectMode = String(state.selectMode)));
 
     if (!recipes.length) {
-      region.appendChild(el("div", { class: "empty-state", text: "No recipes match. Tap + to add one, or adjust your filters." }));
+      region.appendChild(el("div", { class: "empty-state", text: tx("No recipes match. Tap + to add one, or adjust your filters.") }));
       return;
     }
 
@@ -1820,16 +2068,16 @@
     const mainBuckets = [...buckets.values()].filter((b) => !b.tag.subgroup && b.recipes.length);
     const subBuckets = [...buckets.values()].filter((b) => b.tag.subgroup && b.recipes.length);
 
-    for (const b of mainBuckets) region.appendChild(groupSection(b.tag.name, b.recipes));
+    for (const b of mainBuckets) region.appendChild(groupSection(tagLabel(b.tag), b.recipes));
 
     if (subBuckets.length) {
       const subWrap = el("div", { class: "group-section" });
-      subWrap.appendChild(el("h2", { text: "Cocktail Prep" }));
-      for (const b of subBuckets) subWrap.appendChild(groupSection(b.tag.name, b.recipes));
+      subWrap.appendChild(el("h2", { text: tx("Cocktail Prep") }));
+      for (const b of subBuckets) subWrap.appendChild(groupSection(tagLabel(b.tag), b.recipes));
       region.appendChild(subWrap);
     }
 
-    if (uncategorized.length) region.appendChild(groupSection("Uncategorized", uncategorized));
+    if (uncategorized.length) region.appendChild(groupSection(tx("Uncategorized"), uncategorized));
   }
 
   function groupSection(title, recipes) {
@@ -1850,11 +2098,11 @@
         [initD, initH, initM] = parts.map(String);
       }
     }
-    const days = el("input", { type: "number", min: "0", id: `${prefix}-days`, "aria-label": "Days", value: initD, placeholder: "0" });
-    const hours = el("input", { type: "number", min: "0", max: "23", id: `${prefix}-hours`, "aria-label": "Hours", value: initH, placeholder: "0" });
-    const minutes = el("input", { type: "number", min: "0", max: "59", id: `${prefix}-minutes`, "aria-label": "Minutes", value: initM, placeholder: "0" });
+    const days = el("input", { type: "number", min: "0", id: `${prefix}-days`, "aria-label": tx("Days"), value: initD, placeholder: "0" });
+    const hours = el("input", { type: "number", min: "0", max: "23", id: `${prefix}-hours`, "aria-label": tx("Hours"), value: initH, placeholder: "0" });
+    const minutes = el("input", { type: "number", min: "0", max: "59", id: `${prefix}-minutes`, "aria-label": tx("Minutes"), value: initM, placeholder: "0" });
     const wrap = el("div", { class: "duration-input" }, [
-      days, el("span", { text: "d" }), hours, el("span", { text: "h" }), minutes, el("span", { text: "m" }),
+      days, el("span", { text: tx("d") }), hours, el("span", { text: tx("h") }), minutes, el("span", { text: tx("m") }),
     ]);
     return {
       element: wrap,
@@ -1885,7 +2133,7 @@
 
   async function openRecipeDetail(id) {
     const res = await fetch(`${API}/recipes/${id}`);
-    if (!res.ok) { announceError("Could not load recipe."); return; }
+    if (!res.ok) { announceError(tx("Could not load recipe.")); return; }
     const recipe = await res.json();
     renderRecipeDetail(recipe);
     openModal(detailOverlay);
@@ -1912,16 +2160,16 @@
       const on = wakeLockActive();
       btn.setAttribute("aria-pressed", String(on));
       btn.setAttribute("data-active", String(on));
-      btn.textContent = on ? "\u2600\ufe0e Screen staying on" : "\u2600\ufe0e Keep screen on";
+      btn.textContent = "\u2600\ufe0e " + (on ? tx("Screen staying on") : tx("Keep screen on"));
       btn.setAttribute("aria-label", on
-        ? "Screen is being kept awake. Tap to allow it to sleep."
-        : "Keep the screen awake while reading this recipe.");
+        ? tx("Screen is being kept awake. Tap to allow it to sleep.")
+        : tx("Keep the screen awake while reading this recipe."));
     }
 
     btn.addEventListener("click", async () => {
       await setWakeLockWanted(!wakeLockActive());
       if (wakeLockWanted && !wakeLockActive()) {
-        announce("The browser wouldn't keep the screen awake \u2014 it may be blocked on low battery.");
+        announce(tx("The browser wouldn't keep the screen awake \u2014 it may be blocked on low battery."));
       }
     });
 
@@ -1935,7 +2183,7 @@
 
     const textarea = el("textarea", {
       id: `notes-textarea-${recipe.id}`,
-      placeholder: "Substitutions, timing tweaks, how it turned out...",
+      placeholder: tx("Substitutions, timing tweaks, how it turned out..."),
       style: "min-height:6rem;",
     });
     textarea.value = recipe.notes || "";
@@ -1946,8 +2194,8 @@
       class: "btn-secondary notes-toggle-btn", type: "button",
       "data-has-notes": String(hasNotes()),
       "aria-expanded": "false",
-      "aria-label": hasNotes() ? "View or edit notes" : "Add notes",
-      text: hasNotes() ? "\ud83d\udcdd Notes" : "\ud83d\udcdd Add notes",
+      "aria-label": hasNotes() ? tx("View or edit notes") : tx("Add notes"),
+      text: "\ud83d\udcdd " + (hasNotes() ? tx("Notes") : tx("Add notes")),
       onclick: () => {
         const willOpen = editorWrap.hidden;
         editorWrap.hidden = !willOpen;
@@ -1958,12 +2206,12 @@
 
     const syncButtonState = () => {
       toggleBtn.setAttribute("data-has-notes", String(hasNotes()));
-      toggleBtn.textContent = hasNotes() ? "\ud83d\udcdd Notes" : "\ud83d\udcdd Add notes";
-      toggleBtn.setAttribute("aria-label", hasNotes() ? "View or edit notes" : "Add notes");
+      toggleBtn.textContent = "\ud83d\udcdd " + (hasNotes() ? tx("Notes") : tx("Add notes"));
+      toggleBtn.setAttribute("aria-label", hasNotes() ? tx("View or edit notes") : tx("Add notes"));
     };
 
     const saveBtn = el("button", {
-      class: "btn-primary", type: "button", text: "Save notes",
+      class: "btn-primary", type: "button", text: tx("Save notes"),
       onclick: async () => {
         const newNotes = textarea.value.trim();
         const ok = await patchNotes(recipe.id, newNotes);
@@ -1972,15 +2220,15 @@
           syncButtonState();
           editorWrap.hidden = true;
           toggleBtn.setAttribute("aria-expanded", "false");
-          announce("Notes saved.");
+          announce(tx("Notes saved."));
         } else {
-          announceError("Could not save notes.");
+          announceError(tx("Could not save notes."));
         }
       },
     });
 
     const cancelBtn = el("button", {
-      class: "btn-secondary", type: "button", text: "Cancel",
+      class: "btn-secondary", type: "button", text: tx("Cancel"),
       onclick: () => {
         textarea.value = recipe.notes || "";
         editorWrap.hidden = true;
@@ -1989,7 +2237,7 @@
     });
 
     editorWrap.appendChild(el("div", { class: "field" }, [
-      el("label", { for: `notes-textarea-${recipe.id}`, text: "Notes" }),
+      el("label", { for: `notes-textarea-${recipe.id}`, text: tx("Notes") }),
       textarea,
       el("div", { style: "display:flex;gap:0.5rem;margin-top:0.5rem;" }, [saveBtn, cancelBtn]),
     ]));
@@ -2012,10 +2260,10 @@
       const fileInput = el("input", { type: "file", accept: "image/*", style: "display:none;" });
       fileInput.addEventListener("change", async () => {
         if (!fileInput.files.length) return;
-        announce("Uploading photo...");
+        announce(tx("Uploading photo..."));
         const fd = new FormData(); fd.append("file", fileInput.files[0]);
         const upRes = await fetch(`${API}/upload-image`, { method: "POST", body: fd });
-        if (!upRes.ok) { announceError("Could not upload photo."); return; }
+        if (!upRes.ok) { announceError(tx("Could not upload photo.")); return; }
         const { stored_file } = await upRes.json();
         const patchRes = await fetch(`${API}/recipes/${recipe.id}/image`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -2023,38 +2271,38 @@
         });
         if (patchRes.ok) {
           recipe.image_path = (await patchRes.json()).image_path;
-          announce("Photo updated.");
+          announce(tx("Photo updated."));
           render();
           loadRecipes();  // keep the list thumbnail in sync
         } else {
           fetch(`${API}/ingest/draft/${encodeURIComponent(stored_file)}`, { method: "DELETE" }).catch(() => {});
-          announceError("Could not save photo.");
+          announceError(tx("Could not save photo."));
         }
       });
 
       const changeBtn = el("button", {
         class: "btn-secondary", type: "button",
-        text: recipe.image_path ? "Change photo" : "Add photo",
+        text: recipe.image_path ? tx("Change photo") : tx("Add photo"),
         onclick: () => fileInput.click(),
       });
 
       const controls = [changeBtn, fileInput];
       if (recipe.image_path) {
         controls.push(el("button", {
-          class: "btn-secondary", type: "button", text: "Remove photo",
+          class: "btn-secondary", type: "button", text: tx("Remove photo"),
           onclick: async () => {
-            if (!confirm("Remove this recipe's photo?")) return;
+            if (!confirm(tx("Remove this recipe's photo?"))) return;
             const res = await fetch(`${API}/recipes/${recipe.id}/image`, {
               method: "PATCH", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ image_path: null }),
             });
             if (res.ok) {
               recipe.image_path = null;
-              announce("Photo removed.");
+              announce(tx("Photo removed."));
               render();
               loadRecipes();
             } else {
-              announceError("Could not remove photo.");
+              announceError(tx("Could not remove photo."));
             }
           },
         }));
@@ -2100,7 +2348,7 @@
 
     const tagsInput = el("input", {
       type: "text", id: "edit-tags",
-      value: recipe.tags.map((t) => t.name).join(", "),
+      value: recipe.tags.map((t) => tagLabel(t)).join(", "),
     });
     // Suggested tags keep the tagger's category (Oven is a cooking style),
     // not "custom", when saved -- including ones that don't exist yet.
@@ -2108,7 +2356,7 @@
     const currentTagNames = () => tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
     const suggestHint = el("div", { class: "field-hint", role: "status" });
     const suggestBtn = el("button", {
-      type: "button", class: "btn-secondary btn-small", text: "Suggest tags",
+      type: "button", class: "btn-secondary btn-small", text: tx("Suggest tags"),
       onclick: async () => {
         suggestBtn.disabled = true;
         try {
@@ -2122,13 +2370,13 @@
           });
           if (!res.ok) throw new Error(`error ${res.status}`);
           const found = await res.json();
-          found.forEach((t) => suggestedCats.set(t.name.toLowerCase(), t));
-          if (found.length) tagsInput.value = [...currentTagNames(), ...found.map((t) => t.name)].join(", ");
+          found.forEach((t) => suggestedCats.set(tagLabel(t).toLowerCase(), t));
+          if (found.length) tagsInput.value = [...currentTagNames(), ...found.map((t) => tagLabel(t))].join(", ");
           suggestHint.textContent = found.length
-            ? `Added ${found.map((t) => t.name).join(", ")}. Remove any that don't fit, then save.`
-            : "No new suggestions.";
+            ? tx("Added {1}. Remove any that don't fit, then save.", { 1: found.map((t) => tagLabel(t)).join(", ") })
+            : tx("No new suggestions.");
         } catch (e) {
-          suggestHint.textContent = `Couldn't get suggestions (${e.message}).`;
+          suggestHint.textContent = tx("Couldn't get suggestions ({1}).", { 1: e.message });
         }
         suggestBtn.disabled = false;
       },
@@ -2140,21 +2388,21 @@
     const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
 
     const saveBtn = el("button", {
-      class: "btn-primary", type: "button", text: "Save changes",
+      class: "btn-primary", type: "button", text: tx("Save changes"),
       onclick: async () => {
-        statusLine.textContent = "Saving...";
+        statusLine.textContent = tx("Saving...");
         const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
         const tagObjs = tagNames.map((name) => {
           const sug = suggestedCats.get(name.toLowerCase());
           if (sug) return { name: sug.name, category: sug.category, subgroup: sug.subgroup || null };
-          const known = state.allTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+          const known = findTagByLabel(name);
           return known
             ? { name: known.name, category: known.category, subgroup: known.subgroup }
             : { name, category: "custom", subgroup: null };
         });
 
         const payload = {
-          title: titleInput.value.trim() || "Untitled Recipe",
+          title: titleInput.value.trim() || tx("Untitled Recipe"),
           source_type: recipe.source_type,
           source_url: recipe.source_url || null,
           servings: servingsInput.value.trim() || null,
@@ -2181,7 +2429,7 @@
             method: "PUT", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          if (!res.ok) throw new Error("Could not save changes.");
+          if (!res.ok) throw new Error(tx("Could not save changes."));
           let updated = await res.json();
           if (includeScan.checked === !!recipe.autotag_ignored) {
             const r2 = await fetch(`${API}/recipes/${recipe.id}/autotag-ignore`, {
@@ -2189,9 +2437,9 @@
               body: JSON.stringify({ ignored: !includeScan.checked }),
             });
             if (r2.ok) updated = await r2.json();
-            else announceError("Saved, but the tag-scan setting couldn't be changed.");
+            else announceError(tx("Saved, but the tag-scan setting couldn't be changed."));
           }
-          announce("Recipe updated.");
+          announce(tx("Recipe updated."));
           renderRecipeDetail(updated);
           await loadTags();
           loadRecipes();
@@ -2202,32 +2450,32 @@
     });
 
     const cancelBtn = el("button", {
-      class: "btn-secondary", type: "button", text: "Cancel",
+      class: "btn-secondary", type: "button", text: tx("Cancel"),
       onclick: () => renderRecipeDetail(recipe),
     });
 
     const fields = el("div", {}, [
-      el("div", { class: "field" }, [el("label", { for: "edit-title", text: "Title" }), titleInput]),
+      el("div", { class: "field" }, [el("label", { for: "edit-title", text: tx("Title") }), titleInput]),
       el("div", { class: "field" }, [
-        el("label", { for: "edit-ingredients", text: "Ingredients (one per line)" }),
+        el("label", { for: "edit-ingredients", text: tx("Ingredients (one per line)") }),
         ingredientsArea,
       ]),
       el("div", { class: "field" }, [
-        el("label", { for: "edit-steps", text: "Steps (one per line)" }),
+        el("label", { for: "edit-steps", text: tx("Steps (one per line)") }),
         stepsArea,
       ]),
       el("div", { class: "field" }, [
-        el("label", { for: "edit-tags", text: "Tags (comma or semicolon separated)" }),
+        el("label", { for: "edit-tags", text: tx("Tags (comma or semicolon separated)") }),
         el("div", { class: "tags-with-button" }, [tagsInput, suggestBtn]),
         suggestHint,
         el("label", { class: "inline-check", for: "edit-autotag-include" }, [
-          includeScan, el("span", { text: "Include in Settings \u2192 Tags scans" }),
+          includeScan, el("span", { text: tx("Include in Settings \u2192 Tags scans") }),
         ]),
       ]),
-      el("div", { class: "field" }, [el("label", { for: "edit-servings", text: "Servings" }), servingsInput]),
-      el("div", { class: "field" }, [el("label", { for: "edit-prep", text: "Prep time" }), prepInput]),
-      el("div", { class: "field" }, [el("label", { for: "edit-cook", text: "Cook time" }), cookInput]),
-      el("div", { class: "field" }, [el("label", { for: "edit-total", text: "Total time" }), totalInput]),
+      el("div", { class: "field" }, [el("label", { for: "edit-servings", text: tx("Servings") }), servingsInput]),
+      el("div", { class: "field" }, [el("label", { for: "edit-prep", text: tx("Prep time") }), prepInput]),
+      el("div", { class: "field" }, [el("label", { for: "edit-cook", text: tx("Cook time") }), cookInput]),
+      el("div", { class: "field" }, [el("label", { for: "edit-total", text: tx("Total time") }), totalInput]),
     ]);
 
     // Raw source text as a read-only reference pane. For a low-confidence
@@ -2235,14 +2483,14 @@
     // parsed fields against what was actually extracted.
     const referencePane = recipe.raw_text
       ? el("div", {}, [
-          el("h4", { text: "Original extracted text (reference)" }),
+          el("h4", { text: tx("Original extracted text (reference)") }),
           el("div", { class: "review-raw", text: recipe.raw_text }),
-          el("div", { class: "field-hint", text: "Read-only. What the scraper or OCR actually produced." }),
+          el("div", { class: "field-hint", text: tx("Read-only. What the scraper or OCR actually produced.") }),
         ])
-      : el("div", { class: "field-hint", text: "No original extracted text stored for this recipe." });
+      : el("div", { class: "field-hint", text: tx("No original extracted text stored for this recipe.") });
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
-      el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: "Edit recipe" }),
+      el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: tx("Edit recipe") }),
       confidenceBadge(recipe),
       el("div", { class: "review-columns", style: "margin-top:0.75rem;" }, [referencePane, fields]),
       el("div", { style: "display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;" }, [saveBtn, cancelBtn]),
@@ -2259,10 +2507,10 @@
 
     const duration = makeDurationInput(`detail-time-${recipe.id}`, recipe.actual_cook_time);
     const timeSaveBtn = el("button", {
-      class: "btn-secondary", type: "button", text: "Save time",
+      class: "btn-secondary", type: "button", text: tx("Save time"),
       onclick: async () => {
         const ok = await patchRating(recipe.id, { actual_cook_time: duration.getValue() || "" });
-        if (ok) { announce("Cook time updated."); await loadTimeBuckets(); }
+        if (ok) { announce(tx("Cook time updated.")); await loadTimeBuckets(); }
       },
     });
 
@@ -2278,25 +2526,25 @@
       ]),
       showcaseImageSection(recipe),
       el("div", { class: "recipe-meta" }, [
-        recipe.servings ? el("span", { text: `Servings: ${recipe.servings}` }) : null,
-        recipe.prep_time ? el("span", { text: `Prep: ${recipe.prep_time}` }) : null,
-        recipe.cook_time ? el("span", { text: `Cook: ${recipe.cook_time}` }) : null,
-        recipe.total_time ? el("span", { text: `Total: ${recipe.total_time}` }) : null,
+        recipe.servings ? el("span", { text: tx("Servings: {1}", { 1: recipe.servings }) }) : null,
+        recipe.prep_time ? el("span", { text: tx("Prep: {1}", { 1: recipe.prep_time }) }) : null,
+        recipe.cook_time ? el("span", { text: tx("Cook: {1}", { 1: recipe.cook_time }) }) : null,
+        recipe.total_time ? el("span", { text: tx("Total: {1}", { 1: recipe.total_time }) }) : null,
       ]),
       cardQuickControls(recipe, true),
       el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;" }, [
         wakeLockToggle(),
       ]),
       el("div", { class: "field" }, [
-        el("label", { text: "Real-world cook time" }),
+        el("label", { text: tx("Real-world cook time") }),
         el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
       ]),
       notesSection(recipe),
-      el("h2", { text: "Ingredients" }),
+      el("h2", { text: tx("Ingredients") }),
       el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
         el("li", { text: ingredientText(i) })
       )),
-      el("h2", { text: "Instructions" }),
+      el("h2", { text: tx("Instructions") }),
       el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
       // Edit and Delete are grouped at the foot of the recipe: both are
       // operations on the record rather than part of reading it, and Edit
@@ -2305,11 +2553,11 @@
       // btn-danger so the pair don't look like two equivalent safe actions.
       el("div", { class: "recipe-record-actions" }, [
         el("button", {
-          class: "btn-secondary", type: "button", text: "✎ Edit recipe",
+          class: "btn-secondary", type: "button", text: tx("✎ Edit recipe"),
           onclick: () => renderRecipeEditForm(recipe),
         }),
         el("button", {
-          class: "btn-secondary btn-danger", type: "button", text: "Delete recipe",
+          class: "btn-secondary btn-danger", type: "button", text: tx("Delete recipe"),
           onclick: (e) => deleteRecipe(recipe.id, e.currentTarget),
         }),
       ]),
@@ -2342,10 +2590,11 @@
       // Revoke late: Safari can still be reading the blob as the click is
       // handled, and revoking immediately produces an empty file.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-      announce("Download started.");
+      announce(tx("Download started."));
     } catch (err) {
-      announceError("Could not prepare the download; opening it instead.");
-      window.open(url, "_blank", "noopener");
+      announceError(tx("Could not prepare the download; opening it instead."));
+      // A plain navigation can't carry the X-App-Lang header.
+      window.open(`${url}${url.includes("?") ? "&" : "?"}lang=${LANG}`, "_blank", "noopener");
     }
   }
 
@@ -2383,11 +2632,12 @@
   }
 
   function formatBytes(n) {
-    if (!n) return "0 B";
-    const units = ["B", "KB", "MB", "GB"];
+    const units = LANG === "fr" ? ["o", "Ko", "Mo", "Go"] : ["B", "KB", "MB", "GB"];
+    if (!n) return `0 ${units[0]}`;
     let i = 0;
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
-    return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+    const num = n < 10 && i > 0 ? n.toFixed(1) : String(Math.round(n));
+    return `${LANG === "fr" ? num.replace(".", ",") : num}\u00a0${units[i]}`;
   }
 
   async function refreshBackupStats() {
@@ -2398,9 +2648,7 @@
       if (!res.ok) throw new Error(String(res.status));
       const d = await res.json();
       elStats.textContent =
-        `${d.recipe_count} recipe${d.recipe_count === 1 ? "" : "s"}, `
-        + `${d.upload_count} uploaded file${d.upload_count === 1 ? "" : "s"} `
-        + `(${formatBytes(d.database_bytes + d.upload_bytes)} total).`;
+        tx("{1} recipe(s), {2} uploaded file(s) ({3} total).", { 1: d.recipe_count, 2: d.upload_count, 3: formatBytes(d.database_bytes + d.upload_bytes) });
     } catch {
       elStats.textContent = "";
     }
@@ -2430,32 +2678,36 @@
   // a card in the list. onDone() closes whichever container invoked them.
   function shareActionButtons(recipe, onDone) {
     return [
-      el("button", { type: "button", text: "Print", onclick: () => { onDone(); window.print(); } }),
+      el("button", { type: "button", text: tx("Print"), onclick: () => { onDone(); window.print(); } }),
       el("button", {
-        type: "button", text: "Download PDF",
+        type: "button", text: tx("Download PDF"),
         onclick: () => {
           onDone();
-          const includeNotes = recipe.notes ? confirm("Include your notes in the PDF?") : false;
+          const includeNotes = recipe.notes ? confirm(tx("Include your notes in the PDF?")) : false;
           const url = `${API}/recipes/${recipe.id}/export.pdf${includeNotes ? "?include_notes=true" : ""}`;
           downloadExport(url, safeFilename(recipe.title, "pdf"));
         },
       }),
+      state.mail.canSend ? el("button", {
+        type: "button", text: tx("Email PDF"),
+        onclick: () => { onDone(); openEmailSheet(recipe); },
+      }) : null,
       el("button", {
-        type: "button", text: "Download HTML",
+        type: "button", text: tx("Download HTML"),
         onclick: () => {
           onDone();
           downloadExport(`${API}/recipes/${recipe.id}/export.html`, safeFilename(recipe.title, "html"));
         },
       }),
       el("button", {
-        type: "button", text: "Copy as text",
+        type: "button", text: tx("Copy as text"),
         onclick: async () => {
           onDone();
-          const text = `${recipe.title}\n\nIngredients:\n` +
+          const text = `${recipe.title}\n\n${tx("Ingredients:")}\n` +
             recipe.ingredients.map((i) => `- ${ingredientText(i)}`).join("\n") +
-            `\n\nInstructions:\n` + recipe.steps.map((s, idx) => `${idx + 1}. ${s.text}`).join("\n");
-          try { await navigator.clipboard.writeText(text); announce("Recipe copied as text."); }
-          catch { announceError("Could not copy to clipboard."); }
+            `\n\n${tx("Instructions:")}\n` + recipe.steps.map((s, idx) => `${idx + 1}. ${s.text}`).join("\n");
+          try { await navigator.clipboard.writeText(text); announce(tx("Recipe copied as text.")); }
+          catch { announceError(tx("Could not copy to clipboard.")); }
         },
       }),
     ];
@@ -2477,8 +2729,9 @@
       shareActionButtons(recipe, () => { menu.hidden = true; toggleBtn.setAttribute("aria-expanded", "false"); }));
     const toggleBtn = el("button", {
       class: "btn-secondary share-toggle", type: "button", "aria-haspopup": "true",
-      "aria-expanded": "false", "aria-label": "Share recipe",
-      trustedStaticHtml: `${SHARE_ICON_SVG}<span>Share</span>`,
+      "aria-expanded": "false", "aria-label": tx("Share recipe"),
+      // tx() output is a fixed catalog string, never recipe data.
+      trustedStaticHtml: `${SHARE_ICON_SVG}<span>${tx("Share")}</span>`,
       onclick: () => {
         const willOpen = menu.hidden;
         menu.hidden = !willOpen;
@@ -2512,36 +2765,36 @@
   /** Turns a failed request into something that says WHY, not just "failed". */
   function writeFailureMessage(result, subject) {
     if (result.timedOut) {
-      return `The server didn't respond within ${WRITE_TIMEOUT_MS / 1000} seconds. `
-        + `${subject} may or may not have gone through — the list has been refreshed so you can check.`;
+      return tx("The server didn't respond within {1} seconds. {2} may or may not have gone through — the list has been refreshed so you can check.",
+        { 1: WRITE_TIMEOUT_MS / 1000, 2: subject });
     }
-    if (result.networkError) return `Couldn't reach Open the Pantry. Check your connection and try again.`;
+    if (result.networkError) return tx("Couldn't reach Open the Pantry. Check your connection and try again.");
     switch (result.status) {
       case 401:
-      case 403: return "Not authorised — the API key is missing or wrong.";
-      case 404: return `${subject} was already gone. The list has been refreshed.`;
-      case 429: return "Too many requests just now. Wait a moment and try again.";
+      case 403: return tx("Not authorised — the API key is missing or wrong.");
+      case 404: return tx("{1} was already gone. The list has been refreshed.", { 1: subject });
+      case 429: return tx("Too many requests just now. Wait a moment and try again.");
       default:
         return result.status >= 500
-          ? `The server returned an error (${result.status}). Nothing was changed.`
-          : `That didn't work (status ${result.status}).`;
+          ? tx("The server returned an error ({1}). Nothing was changed.", { 1: result.status })
+          : tx("That didn't work (status {1}).", { 1: result.status });
     }
   }
 
   async function deleteRecipe(id, btn) {
-    if (!confirm("Delete this recipe? This cannot be undone.")) return;
+    if (!confirm(tx("Delete this recipe? This cannot be undone."))) return;
 
     // Guard against a double-fire, but deliberately do NOT touch the modal's
     // close button or the Escape handler: the modal now stays open until the
     // request resolves, so those are the only way out if this hangs.
-    if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
-    const restore = () => { if (btn) { btn.disabled = false; btn.textContent = "Delete recipe"; } };
+    if (btn) { btn.disabled = true; btn.textContent = tx("Deleting…"); }
+    const restore = () => { if (btn) { btn.disabled = false; btn.textContent = tx("Delete recipe"); } };
 
     const result = await fetchWithTimeout(`${API}/recipes/${id}`, { method: "DELETE" });
 
     if (result.ok) {
       closeModal(detailOverlay);
-      announce("Recipe deleted.");
+      announce(tx("Recipe deleted."));
       await loadTimeBuckets();
       loadRecipes();
       return;
@@ -2556,7 +2809,7 @@
       // "N recipes found", which would otherwise immediately overwrite the
       // explanation and leave the user with no idea what happened.
       await loadRecipes();
-      announceError(writeFailureMessage(result, "That recipe"));
+      announceError(writeFailureMessage(result, tx("That recipe")));
       return;
     }
 
@@ -2565,7 +2818,7 @@
     // the modal rather than claiming either result -- again announcing last.
     restore();
     if (result.timedOut) await loadRecipes();
-    announceError(writeFailureMessage(result, "The recipe"));
+    announceError(writeFailureMessage(result, tx("The recipe")));
   }
 
   // -------------------------------------------------------------------
@@ -2593,10 +2846,10 @@
   function showSourcePicker() {
     addBody.innerHTML = "";
     const picker = el("div", { class: "source-type-picker" }, [
-      el("button", { type: "button", text: "\ud83d\udd17 URL", onclick: showUrlForm }),
-      el("button", { type: "button", text: "\ud83d\udcc4 PDF", onclick: showPdfForm }),
-      el("button", { type: "button", text: "\ud83d\udcf7 Screenshot/Photo", onclick: showImageForm }),
-      el("button", { type: "button", text: "\u270d\ufe0f Manual/Handwritten", onclick: showManualForm }),
+      el("button", { type: "button", text: tx("\ud83d\udd17 URL"), onclick: showUrlForm }),
+      el("button", { type: "button", text: tx("\ud83d\udcc4 PDF"), onclick: showPdfForm }),
+      el("button", { type: "button", text: tx("\ud83d\udcf7 Screenshot/Photo"), onclick: showImageForm }),
+      el("button", { type: "button", text: tx("\u270d\ufe0f Manual/Handwritten"), onclick: showManualForm }),
     ]);
     addBody.appendChild(picker);
 
@@ -2606,7 +2859,7 @@
       if (!settings || !settings.enabled || !picker.isConnected) return;
       const status = el("p", { class: "field-hint scan-status", role: "status" });
       const btn = el("button", {
-        type: "button", text: "\ud83d\udce5 Check email inbox",
+        type: "button", text: tx("\ud83d\udce5 Check email inbox"),
         onclick: () => runInboxScan(status, btn),
       });
       picker.appendChild(btn);
@@ -2622,7 +2875,7 @@
     container.appendChild(list);
   }
 
-  function modeSwitchControl(onSingle, onBatch, labels = ["Single", "Batch"]) {
+  function modeSwitchControl(onSingle, onBatch, labels = [tx("Single"), tx("Batch")]) {
     const buttons = [
       el("button", { type: "button", "aria-pressed": "true", text: labels[0] }),
       el("button", { type: "button", "aria-pressed": "false", text: labels[1] }),
@@ -2642,39 +2895,39 @@
 
   function showUrlForm() {
     addBody.innerHTML = "";
-    addBody.appendChild(el("h3", { text: "Add from URL" }));
+    addBody.appendChild(el("h3", { text: tx("Add from URL") }));
     const formArea = el("div");
 
     function renderSingle() {
       formArea.innerHTML = "";
-      const input = el("input", { type: "url", id: "url-input", required: "", placeholder: "https://example.com/recipe" });
+      const input = el("input", { type: "url", id: "url-input", required: "", placeholder: tx("https://example.com/recipe") });
       formArea.appendChild(el("form", {
         onsubmit: async (e) => {
           e.preventDefault();
-          setBusy(true, "Fetching recipe...");
+          setBusy(true, tx("Fetching recipe..."));
           try {
             const res = await fetch(`${API}/ingest/url`, {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: input.value.trim() }),
             });
-            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Extraction failed."); }
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || tx("Extraction failed.")); }
             const draft = await res.json();
             trackDraftFile(draft.image_path);
             showReviewScreen(draft);
           } catch (err) {
-            alert(err.message + "\n\nYou can add this recipe manually instead.");
+            alert(err.message + "\n\n" + tx("You can add this recipe manually instead."));
             showSourcePicker();
           } finally { setBusy(false); }
         },
       }, [
-        el("div", { class: "field" }, [el("label", { for: "url-input", text: "Recipe URL" }), input]),
-        el("button", { class: "btn-primary", type: "submit", text: "Fetch recipe" }),
+        el("div", { class: "field" }, [el("label", { for: "url-input", text: tx("Recipe URL") }), input]),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Fetch recipe") }),
       ]));
     }
 
     function renderBatch() {
       formArea.innerHTML = "";
-      const textarea = el("textarea", { id: "url-batch-input", placeholder: "One URL per line", style: "min-height:8rem;" });
+      const textarea = el("textarea", { id: "url-batch-input", placeholder: tx("One URL per line"), style: "min-height:8rem;" });
       const resultsEl = el("div");
       formArea.appendChild(el("form", {
         onsubmit: async (e) => {
@@ -2682,31 +2935,31 @@
           const urls = textarea.value.split("\n").map((s) => s.trim()).filter(Boolean);
           if (!urls.length) return;
           if (urls.length > 50) {  // MAX_BATCH_URLS on the server
-            resultsEl.textContent = `That's ${urls.length} links; the limit is 50 per batch. Send the rest separately.`;
+            resultsEl.textContent = tx("That's {1} links; the limit is 50 per batch. Send the rest separately.", { 1: urls.length });
             return;
           }
-          setBusy(true, `Fetching ${urls.length} recipe(s)...`);
+          setBusy(true, tx("Fetching {1} recipe(s)...", { 1: urls.length }));
           try {
             const res = await fetch(`${API}/ingest/url/batch`, {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ urls }),
             });
             const result = await res.json();
-            if (!res.ok) { resultsEl.textContent = result.detail || `Batch import failed (error ${res.status}).`; return; }
+            if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
             renderBatchResults(resultsEl, result);
-            announce(`${result.succeeded.length} added, ${result.failed.length} failed.`);
+            announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
             await loadTags(); await loadTimeBuckets(); loadRecipes();
           } catch {
-            alert("Batch import failed.");
+            alert(tx("Batch import failed."));
           } finally { setBusy(false); }
         },
       }, [
         el("div", { class: "field" }, [
-          el("label", { for: "url-batch-input", text: "Recipe URLs (one per line)" }),
+          el("label", { for: "url-batch-input", text: tx("Recipe URLs (one per line)") }),
           textarea,
-          el("div", { class: "field-hint", text: "Each recipe is saved directly using auto-detected fields \u2014 open it afterward to correct anything." }),
+          el("div", { class: "field-hint", text: tx("Each recipe is saved directly using auto-detected fields \u2014 open it afterward to correct anything.") }),
         ]),
-        el("button", { class: "btn-primary", type: "submit", text: "Import all" }),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Import all") }),
         resultsEl,
       ]));
     }
@@ -2718,7 +2971,7 @@
 
   function showPdfForm() {
     addBody.innerHTML = "";
-    addBody.appendChild(el("h3", { text: "Add from PDF" }));
+    addBody.appendChild(el("h3", { text: tx("Add from PDF") }));
     const formArea = el("div");
 
     function renderSingle() {
@@ -2728,11 +2981,11 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (!input.files.length) return;
-          setBusy(true, "Reading PDF (this can take a moment for scanned pages)...");
+          setBusy(true, tx("Reading PDF (this can take a moment for scanned pages)..."));
           try {
             const fd = new FormData(); fd.append("file", input.files[0]);
             const res = await fetch(`${API}/ingest/pdf`, { method: "POST", body: fd });
-            if (!res.ok) throw new Error("Could not process PDF.");
+            if (!res.ok) throw new Error(tx("Could not process PDF."));
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
             trackDraftFile(draft.image_path);
@@ -2744,11 +2997,11 @@
         },
       }, [
         el("div", { class: "field" }, [
-          el("label", { for: "pdf-input", text: "PDF file" }),
+          el("label", { for: "pdf-input", text: tx("PDF file") }),
           input,
-          el("div", { class: "field-hint", text: "Text-based PDFs are read directly; scanned pages fall back to OCR automatically." }),
+          el("div", { class: "field-hint", text: tx("Text-based PDFs are read directly; scanned pages fall back to OCR automatically.") }),
         ]),
-        el("button", { class: "btn-primary", type: "submit", text: "Process PDF" }),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Process PDF") }),
       ]));
     }
 
@@ -2761,30 +3014,30 @@
           e.preventDefault();
           if (!input.files.length) return;
           if (input.files.length > 20) {  // MAX_BATCH_PDFS on the server
-            resultsEl.textContent = `That's ${input.files.length} PDFs; the limit is 20 per batch. Send the rest separately.`;
+            resultsEl.textContent = tx("That's {1} PDFs; the limit is 20 per batch. Send the rest separately.", { 1: input.files.length });
             return;
           }
-          setBusy(true, `Processing ${input.files.length} PDF(s)...`);
+          setBusy(true, tx("Processing {1} PDF(s)...", { 1: input.files.length }));
           try {
             const fd = new FormData();
             for (const f of input.files) fd.append("files", f);
             const res = await fetch(`${API}/ingest/pdf/batch`, { method: "POST", body: fd });
             const result = await res.json();
-            if (!res.ok) { resultsEl.textContent = result.detail || `Batch import failed (error ${res.status}).`; return; }
+            if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
             renderBatchResults(resultsEl, result);
-            announce(`${result.succeeded.length} added, ${result.failed.length} failed.`);
+            announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
             await loadTags(); await loadTimeBuckets(); loadRecipes();
           } catch {
-            alert("Batch import failed.");
+            alert(tx("Batch import failed."));
           } finally { setBusy(false); }
         },
       }, [
         el("div", { class: "field" }, [
-          el("label", { for: "pdf-batch-input", text: "PDF files" }),
+          el("label", { for: "pdf-batch-input", text: tx("PDF files") }),
           input,
-          el("div", { class: "field-hint", text: "Each is saved directly using auto-detected fields." }),
+          el("div", { class: "field-hint", text: tx("Each is saved directly using auto-detected fields.") }),
         ]),
-        el("button", { class: "btn-primary", type: "submit", text: "Import all" }),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Import all") }),
         resultsEl,
       ]));
     }
@@ -2796,7 +3049,7 @@
 
   function showImageForm() {
     addBody.innerHTML = "";
-    addBody.appendChild(el("h3", { text: "Add from screenshot / photo" }));
+    addBody.appendChild(el("h3", { text: tx("Add from screenshot / photo") }));
     const formArea = el("div");
 
     function renderSingle() {
@@ -2806,11 +3059,11 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (!input.files.length) return;
-          setBusy(true, "Reading image with OCR...");
+          setBusy(true, tx("Reading image with OCR..."));
           try {
             const fd = new FormData(); fd.append("file", input.files[0]);
             const res = await fetch(`${API}/ingest/image`, { method: "POST", body: fd });
-            if (!res.ok) throw new Error("Could not process image.");
+            if (!res.ok) throw new Error(tx("Could not process image."));
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
             showReviewScreen(draft);
@@ -2821,11 +3074,11 @@
         },
       }, [
         el("div", { class: "field" }, [
-          el("label", { for: "image-input", text: "Screenshot or photo" }),
+          el("label", { for: "image-input", text: tx("Screenshot or photo") }),
           input,
-          el("div", { class: "field-hint", text: "Best for rendered/screenshot text. Handwriting recognizes poorly \u2014 use Manual entry for handwritten cards instead." }),
+          el("div", { class: "field-hint", text: tx("Best for rendered/screenshot text. Handwriting recognizes poorly \u2014 use Manual entry for handwritten cards instead.") }),
         ]),
-        el("button", { class: "btn-primary", type: "submit", text: "Process image" }),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Process image") }),
       ]));
     }
 
@@ -2836,12 +3089,12 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (!input.files.length) return;
-          setBusy(true, `Reading ${input.files.length} image(s) with OCR...`);
+          setBusy(true, tx("Reading {1} image(s) with OCR...", { 1: input.files.length }));
           try {
             const fd = new FormData();
             for (const f of input.files) fd.append("files", f);
             const res = await fetch(`${API}/ingest/images`, { method: "POST", body: fd });
-            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || "Could not process images."); }
+            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || tx("Could not process images.")); }
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
             showReviewScreen(draft);
@@ -2852,21 +3105,21 @@
         },
       }, [
         el("div", { class: "field" }, [
-          el("label", { for: "image-combine-input", text: "Screenshots (select all, in reading order)" }),
+          el("label", { for: "image-combine-input", text: tx("Screenshots (select all, in reading order)") }),
           input,
-          el("div", { class: "field-hint", text: "For a recipe that spans multiple screenshots \u2014 each is read with OCR and combined into one recipe. Most file pickers preserve the order you select files in; the first image becomes the showcase photo (changeable afterward)." }),
+          el("div", { class: "field-hint", text: tx("For a recipe that spans multiple screenshots \u2014 each is read with OCR and combined into one recipe. Most file pickers preserve the order you select files in; the first image becomes the showcase photo (changeable afterward).") }),
         ]),
-        el("button", { class: "btn-primary", type: "submit", text: "Process & combine" }),
+        el("button", { class: "btn-primary", type: "submit", text: tx("Process & combine") }),
       ]));
     }
 
-    addBody.appendChild(modeSwitchControl(renderSingle, renderCombine, ["Single", "Combine multiple"]));
+    addBody.appendChild(modeSwitchControl(renderSingle, renderCombine, [tx("Single"), tx("Combine multiple")]));
     addBody.appendChild(formArea);
     renderSingle();
   }
 
   function setBusy(isBusy, msg) {
-    if (isBusy) announce(msg || "Working...");
+    if (isBusy) announce(msg || tx("Working..."));
     $$(".modal button, .modal input").forEach((n) => { n.disabled = isBusy; });
   }
 
@@ -2877,13 +3130,13 @@
   // -------------------------------------------------------------------
   function showReviewScreen(draft) {
     addBody.innerHTML = "";
-    addBody.appendChild(el("h3", { text: "Review & confirm" }));
+    addBody.appendChild(el("h3", { text: tx("Review & confirm") }));
 
     if (draft.ocr_confidence != null) {
       const tier = draft.ocr_confidence >= 80 ? "high" : draft.ocr_confidence >= 55 ? "med" : "low";
       const msg = tier === "low"
-        ? "OCR quality was low on this input \u2014 please check the fields carefully."
-        : `OCR confidence: ${Math.round(draft.ocr_confidence)}%`;
+        ? tx("OCR quality was low on this input \u2014 please check the fields carefully.")
+        : tx("OCR confidence: {1}%", { 1: Math.round(draft.ocr_confidence) });
       addBody.appendChild(el("div", { class: `badge badge-confidence-${tier}`, text: msg, style: "margin-bottom:0.75rem;display:inline-block;" }));
     }
 
@@ -2897,7 +3150,7 @@
 
     const tagsInput = el("input", {
       type: "text", id: "review-tags",
-      value: (draft.suggested_tags || []).map((t) => t.name).join(", "),
+      value: (draft.suggested_tags || []).map((t) => tagLabel(t)).join(", "),
     });
 
     const duration = makeDurationInput("review-time");
@@ -2907,13 +3160,13 @@
     function renderImagePreview() {
       imagePreviewWrap.innerHTML = "";
       if (!draft.image_path || !useImage) return;
-      imagePreviewWrap.appendChild(el("label", { text: "Showcase image (auto-detected)" }));
+      imagePreviewWrap.appendChild(el("label", { text: tx("Showcase image (auto-detected)") }));
       imagePreviewWrap.appendChild(el("img", {
         src: `/tmp-preview/${draft.image_path}`, alt: "",
         style: "max-width:100%;max-height:12rem;border-radius:var(--radius);display:block;margin-bottom:0.4rem;",
       }));
       imagePreviewWrap.appendChild(el("button", {
-        class: "btn-secondary", type: "button", text: "Don't use this image",
+        class: "btn-secondary", type: "button", text: tx("Don't use this image"),
         onclick: () => { useImage = false; renderImagePreview(); },
       }));
     }
@@ -2921,43 +3174,43 @@
 
     const columns = el("div", { class: "review-columns" }, [
       el("div", {}, [
-        el("h4", { text: "Extracted text (source)" }),
+        el("h4", { text: tx("Extracted text (source)") }),
         el("div", { class: "review-raw", text: draft.raw_text || "(no raw text captured)" }),
       ]),
       el("div", {}, [
-        el("div", { class: "field" }, [el("label", { for: "review-title", text: "Title" }), titleInput]),
+        el("div", { class: "field" }, [el("label", { for: "review-title", text: tx("Title") }), titleInput]),
         imagePreviewWrap,
         el("div", { class: "field" }, [
-          el("label", { for: "review-ingredients", text: "Ingredients (one per line)" }),
+          el("label", { for: "review-ingredients", text: tx("Ingredients (one per line)") }),
           ingredientsArea,
         ]),
         el("div", { class: "field" }, [
-          el("label", { for: "review-steps", text: "Steps (one per line)" }),
+          el("label", { for: "review-steps", text: tx("Steps (one per line)") }),
           stepsArea,
         ]),
         el("div", { class: "field" }, [
-          el("label", { for: "review-tags", text: "Tags (comma or semicolon separated)" }),
+          el("label", { for: "review-tags", text: tx("Tags (comma or semicolon separated)") }),
           tagsInput,
-          el("div", { class: "field-hint", text: "Auto-suggested from keywords \u2014 edit freely." }),
+          el("div", { class: "field-hint", text: tx("Auto-suggested from keywords \u2014 edit freely.") }),
         ]),
         el("div", { class: "field" }, [
-          el("label", { text: "Real-world cook time (optional)" }),
+          el("label", { text: tx("Real-world cook time (optional)") }),
           duration.element,
-          el("div", { class: "field-hint", text: "How long it actually took you \u2014 separate from any time listed by the source. Leave blank to skip." }),
+          el("div", { class: "field-hint", text: tx("How long it actually took you \u2014 separate from any time listed by the source. Leave blank to skip.") }),
         ]),
       ]),
     ]);
     addBody.appendChild(columns);
 
     const saveBtn = el("button", {
-      class: "btn-primary", type: "button", text: "Save recipe",
+      class: "btn-primary", type: "button", text: tx("Save recipe"),
       style: "margin-top:1rem;",
       onclick: async () => {
-        setBusy(true, "Saving recipe...");
+        setBusy(true, tx("Saving recipe..."));
         try {
           const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
           const tagObjs = tagNames.map((name) => {
-            const known = state.allTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+            const known = findTagByLabel(name);
             return known
               ? { name: known.name, category: known.category, subgroup: known.subgroup }
               : { name, category: "custom", subgroup: null };
@@ -2974,7 +3227,7 @@
           const imageRef = useImage ? (draft.image_path || null) : null;
 
           const payload = {
-            title: titleInput.value.trim() || "Untitled Recipe",
+            title: titleInput.value.trim() || tx("Untitled Recipe"),
             source_type: draft.source_type,
             source_url: draft.source_url || null,
             servings: draft.servings || null,
@@ -2995,7 +3248,7 @@
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          if (!res.ok) throw new Error("Could not save recipe.");
+          if (!res.ok) throw new Error(tx("Could not save recipe."));
 
           // Every tracked draft file for this session gets cleaned up
           // except whichever one actually became the recipe's image
@@ -3008,7 +3261,7 @@
           });
 
           closeModal(addOverlay);
-          announce("Recipe saved.");
+          announce(tx("Recipe saved."));
           await loadTags(); await loadTimeBuckets();
           loadRecipes();
         } catch (err) {
@@ -3025,19 +3278,19 @@
   // -------------------------------------------------------------------
   function showManualForm() {
     addBody.innerHTML = "";
-    addBody.appendChild(el("h3", { text: "Manual / handwritten entry" }));
+    addBody.appendChild(el("h3", { text: tx("Manual / handwritten entry") }));
 
     const titleInput = el("input", { type: "text", id: "manual-title", required: "" });
-    const ingredientsArea = el("textarea", { id: "manual-ingredients", placeholder: "One ingredient per line" });
-    const stepsArea = el("textarea", { id: "manual-steps", placeholder: "One step per line" });
-    const tagsInput = el("input", { type: "text", id: "manual-tags", placeholder: "e.g. dinner, stovetop, beef" });
+    const ingredientsArea = el("textarea", { id: "manual-ingredients", placeholder: tx("One ingredient per line") });
+    const stepsArea = el("textarea", { id: "manual-steps", placeholder: tx("One step per line") });
+    const tagsInput = el("input", { type: "text", id: "manual-tags", placeholder: tx("e.g. dinner, stovetop, beef") });
     const imageInput = el("input", { type: "file", id: "manual-image", accept: "image/*" });
     const duration = makeDurationInput("manual-time");
 
     const form = el("form", {
       onsubmit: async (e) => {
         e.preventDefault();
-        setBusy(true, "Saving recipe...");
+        setBusy(true, tx("Saving recipe..."));
         let storedFile = null;
         try {
           if (imageInput.files.length) {
@@ -3047,7 +3300,7 @@
               // Used to save the recipe without the photo and say nothing.
               const err = await upRes.json().catch(() => ({}));
               const why = typeof err.detail === "string" ? err.detail : `error ${upRes.status}`;
-              announceError(`The photo couldn't be uploaded (${why}). Nothing was saved; remove the photo or try another.`);
+              announceError(tx("The photo couldn't be uploaded ({1}). Nothing was saved; remove the photo or try another.", { 1: why }));
               return;
             }
             storedFile = (await upRes.json()).stored_file;
@@ -3055,14 +3308,14 @@
 
           const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
           const tagObjs = tagNames.map((name) => {
-            const known = state.allTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+            const known = findTagByLabel(name);
             return known
               ? { name: known.name, category: known.category, subgroup: known.subgroup }
               : { name, category: "custom", subgroup: null };
           });
 
           const payload = {
-            title: titleInput.value.trim() || "Untitled Recipe",
+            title: titleInput.value.trim() || tx("Untitled Recipe"),
             source_type: "manual",
             image_path: storedFile,
             actual_cook_time: duration.getValue(),
@@ -3075,9 +3328,9 @@
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          if (!res.ok) throw new Error("Could not save recipe.");
+          if (!res.ok) throw new Error(tx("Could not save recipe."));
           closeModal(addOverlay);
-          announce("Recipe saved.");
+          announce(tx("Recipe saved."));
           await loadTags(); await loadTimeBuckets();
           loadRecipes();
         } catch (err) {
@@ -3086,21 +3339,90 @@
         } finally { setBusy(false); }
       },
     }, [
-      el("div", { class: "field" }, [el("label", { for: "manual-title", text: "Title" }), titleInput]),
-      el("div", { class: "field" }, [el("label", { for: "manual-ingredients", text: "Ingredients (one per line)" }), ingredientsArea]),
-      el("div", { class: "field" }, [el("label", { for: "manual-steps", text: "Steps (one per line)" }), stepsArea]),
-      el("div", { class: "field" }, [el("label", { for: "manual-tags", text: "Tags (comma or semicolon separated)" }), tagsInput]),
+      el("div", { class: "field" }, [el("label", { for: "manual-title", text: tx("Title") }), titleInput]),
+      el("div", { class: "field" }, [el("label", { for: "manual-ingredients", text: tx("Ingredients (one per line)") }), ingredientsArea]),
+      el("div", { class: "field" }, [el("label", { for: "manual-steps", text: tx("Steps (one per line)") }), stepsArea]),
+      el("div", { class: "field" }, [el("label", { for: "manual-tags", text: tx("Tags (comma or semicolon separated)") }), tagsInput]),
       el("div", { class: "field" }, [
-        el("label", { text: "Real-world cook time (optional)" }),
+        el("label", { text: tx("Real-world cook time (optional)") }),
         duration.element,
       ]),
       el("div", { class: "field" }, [
-        el("label", { for: "manual-image", text: "Attach a photo of the card (optional)" }),
+        el("label", { for: "manual-image", text: tx("Attach a photo of the card (optional)") }),
         imageInput,
       ]),
-      el("button", { class: "btn-primary", type: "submit", text: "Save recipe" }),
+      el("button", { class: "btn-primary", type: "submit", text: tx("Save recipe") }),
     ]);
     addBody.appendChild(form);
+  }
+
+  // -------------------------------------------------------------------
+  // Pull to refresh (a home-screen app on iOS has none of its own)
+  // -------------------------------------------------------------------
+  // Pulling down from the top of the recipe list reloads the recipes and
+  // tags. If the server has a newer version of the app (GET /api/version
+  // fingerprints its files), the page reloads into it instead.
+  let loadedVersion = null;
+  fetch(`${API}/version`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null)
+    .then((v) => { loadedVersion = v && v.frontend; }).catch(() => {});
+
+  const PULL_TRIGGER = 70;   // px of pull needed to refresh
+  const pullEl = el("div", { class: "pull-indicator", "aria-hidden": "true" }, [el("span", {})]);
+  document.body.appendChild(pullEl);
+  let pullStartY = null, pullDist = 0, refreshing = false;
+
+  function pullAllowed() {
+    if (refreshing || window.scrollY > 0) return false;
+    if ($$(".modal-overlay").some((o) => !o.hidden)) return false;     // Settings, a recipe, add...
+    if (isDrawer() && sidebarOpen()) return false;                     // tag drawer
+    return true;
+  }
+  function setPullUI(dist, label) {
+    pullEl.style.transform = `translate(-50%, ${Math.min(dist, PULL_TRIGGER * 1.4) - 50}px)`;
+    pullEl.classList.toggle("visible", dist > 8);
+    pullEl.firstChild.textContent = label;
+  }
+  document.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || !pullAllowed()) { pullStartY = null; return; }
+    // Not from inside something that scrolls on its own.
+    if (e.target.closest(".modal, #sidebar, textarea, select")) { pullStartY = null; return; }
+    pullStartY = e.touches[0].clientY; pullDist = 0;
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    if (pullStartY == null) return;
+    pullDist = (e.touches[0].clientY - pullStartY) * 0.5;   // resistance
+    if (pullDist <= 0 || window.scrollY > 0) { pullDist = 0; setPullUI(0, ""); return; }
+    setPullUI(pullDist, pullDist >= PULL_TRIGGER ? tx("Release to refresh") : tx("Pull to refresh"));
+  }, { passive: true });
+  document.addEventListener("touchend", async () => {
+    if (pullStartY == null) return;
+    pullStartY = null;
+    if (pullDist < PULL_TRIGGER) { setPullUI(0, ""); return; }
+    await pullRefresh();
+  });
+
+  async function pullRefresh() {
+    refreshing = true;
+    setPullUI(PULL_TRIGGER, tx("Checking for updates…"));
+    pullEl.classList.add("busy");
+    try {
+      const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      if (reg) reg.update().catch(() => {});
+      const v = await fetch(`${API}/version`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (v && loadedVersion && v.frontend !== loadedVersion) {
+        setPullUI(PULL_TRIGGER, tx("Updating…"));
+        window.location.reload();
+        return;
+      }
+      await loadTags();
+      await loadTimeBuckets();
+      await loadRecipes();
+      announce(tx("Refreshed."));
+    } finally {
+      refreshing = false;
+      pullEl.classList.remove("busy");
+      setPullUI(0, "");
+    }
   }
 
   // -------------------------------------------------------------------
@@ -3111,6 +3433,7 @@
     await loadTags();
     await loadTimeBuckets();
     await loadRecipes();
+    await loadMailState();
   })();
 
   if ("serviceWorker" in navigator) {

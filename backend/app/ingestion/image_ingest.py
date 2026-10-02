@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 import pytesseract
 
-from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS  # reuse the same heuristic segmentation and pixel budget
+from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS, ocr_lang  # reuse the same heuristic segmentation and pixel budget
 from .deskew import deskew_grayscale, auto_orient
 from ..file_validation import JPEG_QUALITY
 from ..logging_setup import get_logger
@@ -69,10 +69,10 @@ def ingest_image(image_path: str) -> ImageIngestResult:
     processed, rotated = _preprocess(image_path)
     if rotated:
         _rotate_stored_file(image_path, rotated)
-    text = pytesseract.image_to_string(processed)
+    text = pytesseract.image_to_string(processed, lang=ocr_lang())
 
     try:
-        data = pytesseract.image_to_data(processed, output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT)
         confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
         avg_conf = sum(confidences) / len(confidences) if confidences else None
     except Exception:

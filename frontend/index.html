@@ -20,10 +20,11 @@
     id="sidebar-toggle"
     class="sidebar-toggle"
     type="button"
-    aria-label="Toggle category sidebar"
+    aria-label="Browse by tag"
+    title="Browse by tag"
     aria-expanded="true"
     aria-controls="sidebar">
-    &#9776;
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
   </button>
 
   <form class="search-form" role="search" id="search-form">
@@ -36,8 +37,6 @@
     <button type="submit" aria-label="Search">&#128269;</button>
   </form>
 
-  <div class="topbar-spacer"></div>
-
   <button
     id="settings-toggle"
     class="sidebar-toggle"
@@ -45,12 +44,17 @@
     aria-haspopup="dialog"
     aria-controls="settings-modal"
     aria-label="Settings">
-    &#9881;
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M10.3 2h3.4l.5 2.6a7.9 7.9 0 0 1 2 1.1l2.5-.9 1.7 2.9-2 1.8a8 8 0 0 1 0 2.3l2 1.8-1.7 2.9-2.5-.9a7.9 7.9 0 0 1-2 1.1L13.7 22h-3.4l-.5-2.6a7.9 7.9 0 0 1-2-1.1l-2.5.9-1.7-2.9 2-1.8a8 8 0 0 1 0-2.3l-2-1.8 1.7-2.9 2.5.9a7.9 7.9 0 0 1 2-1.1L10.3 2zM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z"/></svg>
   </button>
 </header>
 
 <div class="app-shell">
-  <nav id="sidebar" class="sidebar" aria-label="Recipe categories" data-collapsed="false">
+  <nav id="sidebar" class="sidebar" aria-labelledby="sidebar-heading" data-collapsed="false">
+    <!-- Says what the drawer is for: it's the tag browser, which ☰ alone doesn't. -->
+    <div class="sidebar-intro">
+      <h2 id="sidebar-heading" class="sidebar-heading">Browse by tag</h2>
+      <p class="field-hint">Tap tags to filter the list.</p>
+    </div>
     <div id="tag-tree"><!-- populated by app.js --></div>
   </nav>
 
@@ -180,6 +184,22 @@
   </div>
 </div>
 
+<!-- Email PDF: opened from Share, over a recipe or over the list. Placed
+     after the other overlays so it sits on top of the recipe it came from. -->
+<div class="modal-overlay" id="email-sheet-overlay" hidden>
+  <div
+    class="modal modal-sheet"
+    id="email-sheet-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="email-sheet-heading">
+    <button class="modal-close" id="email-sheet-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="email-sheet-heading">Email PDF</h2>
+    <p id="email-sheet-title" class="share-sheet-title"></p>
+    <div id="email-sheet-body"><!-- populated by app.js --></div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="modal-overlay" id="settings-overlay" hidden>
   <div
@@ -193,6 +213,14 @@
     <h2 id="settings-heading">Settings</h2>
 
     <div class="filter-section">
+      <div class="filter-section-title" id="language-setting-label">Language</div>
+      <div class="mode-switch" id="language-switch" role="group" aria-labelledby="language-setting-label">
+        <button type="button" data-lang-choice="en" lang="en">English</button>
+        <button type="button" data-lang-choice="fr" lang="fr">Français</button>
+      </div>
+    </div>
+
+    <div class="filter-section">
       <div class="filter-section-title" id="theme-setting-label">Theme</div>
       <div class="mode-switch" id="theme-switch" role="group" aria-labelledby="theme-setting-label">
         <button type="button" data-theme-choice="light">Light</button>
@@ -200,6 +228,18 @@
         <button type="button" data-theme-choice="system">System</button>
       </div>
       <div class="field-hint">Dark mode uses true black, not a gray substitute.</div>
+    </div>
+
+    <div class="filter-section" id="wakelock-setting" hidden>
+      <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
+      <label class="switch-row" for="wakelock-default">
+        <span>Keep screen awake when viewing a recipe</span>
+        <input type="checkbox" role="switch" id="wakelock-default" class="switch">
+      </label>
+      <div class="field-hint">
+        Applies automatically to every recipe you open. You can still toggle it
+        per recipe. Released when you close the recipe.
+      </div>
     </div>
 
     <div class="filter-section">
@@ -241,16 +281,16 @@
       </div>
     </div>
 
-    <div class="filter-section" id="wakelock-setting" hidden>
-      <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
-      <label class="switch-row" for="wakelock-default">
-        <span>Keep screen awake when viewing a recipe</span>
-        <input type="checkbox" role="switch" id="wakelock-default" class="switch">
-      </label>
+    <div class="filter-section">
+      <div class="filter-section-title">Email ingest</div>
+      <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
+        Configure email ingest
+      </button>
       <div class="field-hint">
-        Applies automatically to every recipe you open. You can still toggle it
-        per recipe. Released when you close the recipe.
+        Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
+        scans once daily.
       </div>
+      <div id="email-settings-panel" hidden></div>
     </div>
 
     <div class="filter-section">
@@ -317,23 +357,12 @@
         again and re-enter the password.</p>
       </details>
     </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">Email ingest</div>
-      <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
-        Configure email ingest
-      </button>
-      <div class="field-hint">
-        Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
-        scans once daily.
-      </div>
-      <div id="email-settings-panel" hidden></div>
-    </div>
   </div>
 </div>
 
 <div class="status-region" id="status-region" role="status" aria-live="polite"></div>
 
+<script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

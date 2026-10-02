@@ -1,8 +1,9 @@
-const CACHE_NAME = "open-the-pantry-shell-v34";
+const CACHE_NAME = "open-the-pantry-shell-v35";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
   "/css/styles.css",
+  "/js/i18n.js",
   "/js/app.js",
   "/manifest.json",
 ];
@@ -36,7 +37,7 @@ self.addEventListener("activate", (event) => {
 // API reads. It used to cache every GET -- including backup zips of
 // hundreds of MB, exports, error responses, and one entry per search URL,
 // none of it ever pruned until CACHE_NAME changed.
-const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/];
+const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/];
 function shouldCache(request, response) {
   if (!response || !response.ok || response.type !== "basic") return false;
   const url = new URL(request.url);
@@ -64,8 +65,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(event.request));
     return;
   }
+  // cache: "no-cache" makes the browser check with the server instead of
+  // answering from its own HTTP cache -- otherwise "network first" could
+  // still get yesterday's app.js. Photos are left to the normal cache:
+  // their names never change.
+  const url = new URL(event.request.url);
+  const revalidate = url.origin === self.location.origin && !url.pathname.startsWith("/uploads/");
   event.respondWith(
-    fetch(event.request)
+    (revalidate ? fetch(event.request, { cache: "no-cache" }) : fetch(event.request))
       .then((response) => {
         if (shouldCache(event.request, response)) {
           const copy = response.clone();

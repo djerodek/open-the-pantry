@@ -49,3 +49,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # Docker Hub's Overview doesn't follow the repository on its own. This
+      # copies DOCKERHUB.md into it on pushes to main. Docker Hub only accepts
+      # description updates from a token with the Read, Write, Delete scope;
+      # with a narrower DOCKERHUB_TOKEN this step fails by itself and the image
+      # above is still published (see README, "Publishing your own build").
+      - name: Update Docker Hub overview
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/open-the-pantry
+          readme-filepath: ./DOCKERHUB.md
+          short-description: "Self-hosted recipe manager PWA: URL, PDF, photo and email ingest; English/French."

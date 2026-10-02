@@ -172,13 +172,31 @@ def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
     return gray
 
 
+_ocr_lang_cache = None
+
+
+def ocr_lang() -> str:
+    """"eng+fra" when the French language data is installed (it is in the
+    Docker image), so accented French reads as French instead of being
+    guessed into English letters; "eng" otherwise."""
+    global _ocr_lang_cache
+    if _ocr_lang_cache is None:
+        try:
+            langs = set(pytesseract.get_languages(config=""))
+        except Exception:
+            log.debug("ocr_lang: couldn't list languages", exc_info=True)
+            langs = set()
+        _ocr_lang_cache = "eng+fra" if "fra" in langs else "eng"
+    return _ocr_lang_cache
+
+
 def _ocr_image(pil_image: Image.Image):
     processed = _preprocess_for_ocr(pil_image)
-    text = pytesseract.image_to_string(processed)
+    text = pytesseract.image_to_string(processed, lang=ocr_lang())
 
     # Per-word confidence average, used to drive the "OCR quality: low" badge.
     try:
-        data = pytesseract.image_to_data(processed, output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT)
         confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
         avg_conf = sum(confidences) / len(confidences) if confidences else None
     except Exception:
@@ -192,14 +210,18 @@ def _ocr_image(pil_image: Image.Image):
 # serving-size buttons ("Ingredients 1X 2X 3X") or a count, as grocery and
 # recipe apps show it ("Ingredients 13 total", "Method 2 steps"). Without
 # the count, a screenshot's steps were never found.
-_HEADING_COUNT = r"(?:\(?\d+\)?\s*(?:total|items?|steps?|ingredients?)?)?"
+# French too: "Ingrédients", "Préparation", "Étapes", "Méthode",
+# "Mode de préparation", "Marche à suivre" (accents optional: OCR drops them).
+_HEADING_COUNT = r"(?:\(?\d+\)?\s*(?:total|items?|steps?|ingredients?|[ée]tapes?|ingr[ée]dients?)?)?"
 HEADING_INGREDIENTS = re.compile(
-    r"^\s*ingredients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*" + _HEADING_COUNT + r"\s*$",
+    r"^\s*ingr[eé]dients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*" + _HEADING_COUNT + r"\s*$",
     re.IGNORECASE | re.MULTILINE
 )
 HEADING_STEPS = re.compile(
-    # (?!step N): "Step 1" is a step's label, not the section heading.
-    r"^(?!\s*step\s*\d)\s*(instructions?|directions?|method|steps?|preparation)\s*:?\s*" + _HEADING_COUNT + r"\s*$",
+    # (?!step N): "Step 1" / "Étape 1" is a step's label, not the section heading.
+    r"^(?!\s*(?:step|[ée]tape)\s*\d)\s*(instructions?|directions?|method|steps?|preparation|"
+    r"pr[ée]paration|[ée]tapes?|m[ée]thode|mode\s+de\s+pr[ée]paration|marche\s+[àa]\s+suivre|directives?)"
+    r"\s*:?\s*" + _HEADING_COUNT + r"\s*$",
     re.IGNORECASE | re.MULTILINE
 )
 NUMBERED_STEP = re.compile(r"^\s*\d+[\.\)]\s+")
@@ -211,9 +233,11 @@ QUANTITY_LEAD = re.compile(
 _QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
 # A step marker: "1." / "1)" / "1 " followed by a capital, or a bare number
 # on its own line (some recipe cards put the number in a separate column).
-_STEP_START = re.compile(r"^\s*(?:[Ss]tep\s*)?(\d{1,2})(?:[\.\):]\s*|\s+)(?=[A-Z])")
-# A step number alone on its line: "3", or an app's "Step 3" label.
-_BARE_NUMBER = re.compile(r"^\s*(?:step\s*)?\d{1,2}\s*:?\s*$", re.IGNORECASE)
+# Capital letters include accented ones: French steps start "Égoutter".
+_UPPER = "A-ZÀ-ÖØ-Þ"
+_STEP_START = re.compile(rf"^\s*(?:[Ss]tep\s*|[ÉéEe]tape\s*)?(\d{{1,2}})(?:[\.\):]\s*|\s+)(?=[{_UPPER}])")
+# A step number alone on its line: "3", or an app's "Step 3" / "Étape 3" label.
+_BARE_NUMBER = re.compile(r"^\s*(?:step\s*|[ée]tape\s*)?\d{1,2}\s*:?\s*$", re.IGNORECASE)
 
 # Lines that are page furniture, not recipe content. Printed web pages carry
 # the browser's date/time and "Page 1 of 3"; recipe cards carry serving-size
@@ -237,7 +261,10 @@ _JUNK_LINE = re.compile(
 _STEPS_END = re.compile(
     r"^\s*(notes?|recipe notes|nutrition(\s+information|\s+facts)?|video|equipment|"
     r"did you make this.*|course|cuisine|keyword|author|"
-    r"(ratings?|reviews?|comments?)(\s*\(\d+\))?|\d+\s+(ratings?|reviews?|comments?))\s*:?\s*$",
+    r"(ratings?|reviews?|comments?)(\s*\(\d+\))?|\d+\s+(ratings?|reviews?|comments?)|"
+    # French: "Notes" is the same word; "Valeur nutritive", "Commentaires (12)", "Avis".
+    r"valeurs?\s+nutritives?|informations?\s+nutritionnelles?|astuces?|conseils?|"
+    r"(commentaires?|avis|[ée]valuations?)(\s*\(\d+\))?)\s*:?\s*$",
     re.IGNORECASE,
 )
 _BYLINE = re.compile(r"^\s*by[:\s]", re.IGNORECASE)
@@ -253,7 +280,9 @@ def _looks_like_section_label(line: str) -> bool:
     inside an ingredient list, not an ingredient."""
     if _QTY_START.match(line) or len(line.split()) > 6:
         return False
-    return line.isupper() or line.rstrip().endswith(":") or line.lower().startswith("for the ")
+    low = line.lower()
+    return line.isupper() or line.rstrip().endswith(":") or low.startswith(("for the ", "pour la ", "pour le ",
+                                                                            "pour les ", "pour l'", "pour l\u2019"))
 
 
 def _clean_ingredients(lines):
@@ -381,24 +410,52 @@ def _normalize_line(line: str) -> str:
     line = _EMPHASIS_TIGHT.sub(r"\1 ", line)   # "*1.Cook:*Stops" -> "1.Cook: Stops"
     line = _EMPHASIS.sub(r"\1", line)
     # Tesseract's usual misread of "tbsp" (seen on a real screenshot).
-    line = re.sub(r"\bt[o0]sp\b", "tbsp", line)
+    line = re.sub(r"\bt[o0]sp\b", "tbsp", line, flags=re.IGNORECASE)
     return line.strip()
 
 
 # Leftovers of a step number drawn in a circle, as OCR reads it: "@ Add",
 # "9 Cover", "© Skim", "faa) Serve", "3) Return".
-_MARKER_GARBAGE = re.compile(r"^\s*(?:[^\w\s]{1,2}|\w{1,3}\)|\d{1,2}[\.\)]?)\s+(?=[A-Z])")
+_MARKER_GARBAGE = re.compile(rf"^\s*(?:[^\w\s]{{1,2}}|\w{{1,3}}\)|\d{{1,2}}[\.\)]?)\s+(?=[{_UPPER}])")
+
+# How a method line usually starts (English and French, accents folded).
+_STEP_VERBS = set("""
+add adjust arrange bake beat blend boil bring brown brush chill chop coat combine cook cool cover crush cut
+divide drain drizzle dust fill flip fold fry garnish grate grease grill heat knead lay let line lower marinate
+mash melt mix pat peel place pour preheat prepare press put reduce refrigerate remove return rinse roast roll
+rub season serve set shake simmer skim slice soak spoon spread sprinkle squeeze stir strain stuff taste
+thread toast top toss transfer trim turn wash whisk wipe wrap in once when while meanwhile then using make
+using bake saute sear steam
+ajouter arroser assaisonner badigeonner battre beurrer chauffer couper couvrir cuire decouper deposer
+dorer egoutter emincer enfourner etaler faire farcir fouetter garnir griller hacher incorporer laisser
+laver mariner melanger mettre mijoter napper parsemer peler petrir placer poivrer porter prechauffer
+preparer recouvrir reduire refroidir remettre remuer repartir reserver retirer rincer rouler saler
+saupoudrer servir tailler trancher transferer verser dans pendant entre-temps ensuite puis lorsque quand
+""".split())
+
+# Ingredient lines with no quantity that read like a sentence: "Salt and
+# pepper to taste", "Fresh herbs, for serving". They usually come straight
+# after the last measured ingredient, where one would become step 1.
+_INGREDIENT_TAIL = re.compile(
+    r"\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|"
+    r"au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin)\b", re.IGNORECASE)
 
 
 def _is_prose(line: str) -> bool:
-    """A line of method text rather than an ingredient: several words and
-    a verb-like start, or a sentence end. "2 large celery stalks" isn't;
-    "Cut the beef into 5cm/2" chunks. Pat dry" is."""
+    """A line of method text rather than an ingredient: several words that
+    end a sentence, or start with a cooking verb. "2 large celery stalks"
+    isn't; "Cut the beef into 5cm/2" chunks. Pat dry" is. A capital first
+    letter alone isn't enough: "Salt and pepper to taste" would count."""
     words = line.split()
-    if len(words) < 4:
+    if len(words) < 4 or _INGREDIENT_TAIL.search(line):
         return False
-    stripped = _MARKER_GARBAGE.sub("", line)
-    return bool(re.search(r"[.!?]\s*$", line)) or (bool(stripped) and stripped[0].isupper() and not _QTY_START.match(stripped))
+    stripped = _MARKER_GARBAGE.sub("", line).strip()
+    if not stripped or _QTY_START.match(stripped):
+        return False
+    import unicodedata
+    first = unicodedata.normalize("NFKD", stripped.split()[0].lower())
+    first = "".join(c for c in first if not unicodedata.combining(c)).strip(",.;:!")
+    return bool(re.search(r"[.!?]\s*$", line)) or first in _STEP_VERBS
 
 
 def _prose_steps(lines):
@@ -480,7 +537,9 @@ def segment_raw_text(raw_text: str) -> dict:
         prose = [k for k, l in enumerate(body) if _is_prose(l)]
         if qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:
             first = next(k for k in prose if k > qty[-1])
-            ingredients = [body[k] for k in qty if k < first]
+            # Everything from the first measured line up to the method,
+            # including unmeasured lines like "Salt and pepper to taste".
+            ingredients = body[qty[0]:first]
             steps = _prose_steps(body[first:])
         else:
             for line in body:

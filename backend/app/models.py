@@ -168,6 +168,14 @@ class EmailIngestSettings(Base):
     # the broken part, the notification email is exactly what can't arrive.
     last_problem = Column(Text, nullable=True)
     last_problem_at = Column(DateTime(timezone=True), nullable=True)
+    # Language for the notification emails ("en" or "fr"): the interface
+    # language of whoever last saved these settings. The daily scan has no
+    # request to take a language from.
+    language = Column(String, nullable=False, default="en")
+    # Addresses recipes were recently emailed to (Share -> Email PDF), most
+    # recent first, as a JSON list. Offered as suggestions in the send form
+    # and editable in Settings.
+    recent_recipients = Column(Text, nullable=False, default="[]")
 
 
 class EmailNotificationQueueItem(Base):
