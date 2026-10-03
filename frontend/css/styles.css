@@ -274,6 +274,14 @@ a { color: var(--color-focus); }
   cursor: pointer;
 }
 
+/* The search box and its button touch, so the usual focus ring (drawn 2px
+   outside the control) ran under the button on the box's right side, and
+   over the box on the button's left. Inside the edge here instead. */
+.search-form input[type="search"]:focus-visible,
+.search-form button:focus-visible {
+  outline-offset: -3px;
+}
+
 /* The spacer must not grow. With flex:1 on both it and .search-form, the two
    split the spare width evenly, and once .search-form had min-width:0 (see
    above) nothing held it at its natural width any more -- on a phone the
