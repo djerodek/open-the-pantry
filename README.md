@@ -1,5 +1,7 @@
 # Open the Pantry
 
+*English · [Français](README.fr.md)*
+
 Self-hosted, searchable recipe manager. Add recipes by URL, PDF, screenshot/photo,
 or manual entry; browse by meal type, cooking style, or main ingredient; filter
 and search; rate and favorite; print or export a clean, ad-free share card.
