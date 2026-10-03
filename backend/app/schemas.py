@@ -216,7 +216,7 @@ class RatingUpdate(BaseModel):
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
-    actual_cook_time: Optional[str] = None  # 'dd:hh:mm' or '' to clear
+    actual_cook_time: Optional[str] = None  # 'dd:hh:mm'; '' or null clears
     _check_cook_time = field_validator("actual_cook_time")(_validate_cook_time)
 
 

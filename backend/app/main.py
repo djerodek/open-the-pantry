@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict, deque
 from typing import Literal, Optional
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import anyio
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Request
 from fastapi.responses import Response, JSONResponse, FileResponse
@@ -711,6 +711,22 @@ def _delete_recipe_files(recipe: models.Recipe):
 # it is opt-in and disabled by default.
 # ---------------------------------------------------------------------------
 
+
+# Email scan/notification times are stored in UTC. SQLite keeps no time
+# zone, so they come back naive; _iso_utc() marks them as UTC on the way
+# out, and the browser shows them in its own time zone. (They used to be
+# container-local with no zone, which the browser read as its own local
+# time: hours off whenever the container's TZ wasn't the viewer's.) Only
+# the daily scan HOUR is container-local, on purpose: it's set by TZ.
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).isoformat()
+
 def _get_email_settings(db: Session) -> models.EmailIngestSettings:
     """Settings are a singleton row (id=1), created on first access with
     defaults so the rest of the code never has to handle 'not configured
@@ -742,7 +758,7 @@ def _record_scan_problem(db: Session, settings: models.EmailIngestSettings, text
     # The only writer, so the 1000-character cap here is the cap on what
     # Settings displays.
     settings.last_problem = text[:1000]
-    settings.last_problem_at = datetime.now()
+    settings.last_problem_at = _utc_now()
     db.commit()
 
 
@@ -764,7 +780,7 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
         return False
 
     if not force and settings.last_notification_sent_at and settings.cooldown_minutes:
-        elapsed = datetime.now(settings.last_notification_sent_at.tzinfo) - settings.last_notification_sent_at
+        elapsed = _utc_now() - settings.last_notification_sent_at.replace(tzinfo=None)
         if elapsed < timedelta(minutes=settings.cooldown_minutes):
             return False  # still cooling down; items stay queued for the next flush
 
@@ -818,7 +834,7 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
 
     for q in queued:
         db.delete(q)
-    settings.last_notification_sent_at = datetime.now()
+    settings.last_notification_sent_at = _utc_now()
     db.commit()
     return True
 
@@ -1017,7 +1033,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
             pass
 
-    settings.last_scan_at = datetime.now()
+    settings.last_scan_at = _utc_now()
     db.commit()
 
     sent = _flush_notifications(db, settings, force=force_notify)
@@ -1791,7 +1807,8 @@ def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = D
         recipe.cook_time_rating = payload.cook_time_rating
     if "difficulty_rating" in provided:
         recipe.difficulty_rating = payload.difficulty_rating
-    if payload.actual_cook_time is not None:
+    # Like the ratings: null or "" clears, absent leaves it alone.
+    if "actual_cook_time" in provided:
         recipe.actual_cook_time_minutes = ddhhmm_to_minutes(payload.actual_cook_time) if payload.actual_cook_time else None
 
     db.commit()
@@ -2092,9 +2109,9 @@ def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: 
         allowed_senders=settings.allowed_senders or "",
         daily_scan_hour=settings.daily_scan_hour,
         cooldown_minutes=settings.cooldown_minutes,
-        last_scan_at=settings.last_scan_at.isoformat() if settings.last_scan_at else None,
+        last_scan_at=_iso_utc(settings.last_scan_at),
         last_problem=settings.last_problem,
-        last_problem_at=settings.last_problem_at.isoformat() if settings.last_problem_at else None,
+        last_problem_at=_iso_utc(settings.last_problem_at),
         pending_notifications=_pending_notification_count(settings),
         encryption_configured=crypto.encryption_configured(),
         encryption_source=crypto.key_source(),

@@ -165,18 +165,29 @@
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
+  // localStorage throws instead of returning null when storage is blocked
+  // (some private-browsing modes, site data turned off). A preference that
+  // can't be read or saved just lasts for this page; it must never stop
+  // the app from starting.
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* lasts this page only */ }
+  }
+
   // -------------------------------------------------------------------
   // Text size control (persisted; scales the whole app via rem units)
   // -------------------------------------------------------------------
   const SIZE_STEPS = [14, 16, 18, 20, 22];
   function getSizeIndex() {
-    const stored = parseInt(localStorage.getItem("recipe-app-font-size-idx"), 10);
+    const stored = parseInt(storageGet("recipe-app-font-size-idx"), 10);
     return Number.isInteger(stored) && stored >= 0 && stored < SIZE_STEPS.length ? stored : 1;
   }
   function applySizeIndex(idx) {
     idx = Math.max(0, Math.min(SIZE_STEPS.length - 1, idx));
     document.documentElement.style.setProperty("--base-font-size", SIZE_STEPS[idx] + "px");
-    localStorage.setItem("recipe-app-font-size-idx", String(idx));
+    storageSet("recipe-app-font-size-idx", String(idx));
   }
   applySizeIndex(getSizeIndex());
   $("#text-size-decrease").addEventListener("click", () => applySizeIndex(getSizeIndex() - 1));
@@ -189,7 +200,7 @@
   // -------------------------------------------------------------------
   const THEME_META_COLOR = { light: "#C48A2E", dark: "#000000" };
   function getThemeChoice() {
-    const stored = localStorage.getItem("recipe-app-theme");
+    const stored = storageGet("recipe-app-theme");
     return ["light", "dark", "system"].includes(stored) ? stored : "system";
   }
   function systemPrefersDark() {
@@ -201,7 +212,7 @@
     } else {
       document.documentElement.setAttribute("data-theme", choice);
     }
-    localStorage.setItem("recipe-app-theme", choice);
+    storageSet("recipe-app-theme", choice);
     const effective = choice === "system" ? (systemPrefersDark() ? "dark" : "light") : choice;
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute("content", THEME_META_COLOR[effective]);
@@ -266,10 +277,10 @@
   const wakeLockListeners = new Set();  // UI callbacks notified when the actual state changes
 
   function getWakeLockDefault() {
-    return localStorage.getItem("recipe-app-wakelock-default") === "true";
+    return storageGet("recipe-app-wakelock-default") === "true";
   }
   function setWakeLockDefault(on) {
-    localStorage.setItem("recipe-app-wakelock-default", String(on));
+    storageSet("recipe-app-wakelock-default", String(on));
   }
   function wakeLockActive() {
     return wakeLockSentinel !== null;
@@ -1170,7 +1181,7 @@
     selectMode: false,
     selectedIds: new Set(),
     currentDraftFiles: new Set(),  // temp file(s) awaiting save/discard for the open add-recipe session
-    showThumbnails: localStorage.getItem("recipe-app-show-thumbnails") !== "false",  // default on
+    showThumbnails: storageGet("recipe-app-show-thumbnails") !== "false",  // default on
     // Which sidebar category groups are open. Default is ALL CLOSED: fully
     // expanded, the tree runs well past a phone screen. This has to live in
     // state rather than the DOM because renderSidebar() tears the tree down
@@ -1179,8 +1190,8 @@
     expandedGroups: loadExpandedGroups(),
     // Sort is persisted: it is a standing preference about how you like to
     // read your library, not a per-visit choice.
-    sort: localStorage.getItem("recipe-app-sort") || "created",
-    direction: localStorage.getItem("recipe-app-sort-dir") || "desc",
+    sort: storageGet("recipe-app-sort") || "created",
+    direction: storageGet("recipe-app-sort-dir") || "desc",
     // Share -> Email PDF: whether sending is set up, the From address, and
     // recent recipients. Read from the email settings at start-up.
     mail: { canSend: false, from: "", recent: [] },
@@ -2613,6 +2624,11 @@
     // not "custom", when saved -- including ones that don't exist yet.
     const suggestedCats = new Map();
     const currentTagNames = () => tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    // The field shows labels ("Bœuf" in French); the server knows stored
+    // names (Beef). Sent as stored names, so it can skip tags already there
+    // and hold back Vegetarian when a meat tag is present.
+    const currentStoredTagNames = () => currentTagNames().map((label) =>
+      (findTagByLabel(label) || suggestedCats.get(label.toLowerCase()) || { name: label }).name);
     const suggestHint = el("div", { class: "field-hint", role: "status" });
     const suggestBtn = el("button", {
       type: "button", class: "btn-secondary btn-small", text: tx("Suggest tags"),
@@ -2622,7 +2638,7 @@
           const res = await fetch(`${API}/tags/suggest`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              title: titleInput.value, current_tags: currentTagNames(),
+              title: titleInput.value, current_tags: currentStoredTagNames(),
               ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim()),
               steps: stepsArea.value.split("\n").filter((l) => l.trim()),
             }),

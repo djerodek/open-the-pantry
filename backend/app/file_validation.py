@@ -131,7 +131,8 @@ def reencode_image(path: str):
         clean.save(path, format=fmt, **save_kwargs)
 
 
-def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: str) -> str | None:
+def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: str,
+                                  max_bytes: int = MAX_UPLOAD_BYTES) -> str | None:
     """Shared core for saving image bytes from any source -- user upload,
     a URL-ingested page's thumbnail, a PDF's embedded image, or an emailed
     attachment -- through the same validation pipeline: magic-byte check
@@ -140,8 +141,11 @@ def validate_and_save_image_bytes(content: bytes, dest_dir: str, name_prefix: st
     isn't actual pixel data. Returns the stored filename, or None if the
     bytes don't validate as an image -- callers should treat a showcase
     image as optional and never let a failure here fail the whole
-    ingestion."""
-    if not content:
+    ingestion.
+
+    Enforces its own size cap rather than relying on each caller: an image
+    taken out of a PDF can be larger than the PDF that held it."""
+    if not content or len(content) > max_bytes:
         return None
     ext = detect_image_ext(content[:16])
     if ext is None:

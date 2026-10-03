@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v35";
+const CACHE_NAME = "open-the-pantry-shell-v36";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -37,7 +37,11 @@ self.addEventListener("activate", (event) => {
 // API reads. It used to cache every GET -- including backup zips of
 // hundreds of MB, exports, error responses, and one entry per search URL,
 // none of it ever pruned until CACHE_NAME changed.
-const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/];
+// Logs hold email subjects, senders and links, and a downloaded log would
+// otherwise sit in the Cache API; HTTPS status is live state with no use
+// offline.
+const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/,
+  /^\/api\/logs/, /^\/api\/https/];
 function shouldCache(request, response) {
   if (!response || !response.ok || response.type !== "basic") return false;
   const url = new URL(request.url);

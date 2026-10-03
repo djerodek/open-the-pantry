@@ -273,15 +273,45 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
             upload_names.append(name)
         else:
             missing.append(name)
-    if missing:
-        log.warning("Backup: %d referenced photo(s) not found in uploads/: %s", len(missing), missing[:20])
     on_disk = {n for n in os.listdir(UPLOADS_DIR) if os.path.isfile(os.path.join(UPLOADS_DIR, n))} \
         if os.path.isdir(UPLOADS_DIR) else set()
     unreferenced = len(on_disk - set(upload_names))
 
-    uploads_bytes = sum(os.path.getsize(os.path.join(UPLOADS_DIR, n)) for n in upload_names)
+    # ZIP_DEFLATED on a SQLite file is worth it (they compress well);
+    # already-compressed JPEGs and PDFs simply won't shrink much, which
+    # costs a little CPU and no correctness.
+    with zipfile.ZipFile(dest_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(tmp_db, "recipes.db")
+        # Deletes through the app wait on UPLOADS_LOCK, but a file removed
+        # outside the app between the check above and here is recorded as
+        # missing instead of failing the whole backup.
+        copied, uploads_bytes = [], 0
+        for name in upload_names:
+            path = os.path.join(UPLOADS_DIR, name)
+            try:
+                size = os.path.getsize(path)
+                zf.write(path, f"uploads/{name}")
+            except FileNotFoundError:
+                missing.append(name)
+                continue
+            copied.append(name)
+            uploads_bytes += size
+        upload_names = copied
+        if missing:
+            log.warning("Backup: %d referenced photo(s) not found in uploads/: %s", len(missing), missing[:20])
+        manifest = _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unreferenced)
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        # In the language of the request that asked for the backup.
+        if i18n.current_lang.get() == "fr":
+            zf.writestr("RESTAURER.txt", RESTORE_INSTRUCTIONS_FR)
+        else:
+            zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
 
-    manifest = {
+    return manifest
+
+
+def _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unreferenced) -> dict:
+    return {
         "application": "open-the-pantry",
         "backup_type": "database",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -293,22 +323,6 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
         "unreferenced_uploads_left_out": unreferenced,
         "restores_with": "voir RESTAURER.txt" if i18n.current_lang.get() == "fr" else "see RESTORE.txt",
     }
-
-    # ZIP_DEFLATED on a SQLite file is worth it (they compress well);
-    # already-compressed JPEGs and PDFs simply won't shrink much, which
-    # costs a little CPU and no correctness.
-    with zipfile.ZipFile(dest_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(tmp_db, "recipes.db")
-        for name in upload_names:
-            zf.write(os.path.join(UPLOADS_DIR, name), f"uploads/{name}")
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
-        # In the language of the request that asked for the backup.
-        if i18n.current_lang.get() == "fr":
-            zf.writestr("RESTAURER.txt", RESTORE_INSTRUCTIONS_FR)
-        else:
-            zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
-
-    return manifest
 
 
 def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) -> dict:
