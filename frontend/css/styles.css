@@ -1638,3 +1638,15 @@ html { touch-action: manipulation; }
   flex: 1; min-width: 0; padding: 0.5rem;
   border: 1px solid var(--color-border); border-radius: var(--radius);
 }
+
+/* Keep-screen-awake fallback on http:// pages (see app.js). It covers the
+   viewport behind all content rather than being a 1px dot: browsers pause
+   video that isn't on screen, and some only keep the display on for a
+   video of a reasonable size. Behind the page and almost fully
+   transparent, so it can't be seen or tapped. */
+.wake-video {
+  position: fixed; inset: 0;
+  width: 100vw; height: 100vh;
+  object-fit: cover;
+  opacity: 0.01; pointer-events: none; z-index: -1;
+}

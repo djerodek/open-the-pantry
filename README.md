@@ -103,6 +103,57 @@ To build from source instead of pulling the published image:
 docker compose -f docker-compose.build.yml up -d --build
 ```
 
+### Optional: HTTPS on your network
+
+Off by default; nothing changes unless you set it up. It gives the app an
+`https://` address with a real certificate, on your LAN and over your VPN,
+without exposing anything to the internet. Browsers then offer features
+they keep from plain `http://` pages -- for this app, the real "keep
+screen awake" (the app falls back to a workaround without it).
+
+You need a domain whose DNS host has an API that
+[lego](https://go-acme.github.io/lego/dns/) supports (cPanel, Cloudflare,
+OVH, Gandi and about 150 others). `docker-compose.https.yml` adds Traefik,
+which gets a Let's Encrypt certificate by creating a temporary DNS record
+through that API (the DNS-01 challenge), so nothing needs to be reachable
+from outside.
+
+1. **DNS record.** At your DNS host, add an `A` record for a name in your
+   domain, e.g. `pantry.example.com`, pointing at the LAN address of the
+   machine running the app (e.g. `192.168.1.20`). A private address is
+   fine; only devices on your network or VPN can use it. In cPanel: Domains
+   → Zone Editor → Manage → Add Record.
+2. **API token.** In cPanel: Security → Manage API Tokens → Create. Other
+   DNS hosts: see your provider's page in the lego list for what it needs.
+3. **Settings.** Put `docker-compose.https.yml` next to your
+   `docker-compose.yml`, copy `https.env.example` there as `.env`, and fill
+   it in: the name, your email for Let's Encrypt, the provider and its
+   credentials. `.env` holds an API token -- keep it private (`chmod 600
+   .env`).
+4. **Start it:** `docker compose up -d`. `.env` sets `COMPOSE_FILE`, so the
+   usual commands now include the HTTPS service. The first certificate
+   takes a minute or two (`docker logs open-the-pantry-https` shows
+   progress). Traefik renews it automatically.
+5. **Open** `https://pantry.example.com` (add `:8443` or whichever port
+   you chose if 443 was taken). On an iPhone, add it to the Home Screen
+   again from the new address: settings such as language and theme are
+   kept per address, so set them once more there.
+
+Notes:
+- If 443 is already in use on the machine (a NAS's own web interface often
+  is), set `PANTRY_HTTPS_PORT` in `.env`, e.g. `8443`.
+- Some routers block DNS answers that point at private addresses ("DNS
+  rebind protection"). If the name doesn't resolve at home, allow your
+  domain there or add the same name in the router's local DNS.
+- The name appears in public certificate logs, as every Let's Encrypt name
+  does; the private address it points to is useless from outside.
+- Traefik reads the Docker socket, read-only, to find the app's container,
+  and only routes to the one labelled for it.
+- The old `http://<address>:8090` keeps working. To allow only HTTPS,
+  remove the `ports:` entry from `docker-compose.yml`.
+- To turn it off: delete `COMPOSE_FILE` from `.env` (or the whole file),
+  then `docker compose up -d --remove-orphans`.
+
 ## What it does
 
 **Ingestion**
@@ -446,20 +497,24 @@ docker compose -f docker-compose.build.yml up -d --build
   kept pushing buttons off screen; text fields are at least 16px so iOS
   has no reason to zoom.
 - **Keep screen awake while reading a recipe** — useful when your hands are
-  busy and the phone is propped on the counter. Set it as a default for
-  every recipe in Settings, and/or toggle it per recipe from the detail
-  view. Released automatically when you close the recipe, and re-acquired
-  if you switch away and come back (browsers drop the lock when a tab is
-  backgrounded and don't restore it on their own). The control is hidden
-  entirely on browsers without Wake Lock support (currently Firefox;
-  works in Chrome/Edge/Android and Safari 16.4+), and reflects the real
-  lock state rather than what was requested — if the browser denies it
-  (low battery, OS policy), the toggle shows off rather than lying.
-  Browsers only allow it on a secure page: `https://`, or `localhost`.
-  Opened as `http://<NAS address>:8090` the browser doesn't offer it, so
-  the setting and the per-recipe toggle don't appear at all. Serving the
-  app over HTTPS (e.g. through a reverse proxy with a certificate) makes
-  them appear.
+  busy and the phone is propped on the counter. Optional: turn on Settings
+  → Screen → "Keep screen awake when viewing a recipe" once, and every
+  recipe you open keeps the screen on until you close it. Or leave it off
+  and tap "Keep screen on" on the recipes where you want it. Nothing else
+  to set up. It comes back on if you switch apps and return, and the
+  button shows the real state: if the phone refuses (Low Power Mode, for
+  example), it shows off.
+  - **Over `https://`** (or `localhost`) the app uses the browser's Screen
+    Wake Lock API: Chrome/Edge, Firefox 126+, Safari 16.4+, and iPhone
+    home-screen apps from iOS 18.4.
+  - **Over plain `http://`** (`http://<NAS address>:8090`) browsers don't
+    offer that API, so the app plays a tiny silent video behind the page
+    instead, muted and looping, because phones don't sleep while a video
+    plays. It's invisible, about 6 KB, and stops when the recipe closes.
+    It's a workaround: it uses slightly more battery than the real API,
+    and whether a given phone honours it can vary (see Known limitations).
+    For the real API, serve the app over HTTPS
+    -- see *Optional: HTTPS on your network*.
 - Semantic HTML, ARIA labeling on icon-only controls and dialogs, visible
   focus states, focus trapping/return on modals.
 
@@ -656,6 +711,12 @@ docker compose -f docker-compose.build.yml up -d --build
   deployment cases.
 
 ## Known limitations
+
+- **The keep-screen-awake workaround on `http://` is best-effort.** It
+  plays a silent video, and phones decide for themselves whether that
+  counts: it may not keep every phone awake, and Low Power Mode can stop
+  it. Over `https://` the app uses the real Screen Wake Lock API instead
+  (see *Optional: HTTPS on your network*).
 
 - **The language setting translates the app, not your recipes.** A recipe
   added in English stays in English in the French interface, and the
@@ -905,6 +966,8 @@ LICENSE                       MIT
 DOCKERHUB.md                   Docker Hub overview (synced by docker-publish.yml)
 docker-compose.yml            pulls published image
 docker-compose.build.yml       builds from source
+docker-compose.https.yml       optional HTTPS via Traefik (off unless set up)
+https.env.example              settings template for the above
 .github/workflows/
   docker-publish.yml             builds + publishes to Docker Hub on release
   ci.yml                           tests + dependency audit + build check on every push/PR

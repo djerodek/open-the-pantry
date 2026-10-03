@@ -15,3 +15,8 @@ data/
 # Local build scaffolding: the Dockerfile copies frontend/ to this path,
 # so it only exists inside the image.
 backend/static
+
+# Optional HTTPS (docker-compose.https.yml): your settings, including a DNS
+# API token, and the issued certificate. Never commit these.
+.env
+letsencrypt/

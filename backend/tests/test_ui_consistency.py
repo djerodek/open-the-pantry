@@ -43,3 +43,38 @@ def test_ocr_skips_a_zero_size_render():
     from PIL import Image
     from app.ingestion import pdf_ingest
     assert pdf_ingest._ocr_image(Image.new("L", (0, 10))) == ("", None)
+
+
+# ---------------------------------------------------------------------------
+# Keep screen awake and optional HTTPS
+# ---------------------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.skipif(not (ROOT / "frontend").exists(), reason="frontend not present")
+def test_wake_fallback_videos_are_real_media():
+    import base64
+    js = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    clips = dict(re.findall(r'\["(video/\w+)", "data:video/\w+;base64,([A-Za-z0-9+/=]+)"\]', js))
+    mp4, webm = base64.b64decode(clips["video/mp4"]), base64.b64decode(clips["video/webm"])
+    assert mp4[4:8] == b"ftyp" and webm[:4] == b"\x1a\x45\xdf\xa3"
+    assert len(mp4) + len(webm) < 10_000
+
+
+@pytest.mark.skipif(not (ROOT / "docker-compose.https.yml").exists(), reason="repo files not present")
+def test_https_setup_is_off_by_default_and_names_no_real_domain():
+    """The HTTPS override takes every site-specific value from .env and
+    refuses to start without them; the repo carries only placeholders."""
+    yml = (ROOT / "docker-compose.https.yml").read_text(encoding="utf-8")
+    example = (ROOT / "https.env.example").read_text(encoding="utf-8")
+    for var in ("PANTRY_DOMAIN", "ACME_EMAIL", "ACME_DNS_PROVIDER"):
+        assert re.search(r"\$\{" + var + r":\?", yml), var
+    # Any domain-looking name must be a documentation placeholder.
+    names = set(re.findall(r"\b(?:[a-z0-9-]+\.)+(?:com|net|org|ca|io|dev|app|fr|uk|de)\b", yml + example))
+    allowed = {"example.com", "pantry.example.com", "cpanel.example.com", "ns1.example.com", "go-acme.github.io"}
+    assert names <= allowed, names - allowed
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").split()
+    assert ".env" in ignored and "letsencrypt/" in ignored
+    # Plain `docker compose up -d` doesn't include it.
+    assert "traefik" not in (ROOT / "docker-compose.yml").read_text(encoding="utf-8").lower()

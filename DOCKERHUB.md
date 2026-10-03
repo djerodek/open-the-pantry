@@ -85,6 +85,8 @@ updates apply.
 - PWA: installable, offline shell, pull down to refresh (and pick up a new
   version), light/dark (true black) themes, adjustable text size, keyboard
   and screen-reader accessible
+- Optional "keep screen awake" while a recipe is open, on plain http://
+  too; optional HTTPS with a real certificate on your LAN (see the README)
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
 - Full backup (restorable) or every recipe as PDFs, from Settings
