@@ -278,3 +278,36 @@ def test_stored_none_servings_are_cleared_at_startup(client):
         conn.execute(text("UPDATE recipes SET servings = 'None' WHERE id = :i"), {"i": rid})
     init_db()
     assert client.get(f"/api/recipes/{rid}").json()["servings"] is None
+
+
+# ---------------------------------------------------------------------------
+# Claude review, round 3
+# ---------------------------------------------------------------------------
+
+def test_failed_sends_do_not_use_up_the_hour(client, mail):
+    from app import main
+    rid = _recipe(client, "Quota Après Panne")
+    with patch("app.main.email_client.connect_smtp", side_effect=Exception("server down")):
+        for _ in range(main.MAX_RECIPE_EMAILS_PER_HOUR):
+            assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 502
+    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.main.email_client.send_email_with_attachment"):
+        assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 200
+
+
+def test_tag_in_an_unknown_group_is_saved_under_custom(client):
+    r = client.post("/api/recipes", json={
+        "title": "Unknown Group Tag", "source_type": "manual", "steps": ["x"],
+        "tags": [{"name": "Mystery", "category": "nonexistent-group", "subgroup": "x"}]})
+    assert r.status_code == 200
+    tag = next(t for t in r.json()["tags"] if t["name"] == "Mystery")
+    assert tag["category"] == "custom" and tag["subgroup"] is None
+
+
+def test_validation_errors_are_translated(client):
+    rid = _recipe(client, "Temps Invalide")
+    en = client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:30:00"})
+    fr = client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:30:00"}, headers=FR)
+    assert en.status_code == fr.status_code == 422
+    assert "Hours must be under 24" in en.json()["detail"][0]["msg"]
+    assert fr.json()["detail"][0]["msg"].startswith("Les heures doivent être inférieures à 24")

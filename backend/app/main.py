@@ -580,11 +580,17 @@ def _extract_pdf_showcase_image(pdf_path: str, dest_dir: str, name_prefix: str) 
 
 
 def _get_or_create_tags(db: Session, tag_ins: list[schemas.TagIn]) -> list[models.Tag]:
+    # A category that isn't a group (a typo in an API call, a group deleted
+    # while an edit screen was open) would save a tag nothing displays; it
+    # goes to Custom instead, as init_db does for ones already stored.
+    groups = {key for (key,) in db.query(models.TagGroup.key).all()} | {"custom"}
     tags = []
     for t in tag_ins:
-        tag = db.query(models.Tag).filter_by(name=t.name, category=t.category).first()
+        category = t.category if t.category in groups else "custom"
+        subgroup = t.subgroup if category == t.category else None
+        tag = db.query(models.Tag).filter_by(name=t.name, category=category).first()
         if not tag:
-            tag = models.Tag(name=t.name, category=t.category, subgroup=t.subgroup)
+            tag = models.Tag(name=t.name, category=category, subgroup=subgroup)
             db.add(tag)
             db.flush()
         tags.append(tag)
@@ -2364,11 +2370,22 @@ def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Se
         # Counted up front so two sends at once can't both slip under the cap.
         _recipe_email_times.append(now)
 
+    def _uncount():
+        # Only sends that went out count against the hour: a run of
+        # failures while the mail server was down shouldn't lock you out
+        # once it's back.
+        with _recipe_email_lock:
+            try:
+                _recipe_email_times.remove(now)
+            except ValueError:
+                pass
+
     abs_image = safe_join(UPLOADS_DIR, recipe.image_path) if recipe.image_path else None
     try:
         pdf_bytes = render_recipe_pdf(recipe, abs_image, include_notes=payload.include_notes, include_image=False)
     except Exception:
         log.warning("email_recipe_pdf: PDF render failed for recipe %s", recipe_id, exc_info=True)
+        _uncount()
         raise HTTPException(status_code=500, detail="Couldn't build the PDF.")
 
     title = re.sub(r"[\r\n\t]+", " ", recipe.title or "").strip() or "Recipe"
@@ -2397,6 +2414,7 @@ def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Se
                 log.debug("email_recipe_pdf: quit failed", exc_info=True)
     except Exception as e:
         log.warning("email_recipe_pdf: send failed for recipe %s", recipe_id, exc_info=True)
+        _uncount()
         raise HTTPException(status_code=502, detail=f"The email wasn't sent: {e}")
 
     _remember_recipients(settings, to)

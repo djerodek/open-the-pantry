@@ -107,6 +107,18 @@ _FR_PATTERNS = [
        "Impossible d'extraire automatiquement une recette de cette URL. Utilisez plutôt la saisie manuelle "
        "en collant le texte de la page."),
 
+    # Validation (422) messages from our own validators, and the common
+    # built-in ones
+    _p(r"^Use dd:hh:mm or hh:mm, e\.g\. 00:01:30\.$",
+       "Utilisez jj:hh:mm ou hh:mm, p. ex. 00:01:30."),
+    _p(r"^Hours must be under 24 and minutes under 60, up to 60 days in total\.$",
+       "Les heures doivent être inférieures à 24 et les minutes à 60, jusqu'à 60 jours au total."),
+    _p(r"^invalid image reference$", "référence d'image invalide"),
+    _p(r"^Field required$", "Champ obligatoire"),
+    _p(r"^Input should be a valid (string|integer|boolean)$", "Valeur invalide"),
+    _p(r"^String should have at most (\d+) characters$", r"Au plus \1 caractères"),
+    _p(r"^List should have at most (\d+) items after validation, not (\d+)$", r"Au plus \1 éléments, pas \2"),
+
     # Recipes, tags, groups, export
     _p(r"Recipe not found", "Recette introuvable"),
     _p(r'There is already a group called "(.+?)"\.', r"Il existe déjà un groupe nommé « \1 »."),
@@ -280,13 +292,26 @@ def translate(text, lang: str | None = None):
 MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem"}
 
 
+def _translate_validation_error(item: dict, lang: str) -> dict:
+    """One entry of a 422 "detail" list. Pydantic prefixes messages from our
+    own validators with "Value error, "; that part is dropped in French."""
+    msg = item.get("msg")
+    if isinstance(msg, str):
+        msg = re.sub(r"^Value error, ", "", msg)
+        item = {**item, "msg": translate(msg, lang)}
+    return item
+
+
 def translate_payload(obj, lang: str):
     """Walks a decoded JSON body and translates the MESSAGE_FIELDS values
-    (a string, or a list of strings) wherever they appear."""
+    (a string, or a list of strings) wherever they appear, and the "msg" of
+    each validation error in a 422's "detail" list."""
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
-            if k in MESSAGE_FIELDS and isinstance(v, str):
+            if k == "detail" and isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+                out[k] = [_translate_validation_error(x, lang) for x in v]
+            elif k in MESSAGE_FIELDS and isinstance(v, str):
                 out[k] = translate(v, lang)
             elif k in MESSAGE_FIELDS and isinstance(v, list) and all(isinstance(x, str) for x in v):
                 out[k] = [translate(x, lang) for x in v]

@@ -1781,6 +1781,16 @@
   // -------------------------------------------------------------------
   // Card-level quick controls: favorite toggle + 3 rating popovers
   // -------------------------------------------------------------------
+  // The message in an error response: a plain "detail" string, or the
+  // first validation error's text from a 422.
+  function apiErrorText(body, status) {
+    const d = body && body.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d) && d.length && d[0] && typeof d[0].msg === "string") return d[0].msg.replace(/^Value error, /, "");
+    if (!status) return tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+    return tx("That didn't work (status {1}).", { 1: status });
+  }
+
   async function patchRating(id, payload) {
     const res = await fetch(`${API}/recipes/${id}/rating`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -2516,8 +2526,15 @@
     const timeSaveBtn = el("button", {
       class: "btn-secondary", type: "button", text: tx("Save time"),
       onclick: async () => {
-        const ok = await patchRating(recipe.id, { actual_cook_time: duration.getValue() || "" });
-        if (ok) { announce(tx("Cook time updated.")); await loadTimeBuckets(); }
+        const res = await fetch(`${API}/recipes/${recipe.id}/rating`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actual_cook_time: duration.getValue() || "" }),
+        }).catch(() => null);
+        if (res && res.ok) { announce(tx("Cook time updated.")); await loadTimeBuckets(); return; }
+        // A refused time used to fail silently. The server's message (a
+        // 422's validation list, translated server-side) says what's wrong.
+        const body = res ? await res.json().catch(() => ({})) : {};
+        announceError(apiErrorText(body, res ? res.status : 0));
       },
     });
 
