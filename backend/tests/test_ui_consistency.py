@@ -15,8 +15,10 @@ def _declarations(block: str) -> dict:
 @pytest.mark.skipif(not CSS.exists(), reason="frontend not present")
 def test_dark_theme_blocks_match():
     css = CSS.read_text(encoding="utf-8")
-    media = re.search(r':root:not\(\[data-theme="light"\]\)\s*\{(.*?)\}', css, re.S).group(1)
-    forced = re.search(r'html\[data-theme="dark"\]\s*\{(.*?)\}', css, re.S).group(1)
+    media = re.search(r':root:not\(\s*\[\s*data-theme\s*=\s*"light"\s*\]\s*\)\s*\{(.*?)\}', css, re.S)
+    forced = re.search(r'html\[\s*data-theme\s*=\s*"dark"\s*\]\s*\{(.*?)\}', css, re.S)
+    assert media and forced, "dark-theme blocks not found in styles.css; update this test's selectors"
+    media, forced = media.group(1), forced.group(1)
     a, b = _declarations(media), _declarations(forced)
     assert len(a) > 20 and a == b
 

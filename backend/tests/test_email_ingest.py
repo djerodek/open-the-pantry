@@ -213,7 +213,8 @@ def test_extract_from_image_attachment(tmp_path):
 
     img = Image.new("L", (700, 250), color=255)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+    from .conftest import text_font
+    font = text_font(28, bold=True)
     for i, line in enumerate(["My Recipe", "Ingredients", "2 cups flour", "Instructions", "1. Mix well"]):
         draw.text((20, 20 + i * 40), line, fill=0, font=font)
     buf = io.BytesIO()

@@ -24,6 +24,16 @@ def _remove_what_each_test_added(client):
             client.delete(f"/api/tags/{t['id']}")
         elif t["id"] in tags_before and t["keywords"] != tags_before[t["id"]]:
             client.put(f"/api/tags/{t['id']}", json={"keywords": tags_before[t["id"]]})
+    # The cleanup is checked here, after every test, rather than by a test
+    # named to run last: that relied on file order, which random-order or
+    # parallel runs don't keep (Gemini review).
+    from app.ingestion import tagger
+    assert {g["key"] for g in client.get("/api/tag-groups").json()} == groups_before
+    after = {t["id"]: t["keywords"] for t in client.get("/api/tags").json() if t["user_defined"] or t["id"] in tags_before}
+    assert {i: k for i, k in after.items() if i in tags_before} == tags_before
+    assert set(after) <= set(tags_before)
+    names_before = {t["name"] for t in client.get("/api/tags").json() if t["id"] in tags_before}
+    assert {n for n, *_ in tagger._user_keywords} <= names_before
 
 
 def _recipe(client, title, ingredients, tags=()):
@@ -119,9 +129,3 @@ def test_tag_in_a_missing_group_moves_to_custom(client):
     client.delete(f"/api/tags/{tid}")
 
 
-def test_zz_nothing_left_behind(client):
-    """Last in the file: the cleanup fixture removed what the tests added,
-    from the database and from the tagger."""
-    from app.ingestion import tagger
-    assert not any(n in ("Thai", "Lamb TG", "Holiday TG") for n, *_ in tagger._user_keywords)
-    assert not any(g["key"].startswith("g-") for g in client.get("/api/tag-groups").json())

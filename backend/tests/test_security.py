@@ -362,10 +362,8 @@ def test_sideways_photo_is_turned_upright_for_ocr_and_storage(tmp_path):
     from PIL import Image, ImageDraw, ImageFont
     from app.ingestion.image_ingest import ingest_image
 
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-    except OSError:
-        pytest.skip("DejaVu font not available to draw the test card")
+    from .conftest import text_font
+    font = text_font(30)
     lines = ["Spinach and Mushroom Quesadillas", "Ingredients", "8 oz. mushrooms", "1 Tbsp cooking oil",
              "1/4 tsp garlic powder", "1/2 lb. frozen chopped spinach", "8 oz. mozzarella, shredded",
              "1/4 cup sour cream", "5 7-inch flour tortillas", "Instructions",

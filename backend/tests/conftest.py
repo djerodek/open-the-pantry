@@ -48,6 +48,30 @@ def sample_recipe_payload():
     }
 
 
+def text_font(size, bold=False):
+    """A TrueType font for drawing test images that OCR reads back.
+
+    The tests used to hard-code the DejaVu path, which only exists on
+    Debian/Ubuntu with fonts-dejavu installed (Gemini review). Tries the
+    common Linux and macOS locations, then Pillow's built-in scalable font
+    (Pillow 10.1+), so the suite runs anywhere."""
+    from PIL import ImageFont
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size)
+
+
 TINY_PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108020000009077"
     "53de0000000c4944415478da6360000002000155075ce9c30000000049454e44ae426082"

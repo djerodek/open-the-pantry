@@ -7,14 +7,14 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from app.ingestion.deskew import deskew_grayscale  # noqa: E402
+from .conftest import text_font  # noqa: E402
 
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def _make_rotated_text_image(angle_degrees: float) -> np.ndarray:
     img = Image.new("L", (900, 350), color=255)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(FONT_PATH, 40)
+    font = text_font(40, bold=True)
     draw.text((80, 130), "Ingredients: 2 cups flour", fill=0, font=font)
     rotated = img.rotate(angle_degrees, expand=True, fillcolor=255)
     return np.array(rotated)
