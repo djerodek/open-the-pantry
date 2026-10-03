@@ -139,6 +139,14 @@ _FR_PATTERNS = [
        r"Aucune clé de chiffrement n'est configurée; le mot de passe de courriel enregistré ne peut donc pas "
        r"être lu. Si vous avez déplacé ou restauré le dossier de données, apportez aussi encryption.key "
        r"(ou donnez à \1 la même clé qu'avant)."),
+    _p(r"encryption\.key in the data folder doesn't contain a valid key \(it may be empty or damaged\)\. "
+       r"Put back the copy it came from\. If that's not possible, delete the file, then use "
+       r"\"Set up encryption\" and enter the password again\.",
+       "encryption.key, dans le dossier de données, ne contient pas de clé valide (le fichier est peut-être "
+       "vide ou endommagé). Remettez la copie d'origine. Si c'est impossible, supprimez le fichier, "
+       "puis utilisez « Configurer le chiffrement » et entrez le mot de passe à nouveau."),
+    _p(r"The password wasn't saved\. (?=encryption\.key)", "Le mot de passe n'a pas été enregistré. "),
+    _p(r"The saved email password can't be read\. ", "Le mot de passe de courriel enregistré ne peut pas être lu. "),
     _p(r"Stored credential could not be decrypted -- the encryption key may have changed since it was "
        r"saved\. Re-enter email credentials in Settings\.",
        "Le mot de passe conservé n'a pas pu être déchiffré : la clé de chiffrement a peut-être changé "

@@ -42,7 +42,8 @@ def _read_key_file() -> str:
 
 
 def key_source() -> str | None:
-    """Where the active key comes from: "env", "file", "env_invalid", or None.
+    """Where the active key comes from: "env", "file", "env_invalid",
+    "file_invalid", or None.
 
     The environment variable always wins when it is set, even if it is
     invalid. Silently falling back to the key file in that case would mean a
@@ -64,9 +65,22 @@ def key_source() -> str | None:
             Fernet(file_key.encode())
             return "file"
         except Exception:
-            log.debug("key_source: caught error, continuing", exc_info=True)
-            return None
+            log.warning("key_source: %s exists but doesn't hold a valid key", key_file_path())
+            return "file_invalid"
+    # A key file that is there but empty, unreadable or not text is not the
+    # same as no key file: "Set up encryption" refuses to replace it, so
+    # reporting "not set up" sent people to a button that can only fail.
+    if os.path.exists(key_file_path()):
+        log.warning("key_source: %s exists but couldn't be read as a key", key_file_path())
+        return "file_invalid"
     return None
+
+
+FILE_INVALID_HELP = (
+    "encryption.key in the data folder doesn't contain a valid key (it may be empty or damaged). "
+    "Put back the copy it came from. If that's not possible, delete the file, then use "
+    "\"Set up encryption\" and enter the password again."
+)
 
 
 def _get_fernet() -> Fernet | None:
@@ -112,12 +126,15 @@ def encrypt_secret(plaintext: str) -> str:
     can never be decrypted back."""
     fernet = _get_fernet()
     if fernet is None:
-        if key_source() == "env_invalid":
+        source = key_source()
+        if source == "env_invalid":
             raise EncryptionNotConfiguredError(
                 f"The password wasn't saved. {ENCRYPTION_KEY_ENV_VAR} is set in your "
                 "compose file but isn't a valid key. Fix or remove that line, then "
                 "restart the container."
             )
+        if source == "file_invalid":
+            raise EncryptionNotConfiguredError("The password wasn't saved. " + FILE_INVALID_HELP)
         raise EncryptionNotConfiguredError(
             "The password wasn't saved. Email passwords are stored encrypted, and "
             "no encryption key is set up yet. Use \"Set up encryption\" at the top "
@@ -128,6 +145,8 @@ def encrypt_secret(plaintext: str) -> str:
 
 def decrypt_secret(ciphertext: str) -> str:
     fernet = _get_fernet()
+    if fernet is None and key_source() == "file_invalid":
+        raise EncryptionNotConfiguredError("The saved email password can't be read. " + FILE_INVALID_HELP)
     if fernet is None:
         raise EncryptionNotConfiguredError(
             "No encryption key is set up, so the saved email password can't be "

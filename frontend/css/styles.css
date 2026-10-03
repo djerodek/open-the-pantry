@@ -61,6 +61,9 @@
         query, guarded so an explicit [data-theme="light"] can override it)
      2. An explicit choice, forced via [data-theme="dark"] regardless of
         system preference (set by the theme toggle in Settings, see app.js)
+   The two blocks must hold the same values: CSS can't share one rule
+   between a media query and a plain selector without a build step.
+   tests/test_ui_consistency.py fails if they differ.
 --------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {

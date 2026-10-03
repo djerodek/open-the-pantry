@@ -671,3 +671,35 @@ def test_lost_key_creation_race_is_409_not_500(client, no_key):
     with patch.object(crypto, "generate_key_file", side_effect=FileExistsError()):
         r = client.post("/api/email-settings/encryption-key")
     assert r.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# A key file that's there but damaged (Qwen review)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("content", [b"not a key\n", b"", b"\xff\xfe"])
+def test_damaged_key_file_is_reported_as_damaged(tmp_path, monkeypatch, content):
+    from app import crypto
+    monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
+    monkeypatch.setenv("RECIPE_APP_DATA_DIR", str(tmp_path))
+    (tmp_path / crypto.KEY_FILE_NAME).write_bytes(content)
+    assert crypto.key_source() == "file_invalid"
+    assert crypto.encryption_configured() is False
+    with pytest.raises(crypto.EncryptionNotConfiguredError, match="doesn't contain a valid key"):
+        crypto.encrypt_secret("x")
+    with pytest.raises(crypto.EncryptionNotConfiguredError, match="doesn't contain a valid key"):
+        crypto.decrypt_secret("x")
+
+
+def test_no_key_file_is_still_reported_as_not_set_up(tmp_path, monkeypatch):
+    from app import crypto
+    monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
+    monkeypatch.setenv("RECIPE_APP_DATA_DIR", str(tmp_path))
+    assert crypto.key_source() is None
+
+
+def test_damaged_key_message_is_translated():
+    from app import crypto, i18n
+    fr = i18n.translate("The password wasn't saved. " + crypto.FILE_INVALID_HELP, "fr")
+    assert fr.startswith("Le mot de passe n'a pas été enregistré. encryption.key, dans le dossier")
+    assert "valid key" not in fr

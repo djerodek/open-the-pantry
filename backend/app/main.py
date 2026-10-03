@@ -451,7 +451,9 @@ def _frontend_version() -> str:
                     with open(os.path.join(root, f), "rb") as fh:
                         h.update(f.encode()); h.update(fh.read())
                 except OSError:
-                    log.debug("_frontend_version: unreadable %s", f, exc_info=True)
+                    # The page can't load a file the server can't read either,
+                    # so this is worth seeing in the log, not only at DEBUG.
+                    log.warning("_frontend_version: unreadable %s", f, exc_info=True)
     return h.hexdigest()[:16]
 
 

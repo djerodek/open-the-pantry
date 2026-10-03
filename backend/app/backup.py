@@ -157,6 +157,8 @@ Notes
 """
 
 
+# The French copy of RESTORE_INSTRUCTIONS. Change both together;
+# test_ui_consistency.py checks that they give the same commands.
 RESTORE_INSTRUCTIONS_FR = """\
 Open the Pantry -- restaurer cette sauvegarde
 =============================================

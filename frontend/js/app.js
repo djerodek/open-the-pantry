@@ -467,6 +467,13 @@
         box.appendChild(el("p", {
           text: tx("RECIPE_APP_ENCRYPTION_KEY is set in your compose file, but its value isn't a valid key. Fix it or delete that line, then restart the container."),
         }));
+      } else if (settings.encryption_source === "file_invalid") {
+        // The key file exists but is empty or damaged. "Set up encryption"
+        // would refuse to replace it, so it isn't offered here.
+        box.appendChild(el("strong", { text: tx("Encryption key file is damaged") }));
+        box.appendChild(el("p", {
+          text: tx("encryption.key in the data folder doesn't contain a valid key (it may be empty or damaged). Put back the copy it came from. If that's not possible, delete the file and reopen this panel to set up encryption again; the email password then has to be entered again."),
+        }));
       } else {
         box.appendChild(el("strong", { text: tx("Step 1: set up encryption") }));
         box.appendChild(el("p", {
@@ -2730,14 +2737,13 @@
     const toggleBtn = el("button", {
       class: "btn-secondary share-toggle", type: "button", "aria-haspopup": "true",
       "aria-expanded": "false", "aria-label": tx("Share recipe"),
-      // tx() output is a fixed catalog string, never recipe data.
-      trustedStaticHtml: `${SHARE_ICON_SVG}<span>${tx("Share")}</span>`,
+      trustedStaticHtml: SHARE_ICON_SVG,
       onclick: () => {
         const willOpen = menu.hidden;
         menu.hidden = !willOpen;
         toggleBtn.setAttribute("aria-expanded", String(willOpen));
       },
-    });
+    }, [el("span", { text: tx("Share") })]);  // label as text; only the fixed icon goes in as markup
     return el("div", { class: "share-menu-wrap" }, [toggleBtn, menu]);
   }
 

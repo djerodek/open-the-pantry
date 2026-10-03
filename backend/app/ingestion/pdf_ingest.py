@@ -191,6 +191,10 @@ def ocr_lang() -> str:
 
 
 def _ocr_image(pil_image: Image.Image):
+    # A zero-width or zero-height render (a degenerate page box) has no text
+    # and would divide by zero in the upscale below.
+    if not pil_image.width or not pil_image.height:
+        return "", None
     processed = _preprocess_for_ocr(pil_image)
     text = pytesseract.image_to_string(processed, lang=ocr_lang())
 

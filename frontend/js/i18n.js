@@ -450,6 +450,9 @@
     "RECIPE_APP_ENCRYPTION_KEY is set in your compose file, but its value isn't a valid key. Fix it or delete that line, then restart the container.":
       "RECIPE_APP_ENCRYPTION_KEY est défini dans votre fichier compose, mais sa valeur n'est pas une clé valide. Corrigez-la ou supprimez cette ligne, puis redémarrez le conteneur.",
     "Step 1: set up encryption": "Étape 1 : configurer le chiffrement",
+    "Encryption key file is damaged": "Le fichier de clé de chiffrement est endommagé",
+    "encryption.key in the data folder doesn't contain a valid key (it may be empty or damaged). Put back the copy it came from. If that's not possible, delete the file and reopen this panel to set up encryption again; the email password then has to be entered again.":
+      "encryption.key, dans le dossier de données, ne contient pas de clé valide (le fichier est peut-être vide ou endommagé). Remettez la copie d'origine. Si c'est impossible, supprimez le fichier et rouvrez ce panneau pour configurer de nouveau le chiffrement; il faudra ensuite entrer à nouveau le mot de passe du courriel.",
     "Your email password is stored encrypted, so a key has to exist first. This creates one in the app's data folder (encryption.key). If you ever move the data folder, the key goes with it. The backup zip leaves it out, so after restoring from a backup on a new install you re-enter the password.":
       "Le mot de passe du courriel est conservé chiffré; une clé doit donc exister d'abord. Ceci en crée une dans le dossier de données de l'application (encryption.key). Si vous déplacez le dossier de données, la clé suit. La sauvegarde .zip ne l'inclut pas : après une restauration sur une nouvelle installation, entrez le mot de passe à nouveau.",
     "Set up encryption": "Configurer le chiffrement",
