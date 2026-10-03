@@ -185,6 +185,13 @@ Safeguards and notes:
   and an emailed link gets a `[FAILURE]` reply saying to email the PDF as
   an attachment instead. The browser has the whole page (past any bot
   check), so its PDF usually reads cleanly.
+- **When a PDF or screenshot doesn't give a whole recipe** (ingredients
+  but no steps, or the reverse), it fails the same way instead of opening
+  the review screen with an empty field. The usual cause is a PDF of a
+  blog post that stops before the recipe card at the bottom. The app says
+  what's missing and offers the other ways in: screenshots of the recipe
+  card (opens "Combine multiple"), a PDF (for a screenshot), or typing it
+  in, plus "Continue anyway". A batch PDF import lists it as failed.
 - **PDF** — checks each page for an existing text layer first; only pages
   without one (scanned images) go through Tesseract OCR, with an
   orientation pass (pages that are sideways or upside down are turned
@@ -261,7 +268,9 @@ Safeguards and notes:
   attempts to parse, or even fully read, untagged mail.
 - Scans run once daily at a configurable hour (default 3:00 AM in the
   container's time zone -- set `TZ` in `docker-compose.yml` to yours, e.g.
-  `America/Toronto`; the example ships with `UTC`), plus on demand: "Check email inbox" in the +
+  `America/Toronto`; the example ships with `UTC`; times shown in
+  Settings, such as the last scan, are in your device's time zone either
+  way), plus on demand: "Check email inbox" in the +
   menu (shown once email ingest is enabled), or "Scan inbox now" in
   Settings for when you don't want to wait.
 - Each tagged email is tried in order: PDF attachment → photo → links in
@@ -279,9 +288,10 @@ Safeguards and notes:
   rather than saved as a recipe of garbled words; the `[FAILURE]` email
   says so and suggests a sharper photo or the typed text. Attachment names
   are decoded, so Apple Mail's `Screenshot … PM.pdf` appears as that.
-  A recipe from a photo, PDF or the email text that came in without any
-  steps is flagged in the result email so it can be checked. (A link that
-  gives only part of a recipe fails instead; see Ingestion.)
+  A photo, PDF, link or email text that gives only part of a recipe
+  (ingredients but no steps, or the reverse) fails rather than being saved
+  half done, and the `[FAILURE]` email says which part was missing and
+  what to send instead.
 - If an email can't be turned into a recipe, the reason lists each thing
   tried and why it gave up. It is shown under "Scan inbox now" and sent in
   the `[FAILURE]` email. Emails over 30 MB are refused before download.
@@ -606,7 +616,7 @@ Safeguards and notes:
 - **The log is readable in Settings → Logs** by anyone who can reach the
   app, like everything else in it. It holds email subjects and senders and
   the URLs of recipes added, never passwords, keys, email bodies or page
-  contents.
+  contents. The app's offline cache never keeps a copy of it.
 - **Page downloads are bounded:** 10 MB per page (20 MB for photos), 30
   seconds in total including redirects even against a server that trickles
   data slowly rather than going silent outright, and only public internet
@@ -773,12 +783,15 @@ Safeguards and notes:
   the app with HTTP 403 and a "Just a moment..." page; the app says the
   site refused and what to do instead, and the log records it in one line
   (`otp.url`). The app doesn't try to get around that. Save the page as a
-  PDF (Share → Print, pinch out, share the PDF), take a screenshot, or
-  paste the text, and add or email that instead.
+  PDF (iPhone Safari: Share → Options → PDF; elsewhere Print → Save as
+  PDF), take screenshots, or paste the text, and add or email that
+  instead.
 - **Full-page screenshots saved as PDF can be cut off.** A PDF page can't
   be taller than 200 inches, and iOS stops a long page there, so the end
   of a long blog post's recipe card may simply not be in the file. Use
-  Print → PDF, which splits the page, or the site's own print button.
+  Print → PDF, which splits the page, or the site's own print button. A
+  PDF cut off before the steps is refused with that advice (see
+  Ingestion).
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based, not ML-based — expect to correct fields on messy or non-standard
   layouts via the review screen shown after single-item ingestion. Batch
@@ -904,7 +917,9 @@ rating constraints, upload validation (size/magic-byte/extension-spoofing/
 polyglot-payload stripping), XSS escaping on export, the SSRF guard
 (including the redirect case), draft-file lifecycle, and the ingestion
 heuristics (PDF text-layer detection, section segmentation, ingredient
-parsing, tag suggestion).
+parsing, tag suggestion), French coverage (every interface string has a
+French version), and Settings → HTTPS end to end against a fake cPanel
+API and a test certificate authority.
 
 Email-ingest tests mock the IMAP/SMTP layer (`unittest.mock`) rather than
 standing up a mail server — they cover credential encryption round-trips
@@ -977,6 +992,8 @@ backend/
       tagger.py                               keyword-based auto-tagging
       email_processing.py                       tagged-email extraction:
                                                  PDF -> photo -> links -> body
+      completeness.py                         a whole recipe needs ingredients
+                                               and steps (PDF/photo/email)
     templates/
       recipe_export.html                      shared print/PDF/HTML template
   Dockerfile
@@ -987,15 +1004,10 @@ backend/
   tests/
     __init__.py            makes tests a package, so `from .conftest import ...` resolves
     conftest.py            shared fixtures (isolated data dir, TestClient)
-    test_time_utils.py
-    test_ingredient_parser.py
-    test_tagger.py
-    test_pdf_ingest.py
-    test_deskew.py
-    test_showcase_image.py
-    test_email_ingest.py
-    test_api_core.py
-    test_security.py
+    test_*.py              one file per area (test_api_core, test_security,
+                           test_pdf_ingest, test_email_ingest,
+                           test_https_setup, ...) plus one per review round,
+                           each test tied to the problem it guards against
 frontend/
   index.html                 topbar, sidebar, filter panel, modals
   manifest.json

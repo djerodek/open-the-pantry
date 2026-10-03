@@ -65,7 +65,7 @@ Updating:
 
     docker compose pull && docker compose up -d
 
-Pin a version tag instead of `latest` if you want to control exactly when
+Pin a version tag instead of `main` if you want to control exactly when
 updates apply.
 
 ## Features
@@ -89,13 +89,15 @@ updates apply.
 - PWA: installable, offline shell, pull down to refresh (and pick up a new
   version), light/dark (true black) themes, adjustable text size, keyboard
   and screen-reader accessible
-- Optional "keep screen awake" while a recipe is open
+- Optional "keep screen awake" while a recipe is open (needs HTTPS; see
+  below)
 - Optional HTTPS on your LAN with a real Let's Encrypt certificate, set up
   from Settings (cPanel-managed domains; see the README)
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
 - Full backup (restorable) or every recipe as PDFs, from Settings
-- Logs: `docker logs open-the-pantry`, or `data/logs/app.log`
+- Logs: Settings → Logs (view, download, clear), `docker logs
+  open-the-pantry`, or `data/logs/app.log`
 
 Full documentation, source, and security notes:
 https://github.com/djerodek/open-the-pantry
