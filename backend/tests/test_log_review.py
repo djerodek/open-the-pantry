@@ -197,3 +197,9 @@ def test_email_link_with_half_a_recipe_fails_with_pdf_advice(tmp_path):
     assert "Save the page as a PDF and add that instead" not in result["error"]
     assert result["error"].endswith("save the page as a PDF and email that as an attachment, "
                                     "with the same word in the subject.")
+
+
+def test_notes_are_capped(client):
+    rid = client.post("/api/recipes", json={"title": "Notes Cap", "source_type": "manual", "steps": ["x"]}).json()["id"]
+    assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": "a" * 50_000}).status_code == 200
+    assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": "a" * 50_001}).status_code == 422

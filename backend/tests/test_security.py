@@ -53,12 +53,12 @@ def test_image_reencode_strips_polyglot_payload(client):
 
 
 def test_reencode_handles_trailing_garbage_without_rejecting(client):
-    """Regression test: a naive open()->save() re-encode (no getdata()/
-    putdata() round trip) reliably raises 'broken data stream' on a file
-    with bytes appended after a valid PNG stream, which would incorrectly
-    reject an otherwise-fine upload. _reencode_image uses getdata()/
-    putdata() specifically because it handles this correctly -- confirmed
-    directly against PIL before adopting it. This locks that in."""
+    """Regression test: a naive open()->save() re-encode reliably raises
+    'broken data stream' on a file with bytes appended after a valid PNG
+    stream, which would incorrectly reject an otherwise-fine upload.
+    reencode_image copies the decoded pixels into a fresh image (now via
+    tobytes()/frombytes(); see its docstring for why not getdata()/putdata())
+    specifically because that handles this correctly. This locks that in."""
     polyglot = TINY_PNG + b"some trailing non-image bytes" * 5
     r = client.post("/api/upload-image", files={"file": ("trailer.png", polyglot, "image/png")})
     assert r.status_code == 200, "a valid image with trailing bytes should not be rejected"

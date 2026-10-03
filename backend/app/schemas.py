@@ -221,7 +221,9 @@ class RatingUpdate(BaseModel):
 
 
 class NotesUpdate(BaseModel):
-    notes: Optional[str] = None  # '' or None both clear notes
+    # '' or None both clear notes. Capped like every other free-text field
+    # (50,000 characters is pages of notes; a stray paste of a file isn't).
+    notes: Optional[str] = Field(default=None, max_length=50_000)
 
 
 class ImageUpdate(BaseModel):

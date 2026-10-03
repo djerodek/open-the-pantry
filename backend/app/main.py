@@ -234,6 +234,9 @@ app = FastAPI(title="Recipe App", lifespan=lifespan)
 # as such in the README rather than presented as a full turnkey login flow.
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
+if API_KEY:
+    log.warning("RECIPE_APP_API_KEY is set: every request needs an X-API-Key header, and the app's own "
+                "pages don't send one. The web app in a browser won't work unless a reverse proxy adds it.")
 
 
 @app.middleware("http")
@@ -333,6 +336,7 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RECIPE_APP_RATE_LIMIT", "120"))
 _request_log: dict[str, deque] = defaultdict(deque)
 _rate_limit_lock = threading.Lock()
+_rate_limit_last_prune = 0.0  # when idle IPs were last dropped from _request_log
 
 
 @app.middleware("http")
@@ -370,8 +374,6 @@ async def rate_limiter(request: Request, call_next):
             _rate_limit_last_prune = now
     return await call_next(request)
 
-
-_rate_limit_last_prune = 0.0
 
 _client_log = get_logger("client")
 _client_error_times: list = []

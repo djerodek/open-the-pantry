@@ -124,6 +124,7 @@
     "Clear filters": "Effacer les filtres",
     "Clear filters ({1})": "Effacer les filtres ({1})",
     "Collapse all": "Tout réduire",
+    "This group stays open while one of its filters is on.": "Ce groupe reste ouvert tant qu'un de ses filtres est actif.",
     "Expand all": "Tout développer",
     "Pace": "Rythme",
     "Cook Time": "Temps de cuisson",

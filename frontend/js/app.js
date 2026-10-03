@@ -1271,7 +1271,10 @@
       class: opts.sub ? "tag-group-toggle tag-group-toggle-sub" : "tag-group-toggle",
       "aria-expanded": String(open),
       "aria-controls": `group-body-${key}`,
-      onclick: () => toggleGroup(key),
+      // Kept open while one of its filters is active: closing it would hide
+      // a filter that's narrowing the list. The tap says so instead of
+      // doing nothing.
+      onclick: () => (forced ? announceError(tx("This group stays open while one of its filters is on.")) : toggleGroup(key)),
     }, [
       el("span", { class: "tag-group-chevron", "aria-hidden": "true", text: "›" }),
       el("span", { class: "tag-group-label", text: label }),
@@ -1280,7 +1283,11 @@
       // the list.
       opts.activeCount ? el("span", { class: "tag-group-count", text: String(opts.activeCount) }) : null,
     ]);
-    if (forced) header.setAttribute("data-forced-open", "true");
+    if (forced) {
+      header.setAttribute("data-forced-open", "true");
+      header.setAttribute("aria-disabled", "true");
+      header.title = tx("This group stays open while one of its filters is on.");
+    }
 
     return el("div", { class: "tag-group" }, [header, body]);
   }
@@ -2111,7 +2118,7 @@
         onclick: async () => {
           closeModal(overlay);
           const ok = await patchRating(recipe.id, { [field]: opt });
-          if (ok) applyRating(recipe, field, opt, btn, icon, compactRatingLabel);
+          if (ok) applyRating(recipe, field, opt, btn, icon, shortLabel);
           else announceError(tx("Could not save rating."));
         },
       }));
@@ -2151,7 +2158,8 @@
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openRatingSheet(recipe, field, icon, options, shortLabel, btn);
+        // The card's own (compact) label, so the button reads the same after a pick.
+        openRatingSheet(recipe, field, icon, options, label, btn);
       });
       return el("div", { class: "rating-control" }, [btn]);
     }
