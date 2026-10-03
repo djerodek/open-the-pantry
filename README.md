@@ -536,8 +536,7 @@ Safeguards and notes:
   Safari 16.4+, and iPhone home-screen apps from iOS 18.4. Browsers only
   offer it on a secure page, so it needs the app opened over `https://`
   (see *Optional: HTTPS on your network*) or as `localhost`; over plain
-  `http://` the setting is shown switched off with a pointer to Settings →
-  HTTPS. (A silent-video workaround for `http://` was tried and didn't keep
+  `http://` the setting and the per-recipe switch don't appear. (A silent-video workaround for `http://` was tried and didn't keep
   an iPhone awake.)
 - Semantic HTML, ARIA labeling on icon-only controls and dialogs, visible
   focus states, focus trapping/return on modals.

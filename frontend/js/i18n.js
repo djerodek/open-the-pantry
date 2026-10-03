@@ -185,8 +185,6 @@
     "h": "h",
     "m": "min",
     "Keep screen on": "Garder l'écran allumé",
-    "Browsers only allow this on a secure (https://) address. Set one up under HTTPS below.":
-      "Les navigateurs ne le permettent qu'à une adresse sécurisée (https://). Configurez-en une sous HTTPS ci-dessous.",
     "The browser wouldn't keep the screen awake — it may be blocked on low battery.":
       "Le navigateur n'a pas pu garder l'écran allumé; c'est peut-être bloqué quand la pile est faible.",
     "Substitutions, timing tweaks, how it turned out...": "Substitutions, ajustements de temps, le résultat…",

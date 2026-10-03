@@ -255,7 +255,8 @@
   //      silently stops working the first time you switch apps.
   //   2. Browsers only offer it on a secure page (https:// or localhost).
   //      Opened as http://<NAS address>:8090 the API isn't there, so the
-  //      Settings switch is shown disabled, pointing at Settings -> HTTPS.
+  //      Settings switch and the per-recipe switch are hidden entirely
+  //      (Settings -> HTTPS gives the app a secure address).
   //      (A silent-video workaround was tried for http://; it didn't keep
   //      an iPhone awake, so it was removed rather than left half-working.)
   // -------------------------------------------------------------------
@@ -309,20 +310,8 @@
     else await releaseWakeLock();
   }
 
-  {
-    // Shown either way: on http:// the switch is disabled and says why,
-    // instead of the whole setting silently missing.
-    const wakeLockSettingEl = $("#wakelock-setting");
-    const wakeLockDefaultInput = $("#wakelock-default");
-    wakeLockSettingEl.hidden = false;
-    if (!wakeLockSupported) {
-      wakeLockDefaultInput.checked = false;
-      wakeLockDefaultInput.disabled = true;
-      $("#wakelock-needs-https").hidden = false;
-    }
-  }
-
   if (wakeLockSupported) {
+    $("#wakelock-setting").hidden = false;
     document.addEventListener("visibilitychange", () => {
       // Re-acquire on return to the tab, but only if a recipe is still
       // open with the lock enabled.
