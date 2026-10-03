@@ -27,6 +27,7 @@ setup_logging(DATA_DIR)
 log = get_logger("app")
 scan_log = get_logger("scan")
 from .init_db import init_db
+from .ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
 from .ingestion.url_ingest import (ingest_url, safe_get, UrlValidationError, IncompleteRecipeError,
                                    require_complete, missing_parts)
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
@@ -1235,7 +1236,14 @@ def ingest_from_pdf(file: UploadFile = File(...)):
     # is returned either way.
     image_path = _run_heavy(_extract_pdf_showcase_image, temp_path, TMP_DIR, f"pdf-img-{uuid.uuid4().hex}")
 
+    # No ingredients or no steps: reported as a failed import, with the
+    # draft attached so "Continue anyway" can still open it.
+    incomplete = incomplete_info("pdf", segmented["ingredients"], segmented["steps"])
+    if incomplete:
+        log.info("Add from PDF: incomplete recipe from %s: %s", file.filename, incomplete["message"])
+
     return {
+        "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "pdf",
         "raw_text": pdf_result.raw_text,
@@ -1247,6 +1255,12 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         "ocr_confidence": pdf_result.avg_ocr_confidence,
         "stored_file": temp_name,  # a draft reference; promoted to UPLOADS_DIR only on save
     }
+
+
+# Batch results are a list of lines, with no buttons to offer, so the
+# other ways to add the recipe go in the message itself.
+BATCH_INCOMPLETE_ADVICE = (" Add it on its own from screenshots of the recipe "
+                           "(Screenshot/Photo), or enter it by hand.")
 
 
 @app.post("/api/ingest/pdf/batch")
@@ -1278,6 +1292,11 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
             temp_path = os.path.join(TMP_DIR, temp_name)
             pdf_result = _run_heavy(extract_pdf_text, temp_path)
             segmented = segment_raw_text(pdf_result.raw_text)
+            missing = missing_sections(segmented["ingredients"], segmented["steps"])
+            if missing:
+                log.info("PDF batch: incomplete recipe from %s (no %s)", file.filename, " or ".join(missing))
+                failed.append({"filename": file.filename, "error": incomplete_message("pdf", missing) + BATCH_INCOMPLETE_ADVICE})
+                continue
             parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
             tag_suggestions = suggest_tags(
                 segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients],
@@ -1333,7 +1352,12 @@ def ingest_from_image(file: UploadFile = File(...)):
         segmented["raw_text"],
     )
 
+    incomplete = incomplete_info("image", segmented["ingredients"], segmented["steps"])
+    if incomplete:
+        log.info("Add from photo: incomplete recipe from %s: %s", file.filename, incomplete["message"])
+
     return {
+        "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "screenshot",
         "raw_text": segmented["raw_text"],
@@ -1412,7 +1436,12 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
         if os.path.isfile(path):
             os.remove(path)
 
+    incomplete = incomplete_info("images", segmented["ingredients"], segmented["steps"])
+    if incomplete:
+        log.info("Add from photos: incomplete recipe from %d images: %s", len(files), incomplete["message"])
+
     return {
+        "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "screenshot",
         "raw_text": combined_raw_text,

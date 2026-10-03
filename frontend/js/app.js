@@ -3111,7 +3111,7 @@
     const picker = el("div", { class: "source-type-picker" }, [
       el("button", { type: "button", text: tx("\ud83d\udd17 URL"), onclick: showUrlForm }),
       el("button", { type: "button", text: tx("\ud83d\udcc4 PDF"), onclick: showPdfForm }),
-      el("button", { type: "button", text: tx("\ud83d\udcf7 Screenshot/Photo"), onclick: showImageForm }),
+      el("button", { type: "button", text: tx("\ud83d\udcf7 Screenshot/Photo"), onclick: () => showImageForm() }),
       el("button", { type: "button", text: tx("\u270d\ufe0f Manual/Handwritten"), onclick: showManualForm }),
     ]);
     addBody.appendChild(picker);
@@ -3187,6 +3187,57 @@
     addBody.appendChild(el("div", { class: "fallback-actions" }, actions));
     // The reason is on screen already; this is for screen readers.
     announce(message);
+  }
+
+  // A PDF or screenshot that gave only part of a recipe (no ingredients or
+  // no steps), or couldn't be read at all: say why, and offer the other
+  // ways in -- screenshots of the recipe card for OCR, a PDF, or typing it.
+  // A partial draft can still be opened ("Continue anyway").
+  // kind: "pdf", "image" (one screenshot) or "images" (several combined).
+  function showSourceFallback(kind, message, draft) {
+    addBody.innerHTML = "";
+    addBody.appendChild(el("h3", { text: draft ? tx("Only part of the recipe came through") : tx("Couldn't read this file") }));
+    addBody.appendChild(el("p", { class: "fallback-reason", text: message }));
+    if (kind === "pdf") {
+      addBody.appendChild(el("p", { text: tx("Many recipe pages put the recipe card at the bottom, after the article. If the PDF stops before it, there's no recipe in it to read.") }));
+    } else if (kind === "image") {
+      addBody.appendChild(el("p", { text: tx("If the recipe takes several screenshots, add them together with Combine multiple.") }));
+    } else {
+      addBody.appendChild(el("p", { text: tx("Check that the screenshots cover the whole recipe card, ingredients and steps.") }));
+    }
+    addBody.appendChild(el("p", { class: "filter-section-title", text: tx("Other ways to add it") }));
+    const ways = [];
+    if (kind === "pdf") {
+      ways.push(el("li", { text: tx("Screenshots of the recipe card: the app reads them with text recognition. Use Combine multiple if it takes more than one.") }));
+    } else {
+      ways.push(el("li", { text: tx("A PDF of the page, if it came from a website: text in a PDF reads more reliably than a screenshot.") }));
+    }
+    ways.push(el("li", { text: tx("Enter it by hand.") }));
+    addBody.appendChild(el("ul", { class: "fallback-steps" }, ways));
+
+    const leave = (next) => async () => {
+      if (draft) await discardCurrentDraftFiles();
+      next();
+    };
+    const actions = [];
+    if (kind === "pdf") {
+      actions.push(el("button", { type: "button", class: "btn-primary", text: tx("Add from screenshots"), onclick: leave(() => showImageForm(true)) }));
+    } else {
+      if (kind === "image") actions.push(el("button", { type: "button", class: "btn-primary", text: tx("Combine multiple"), onclick: leave(() => showImageForm(true)) }));
+      actions.push(el("button", { type: "button", class: kind === "image" ? "btn-secondary" : "btn-primary", text: tx("Add from PDF"), onclick: leave(showPdfForm) }));
+    }
+    actions.push(el("button", { type: "button", class: "btn-secondary", text: tx("Enter manually"), onclick: leave(showManualForm) }));
+    if (draft) {
+      actions.push(el("button", { type: "button", class: "btn-secondary", text: tx("Continue anyway"), onclick: () => showReviewScreen(draft) }));
+    }
+    addBody.appendChild(el("div", { class: "fallback-actions" }, actions));
+    announce(message);
+  }
+
+  // The reason in a failed ingest response, or a fallback sentence.
+  async function errorDetail(res, fallback) {
+    const err = await res.json().catch(() => ({}));
+    return typeof err.detail === "string" ? err.detail : fallback;
   }
 
   function showUrlForm() {
@@ -3285,14 +3336,14 @@
           try {
             const fd = new FormData(); fd.append("file", input.files[0]);
             const res = await fetch(`${API}/ingest/pdf`, { method: "POST", body: fd });
-            if (!res.ok) throw new Error(tx("Could not process PDF."));
+            if (!res.ok) { showSourceFallback("pdf", await errorDetail(res, tx("Could not process PDF.")), null); return; }
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
             trackDraftFile(draft.image_path);
-            showReviewScreen(draft);
-          } catch (err) {
-            alert(err.message);
-            showSourcePicker();
+            if (draft.incomplete) showSourceFallback("pdf", draft.incomplete.message, draft);
+            else showReviewScreen(draft);
+          } catch {
+            showSourceFallback("pdf", tx("Couldn't reach Open the Pantry. Check your connection and try again."), null);
           } finally { setBusy(false); }
         },
       }, [
@@ -3347,7 +3398,9 @@
     renderSingle();
   }
 
-  function showImageForm() {
+  // combine: open on "Combine multiple" (from the PDF fallback, where the
+  // recipe card is usually more than one screenshot).
+  function showImageForm(combine = false) {
     addBody.innerHTML = "";
     addBody.appendChild(el("h3", { text: tx("Add from screenshot / photo") }));
     const formArea = el("div");
@@ -3363,13 +3416,13 @@
           try {
             const fd = new FormData(); fd.append("file", input.files[0]);
             const res = await fetch(`${API}/ingest/image`, { method: "POST", body: fd });
-            if (!res.ok) throw new Error(tx("Could not process image."));
+            if (!res.ok) { showSourceFallback("image", await errorDetail(res, tx("Could not process image.")), null); return; }
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
-            showReviewScreen(draft);
-          } catch (err) {
-            alert(err.message);
-            showSourcePicker();
+            if (draft.incomplete) showSourceFallback("image", draft.incomplete.message, draft);
+            else showReviewScreen(draft);
+          } catch {
+            showSourceFallback("image", tx("Couldn't reach Open the Pantry. Check your connection and try again."), null);
           } finally { setBusy(false); }
         },
       }, [
@@ -3394,13 +3447,13 @@
             const fd = new FormData();
             for (const f of input.files) fd.append("files", f);
             const res = await fetch(`${API}/ingest/images`, { method: "POST", body: fd });
-            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || tx("Could not process images.")); }
+            if (!res.ok) { showSourceFallback("images", await errorDetail(res, tx("Could not process images.")), null); return; }
             const draft = await res.json();
             trackDraftFile(draft.stored_file);
-            showReviewScreen(draft);
-          } catch (err) {
-            alert(err.message);
-            showSourcePicker();
+            if (draft.incomplete) showSourceFallback("images", draft.incomplete.message, draft);
+            else showReviewScreen(draft);
+          } catch {
+            showSourceFallback("images", tx("Couldn't reach Open the Pantry. Check your connection and try again."), null);
           } finally { setBusy(false); }
         },
       }, [
@@ -3413,9 +3466,11 @@
       ]));
     }
 
-    addBody.appendChild(modeSwitchControl(renderSingle, renderCombine, [tx("Single"), tx("Combine multiple")]));
+    const modeSwitch = modeSwitchControl(renderSingle, renderCombine, [tx("Single"), tx("Combine multiple")]);
+    addBody.appendChild(modeSwitch);
     addBody.appendChild(formArea);
-    renderSingle();
+    if (combine) modeSwitch.querySelectorAll("button")[1].click();
+    else renderSingle();
   }
 
   function setBusy(isBusy, msg) {

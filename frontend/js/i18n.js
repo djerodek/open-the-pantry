@@ -326,6 +326,21 @@
       "Ou envoyez le PDF en pièce jointe à la boîte de réception des recettes, si la réception par courriel est configurée.",
     "Continue anyway": "Continuer quand même",
     "Try another link": "Essayer un autre lien",
+    "Couldn't read this file": "Impossible de lire ce fichier",
+    "Many recipe pages put the recipe card at the bottom, after the article. If the PDF stops before it, there's no recipe in it to read.":
+      "Beaucoup de pages de recettes placent la fiche recette en bas, après l'article. Si le PDF s'arrête avant, il ne contient pas de recette à lire.",
+    "If the recipe takes several screenshots, add them together with Combine multiple.":
+      "Si la recette tient sur plusieurs captures d'écran, ajoutez-les ensemble avec Combiner plusieurs.",
+    "Check that the screenshots cover the whole recipe card, ingredients and steps.":
+      "Vérifiez que les captures d'écran couvrent toute la fiche recette, ingrédients et étapes.",
+    "Other ways to add it": "Autres façons de l'ajouter",
+    "Screenshots of the recipe card: the app reads them with text recognition. Use Combine multiple if it takes more than one.":
+      "Des captures d'écran de la fiche recette : l'application les lit par reconnaissance de texte. Utilisez Combiner plusieurs s'il en faut plus d'une.",
+    "A PDF of the page, if it came from a website: text in a PDF reads more reliably than a screenshot.":
+      "Un PDF de la page, si elle vient d'un site Web : le texte d'un PDF se lit de façon plus fiable qu'une capture d'écran.",
+    "Enter it by hand.": "La saisir à la main.",
+    "Add from screenshots": "Ajouter à partir de captures d'écran",
+    "Enter manually": "Saisir à la main",
     "Reading PDF (this can take a moment for scanned pages)...": "Lecture du PDF (les pages numérisées peuvent prendre un moment)…",
     "Could not process PDF.": "Impossible de traiter le PDF.",
     "PDF file": "Fichier PDF",

@@ -2,6 +2,7 @@ import os
 import re
 import uuid
 
+from .completeness import missing_parts as missing_sections
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
 from .url_ingest import ingest_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError
@@ -278,6 +279,9 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
 
     name_prefix = f"email-{uuid.uuid4().hex}"
     tried = list(parts["skipped"])
+    # A PDF or photo that gave only ingredients or only steps (a page cut off
+    # before its recipe card, one screenshot of several).
+    incomplete_hint = False
 
     # 1. PDF attachment
     if parts["pdf_bytes"]:
@@ -309,12 +313,16 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
             if fully_scanned and _ocr_too_poor(pdf_result.avg_ocr_confidence):
                 tried.append(f"{label}: the scan couldn't be read reliably "
                              f"(text recognition confidence {pdf_result.avg_ocr_confidence:.0f}%)")
-            elif segmented["ingredients"] or segmented["steps"]:
+            elif not missing_sections(segmented["ingredients"], segmented["steps"]):
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     pdf_result.raw_text, ocr_confidence=pdf_result.avg_ocr_confidence,
                     source_detail="PDF attachment",
                 )
+            elif segmented["ingredients"] or segmented["steps"]:
+                incomplete_hint = True
+                tried.append(f"{label}: only part of a recipe "
+                             f"(no {' or '.join(missing_sections(segmented['ingredients'], segmented['steps']))} found)")
             else:
                 tried.append(f"{label}: no ingredient or step lines found in its text")
 
@@ -341,12 +349,17 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 tried.append(f"{label}: the photo couldn't be read reliably "
                              f"(text recognition confidence {ocr_result.ocr_confidence:.0f}%); "
                              "a sharper, straight-on photo or the typed text works better")
-            elif segmented["ingredients"] or segmented["steps"]:
+            elif not missing_sections(segmented["ingredients"], segmented["steps"]):
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     ocr_result.raw_text, image_path=image_name, ocr_confidence=ocr_result.ocr_confidence,
                     source_detail="image attachment",
                 )
+            elif segmented["ingredients"] or segmented["steps"]:
+                os.remove(image_path)
+                incomplete_hint = True
+                tried.append(f"{label}: only part of a recipe "
+                             f"(no {' or '.join(missing_sections(segmented['ingredients'], segmented['steps']))} found)")
             else:
                 os.remove(image_path)  # nothing usable came from it; don't leave it as an orphaned draft file
                 tried.append(f"{label}: text recognition found no ingredient or step lines")
@@ -389,12 +402,16 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     # 4. Last resort: treat the body text itself as the recipe.
     if parts["body_text"]:
         segmented = segment_raw_text(parts["body_text"])
-        if segmented["ingredients"] or segmented["steps"]:
+        if not missing_sections(segmented["ingredients"], segmented["steps"]):
             return _build_result(
                 segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                 parts["body_text"], source_detail="email body text",
             )
-        tried.append("body text: no ingredient or step lines")
+        if segmented["ingredients"] or segmented["steps"]:
+            tried.append("body text: only part of a recipe "
+                         f"(no {' or '.join(missing_sections(segmented['ingredients'], segmented['steps']))} found)")
+        else:
+            tried.append("body text: no ingredient or step lines")
     else:
         tried.append("body: empty")
 
@@ -404,5 +421,8 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     if pdf_hint:
         reason += (" To add it, save the page as a PDF and email that as an attachment, "
                    "with the same word in the subject.")
+    elif incomplete_hint:
+        reason += (" If the PDF or photo stops before the recipe card, send one that includes it. "
+                   "Otherwise add the recipe in the app, from screenshots or by hand.")
     log.warning(reason)
     return _failure(reason)

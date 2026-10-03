@@ -319,6 +319,22 @@ _FR_PATTERNS = [
        " Pour l'ajouter, enregistrez la page en PDF et envoyez-la par courriel en pièce jointe, avec le même mot "
        "dans l'objet."),
 
+    # A PDF or photo that gave only part of a recipe (completeness)
+    _p(r"This PDF didn't give a complete recipe \(no ", "Ce PDF ne donne pas une recette complète (aucun "),
+    _p(r"This image didn't give a complete recipe \(no ", "Cette image ne donne pas une recette complète (aucun "),
+    _p(r"These images didn't give a complete recipe \(no ", "Ces images ne donnent pas une recette complète (aucun "),
+    _p(r"body text: only part of a recipe \(no ", "texte du corps : seulement une partie d'une recette (aucun "),
+    _p(r": only part of a recipe \(no ", " : seulement une partie d'une recette (aucun "),
+    _p(r"\(aucun ingredients or steps found\)", "(aucun ingrédient ni étape trouvés)"),
+    _p(r"\(aucun ingredients found\)", "(aucun ingrédient trouvé)"),
+    _p(r"\(aucun steps found\)", "(aucune étape trouvée)"),
+    _p(r" Add it on its own from screenshots of the recipe \(Screenshot/Photo\), or enter it by hand\.",
+       " Ajoutez la recette seule, à partir de captures d'écran de la recette (Capture d'écran/photo), ou saisissez-la à la main."),
+    _p(r" If the PDF or photo stops before the recipe card, send one that includes it\. Otherwise add the "
+       r"recipe in the app, from screenshots or by hand\.",
+       " Si le PDF ou la photo s'arrête avant la fiche recette, envoyez-en un qui l'inclut. Sinon, ajoutez la "
+       "recette dans l'application, à partir de captures d'écran ou à la main."),
+
     # A site that refused the app (url_ingest.SiteRefusedError)
     _p(r"(\S+) refused the request \(HTTP (\d+)\)\. Sites with a bot check do this; save the page as a PDF "
        r"or take a screenshot, and add that instead\.",
