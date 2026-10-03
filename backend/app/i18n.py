@@ -306,6 +306,20 @@ _FR_PATTERNS = [
        " (laissé non lu; la prochaine vérification réessaiera)"),
     _p(r"\(unknown subject\)", "(objet inconnu)"),
 
+    # A site that refused the app (url_ingest.SiteRefusedError)
+    _p(r"(\S+) refused the request \(HTTP (\d+)\)\. Sites with a bot check do this; save the page as a PDF "
+       r"or take a screenshot, and add that instead\.",
+       r"\1 a refusé la demande (HTTP \2). Les sites protégés contre les robots font ça; enregistrez la page en "
+       r"PDF ou faites une capture d'écran, et ajoutez-la plutôt."),
+    _p(r"(\S+) answered with HTTP (\d+)\.", r"\1 a répondu avec le code HTTP \2."),
+    _p(r" -- no steps were found; check the recipe", " -- aucune étape trouvée; vérifiez la recette"),
+    _p(r": the scan couldn't be read reliably \(text recognition confidence (\d+)%\)",
+       r" : le document numérisé n'a pas pu être lu de façon fiable (fiabilité de la reconnaissance \1 %)"),
+    _p(r": the photo couldn't be read reliably \(text recognition confidence (\d+)%\); a sharper, straight-on "
+       r"photo or the typed text works better",
+       r" : la photo n'a pas pu être lue de façon fiable (fiabilité de la reconnaissance \1 %); une photo plus "
+       r"nette, prise de face, ou le texte tapé fonctionne mieux"),
+
     # Why an email produced no recipe (email_processing)
     _p(r"Could not read email content: ", "Impossible de lire le contenu du courriel : "),
     _p(r"Could not read PDF attachment: ", "Impossible de lire la pièce jointe PDF : "),

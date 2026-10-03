@@ -34,6 +34,10 @@
   let clientErrorsSent = 0;
   function reportClientError(message, source, line, column, error) {
     if (clientErrorsSent >= 10) return;
+    // "Script error." with no file or line is all a browser reports for
+    // an error in a script from somewhere else (an extension, a content
+    // blocker); there's nothing in it to act on.
+    if (message === "Script error." && !source && !error) return;
     clientErrorsSent += 1;
     try {
       const body = JSON.stringify({
@@ -573,6 +577,73 @@
       httpsPollTimer = setTimeout(() => { if (!httpsPanel.hidden) renderHttpsSettings(); }, 2000);
     }
   }
+
+  // -------------------------------------------------------------------
+  // Settings -> Logs: view (newest at the bottom), download, clear.
+  // -------------------------------------------------------------------
+  const logsPanel = $("#logs-panel");
+  const logsToggle = $("#logs-view-toggle");
+  let logsProblemsOnly = false;
+
+  logsToggle.addEventListener("click", async () => {
+    const willOpen = logsPanel.hidden;
+    logsPanel.hidden = !willOpen;
+    logsToggle.setAttribute("aria-expanded", String(willOpen));
+    logsToggle.textContent = willOpen ? tx("Hide log") : tx("View log");
+    if (willOpen) await renderLogs();
+  });
+
+  async function renderLogs() {
+    logsPanel.innerHTML = "";
+    const filter = modeSwitchControl(
+      () => { logsProblemsOnly = false; renderLogBody(); },
+      () => { logsProblemsOnly = true; renderLogBody(); },
+      [tx("Everything"), tx("Warnings and errors")]);
+    if (logsProblemsOnly) filter.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String(i === 1)));
+    const refresh = el("button", { type: "button", class: "btn-secondary btn-small", text: tx("Refresh"), onclick: () => renderLogBody() });
+    const info = el("div", { class: "field-hint", role: "status" });
+    const pre = el("pre", { class: "log-view", tabindex: "0", "aria-label": tx("Log") });
+    logsPanel.appendChild(el("div", { class: "logs-toolbar" }, [filter, refresh]));
+    logsPanel.appendChild(pre);
+    logsPanel.appendChild(info);
+
+    async function renderLogBody() {
+      pre.textContent = tx("Loading...");
+      try {
+        const res = await fetch(`${API}/logs?lines=500&problems=${logsProblemsOnly}`);
+        if (!res.ok) throw new Error(String(res.status));
+        const d = await res.json();
+        pre.textContent = d.records.length ? d.records.join("\n")
+          : logsProblemsOnly ? tx("No warnings or errors.") : tx("Nothing logged yet.");
+        pre.scrollTop = pre.scrollHeight;
+        info.textContent = txn(d.records.length, "{n} entry shown. The whole log is {1}; Download has all of it.",
+          "Last {n} entries shown. The whole log is {1}; Download has all of it.", { 1: formatBytes(d.bytes) });
+      } catch {
+        pre.textContent = "";
+        info.textContent = tx("Could not load the log.");
+      }
+    }
+    await renderLogBody();
+  }
+
+  $("#logs-download").addEventListener("click", async () => {
+    try {
+      const res = await fetch(`${API}/logs/download`);
+      if (!res.ok) throw new Error(String(res.status));
+      saveBlob(await res.blob(), filenameFromResponse(res) || "open-the-pantry-log.txt");
+      announce(tx("Download started."));
+    } catch {
+      announceError(tx("Couldn't reach Open the Pantry, so nothing was downloaded. Check your connection and try again."));
+    }
+  });
+
+  $("#logs-clear").addEventListener("click", async () => {
+    if (!confirm(tx("Clear the log? Everything recorded so far is deleted. Download it first if you might need it."))) return;
+    const result = await fetchWithTimeout(`${API}/logs`, { method: "DELETE" });
+    if (!result.ok) { announceError(writeFailureMessage(result, tx("The log"))); return; }
+    announce(tx("Log cleared."));
+    if (!logsPanel.hidden) await renderLogs();
+  });
 
   // One scan routine for both places it can be started: Settings (next to
   // the connection settings, for testing) and the + menu (for everyday use).
@@ -3065,7 +3136,11 @@
   function renderBatchResults(container, result) {
     container.innerHTML = "";
     const list = el("ul", { class: "batch-results-list" });
-    for (const s of result.succeeded) list.appendChild(el("li", { class: "ok", text: `\u2713 ${s.title}` }));
+    for (const s of result.succeeded) {
+      list.appendChild(el("li", { class: "ok", text: s.no_steps
+        ? `\u2713 ${s.title} \u2014 ${tx("no steps were found; check the recipe")}`
+        : `\u2713 ${s.title}` }));
+    }
     for (const f of result.failed) list.appendChild(el("li", { class: "fail", text: `\u2717 ${f.url || f.filename}: ${f.error}` }));
     container.appendChild(list);
   }

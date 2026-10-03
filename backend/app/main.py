@@ -27,7 +27,7 @@ setup_logging(DATA_DIR)
 log = get_logger("app")
 scan_log = get_logger("scan")
 from .init_db import init_db
-from .ingestion.url_ingest import ingest_url, safe_get
+from .ingestion.url_ingest import ingest_url, safe_get, UrlValidationError
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
 from .ingestion.image_ingest import ingest_and_segment, ingest_image
 from .ingestion.ingredient_parser import parse_ingredient_block
@@ -975,6 +975,8 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     recipe_id = _save_email_recipe(db, result, subject)
                     succeeded += 1
                     line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
+                    if not result["steps"]:
+                        line += " -- no steps were found; check the recipe"
                     scan_log.info("Scan: saved recipe %s: %s", recipe_id, line)
                     messages.append(f"OK: {line}")
                     _queue_notification(db, True, line)
@@ -1085,7 +1087,8 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
     try:
         result = ingest_url(payload.url)
     except Exception as e:
-        log.warning("Add from URL failed for %s", payload.url, exc_info=True)
+        log.warning("Add from URL failed for %s: %s", payload.url, e,
+                    exc_info=not isinstance(e, UrlValidationError))
         raise HTTPException(status_code=422, detail=str(e))
 
     parsed_ingredients = parse_ingredient_block(result.ingredients)
@@ -1175,9 +1178,10 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)
             db.commit()
-            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title})
+            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title,
+                              "no_steps": not result.steps})
         except Exception as e:
-            log.warning("ingest_from_url_batch: caught error, continuing", exc_info=True)
+            log.warning("Batch URL %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
             db.rollback()
             if image_path:
                 stray_path = safe_join(UPLOADS_DIR, image_path)
@@ -2252,6 +2256,35 @@ def test_email_settings(db: Session = Depends(get_db)):
     else:
         message = f"{smtp_msg}\n{imap_msg}"
     return schemas.EmailTestResult(success=smtp_ok and imap_ok, message=message)
+
+
+# ---------------------------------------------------------------------------
+# Settings -> Logs. The same file `docker logs` mirrors, data/logs/app.log
+# plus its rotated copies.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/logs")
+def view_logs(lines: int = Query(300, ge=1, le=2000), problems: bool = False):
+    from .logging_setup import read_records
+    return read_records(DATA_DIR, limit=lines, problems_only=problems)
+
+
+@app.get("/api/logs/download")
+def download_logs():
+    from .logging_setup import log_files
+    files = log_files(DATA_DIR)
+    body = b"".join(open(f, "rb").read() for f in files)
+    name = f"open-the-pantry-log-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+    return Response(content=body, media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.delete("/api/logs")
+def clear_logs_endpoint():
+    from .logging_setup import clear_logs
+    clear_logs(DATA_DIR)
+    log.info("Log cleared from Settings")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

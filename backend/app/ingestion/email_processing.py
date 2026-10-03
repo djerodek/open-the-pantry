@@ -4,7 +4,7 @@ import uuid
 
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
-from .url_ingest import ingest_url
+from .url_ingest import ingest_url, UrlValidationError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
 from ..file_validation import validate_and_save_pdf_bytes, validate_and_save_image_bytes
@@ -128,7 +128,7 @@ def extract_email_parts(msg) -> dict:
         content_type = part.get_content_type()
         disposition = str(part.get("Content-Disposition") or "").lower()
         explicit = disposition.startswith("attachment") or "attachment" in disposition.split(";")[0]
-        filename = part.get_filename()
+        filename = _filename(part)
         is_file = explicit or bool(filename)
 
         is_pdf = content_type == "application/pdf" or (
@@ -216,6 +216,31 @@ def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_
     }
 
 
+def _filename(part) -> str | None:
+    """The attachment's file name, decoded. Apple Mail sends non-ASCII names
+    as RFC 2047 encoded words ("=?utf-8?B?...?="), which the message
+    parser used here leaves as-is: the name in the log and in failure
+    messages came out as that encoded string."""
+    name = part.get_filename()
+    if name and "=?" in name:
+        try:
+            from email.header import decode_header, make_header
+            name = str(make_header(decode_header(name)))
+        except Exception:
+            log.debug("Couldn't decode attachment name %r", name, exc_info=True)
+    return name
+
+
+# Email has no review screen, so OCR this unsure is refused rather than
+# saved as a recipe of garbled words (a photo at an angle, handwriting).
+# The app's "OCR quality: low" badge starts at 55; this is below that.
+MIN_EMAIL_OCR_CONFIDENCE = 50
+
+
+def _ocr_too_poor(confidence) -> bool:
+    return confidence is not None and confidence < MIN_EMAIL_OCR_CONFIDENCE
+
+
 def _failure(reason: str) -> dict:
     return {"success": False, "error": reason}
 
@@ -246,7 +271,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
         payload = part.get_payload(decode=True) or b""
         disp = str(part.get("Content-Disposition") or "-").split(";")[0]
         layout.append(f"{part.get_content_type()}[{disp}"
-                      f"{', ' + part.get_filename() if part.get_filename() else ''}, {len(payload)}B]")
+                      f"{', ' + _filename(part) if _filename(part) else ''}, {len(payload)}B]")
     log.info("Parts: %s", " ".join(layout) or "(none)")
     log.info("Found: pdf=%s image=%s urls=%s body=%d chars; skipped=%s",
              parts["pdf_name"], parts["image_name"], parts["urls"], len(parts["body_text"]), parts["skipped"])
@@ -276,13 +301,22 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
 
             segmented = segment_raw_text(pdf_result.raw_text)
             os.remove(pdf_path)  # attachment's job is done once text is extracted; not kept as the showcase image
-            if segmented["ingredients"] or segmented["steps"]:
+            if pdf_result.avg_ocr_confidence is not None:
+                log.info("PDF %s: OCR confidence %.0f", label, pdf_result.avg_ocr_confidence)
+            # Only a fully scanned PDF is judged on its OCR: a page with a
+            # real text layer is reliable however the scanned pages went.
+            fully_scanned = pdf_result.page_count and len(pdf_result.ocr_used_on_pages) == pdf_result.page_count
+            if fully_scanned and _ocr_too_poor(pdf_result.avg_ocr_confidence):
+                tried.append(f"{label}: the scan couldn't be read reliably "
+                             f"(text recognition confidence {pdf_result.avg_ocr_confidence:.0f}%)")
+            elif segmented["ingredients"] or segmented["steps"]:
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     pdf_result.raw_text, ocr_confidence=pdf_result.avg_ocr_confidence,
                     source_detail="PDF attachment",
                 )
-            tried.append(f"{label}: no ingredient or step lines found in its text")
+            else:
+                tried.append(f"{label}: no ingredient or step lines found in its text")
 
     # 2. Image attachment
     if parts["image_bytes"]:
@@ -300,14 +334,22 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 return _failure(f"Could not read image attachment: {e}")
 
             segmented = segment_raw_text(ocr_result.raw_text)
-            if segmented["ingredients"] or segmented["steps"]:
+            if ocr_result.ocr_confidence is not None:
+                log.info("Image %s: OCR confidence %.0f", label, ocr_result.ocr_confidence)
+            if _ocr_too_poor(ocr_result.ocr_confidence):
+                os.remove(image_path)
+                tried.append(f"{label}: the photo couldn't be read reliably "
+                             f"(text recognition confidence {ocr_result.ocr_confidence:.0f}%); "
+                             "a sharper, straight-on photo or the typed text works better")
+            elif segmented["ingredients"] or segmented["steps"]:
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     ocr_result.raw_text, image_path=image_name, ocr_confidence=ocr_result.ocr_confidence,
                     source_detail="image attachment",
                 )
-            os.remove(image_path)  # nothing usable came from it; don't leave it as an orphaned draft file
-            tried.append(f"{label}: text recognition found no ingredient or step lines")
+            else:
+                os.remove(image_path)  # nothing usable came from it; don't leave it as an orphaned draft file
+                tried.append(f"{label}: text recognition found no ingredient or step lines")
 
     # 3. A single clear URL in the body -- hand off to the existing,
     # SSRF-guarded URL ingestion pipeline rather than trying to parse
@@ -331,9 +373,9 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                     url_result.raw_text, source_detail=f"URL in body ({url})",
                 )
             except Exception as e:
-                # Full traceback: the one-line reason is often an exception
-                # message that doesn't say where it came from.
-                log.warning("Link %s failed", url, exc_info=True)
+                # Full traceback for the unexpected; the URL checks and a
+                # site's refusal are already explained in one line.
+                log.warning("Link %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
                 tried.append(f"link {url}: {e}")
 
     # 4. Last resort: treat the body text itself as the recipe.

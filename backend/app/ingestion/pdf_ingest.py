@@ -77,9 +77,10 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
 
 
 class PdfIngestResult:
-    def __init__(self, raw_text: str, ocr_used_on_pages: list[int], avg_ocr_confidence):
+    def __init__(self, raw_text: str, ocr_used_on_pages: list[int], avg_ocr_confidence, page_count: int = 0):
         self.raw_text = raw_text
         self.ocr_used_on_pages = ocr_used_on_pages
+        self.page_count = page_count
         # None if no OCR was needed at all (pure text-layer extraction)
         self.avg_ocr_confidence = avg_ocr_confidence
 
@@ -97,6 +98,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
     ocr_confidences = []
 
     with pdfplumber.open(pdf_path) as pdf:
+        page_count = len(pdf.pages)
         if len(pdf.pages) > MAX_PDF_PAGES:
             raise PdfTooLargeError(
                 f"PDF has {len(pdf.pages)} pages (limit {MAX_PDF_PAGES}) -- "
@@ -124,6 +126,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
         raw_text="\n\n".join(page_texts),
         ocr_used_on_pages=ocr_pages,
         avg_ocr_confidence=avg_confidence,
+        page_count=page_count,
     )
 
 

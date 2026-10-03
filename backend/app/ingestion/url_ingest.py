@@ -69,6 +69,15 @@ MAX_PAGE_BYTES = 10 * 1024 * 1024
 TOTAL_FETCH_SECONDS = 30
 
 
+class NoRecipeFoundError(UrlValidationError):
+    """The page loaded but held no recipe the app could read. Already
+    logged in detail (what was found on the page) where it's raised."""
+
+
+class SiteRefusedError(UrlValidationError):
+    """The site answered with an error status (often a bot check)."""
+
+
 class FetchTooLargeError(UrlValidationError):
     pass
 
@@ -153,10 +162,17 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
             continue
         if resp.status_code >= 400:
             # Bot-protection pages (Cloudflare etc.) answer 403/503 with an
-            # HTML challenge. Its <title> says which, so log it.
+            # HTML challenge. Its <title> says which, so log it. One line:
+            # it's the site's answer, not a fault in the app, so no traceback.
+            title = _page_title(resp.text)
             log.warning("GET %s refused: HTTP %s, page title %r, server %r", current_url,
-                        resp.status_code, _page_title(resp.text), resp.headers.get("Server"))
-        resp.raise_for_status()
+                        resp.status_code, title, resp.headers.get("Server"))
+            host = requests.compat.urlparse(current_url).hostname or current_url
+            if resp.status_code in (401, 403, 429, 503):
+                raise SiteRefusedError(
+                    f"{host} refused the request (HTTP {resp.status_code}). Sites with a bot check do this; "
+                    "save the page as a PDF or take a screenshot, and add that instead.")
+            raise SiteRefusedError(f"{host} answered with HTTP {resp.status_code}.")
         return resp
     raise UrlValidationError("Too many redirects, or a redirect with no Location header.")
 
@@ -422,7 +438,7 @@ def ingest_url(url: str) -> UrlIngestResult:
         url, resp.status_code, len(html), _page_title(html),
         html.count("application/ld+json"), sorted(set(ld_types))[:12], "Recipe" in html,
     )
-    raise ValueError(
+    raise NoRecipeFoundError(
         "Could not extract a recipe from this URL automatically. "
         "Use manual entry instead, pasting from the page."
     )

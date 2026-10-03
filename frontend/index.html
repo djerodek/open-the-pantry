@@ -309,6 +309,20 @@
     </div>
 
     <div class="filter-section">
+      <div class="filter-section-title">Logs</div>
+      <div class="logs-buttons">
+        <button type="button" id="logs-view-toggle" class="btn-secondary" aria-expanded="false" aria-controls="logs-panel">View log</button>
+        <button type="button" id="logs-download" class="btn-secondary">Download</button>
+        <button type="button" id="logs-clear" class="btn-secondary">Clear log</button>
+      </div>
+      <div class="field-hint">
+        What the app recorded: recipe imports, email scans and errors. Useful when
+        something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.
+      </div>
+      <div id="logs-panel" hidden></div>
+    </div>
+
+    <div class="filter-section">
       <div class="filter-section-title" id="backup-format-label">Backup &amp; export</div>
       <p class="field-hint" id="backup-stats">&nbsp;</p>
 

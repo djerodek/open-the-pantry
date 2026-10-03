@@ -265,6 +265,13 @@ Safeguards and notes:
   be treated as a recipe photo, which keeps signature logos out of OCR.
   Mail-app footers ("Sent from my iPhone", "Get Outlook for iOS" and its
   link) and anything after a `-- ` signature line are ignored.
+- Email has no review screen, so a photo or fully scanned PDF that text
+  recognition can't read reliably (confidence under 50%) is refused
+  rather than saved as a recipe of garbled words; the `[FAILURE]` email
+  says so and suggests a sharper photo or the typed text. Attachment names
+  are decoded, so Apple Mail's `Screenshot … PM.pdf` appears as that.
+  A recipe that came in without any steps is flagged in the result email
+  (and in the batch import list) so it can be checked.
 - If an email can't be turned into a recipe, the reason lists each thing
   tried and why it gave up. It is shown under "Scan inbox now" and sent in
   the `[FAILURE]` email. Emails over 30 MB are refused before download.
@@ -587,6 +594,10 @@ Safeguards and notes:
   results. Empty means anyone, as before. The From header can be forged,
   so this keeps out people who stumble on the address and keyword -- a
   dedicated, unguessable address still matters.
+- **The log is readable in Settings → Logs** by anyone who can reach the
+  app, like everything else in it. It holds email subjects and senders and
+  the URLs of recipes added, never passwords, keys, email bodies or page
+  contents.
 - **Page downloads are bounded:** 10 MB per page (20 MB for photos), 30
   seconds in total including redirects even against a server that trickles
   data slowly rather than going silent outright, and only public internet
@@ -750,7 +761,8 @@ Safeguards and notes:
 
 - **Some recipe sites refuse automated requests.** Sites behind
   Cloudflare's bot check (and paywalled ones such as NYT Cooking) answer
-  the app with HTTP 403 and a "Just a moment..." page; the log says so
+  the app with HTTP 403 and a "Just a moment..." page; the app says the
+  site refused and what to do instead, and the log records it in one line
   (`otp.url`). The app doesn't try to get around that. Save the page as a
   PDF (Share → Print, pinch out, share the PDF), take a screenshot, or
   paste the text, and add or email that instead.
@@ -774,6 +786,12 @@ Safeguards and notes:
   from the recipe detail page afterward.
 
 ## Logs
+
+**Settings → Logs** shows the log in the app: the newest 500 entries,
+everything or only warnings and errors (a traceback stays with its entry),
+plus **Download** (the whole log, all rotated files, as one `.txt`) and
+**Clear log** (empties it, after a confirmation). Kept to about 4 MB: the
+oldest entries drop off by themselves, so clearing is never required.
 
 The app logs every step of email and link ingestion, every error it
 catches anywhere in the backend (with the traceback), every request that

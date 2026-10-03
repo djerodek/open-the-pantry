@@ -309,6 +309,7 @@
     "Fetching {1} recipe(s)...": "Récupération de {1} recette(s)…",
     "Batch import failed (error {1}).": "L'importation par lot a échoué (erreur {1}).",
     "{1} added, {2} failed.": "{1} ajoutée(s), {2} en échec.",
+    "no steps were found; check the recipe": "aucune étape trouvée; vérifiez la recette",
     "Batch import failed.": "L'importation par lot a échoué.",
     "Recipe URLs (one per line)": "URL des recettes (une par ligne)",
     "Each recipe is saved directly using auto-detected fields — open it afterward to correct anything.":
@@ -554,6 +555,29 @@
       "Désactiver HTTPS? L'adresse https:// cessera de fonctionner; l'adresse habituelle continue de fonctionner. L'enregistrement DNS reste.",
     "HTTPS turned off.": "HTTPS désactivé.",
     "HTTPS is ready.": "HTTPS est prêt.",
+
+    // Settings → Logs
+    "Logs": "Journal",
+    "View log": "Voir le journal",
+    "Hide log": "Masquer le journal",
+    "Clear log": "Vider le journal",
+    "What the app recorded: recipe imports, email scans and errors. Useful when something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.":
+      "Ce que l'application a consigné : importations de recettes, vérifications de courriel et erreurs. Utile quand quelque chose n'a pas fonctionné. Limité à environ 4 Mo; les entrées les plus anciennes disparaissent d'elles-mêmes.",
+    "Everything": "Tout",
+    "Warnings and errors": "Avertissements et erreurs",
+    "Refresh": "Actualiser",
+    "Log": "Journal",
+    "Nothing logged yet.": "Rien de consigné pour l'instant.",
+    "{n} entry shown. The whole log is {1}; Download has all of it.":
+      "{n} entrée affichée. Le journal complet fait {1}; Télécharger le contient en entier.",
+    "Last {n} entries shown. The whole log is {1}; Download has all of it.":
+      "Les {n} dernières entrées sont affichées. Le journal complet fait {1}; Télécharger le contient en entier.",
+    "No warnings or errors.": "Aucun avertissement ni erreur.",
+    "Could not load the log.": "Impossible de charger le journal.",
+    "Clear the log? Everything recorded so far is deleted. Download it first if you might need it.":
+      "Vider le journal? Tout ce qui a été consigné jusqu'ici sera supprimé. Téléchargez-le d'abord si vous pourriez en avoir besoin.",
+    "The log": "Le journal",
+    "Log cleared.": "Journal vidé.",
 
     // Tag scan (Settings → Tags)
     "Show each recipe": "Afficher chaque recette",
