@@ -4,7 +4,7 @@ import uuid
 
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
-from .url_ingest import ingest_url, UrlValidationError
+from .url_ingest import ingest_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
 from ..file_validation import validate_and_save_pdf_bytes, validate_and_save_image_bytes
@@ -362,12 +362,13 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     # Links are tried in order, first success wins. This used to require
     # exactly one link and skip the step otherwise -- which, with Outlook's
     # footer link, meant any email sent from Outlook for iOS.
+    pdf_hint = False
     if len(parts["urls"]) > MAX_LINKS_TRIED:
         tried.append(f"{len(parts['urls'])} links in the body; at most {MAX_LINKS_TRIED} are followed")
     else:
         for url in parts["urls"]:
             try:
-                url_result = ingest_url(url)
+                url_result = require_complete(ingest_url(url))
                 return _build_result(
                     url_result.title, url_result.ingredients, url_result.steps,
                     url_result.raw_text, source_detail=f"URL in body ({url})",
@@ -376,7 +377,14 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 # Full traceback for the unexpected; the URL checks and a
                 # site's refusal are already explained in one line.
                 log.warning("Link %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
-                tried.append(f"link {url}: {e}")
+                if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError)):
+                    pdf_hint = True
+                    # The "add that instead" advice is for the app's own
+                    # screens; the email gets its own version below.
+                    reason_only = re.sub(r"\s*(?:Sites with a bot check do this; s|S)ave the page as a PDF.*$", "", str(e))
+                    tried.append(f"link {url}: {reason_only}")
+                else:
+                    tried.append(f"link {url}: {e}")
 
     # 4. Last resort: treat the body text itself as the recipe.
     if parts["body_text"]:
@@ -393,5 +401,8 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     if not (parts["pdf_bytes"] or parts["image_bytes"] or parts["urls"]):
         tried.insert(0, "no PDF, photo or link in the email")
     reason = "No recipe found. Tried: " + "; ".join(tried) + "."
+    if pdf_hint:
+        reason += (" To add it, save the page as a PDF and email that as an attachment, "
+                   "with the same word in the subject.")
     log.warning(reason)
     return _failure(reason)

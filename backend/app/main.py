@@ -27,7 +27,8 @@ setup_logging(DATA_DIR)
 log = get_logger("app")
 scan_log = get_logger("scan")
 from .init_db import init_db
-from .ingestion.url_ingest import ingest_url, safe_get, UrlValidationError
+from .ingestion.url_ingest import (ingest_url, safe_get, UrlValidationError, IncompleteRecipeError,
+                                   require_complete, missing_parts)
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
 from .ingestion.image_ingest import ingest_and_segment, ingest_image
 from .ingestion.ingredient_parser import parse_ingredient_block
@@ -1091,6 +1092,16 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
                     exc_info=not isinstance(e, UrlValidationError))
         raise HTTPException(status_code=422, detail=str(e))
 
+    # A half recipe (no ingredients, or no steps) is reported as a failed
+    # import, with the partial draft attached so "Continue anyway" can still
+    # open it in the review screen.
+    incomplete = None
+    try:
+        require_complete(result)
+    except IncompleteRecipeError as e:
+        log.info("Add from URL: incomplete recipe from %s: %s", payload.url, e)
+        incomplete = {"missing": missing_parts(result), "message": str(e)}
+
     parsed_ingredients = parse_ingredient_block(result.ingredients)
     tag_suggestions = suggest_tags(
         result.title, [i["name"] or i["raw_line"] for i in parsed_ingredients], result.raw_text
@@ -1119,6 +1130,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
         "suggested_tags": [{"name": n, "category": c, "subgroup": s} for n, c, s in tag_suggestions],
         "extraction_method": result.method,
         "ocr_confidence": None,
+        "incomplete": incomplete,
     }
 
 
@@ -1151,7 +1163,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             continue
         image_path = None
         try:
-            result = ingest_url(url)
+            result = require_complete(ingest_url(url))
             parsed_ingredients = parse_ingredient_block(result.ingredients)
             tag_suggestions = suggest_tags(
                 result.title, [i["name"] or i["raw_line"] for i in parsed_ingredients], result.raw_text
@@ -1178,8 +1190,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)
             db.commit()
-            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title,
-                              "no_steps": not result.steps})
+            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title})
         except Exception as e:
             log.warning("Batch URL %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
             db.rollback()

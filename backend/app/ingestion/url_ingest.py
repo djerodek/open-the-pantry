@@ -74,6 +74,37 @@ class NoRecipeFoundError(UrlValidationError):
     logged in detail (what was found on the page) where it's raised."""
 
 
+class IncompleteRecipeError(UrlValidationError):
+    """The page gave a recipe without ingredients or without steps. Carries
+    the partial result, so the single-URL screen can still offer it."""
+
+    def __init__(self, message: str, result=None):
+        super().__init__(message)
+        self.result = result
+
+
+def missing_parts(result) -> list[str]:
+    missing = []
+    if not result.ingredients:
+        missing.append("ingredients")
+    if not result.steps:
+        missing.append("steps")
+    return missing
+
+
+def require_complete(result):
+    """Raises IncompleteRecipeError unless the result has both ingredients
+    and steps. A half recipe is treated as a failed import: the way to get
+    all of it is a PDF of the page, made in the browser."""
+    missing = missing_parts(result)
+    if missing:
+        what = " or ".join(missing)
+        raise IncompleteRecipeError(
+            f"This page didn't give a complete recipe (no {what} found). "
+            "Save the page as a PDF and add that instead.", result)
+    return result
+
+
 class SiteRefusedError(UrlValidationError):
     """The site answered with an error status (often a bot check)."""
 
@@ -407,7 +438,8 @@ def ingest_url(url: str) -> UrlIngestResult:
       1. recipe-scrapers (100+ site-specific parsers)
       2. schema.org JSON-LD (covers most other sites with structured data)
       3. heuristic HTML scrape (best-effort fallback, needs manual review)
-    Raises ValueError if none succeed -- caller should route to manual entry.
+    Raises NoRecipeFoundError if none succeed. Doesn't check completeness:
+    see require_complete().
     """
     validate_public_url(url)  # SSRF guard -- must run before any fetch, see above
 
@@ -439,6 +471,5 @@ def ingest_url(url: str) -> UrlIngestResult:
         html.count("application/ld+json"), sorted(set(ld_types))[:12], "Recipe" in html,
     )
     raise NoRecipeFoundError(
-        "Could not extract a recipe from this URL automatically. "
-        "Use manual entry instead, pasting from the page."
+        "Couldn't find a recipe on this page. Save the page as a PDF and add that instead."
     )

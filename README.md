@@ -176,6 +176,15 @@ Safeguards and notes:
   when present, through the same validated pipeline as any other image
   upload — a broken/oversized/invalid image never fails the ingestion,
   it's just skipped.
+- **When a link doesn't give a whole recipe** (the site blocks the app, the
+  page has no recipe the app can read, or it comes back without
+  ingredients or without steps), the import counts as failed and the app
+  says how to make a PDF of the page instead (Safari: Share → Options →
+  PDF), with an **Add from PDF** button right there. A half recipe can
+  still be opened with "Continue anyway". Batch imports list it as failed,
+  and an emailed link gets a `[FAILURE]` reply saying to email the PDF as
+  an attachment instead. The browser has the whole page (past any bot
+  check), so its PDF usually reads cleanly.
 - **PDF** — checks each page for an existing text layer first; only pages
   without one (scanned images) go through Tesseract OCR, with an
   orientation pass (pages that are sideways or upside down are turned
@@ -270,8 +279,9 @@ Safeguards and notes:
   rather than saved as a recipe of garbled words; the `[FAILURE]` email
   says so and suggests a sharper photo or the typed text. Attachment names
   are decoded, so Apple Mail's `Screenshot … PM.pdf` appears as that.
-  A recipe that came in without any steps is flagged in the result email
-  (and in the batch import list) so it can be checked.
+  A recipe from a photo, PDF or the email text that came in without any
+  steps is flagged in the result email so it can be checked. (A link that
+  gives only part of a recipe fails instead; see Ingestion.)
 - If an email can't be turned into a recipe, the reason lists each thing
   tried and why it gave up. It is shown under "Scan inbox now" and sent in
   the `[FAILURE]` email. Emails over 30 MB are refused before download.

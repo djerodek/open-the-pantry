@@ -150,3 +150,50 @@ def test_logs_view_filter_download_and_clear(client):
     for h in logging.getLogger("otp").handlers:
         h.flush()
     assert any("still works after clearing" in r for r in client.get("/api/logs").json()["records"])
+
+
+# ---------------------------------------------------------------------------
+# Half a recipe from a URL counts as a failed import, with PDF advice
+# ---------------------------------------------------------------------------
+
+def _url_result(ingredients, steps):
+    from app.ingestion.url_ingest import UrlIngestResult
+    return UrlIngestResult(title="Poulet au vinaigre", ingredients=ingredients, steps=steps,
+                           raw_text="x", method="heuristic")
+
+
+def test_single_url_reports_an_incomplete_recipe_but_keeps_the_draft(client):
+    with patch("app.main.ingest_url", return_value=_url_result(["1 chicken", "vinegar"], [])):
+        r = client.post("/api/ingest/url", json={"url": "https://example.com/poulet"})
+        fr = client.post("/api/ingest/url", json={"url": "https://example.com/poulet"}, headers={"X-App-Lang": "fr"})
+    d = r.json()
+    assert r.status_code == 200 and d["incomplete"]["missing"] == ["steps"]
+    assert d["incomplete"]["message"] == ("This page didn't give a complete recipe (no steps found). "
+                                          "Save the page as a PDF and add that instead.")
+    assert len(d["ingredients"]) == 2            # still there for "Continue anyway"
+    assert fr.json()["incomplete"]["message"].startswith("Cette page ne donne pas une recette complète (aucune étape")
+
+
+def test_complete_recipe_is_not_flagged(client):
+    with patch("app.main.ingest_url", return_value=_url_result(["1 chicken"], ["Roast it."])):
+        assert client.post("/api/ingest/url", json={"url": "https://example.com/ok"}).json()["incomplete"] is None
+
+
+def test_batch_fails_an_incomplete_recipe(client):
+    with patch("app.main.ingest_url", return_value=_url_result([], ["Mix."])):
+        r = client.post("/api/ingest/url/batch", json={"urls": ["https://example.com/half"]}).json()
+    assert r["succeeded"] == [] and "no ingredients found" in r["failed"][0]["error"]
+
+
+def test_email_link_with_half_a_recipe_fails_with_pdf_advice(tmp_path):
+    from app.ingestion import email_processing
+    m = EmailMessage()
+    m["Subject"] = "[RECIPE]"
+    m.set_content("https://example.com/poulet")
+    with patch.object(email_processing, "ingest_url", return_value=_url_result(["1 chicken"], [])):
+        result = email_processing.process_tagged_email(m, str(tmp_path))
+    assert result["success"] is False
+    assert "link https://example.com/poulet: This page didn't give a complete recipe (no steps found)." in result["error"]
+    assert "Save the page as a PDF and add that instead" not in result["error"]
+    assert result["error"].endswith("save the page as a PDF and email that as an attachment, "
+                                    "with the same word in the subject.")

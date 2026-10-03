@@ -3136,11 +3136,7 @@
   function renderBatchResults(container, result) {
     container.innerHTML = "";
     const list = el("ul", { class: "batch-results-list" });
-    for (const s of result.succeeded) {
-      list.appendChild(el("li", { class: "ok", text: s.no_steps
-        ? `\u2713 ${s.title} \u2014 ${tx("no steps were found; check the recipe")}`
-        : `\u2713 ${s.title}` }));
-    }
+    for (const s of result.succeeded) list.appendChild(el("li", { class: "ok", text: `\u2713 ${s.title}` }));
     for (const f of result.failed) list.appendChild(el("li", { class: "fail", text: `\u2717 ${f.url || f.filename}: ${f.error}` }));
     container.appendChild(list);
   }
@@ -3163,6 +3159,39 @@
     return el("div", { class: "mode-switch" }, buttons);
   }
 
+  // A URL import that failed or came back half done (no ingredients or no
+  // steps): say why, and send the person to a PDF of the page -- made in
+  // their own browser, which loaded the whole page -- with Add from PDF one
+  // tap away. A partial draft can still be opened ("Continue anyway").
+  function showPdfFallback(message, draft) {
+    addBody.innerHTML = "";
+    addBody.appendChild(el("h3", { text: draft ? tx("Only part of the recipe came through") : tx("Couldn't import this page") }));
+    addBody.appendChild(el("p", { class: "fallback-reason", text: message }));
+    addBody.appendChild(el("p", { text: tx("A PDF of the page usually works: your browser has the whole page, and the app reads recipe text from PDFs well.") }));
+    addBody.appendChild(el("p", { class: "filter-section-title", text: tx("Make a PDF") }));
+    addBody.appendChild(el("ul", { class: "fallback-steps" }, [
+      el("li", { text: tx("iPhone or iPad (Safari): Share → Options → PDF, then Save to Files.") }),
+      el("li", { text: tx("Android (Chrome): ⋮ → Share → Print → Save as PDF.") }),
+      el("li", { text: tx("Computer: Print → Save as PDF.") }),
+    ]));
+    addBody.appendChild(el("p", { class: "field-hint", text: tx("Or email the PDF to the recipe inbox as an attachment, if email ingest is set up.") }));
+    const actions = [
+      el("button", { type: "button", class: "btn-primary", text: tx("Add from PDF"), onclick: async () => {
+        if (draft) await discardCurrentDraftFiles();
+        showPdfForm();
+      } }),
+    ];
+    if (draft) {
+      actions.push(el("button", { type: "button", class: "btn-secondary", text: tx("Continue anyway"),
+        onclick: () => showReviewScreen(draft) }));
+    } else {
+      actions.push(el("button", { type: "button", class: "btn-secondary", text: tx("Try another link"), onclick: () => showUrlForm() }));
+    }
+    addBody.appendChild(el("div", { class: "fallback-actions" }, actions));
+    // The reason is on screen already; this is for screen readers.
+    announce(message);
+  }
+
   function showUrlForm() {
     addBody.innerHTML = "";
     addBody.appendChild(el("h3", { text: tx("Add from URL") }));
@@ -3180,13 +3209,17 @@
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: input.value.trim() }),
             });
-            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || tx("Extraction failed.")); }
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              showPdfFallback(typeof err.detail === "string" ? err.detail : tx("Extraction failed."), null);
+              return;
+            }
             const draft = await res.json();
             trackDraftFile(draft.image_path);
-            showReviewScreen(draft);
-          } catch (err) {
-            alert(err.message + "\n\n" + tx("You can add this recipe manually instead."));
-            showSourcePicker();
+            if (draft.incomplete) showPdfFallback(draft.incomplete.message, draft);
+            else showReviewScreen(draft);
+          } catch {
+            showPdfFallback(tx("Couldn't reach Open the Pantry. Check your connection and try again."), null);
           } finally { setBusy(false); }
         },
       }, [

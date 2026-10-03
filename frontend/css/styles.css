@@ -1655,3 +1655,9 @@ html { touch-action: manipulation; }
   background: var(--color-bg); border: 1px solid var(--color-border);
   border-radius: var(--radius); padding: 0.5rem; margin: 0;
 }
+
+/* Add from URL: the "make a PDF instead" panel */
+.fallback-reason { font-weight: 600; }
+.fallback-steps { padding-left: 1.2rem; margin: 0.25rem 0 0.75rem; }
+.fallback-steps li { margin-bottom: 0.35rem; }
+.fallback-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }

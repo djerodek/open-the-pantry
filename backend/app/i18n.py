@@ -306,6 +306,19 @@ _FR_PATTERNS = [
        " (laissé non lu; la prochaine vérification réessaiera)"),
     _p(r"\(unknown subject\)", "(objet inconnu)"),
 
+    # Pages that didn't give a whole recipe (url_ingest)
+    _p(r"Couldn't find a recipe on this page\.", "Aucune recette trouvée sur cette page."),
+    _p(r"This page didn't give a complete recipe \(no ingredients or steps found\)\.",
+       "Cette page ne donne pas une recette complète (aucun ingrédient ni étape trouvés)."),
+    _p(r"This page didn't give a complete recipe \(no ingredients found\)\.",
+       "Cette page ne donne pas une recette complète (aucun ingrédient trouvé)."),
+    _p(r"This page didn't give a complete recipe \(no steps found\)\.",
+       "Cette page ne donne pas une recette complète (aucune étape trouvée)."),
+    _p(r" Save the page as a PDF and add that instead\.", " Enregistrez la page en PDF et ajoutez-la plutôt."),
+    _p(r" To add it, save the page as a PDF and email that as an attachment, with the same word in the subject\.",
+       " Pour l'ajouter, enregistrez la page en PDF et envoyez-la par courriel en pièce jointe, avec le même mot "
+       "dans l'objet."),
+
     # A site that refused the app (url_ingest.SiteRefusedError)
     _p(r"(\S+) refused the request \(HTTP (\d+)\)\. Sites with a bot check do this; save the page as a PDF "
        r"or take a screenshot, and add that instead\.",
