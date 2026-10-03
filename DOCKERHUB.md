@@ -41,6 +41,10 @@ Save as `docker-compose.yml`:
         container_name: open-the-pantry
         ports:
           - "8090:8090"
+          - "8443:8443"   # HTTPS, once set up in Settings
+        env_file:         # optional; see the README's HTTPS section
+          - path: .env
+            required: false
         volumes:
           - ./data:/app/data
         restart: unless-stopped
@@ -85,8 +89,9 @@ updates apply.
 - PWA: installable, offline shell, pull down to refresh (and pick up a new
   version), light/dark (true black) themes, adjustable text size, keyboard
   and screen-reader accessible
-- Optional "keep screen awake" while a recipe is open, on plain http://
-  too; optional HTTPS with a real certificate on your LAN (see the README)
+- Optional "keep screen awake" while a recipe is open
+- Optional HTTPS on your LAN with a real Let's Encrypt certificate, set up
+  from Settings (cPanel-managed domains; see the README)
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
 - Full backup (restorable) or every recipe as PDFs, from Settings

@@ -65,6 +65,8 @@ COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8090
+# HTTPS, only once it's set up in Settings -> HTTPS.
+EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8090/healthz || exit 1

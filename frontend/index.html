@@ -240,6 +240,9 @@
         Applies automatically to every recipe you open. You can still toggle it
         per recipe. Released when you close the recipe.
       </div>
+      <div class="field-hint" id="wakelock-needs-https" hidden>
+        Browsers only allow this on a secure (https://) address. Set one up under HTTPS below.
+      </div>
     </div>
 
     <div class="filter-section">
@@ -291,6 +294,18 @@
         scans once daily.
       </div>
       <div id="email-settings-panel" hidden></div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-section-title">HTTPS</div>
+      <button type="button" id="https-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="https-settings-panel">
+        Configure HTTPS
+      </button>
+      <div class="field-hint" id="https-summary">
+        Optional. A secure https:// address on your network, with a free Let's Encrypt
+        certificate. Needed for keeping the screen awake.
+      </div>
+      <div id="https-settings-panel" hidden></div>
     </div>
 
     <div class="filter-section">

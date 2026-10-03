@@ -201,6 +201,53 @@ _FR_PATTERNS = [
     _p(r"The email wasn't sent: ", "Le courriel n'a pas été envoyé : "),
     _p(r"Couldn't build the PDF\.", "Impossible de créer le PDF."),
 
+    # Settings -> HTTPS (https_setup.py)
+    _p(r"Enter a name like pantry\.example\.com\.", "Entrez un nom comme pantry.example.com."),
+    _p(r"Enter this server's IPv4 address on your network, e\.g\. 192\.168\.1\.20\.",
+       "Entrez l'adresse IPv4 de ce serveur sur votre réseau, p. ex. 192.168.1.20."),
+    _p(r"Enter an email address for Let's Encrypt\.", "Entrez une adresse courriel pour Let's Encrypt."),
+    _p(r"The port must be between 1 and 65535\.", "Le port doit être entre 1 et 65535."),
+    _p(r"The cPanel login isn't set: add (.+?) to \.env next to docker-compose\.yml, then restart the app\.",
+       r"Les identifiants cPanel ne sont pas définis : ajoutez \1 à .env, à côté de docker-compose.yml, "
+       r"puis redémarrez l'application."),
+    _p(r"HTTPS setup is already running\.", "La configuration HTTPS est déjà en cours."),
+    _p(r"Set up HTTPS first\.", "Configurez d'abord HTTPS."),
+    _p(r"Couldn't reach cPanel at (\S+): ", r"Impossible de joindre cPanel à \1 : "),
+    _p(r"cPanel refused the login\. Check CPANEL_USERNAME and CPANEL_TOKEN in \.env\.",
+       "cPanel a refusé la connexion. Vérifiez CPANEL_USERNAME et CPANEL_TOKEN dans .env."),
+    _p(r"cPanel answered with HTTP (\d+)\.", r"cPanel a répondu avec le code HTTP \1."),
+    _p(r"cPanel's answer wasn't JSON\. Check CPANEL_BASE_URL \(e\.g\. https://host:2083\)\.",
+       "La réponse de cPanel n'était pas du JSON. Vérifiez CPANEL_BASE_URL (p. ex. https://hote:2083)."),
+    _p(r"cPanel refused the request: ", "cPanel a refusé la demande : "),
+    _p(r"This cPanel account doesn't have a DNS zone containing (\S+)\.",
+       r"Ce compte cPanel n'a pas de zone DNS contenant \1."),
+    _p(r"Use a name under (\S+), like pantry\.(\S+), not the domain itself\.",
+       r"Utilisez un nom sous \1, comme pantry.\2, et non le domaine lui-même."),
+    _p(r"Couldn't read the zone's serial number from cPanel\.",
+       "Impossible de lire le numéro de série de la zone dans cPanel."),
+    _p(r"(\S+) already has a (CNAME|AAAA) record in cPanel\. Choose a name that isn't in use, or remove that record first\.",
+       r"\1 a déjà un enregistrement \2 dans cPanel. Choisissez un nom inutilisé, ou supprimez d'abord cet enregistrement."),
+    _p(r"(\S+) has more than one A record in cPanel\. Leave one, or choose another name\.",
+       r"\1 a plus d'un enregistrement A dans cPanel. Gardez-en un seul, ou choisissez un autre nom."),
+    _p(r"(\S+) already points to (\S+)\. Choose a name that isn't in use, or change that record in cPanel yourself\.",
+       r"\1 pointe déjà vers \2. Choisissez un nom inutilisé, ou modifiez vous-même cet enregistrement dans cPanel."),
+    _p(r"The DNS record didn't appear on your domain's name servers within (\d+) minutes\. Try again in a few minutes\.",
+       r"L'enregistrement DNS n'est pas apparu sur les serveurs de noms de votre domaine en \1 minutes. "
+       r"Réessayez dans quelques minutes."),
+    _p(r"Let's Encrypt didn't offer a DNS challenge\.", "Let's Encrypt n'a pas proposé de vérification DNS."),
+    _p(r"Let's Encrypt didn't issue the certificate: ", "Let's Encrypt n'a pas émis le certificat : "),
+    _p(r"The certificate is ready, but the app couldn't listen on port (\d+)\.",
+       r"Le certificat est prêt, mais l'application n'a pas pu écouter sur le port \1."),
+    _p(r"^Unexpected error: ", "Erreur inattendue : "),
+    _p(r"^Starting…$", "Démarrage…"),
+    _p(r"^Checking the cPanel login…$", "Vérification de la connexion cPanel…"),
+    _p(r"^Pointing (\S+) at (\S+)…$", r"Association de \1 à \2…"),
+    _p(r"^Asking Let's Encrypt for a certificate…$", "Demande d'un certificat à Let's Encrypt…"),
+    _p(r"^Adding the temporary DNS record…$", "Ajout de l'enregistrement DNS temporaire…"),
+    _p(r"^Waiting for the DNS record to appear…$", "Attente de l'enregistrement DNS…"),
+    _p(r"^Let's Encrypt is checking the record…$", "Let's Encrypt vérifie l'enregistrement…"),
+    _p(r"^Starting HTTPS…$", "Démarrage de HTTPS…"),
+
     # Connection diagnosis (email_client._diagnose_suffix)
     _p(r" -- Diagnosis: can't open a connection to (\S+) on port (\d+) from the container at all\. The app's "
        r"settings aren't the problem; a firewall, your ISP, or the mail host is blocking that port from your "
@@ -289,7 +336,7 @@ def translate(text, lang: str | None = None):
 
 
 # Fields of a JSON response that hold messages for people to read.
-MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem"}
+MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem", "step", "last_error"}
 
 
 def _translate_validation_error(item: dict, lang: str) -> dict:

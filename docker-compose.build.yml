@@ -6,6 +6,10 @@ services:
     container_name: open-the-pantry
     ports:
       - "8090:8090"
+      - "8443:8443"   # HTTPS, once set up in Settings -> HTTPS
+    env_file:         # optional DNS host login for Settings -> HTTPS
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data
     restart: unless-stopped

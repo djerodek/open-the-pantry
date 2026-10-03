@@ -52,16 +52,6 @@ def test_ocr_skips_a_zero_size_render():
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.skipif(not (ROOT / "frontend").exists(), reason="frontend not present")
-def test_wake_fallback_videos_are_real_media():
-    import base64
-    js = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
-    clips = dict(re.findall(r'\["(video/\w+)", "data:video/\w+;base64,([A-Za-z0-9+/=]+)"\]', js))
-    mp4, webm = base64.b64decode(clips["video/mp4"]), base64.b64decode(clips["video/webm"])
-    assert mp4[4:8] == b"ftyp" and webm[:4] == b"\x1a\x45\xdf\xa3"
-    assert len(mp4) + len(webm) < 10_000
-
-
 @pytest.mark.skipif(not (ROOT / "docker-compose.https.yml").exists(), reason="repo files not present")
 def test_https_setup_is_off_by_default_and_names_no_real_domain():
     """The HTTPS override takes every site-specific value from .env and

@@ -105,54 +105,66 @@ docker compose -f docker-compose.build.yml up -d --build
 
 ### Optional: HTTPS on your network
 
-Off by default; nothing changes unless you set it up. It gives the app an
-`https://` address with a real certificate, on your LAN and over your VPN,
-without exposing anything to the internet. Browsers then offer features
-they keep from plain `http://` pages -- for this app, the real "keep
-screen awake" (the app falls back to a workaround without it).
+Off by default. Set up from **Settings → HTTPS**, it gives the app an
+`https://` address with a real Let's Encrypt certificate, on your LAN and
+over your VPN, without exposing anything to the internet. Browsers keep
+some features from plain `http://` pages; for this app, "keep screen
+awake" needs it.
 
-You need a domain whose DNS host has an API that
-[lego](https://go-acme.github.io/lego/dns/) supports (cPanel, Cloudflare,
-OVH, Gandi and about 150 others). `docker-compose.https.yml` adds Traefik,
-which gets a Let's Encrypt certificate by creating a temporary DNS record
-through that API (the DNS-01 challenge), so nothing needs to be reachable
-from outside.
+It works with a domain whose DNS is managed in **cPanel** (most shared web
+hosts). Your website stays where it is: the app adds one record for a new
+name, e.g. `pantry.example.com`, pointing at this server's LAN address, and
+proves to Let's Encrypt that the name is yours with a temporary record it
+removes again. It renews the certificate by itself.
 
-1. **DNS record.** At your DNS host, add an `A` record for a name in your
-   domain, e.g. `pantry.example.com`, pointing at the LAN address of the
-   machine running the app (e.g. `192.168.1.20`). A private address is
-   fine; only devices on your network or VPN can use it. In cPanel: Domains
-   → Zone Editor → Manage → Add Record.
-2. **API token.** In cPanel: Security → Manage API Tokens → Create. Other
-   DNS hosts: see your provider's page in the lego list for what it needs.
-3. **Settings.** Put `docker-compose.https.yml` next to your
-   `docker-compose.yml`, copy `https.env.example` there as `.env`, and fill
-   it in: the name, your email for Let's Encrypt, the provider and its
-   credentials. `.env` holds an API token -- keep it private (`chmod 600
-   .env`).
-4. **Start it:** `docker compose up -d`. `.env` sets `COMPOSE_FILE`, so the
-   usual commands now include the HTTPS service. The first certificate
-   takes a minute or two (`docker logs open-the-pantry-https` shows
-   progress). Traefik renews it automatically.
-5. **Open** `https://pantry.example.com` (add `:8443` or whichever port
-   you chose if 443 was taken). On an iPhone, add it to the Home Screen
-   again from the new address: settings such as language and theme are
-   kept per address, so set them once more there.
+What has to happen outside the app, once:
 
-Notes:
-- If 443 is already in use on the machine (a NAS's own web interface often
-  is), set `PANTRY_HTTPS_PORT` in `.env`, e.g. `8443`.
+1. **Create a cPanel API token:** in cPanel, Security → Manage API Tokens →
+   Create.
+2. **Put the login in `.env`** next to `docker-compose.yml`:
+
+   ```
+   CPANEL_USERNAME=your-cpanel-username
+   CPANEL_TOKEN=paste-the-api-token
+   CPANEL_BASE_URL=https://your-cpanel-address:2083
+   ```
+
+   `chmod 600 .env` -- the token can do anything your cPanel login can.
+   It is deliberately not entered in the app's Settings: the app has no
+   login of its own, and anyone who can open Settings could otherwise
+   change it.
+3. **Restart:** `docker compose up -d`. The compose file already reads
+   `.env` if it exists and publishes port 8443 (if your compose file is
+   older than this, copy the `ports:` and `env_file:` lines from the
+   current one).
+
+Then in Settings → HTTPS: enter the name (e.g. `pantry.example.com`), this
+server's LAN address (filled in when you're using one), and an email for
+Let's Encrypt, and press **Set up HTTPS**. It takes a minute or two and
+shows each step. When it's done it shows the link,
+`https://pantry.example.com:8443`. On an iPhone, open that and add it to the
+Home Screen again: settings such as language and theme are kept per
+address.
+
+Safeguards and notes:
+- The app only ever creates the record for the name you give, and never
+  changes a record it didn't create. A name already in use (`www`, the
+  domain itself, anything with a record) is refused, so the page can't be
+  used to repoint your website.
+- The old `http://<address>:8090` keeps working.
+- For `https://pantry.example.com` with no port, change the left side of
+  `8443:8443` in `docker-compose.yml` to `443` (if the machine doesn't
+  already use 443 -- a NAS's own web interface often does) and set the
+  port in Settings → HTTPS to 443.
 - Some routers block DNS answers that point at private addresses ("DNS
   rebind protection"). If the name doesn't resolve at home, allow your
-  domain there or add the same name in the router's local DNS.
+  domain there.
 - The name appears in public certificate logs, as every Let's Encrypt name
   does; the private address it points to is useless from outside.
-- Traefik reads the Docker socket, read-only, to find the app's container,
-  and only routes to the one labelled for it.
-- The old `http://<address>:8090` keeps working. To allow only HTTPS,
-  remove the `ports:` entry from `docker-compose.yml`.
-- To turn it off: delete `COMPOSE_FILE` from `.env` (or the whole file),
-  then `docker compose up -d --remove-orphans`.
+- **Other DNS hosts** (Cloudflare, OVH, Gandi and about 150 others):
+  `docker-compose.https.yml` does the same with Traefik, configured in
+  `.env` from `https.env.example`; see the comments in those files. That
+  route has no Settings page.
 
 ## What it does
 
@@ -497,24 +509,19 @@ Notes:
   kept pushing buttons off screen; text fields are at least 16px so iOS
   has no reason to zoom.
 - **Keep screen awake while reading a recipe** — useful when your hands are
-  busy and the phone is propped on the counter. Optional: turn on Settings
+  busy and the phone is propped on the counter. Optional: switch on Settings
   → Screen → "Keep screen awake when viewing a recipe" once, and every
   recipe you open keeps the screen on until you close it. Or leave it off
-  and tap "Keep screen on" on the recipes where you want it. Nothing else
-  to set up. It comes back on if you switch apps and return, and the
-  button shows the real state: if the phone refuses (Low Power Mode, for
-  example), it shows off.
-  - **Over `https://`** (or `localhost`) the app uses the browser's Screen
-    Wake Lock API: Chrome/Edge, Firefox 126+, Safari 16.4+, and iPhone
-    home-screen apps from iOS 18.4.
-  - **Over plain `http://`** (`http://<NAS address>:8090`) browsers don't
-    offer that API, so the app plays a tiny silent video behind the page
-    instead, muted and looping, because phones don't sleep while a video
-    plays. It's invisible, about 6 KB, and stops when the recipe closes.
-    It's a workaround: it uses slightly more battery than the real API,
-    and whether a given phone honours it can vary (see Known limitations).
-    For the real API, serve the app over HTTPS
-    -- see *Optional: HTTPS on your network*.
+  and use the "Keep screen on" switch on the recipes where you want it.
+  It comes back on if you switch apps and return, and the switch shows the
+  real state: if the phone refuses (Low Power Mode, for example), it shows
+  off. Uses the browser's Screen Wake Lock API: Chrome/Edge, Firefox 126+,
+  Safari 16.4+, and iPhone home-screen apps from iOS 18.4. Browsers only
+  offer it on a secure page, so it needs the app opened over `https://`
+  (see *Optional: HTTPS on your network*) or as `localhost`; over plain
+  `http://` the setting is shown switched off with a pointer to Settings →
+  HTTPS. (A silent-video workaround for `http://` was tried and didn't keep
+  an iPhone awake.)
 - Semantic HTML, ARIA labeling on icon-only controls and dialogs, visible
   focus states, focus trapping/return on modals.
 
@@ -560,6 +567,15 @@ Notes:
   anyone you don't fully trust can reach the app, set `RECIPE_APP_API_KEY`
   or put it behind a VPN or an authenticating reverse proxy before setting
   up email.
+- **Settings → HTTPS uses a cPanel API token from `.env`.** The token
+  never goes through the browser or into the database, and the app can't
+  show it. Anyone who can reach the app can still use the HTTPS page:
+  set it up for another unused name in your domain, or turn it off. It
+  can't change or take over a record it didn't create (so not your
+  website's), and the certificate's key stays on the server. The token
+  itself can do anything your cPanel login can, so keep `.env` private
+  (`chmod 600`), and give the token an expiry date if your host allows it
+  (renewal then stops when it expires).
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
   reach the API could point the settings at their own server and press
@@ -712,12 +728,8 @@ Notes:
 
 ## Known limitations
 
-- **The keep-screen-awake workaround on `http://` is best-effort.** It
-  plays a silent video, and phones decide for themselves whether that
-  counts: it may not keep every phone awake, and Low Power Mode can stop
-  it. Over `https://` the app uses the real Screen Wake Lock API instead
-  (see *Optional: HTTPS on your network*).
-
+- **Settings → HTTPS supports cPanel only.** Other DNS hosts can use the
+  Traefik file instead (see *Optional: HTTPS on your network*).
 - **The language setting translates the app, not your recipes.** A recipe
   added in English stays in English in the French interface, and the
   reverse. Tag and group names you create are shown as typed.
@@ -923,6 +935,9 @@ backend/
     logging_setup.py                        stdout + rotating data/logs/app.log
     i18n.py                                 server messages, exports and
                                              result emails in French
+    https_setup.py                          Settings -> HTTPS: cPanel DNS
+                                             records, Let's Encrypt, the
+                                             HTTPS listener and renewal
     ingestion/
       url_ingest.py                    recipe-scrapers -> JSON-LD ->
                                         heuristic HTML
@@ -966,7 +981,7 @@ LICENSE                       MIT
 DOCKERHUB.md                   Docker Hub overview (synced by docker-publish.yml)
 docker-compose.yml            pulls published image
 docker-compose.build.yml       builds from source
-docker-compose.https.yml       optional HTTPS via Traefik (off unless set up)
+docker-compose.https.yml       optional HTTPS via Traefik, for DNS hosts other than cPanel
 https.env.example              settings template for the above
 .github/workflows/
   docker-publish.yml             builds + publishes to Docker Hub on release

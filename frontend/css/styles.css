@@ -793,18 +793,6 @@ main {
   color: var(--color-accent-text);
 }
 
-.wakelock-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0.5rem 0;
-}
-.wakelock-btn[data-active="true"] {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-accent-ink);
-}
-
 .notes-section { margin: 0.75rem 0; }
 .notes-toggle-btn {
   display: inline-flex;
@@ -1450,7 +1438,7 @@ main {
 --------------------------------------------------------------------- */
 @media print {
   .topbar, .sidebar, .fab, .toolbar-row, .filter-panel, .batch-bar, .share-menu-wrap, .skip-link,
-  .notes-section, .wakelock-btn,
+  .notes-section, .wakelock-row,
   #add-recipe-overlay, .modal-close {
     display: none !important;
   }
@@ -1639,14 +1627,19 @@ html { touch-action: manipulation; }
   border: 1px solid var(--color-border); border-radius: var(--radius);
 }
 
-/* Keep-screen-awake fallback on http:// pages (see app.js). It covers the
-   viewport behind all content rather than being a 1px dot: browsers pause
-   video that isn't on screen, and some only keep the display on for a
-   video of a reasonable size. Behind the page and almost fully
-   transparent, so it can't be seen or tapped. */
-.wake-video {
-  position: fixed; inset: 0;
-  width: 100vw; height: 100vh;
-  object-fit: cover;
-  opacity: 0.01; pointer-events: none; z-index: -1;
+
+/* Per-recipe "Keep screen on" switch: same look as the Settings rows. */
+.wakelock-row { margin: 0.25rem 0 0.75rem; max-width: 24rem; }
+
+/* Settings -> HTTPS */
+.setup-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius); padding: 0.5rem; margin: 0.5rem 0;
 }
+.https-status { margin-top: 0.75rem; }
+.https-status p { margin: 0.35rem 0; overflow-wrap: anywhere; }
+.https-working { font-weight: 600; }
+.https-error { color: var(--color-alert); }
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }

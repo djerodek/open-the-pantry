@@ -39,6 +39,7 @@ from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import crypto
 from . import i18n
+from . import https_setup
 
 _lock_file_handle = None
 
@@ -201,9 +202,18 @@ async def lifespan(app: FastAPI):
     _sweep_orphaned_upload_files()
     sweep_task = asyncio.create_task(_periodic_tmp_sweep())
     email_scan_task = asyncio.create_task(_daily_email_scan_loop())
+    # Optional HTTPS (Settings -> HTTPS): serve it if it was set up, and
+    # renew the certificate in time.
+    try:
+        await https_setup.startup(app)
+    except Exception:
+        log.exception("HTTPS listener couldn't start")
+    https_renew_task = asyncio.create_task(https_setup.renewal_loop(app))
     yield
     sweep_task.cancel()
     email_scan_task.cancel()
+    https_renew_task.cancel()
+    await https_setup.stop_server()
     engine.dispose()
 
 
@@ -268,6 +278,9 @@ def _host_allowed(host_header: str) -> bool:
     if not host:
         return False
     if "*" in ALLOWED_HOSTS or host in ALLOWED_HOSTS:
+        return True
+    # The name set up in Settings -> HTTPS.
+    if host == https_setup.active_domain():
         return True
     try:
         _ip.ip_address(host)
@@ -2239,6 +2252,49 @@ def test_email_settings(db: Session = Depends(get_db)):
     else:
         message = f"{smtp_msg}\n{imap_msg}"
     return schemas.EmailTestResult(success=smtp_ok and imap_ok, message=message)
+
+
+# ---------------------------------------------------------------------------
+# Optional HTTPS (Settings -> HTTPS). See https_setup.py.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/https")
+def get_https_status():
+    return https_setup.status()
+
+
+@app.post("/api/https/setup")
+async def setup_https(payload: schemas.HttpsSetupIn):
+    try:
+        domain, lan, email, port = https_setup.validate(payload.domain, payload.lan_address,
+                                                        payload.email, payload.port)
+    except https_setup.HttpsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not https_setup.credentials_status()["found"]:
+        raise HTTPException(status_code=400, detail=(
+            "The cPanel login isn't set: add " + ", ".join(https_setup.credentials_status()["missing"]) +
+            " to .env next to docker-compose.yml, then restart the app."))
+    request = {"domain": domain, "lan_address": lan, "email": email, "port": port}
+    if not https_setup.start_job(asyncio.get_running_loop(), app, request):
+        raise HTTPException(status_code=409, detail="HTTPS setup is already running.")
+    return https_setup.status()
+
+
+@app.post("/api/https/renew")
+async def renew_https():
+    st = https_setup.status()
+    if not st["domain"]:
+        raise HTTPException(status_code=400, detail="Set up HTTPS first.")
+    if not https_setup.start_job(asyncio.get_running_loop(), app):
+        raise HTTPException(status_code=409, detail="HTTPS setup is already running.")
+    return https_setup.status()
+
+
+@app.delete("/api/https")
+async def turn_off_https():
+    await https_setup.stop_server()
+    https_setup.turn_off()
+    return https_setup.status()
 
 
 @app.post("/api/email-settings/scan", response_model=schemas.EmailScanResult)

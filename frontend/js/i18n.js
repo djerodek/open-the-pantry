@@ -184,10 +184,9 @@
     "d": "j",
     "h": "h",
     "m": "min",
-    "Screen staying on": "Écran maintenu allumé",
     "Keep screen on": "Garder l'écran allumé",
-    "Screen is being kept awake. Tap to allow it to sleep.": "L'écran reste allumé. Touchez pour lui permettre de se mettre en veille.",
-    "Keep the screen awake while reading this recipe.": "Garder l'écran allumé pendant la lecture de cette recette.",
+    "Browsers only allow this on a secure (https://) address. Set one up under HTTPS below.":
+      "Les navigateurs ne le permettent qu'à une adresse sécurisée (https://). Configurez-en une sous HTTPS ci-dessous.",
     "The browser wouldn't keep the screen awake — it may be blocked on low battery.":
       "Le navigateur n'a pas pu garder l'écran allumé; c'est peut-être bloqué quand la pile est faible.",
     "Substitutions, timing tweaks, how it turned out...": "Substitutions, ajustements de temps, le résultat…",
@@ -513,6 +512,48 @@
     "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone who knows the address and keyword. Recommended: list the addresses you send from.":
       "Des adresses, ou un domaine (exemple.com) pour tout le monde à ce domaine, séparés par des virgules. Laissez vide pour accepter quiconque connaît l'adresse et le mot-clé. Recommandé : indiquez les adresses d'où vous envoyez.",
     "Results within this window are batched into one email.": "Les résultats dans cet intervalle sont regroupés en un seul courriel.",
+
+    // Settings → HTTPS
+    "HTTPS": "HTTPS",
+    "Configure HTTPS": "Configurer HTTPS",
+    "Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.":
+      "Facultatif. Une adresse sécurisée https:// sur votre réseau, avec un certificat Let's Encrypt gratuit. Nécessaire pour garder l'écran allumé.",
+    "Could not load the HTTPS settings.": "Impossible de charger les paramètres HTTPS.",
+    "Setting up HTTPS…": "Configuration de HTTPS…",
+    "On: {1}": "Activé : {1}",
+    "Step 1: add your cPanel login": "Étape 1 : ajouter vos identifiants cPanel",
+    "The app creates its DNS records through your domain's cPanel. For safety the login isn't entered here: put it in a file named .env next to docker-compose.yml, then restart the app (docker compose up -d).":
+      "L'application crée ses enregistrements DNS au moyen du cPanel de votre domaine. Par prudence, les identifiants ne s'entrent pas ici : placez-les dans un fichier nommé .env à côté de docker-compose.yml, puis redémarrez l'application (docker compose up -d).",
+    "In cPanel: Security → Manage API Tokens → Create. Then add these lines to .env:":
+      "Dans cPanel : Sécurité → Gérer les jetons API → Créer. Ajoutez ensuite ces lignes à .env :",
+    "Missing now: {1}": "Manquant : {1}",
+    "cPanel login found ({1}).": "Identifiants cPanel trouvés ({1}).",
+    "Address": "Adresse",
+    "A name in your domain that isn't in use yet. The app creates its DNS record.":
+      "Un nom de votre domaine qui n'est pas encore utilisé. L'application crée son enregistrement DNS.",
+    "This server's address on your network": "Adresse de ce serveur sur votre réseau",
+    "Where the name will point. Filled in from the address you're using now, if it's a number.":
+      "L'adresse vers laquelle le nom pointera. Remplie à partir de l'adresse que vous utilisez en ce moment, si c'est une adresse numérique.",
+    "Email for Let's Encrypt": "Courriel pour Let's Encrypt",
+    "Let's Encrypt writes here only if something is wrong with the certificate.":
+      "Let's Encrypt n'écrit à cette adresse qu'en cas de problème avec le certificat.",
+    "Port": "Port",
+    "The port docker-compose.yml publishes for HTTPS (8443 unless you changed it). Only used for the link.":
+      "Le port que docker-compose.yml publie pour HTTPS (8443, sauf si vous l'avez changé). Sert seulement au lien.",
+    "This takes a minute or two. You can close Settings; it carries on.":
+      "Ça prend une minute ou deux. Vous pouvez fermer les Paramètres; ça continue.",
+    "HTTPS is on:": "HTTPS est activé :",
+    "Certificate valid until {1}; it renews by itself.": "Certificat valide jusqu'au {1}; il se renouvelle tout seul.",
+    "Open the secure address and add it to your Home Screen from there. Language, theme and similar settings are kept per address, so set them once more.":
+      "Ouvrez l'adresse sécurisée et ajoutez-la à votre écran d'accueil à partir de là. La langue, le thème et les réglages semblables sont propres à chaque adresse; réglez-les donc une fois de plus.",
+    "Last attempt failed:": "La dernière tentative a échoué :",
+    "Set up HTTPS": "Configurer HTTPS",
+    "Apply and renew": "Appliquer et renouveler",
+    "Turn off HTTPS": "Désactiver HTTPS",
+    "Turn off HTTPS? The https:// address stops working; the usual address keeps working. The DNS record stays.":
+      "Désactiver HTTPS? L'adresse https:// cessera de fonctionner; l'adresse habituelle continue de fonctionner. L'enregistrement DNS reste.",
+    "HTTPS turned off.": "HTTPS désactivé.",
+    "HTTPS is ready.": "HTTPS est prêt.",
 
     // Tag scan (Settings → Tags)
     "Show each recipe": "Afficher chaque recette",

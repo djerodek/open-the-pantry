@@ -190,3 +190,23 @@ class EmailNotificationQueueItem(Base):
     success = Column(Boolean, nullable=False)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class HttpsSettings(Base):
+    """Singleton row (id=1) for the optional HTTPS set up in Settings. The
+    DNS host login is NOT here: it comes from the environment (.env). See
+    https_setup.py."""
+    __tablename__ = "https_settings"
+
+    id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    domain = Column(String, nullable=True)          # e.g. pantry.example.com
+    lan_address = Column(String, nullable=True)     # what the A record points at
+    email = Column(String, nullable=True)           # for Let's Encrypt
+    public_port = Column(Integer, nullable=False, default=8443)  # for the link only
+    # The A record value this app last wrote: it only ever changes a record
+    # it created, never one that was already there.
+    a_record_value = Column(String, nullable=True)
+    state = Column(String, nullable=False, default="off")   # off / ready / error
+    last_error = Column(Text, nullable=True)
+    cert_expires_at = Column(DateTime(timezone=True), nullable=True)

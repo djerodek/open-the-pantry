@@ -1,4 +1,6 @@
-# Optional: HTTPS on your own network, with a real certificate.
+# Optional: HTTPS on your own network, with a real certificate, for DNS
+# hosts other than cPanel. With cPanel, use Settings -> HTTPS in the app
+# instead; it needs no extra containers.
 #
 # Not used unless you turn it on -- nothing here runs with the plain
 # `docker compose up -d`. Setup is in the README, "Optional: HTTPS on your

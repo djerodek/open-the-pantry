@@ -249,55 +249,13 @@
   //      backgrounded or the screen locks, and does NOT restore it. So a
   //      visibilitychange handler re-acquires on return -- otherwise it
   //      silently stops working the first time you switch apps.
-  //   2. Browsers only offer it on a secure page (https:// or localhost),
-  //      so opened as http://<NAS address>:8090 it isn't there at all.
-  //      There the app falls back to playing a tiny silent video, muted
-  //      and looping: phones don't go to sleep while a video is playing.
-  //      Nothing to set up, but it is a workaround and costs a little
-  //      more battery than the real API. Serving the app over HTTPS
-  //      (README: "Optional: HTTPS on your network") uses the real one.
-  //      A browser with neither hides the controls.
+  //   2. Browsers only offer it on a secure page (https:// or localhost).
+  //      Opened as http://<NAS address>:8090 the API isn't there, so the
+  //      Settings switch is shown disabled, pointing at Settings -> HTTPS.
+  //      (A silent-video workaround was tried for http://; it didn't keep
+  //      an iPhone awake, so it was removed rather than left half-working.)
   // -------------------------------------------------------------------
-  const nativeWakeLock = "wakeLock" in navigator && window.isSecureContext !== false;
-
-  // 16x16 black clips with a silent audio track, 4 s each, about 6 KB
-  // together: H.264/AAC (Safari, most browsers) and VP8/Opus (browsers
-  // built without H.264). Inline, so they need no request -- and no
-  // service-worker range-request handling -- and work offline.
-  const WAKE_VIDEO_SOURCES = [
-    ["video/mp4", "data:video/mp4;base64,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"],
-    ["video/webm", "data:video/webm;base64,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ggb1gAgIrLMOxqOKggcJgAgIrLMOxqOKggcdgAgIrLMOxqOKggcxgAgIrLMOxqOKggdFgAgIrLMOxqOKggdZgAgIrLMOxqOKggdtgAgIrLMOxqOKggeBgAgIrLMOxqOKggeVgAgIrLMOxqOKggepgAgIrLMOxqOKgge9gAgIrLMOxqOKggfRgAgIrLMOxqOZgQfQALEBAAEQEAAYADA/9AwAAAD+/6tQgKOKggflgAgIrLMOxqOKggf5gAgIrLMOxqOKgggNgAgIrLMOxqOKggghgAgIrLMOxqOKggg1gAgIrLMOxqOKgghJgAgIrLMOxqOKgghdgAgIrLMOxqOKgghxgAgIrLMOxqOKggiFgAgIrLMOxqOKggiZgAgIrLMOxqOKggitgAgIrLMOxqOKggjBgAgIrLMOxqOKggjVgAgIrLMOxqOKggjpgAgIrLMOxqOKggj9gAgIrLMOxqOKggkRgAgIrLMOxqOKggklgAgIrLMOxqOKggk5gAgIrLMOxqOKgglNgAgIrLMOxqOKgglhgAgIrLMOxqOKggl1gAgIrLMOxqOKggmJgAgIrLMOxqOKggmdgAgIrLMOxqOKggmxgAgIrLMOxqOKggnFgAgIrLMOxqOKggnZgAgIrLMOxqOKggntgAgIrLMOxqOKggoBgAgIrLMOxqOKggoVgAgIrLMOxqOKggopgAgIrLMOxqOKggo9gAgIrLMOxqOKggpRgAgIrLMOxqOKggplgAgIrLMOxqOKggp5gAgIrLMOxqOKggqNgAgIrLMOxqOKggqhgAgIrLMOxqOKggq1gAgIrLMOxqOKggrJgAgIrLMOxqOKggrdgAgIrLMOxqOKggrxgAgIrLMOxqOKggsFgAgIrLMOxqOKggsZgAgIrLMOxqOKggstgAgIrLMOxqOKggtBgAgIrLMOxqOKggtVgAgIrLMOxqOKggtpgAgIrLMOxqOKggt9gAgIrLMOxqOKgguRgAgIrLMOxqOKggulgAgIrLMOxqOKggu5gAgIrLMOxqOZgQu4ALEBAAEQEAAYADA/9AwAAAD+/6tQgKOKggvNgAgIrLMOxqOKggvhgAgIrLMOxqOKggv1gAgIrLMOxqOKggwJgAgIrLMOxqOKggwdgAgIrLMOxqOKggwxgAgIrLMOxqOKggxFgAgIrLMOxqOKggxZgAgIrLMOxqOKggxtgAgIrLMOxqOKggyBgAgIrLMOxqOKggyVgAgIrLMOxqOKggypgAgIrLMOxqOKggy9gAgIrLMOxqOKggzRgAgIrLMOxqOKggzlgAgIrLMOxqOKggz5gAgIrLMOxqOKgg0NgAgIrLMOxqOKgg0hgAgIrLMOxqOKgg01gAgIrLMOxqOKgg1JgAgIrLMOxqOKgg1dgAgIrLMOxqOKgg1xgAgIrLMOxqOKgg2FgAgIrLMOxqOKgg2ZgAgIrLMOxqOKgg2tgAgIrLMOxqOKgg3BgAgIrLMOxqOKgg3VgAgIrLMOxqOKgg3pgAgIrLMOxqOKgg39gAgIrLMOxqOKgg4RgAgIrLMOxqOKgg4lgAgIrLMOxqOKgg45gAgIrLMOxqOKgg5NgAgIrLMOxqOKgg5hgAgIrLMOxqOKgg51gAgIrLMOxqOKgg6JgAgIrLMOxqOKgg6dgAgIrLMOxqOKgg6xgAgIrLMOxqOKgg7FgAgIrLMOxqOKgg7ZgAgIrLMOxqOKgg7tgAgIrLMOxqOKgg8BgAgIrLMOxqOKgg8VgAgIrLMOxqOKgg8pgAgIrLMOxqOKgg89gAgIrLMOxqOKgg9RgAgIrLMOxqOKgg9lgAgIrLMOxqOKgg95gAgIrLMOxqOKgg+NgAgIrLMOxqCToYqCD6EACAissw7GdaKEAM3+YBxTu2uRu4+zgQC3iveBAfGCAmDwgRA="],
-  ];
-
-  function makeWakeVideo() {
-    const v = document.createElement("video");
-    if (!v.canPlayType || !WAKE_VIDEO_SOURCES.some(([type]) => v.canPlayType(type))) return null;
-    v.muted = true;
-    v.loop = true;
-    v.playsInline = true;
-    v.setAttribute("muted", "");
-    v.setAttribute("playsinline", "");
-    v.setAttribute("webkit-playsinline", "");
-    v.setAttribute("aria-hidden", "true");
-    v.setAttribute("tabindex", "-1");
-    v.className = "wake-video";
-    v.preload = "auto";
-    for (const [type, src] of WAKE_VIDEO_SOURCES) {
-      if (!v.canPlayType(type)) continue;
-      const source = document.createElement("source");
-      source.type = type;
-      source.src = src;
-      v.appendChild(source);
-    }
-    document.body.appendChild(v);
-    // Paused by the system (app backgrounded, another app took the audio
-    // session): reflect it, and the visibility handler restarts it.
-    v.addEventListener("playing", () => notifyWakeLockListeners());
-    v.addEventListener("pause", () => notifyWakeLockListeners());
-    return v;
-  }
-  const wakeVideo = nativeWakeLock ? null : makeWakeVideo();
-  const wakeLockSupported = nativeWakeLock || wakeVideo !== null;
+  const wakeLockSupported = "wakeLock" in navigator && window.isSecureContext !== false;
   let wakeLockSentinel = null;
   let wakeLockWanted = false;  // whether we *want* a lock right now (a recipe is open with it enabled)
   const wakeLockListeners = new Set();  // UI callbacks notified when the actual state changes
@@ -309,7 +267,6 @@
     localStorage.setItem("recipe-app-wakelock-default", String(on));
   }
   function wakeLockActive() {
-    if (wakeVideo) return !wakeVideo.paused;
     return wakeLockSentinel !== null;
   }
   function notifyWakeLockListeners() {
@@ -317,14 +274,6 @@
   }
 
   async function acquireWakeLock() {
-    if (wakeVideo) {
-      // play() is called before any await, so when this runs from a tap it
-      // is still inside that tap -- some browsers only start media then.
-      if (!wakeVideo.paused) return;
-      try { await wakeVideo.play(); } catch { /* refused; the button shows off */ }
-      notifyWakeLockListeners();
-      return;
-    }
     if (!wakeLockSupported || wakeLockSentinel) return;
     try {
       wakeLockSentinel = await navigator.wakeLock.request("screen");
@@ -343,7 +292,6 @@
 
   async function releaseWakeLock() {
     wakeLockWanted = false;
-    if (wakeVideo && !wakeVideo.paused) wakeVideo.pause();
     if (wakeLockSentinel) {
       try { await wakeLockSentinel.release(); } catch { /* already gone */ }
       wakeLockSentinel = null;
@@ -357,6 +305,19 @@
     else await releaseWakeLock();
   }
 
+  {
+    // Shown either way: on http:// the switch is disabled and says why,
+    // instead of the whole setting silently missing.
+    const wakeLockSettingEl = $("#wakelock-setting");
+    const wakeLockDefaultInput = $("#wakelock-default");
+    wakeLockSettingEl.hidden = false;
+    if (!wakeLockSupported) {
+      wakeLockDefaultInput.checked = false;
+      wakeLockDefaultInput.disabled = true;
+      $("#wakelock-needs-https").hidden = false;
+    }
+  }
+
   if (wakeLockSupported) {
     document.addEventListener("visibilitychange", () => {
       // Re-acquire on return to the tab, but only if a recipe is still
@@ -366,9 +327,7 @@
       }
     });
 
-    const wakeLockSettingEl = $("#wakelock-setting");
     const wakeLockDefaultInput = $("#wakelock-default");
-    wakeLockSettingEl.hidden = false;
     wakeLockDefaultInput.checked = getWakeLockDefault();
     wakeLockDefaultInput.addEventListener("change", async () => {
       setWakeLockDefault(wakeLockDefaultInput.checked);
@@ -452,6 +411,168 @@
     emailToggle.setAttribute("aria-expanded", String(willOpen));
     if (willOpen) await renderEmailSettings();
   });
+
+  // -------------------------------------------------------------------
+  // Settings -> HTTPS (https_setup.py does the work). The cPanel login comes
+  // from .env; everything else is set here.
+  // -------------------------------------------------------------------
+  const httpsPanel = $("#https-settings-panel");
+  const httpsToggle = $("#https-settings-toggle");
+  const httpsSummary = $("#https-summary");
+  let httpsPollTimer = null;
+  let httpsLastState = null;
+
+  httpsToggle.addEventListener("click", async () => {
+    const willOpen = httpsPanel.hidden;
+    httpsPanel.hidden = !willOpen;
+    httpsToggle.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) await renderHttpsSettings();
+    else clearTimeout(httpsPollTimer);
+  });
+
+  async function fetchHttpsStatus() {
+    const res = await fetch(`${API}/https`);
+    if (!res.ok) throw new Error(String(res.status));
+    return res.json();
+  }
+
+  function httpsSummaryText(st) {
+    if (st.state === "working") return tx("Setting up HTTPS…");
+    if (st.enabled && st.url) return tx("On: {1}", { 1: st.url });
+    return null;
+  }
+
+  async function refreshHttpsSummary() {
+    try {
+      const st = await fetchHttpsStatus();
+      const text = httpsSummaryText(st);
+      if (text) httpsSummary.textContent = text;
+    } catch { /* keep the static hint */ }
+  }
+
+  function isIPv4(host) {
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  }
+
+  async function renderHttpsSettings() {
+    clearTimeout(httpsPollTimer);
+    let st;
+    try {
+      st = await fetchHttpsStatus();
+    } catch {
+      httpsPanel.innerHTML = "";
+      httpsPanel.appendChild(el("div", { class: "field-hint", text: tx("Could not load the HTTPS settings.") }));
+      return;
+    }
+    const keep = {};  // values typed so far survive a re-render while polling
+    $$("input", httpsPanel).forEach((i) => { keep[i.id] = i.value; });
+    httpsPanel.innerHTML = "";
+    const summary = httpsSummaryText(st);
+    if (summary) httpsSummary.textContent = summary;
+
+    if (!st.credentials.found) {
+      const box = el("div", { class: "setup-callout" }, [
+        el("strong", { text: tx("Step 1: add your cPanel login") }),
+        el("p", { text: tx("The app creates its DNS records through your domain's cPanel. For safety the login isn't entered here: put it in a file named .env next to docker-compose.yml, then restart the app (docker compose up -d).") }),
+        el("p", { text: tx("In cPanel: Security → Manage API Tokens → Create. Then add these lines to .env:") }),
+        el("pre", { class: "setup-code", text: "CPANEL_USERNAME=your-cpanel-username\nCPANEL_TOKEN=paste-the-api-token\nCPANEL_BASE_URL=https://your-cpanel-address:2083" }),
+        el("p", { class: "field-hint", text: tx("Missing now: {1}", { 1: st.credentials.missing.join(", ") }) }),
+      ]);
+      httpsPanel.appendChild(box);
+    } else {
+      httpsPanel.appendChild(el("div", { class: "field-hint", text: tx("cPanel login found ({1}).", { 1: st.credentials.host }) }));
+    }
+
+    const disabled = !st.credentials.found || st.state === "working";
+    const field = (id, label, input, hint) => el("div", { class: "field" }, [
+      el("label", { for: id, text: label }), input, hint ? el("div", { class: "field-hint", text: hint }) : null,
+    ]);
+    const guessLan = st.lan_address || (isIPv4(location.hostname) ? location.hostname : "");
+    const domainIn = el("input", { type: "text", id: "https-domain", placeholder: "pantry.example.com",
+      autocomplete: "off", autocapitalize: "off", spellcheck: "false", value: keep["https-domain"] ?? st.domain });
+    const lanIn = el("input", { type: "text", id: "https-lan", placeholder: "192.168.1.20", inputmode: "decimal",
+      autocomplete: "off", value: keep["https-lan"] ?? guessLan });
+    const emailIn = el("input", { type: "email", id: "https-email", placeholder: "you@example.com",
+      autocomplete: "email", value: keep["https-email"] ?? (st.email || state.mail.from || "") });
+    const portIn = el("input", { type: "number", id: "https-port", min: "1", max: "65535",
+      value: keep["https-port"] ?? String(st.port || 8443) });
+    [domainIn, lanIn, emailIn, portIn].forEach((i) => { i.disabled = disabled; });
+
+    httpsPanel.appendChild(field("https-domain", tx("Address"), domainIn,
+      tx("A name in your domain that isn't in use yet. The app creates its DNS record.")));
+    httpsPanel.appendChild(field("https-lan", tx("This server's address on your network"), lanIn,
+      tx("Where the name will point. Filled in from the address you're using now, if it's a number.")));
+    httpsPanel.appendChild(field("https-email", tx("Email for Let's Encrypt"), emailIn,
+      tx("Let's Encrypt writes here only if something is wrong with the certificate.")));
+    httpsPanel.appendChild(field("https-port", tx("Port"), portIn,
+      tx("The port docker-compose.yml publishes for HTTPS (8443 unless you changed it). Only used for the link.")));
+
+    const statusEl = el("div", { class: "https-status", role: "status" });
+    if (st.state === "working") {
+      statusEl.appendChild(el("p", { class: "https-working", text: st.step || tx("Working...") }));
+      statusEl.appendChild(el("p", { class: "field-hint", text: tx("This takes a minute or two. You can close Settings; it carries on.") }));
+    } else if (st.enabled && st.url) {
+      const p = el("p", {}, [
+        el("span", { text: tx("HTTPS is on:") + " " }),
+        el("a", { href: st.url, text: st.url, rel: "noopener" }),
+      ]);
+      statusEl.appendChild(p);
+      if (st.cert_expires_at) {
+        statusEl.appendChild(el("p", { class: "field-hint", text: tx("Certificate valid until {1}; it renews by itself.", { 1: fmtDateTime(st.cert_expires_at) }) }));
+      }
+      if (location.protocol !== "https:") {
+        statusEl.appendChild(el("p", { class: "field-hint", text: tx("Open the secure address and add it to your Home Screen from there. Language, theme and similar settings are kept per address, so set them once more.") }));
+      }
+    }
+    if (st.last_error && st.state !== "working") {
+      statusEl.appendChild(el("p", { class: "https-error", text: (st.enabled ? tx("Last attempt failed:") + " " : "") + st.last_error }));
+    }
+
+    const go = el("button", {
+      class: "btn-primary", type: "button", disabled: disabled ? "" : null,
+      text: st.enabled ? tx("Apply and renew") : tx("Set up HTTPS"),
+      onclick: async () => {
+        go.disabled = true;
+        const res = await fetch(`${API}/https/setup`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain: domainIn.value.trim(), lan_address: lanIn.value.trim(),
+            email: emailIn.value.trim(), port: parseInt(portIn.value, 10) || 8443 }),
+        }).catch(() => null);
+        if (!res || !res.ok) {
+          const body = res ? await res.json().catch(() => ({})) : {};
+          announceError(apiErrorText(body, res ? res.status : 0));
+          go.disabled = false;
+          return;
+        }
+        await renderHttpsSettings();
+      },
+    });
+    const buttons = [go];
+    if (st.enabled) {
+      buttons.push(el("button", {
+        class: "btn-secondary", type: "button", text: tx("Turn off HTTPS"), disabled: st.state === "working" ? "" : null,
+        onclick: async () => {
+          if (!confirm(tx("Turn off HTTPS? The https:// address stops working; the usual address keeps working. The DNS record stays."))) return;
+          const res = await fetch(`${API}/https`, { method: "DELETE" }).catch(() => null);
+          if (!res || !res.ok) { announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again.")); return; }
+          announce(tx("HTTPS turned off."));
+          httpsSummary.textContent = tx("Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.");
+          await renderHttpsSettings();
+        },
+      }));
+    }
+    httpsPanel.appendChild(el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem;" }, buttons));
+    httpsPanel.appendChild(statusEl);
+
+    if (httpsLastState === "working" && st.state !== "working") {
+      if (st.last_error) announceError(st.last_error);
+      else announce(tx("HTTPS is ready."));
+    }
+    httpsLastState = st.state;
+    if (st.state === "working") {
+      httpsPollTimer = setTimeout(() => { if (!httpsPanel.hidden) renderHttpsSettings(); }, 2000);
+    }
+  }
 
   // One scan routine for both places it can be started: Settings (next to
   // the connection settings, for testing) and the + menu (for everyday use).
@@ -2203,19 +2324,12 @@
   detailOverlay.addEventListener("click", (e) => { if (e.target === detailOverlay) closeRecipeDetail(); });
 
   async function openRecipeDetail(id) {
-    // Started before the fetch, while still inside the tap that opened the
-    // recipe: the video fallback may need that to be allowed to play.
-    const wake = wakeLockSupported && getWakeLockDefault() ? setWakeLockWanted(true) : null;
     const res = await fetch(`${API}/recipes/${id}`);
-    if (!res.ok) {
-      if (wake) releaseWakeLock();
-      announceError(tx("Could not load recipe."));
-      return;
-    }
+    if (!res.ok) { announceError(tx("Could not load recipe.")); return; }
     const recipe = await res.json();
     renderRecipeDetail(recipe);
     openModal(detailOverlay);
-    if (wake) await wake;
+    if (wakeLockSupported && getWakeLockDefault()) await setWakeLockWanted(true);
   }
 
   // -------------------------------------------------------------------
@@ -2232,28 +2346,27 @@
   function wakeLockToggle() {
     if (!wakeLockSupported) return null;
 
-    const btn = el("button", { class: "btn-secondary wakelock-btn", type: "button" });
+    const input = el("input", { type: "checkbox", role: "switch", class: "switch", id: "wakelock-recipe" });
+    const row = el("label", { class: "switch-row wakelock-row", for: "wakelock-recipe" }, [
+      el("span", { text: tx("Keep screen on") }),
+      input,
+    ]);
 
     function sync() {
-      const on = wakeLockActive();
-      btn.setAttribute("aria-pressed", String(on));
-      btn.setAttribute("data-active", String(on));
-      btn.textContent = "\u2600\ufe0e " + (on ? tx("Screen staying on") : tx("Keep screen on"));
-      btn.setAttribute("aria-label", on
-        ? tx("Screen is being kept awake. Tap to allow it to sleep.")
-        : tx("Keep the screen awake while reading this recipe."));
+      input.checked = wakeLockActive();
     }
 
-    btn.addEventListener("click", async () => {
-      await setWakeLockWanted(!wakeLockActive());
-      if (wakeLockWanted && !wakeLockActive()) {
+    input.addEventListener("change", async () => {
+      await setWakeLockWanted(input.checked);
+      if (input.checked && !wakeLockActive()) {
         announce(tx("The browser wouldn't keep the screen awake \u2014 it may be blocked on low battery."));
       }
+      sync();
     });
 
     wakeLockListeners.add(sync);
     sync();
-    return btn;
+    return row;
   }
 
   function notesSection(recipe) {
@@ -2617,9 +2730,7 @@
         recipe.total_time ? el("span", { text: tx("Total: {1}", { 1: recipe.total_time }) }) : null,
       ]),
       cardQuickControls(recipe, true),
-      el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;" }, [
-        wakeLockToggle(),
-      ]),
+      wakeLockToggle(),
       el("div", { class: "field" }, [
         el("label", { text: tx("Real-world cook time") }),
         el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
@@ -3518,6 +3629,7 @@
     await loadTimeBuckets();
     await loadRecipes();
     await loadMailState();
+    refreshHttpsSummary();
   })();
 
   if ("serviceWorker" in navigator) {

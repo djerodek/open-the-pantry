@@ -7,6 +7,16 @@ services:
     container_name: open-the-pantry
     ports:
       - "8090:8090"
+      # HTTPS, once set up in Settings -> HTTPS (nothing listens here until
+      # then). To use https://name with no port, change the left side to
+      # 443 if nothing else on this machine uses it.
+      - "8443:8443"
+    # Optional: your DNS host's API login for Settings -> HTTPS, in a file
+    # named .env next to this one (see README, "Optional: HTTPS on your
+    # network"). Ignored if the file doesn't exist.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data     # SQLite DB + uploaded images/PDFs, persists across updates
     restart: unless-stopped
