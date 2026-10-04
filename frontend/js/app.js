@@ -2802,7 +2802,7 @@
       el("div", { class: "recipe-detail-header" }, [
         el("div", { class: "recipe-detail-header-main" }, [
           el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: recipe.title }),
-          el("div", { class: "card-tab", style: "position:static;" }, [sourceBadge(recipe), confidenceBadge(recipe)]),
+          el("div", { class: "recipe-detail-badges" }, [sourceBadge(recipe), confidenceBadge(recipe)]),
         ]),
         shareMenu(recipe),
       ]),

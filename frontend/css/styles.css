@@ -962,10 +962,24 @@ main {
   display: inline-block;
   font-family: var(--font-body);
   font-size: 0.68rem;
+  line-height: 1.4;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   font-weight: 600;
 }
+
+/* Source and OCR badges under a recipe's title. They used to borrow the
+   card's corner-tab flex row, where the default stretch made the shorter
+   badge as tall as a wrapped neighbour, its text stuck at the top. Now
+   each badge stays one line, and they wrap as a group on a narrow screen
+   or with large text. */
+.recipe-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.recipe-detail-badges .badge { white-space: nowrap; }
 .badge-source-url { background: var(--badge-url-bg); color: var(--badge-url-fg); }
 .badge-source-pdf { background: var(--badge-pdf-bg); color: var(--badge-pdf-fg); }
 .badge-source-screenshot { background: var(--badge-screenshot-bg); color: var(--badge-screenshot-fg); }
