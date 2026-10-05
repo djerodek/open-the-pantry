@@ -2362,10 +2362,9 @@ async def setup_https(payload: schemas.HttpsSetupIn):
                                                         payload.email, payload.port)
     except https_setup.HttpsError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if not https_setup.credentials_status()["found"]:
-        raise HTTPException(status_code=400, detail=(
-            "The cPanel login isn't set: add " + ", ".join(https_setup.credentials_status()["missing"]) +
-            " to .env next to docker-compose.yml, then restart the app."))
+    cred = https_setup.credentials_status()
+    if not cred["found"]:
+        raise HTTPException(status_code=400, detail=str(https_setup.missing_settings_error(cred["missing"])))
     request = {"domain": domain, "lan_address": lan, "email": email, "port": port}
     if not https_setup.start_job(asyncio.get_running_loop(), app, request):
         raise HTTPException(status_code=409, detail="HTTPS setup is already running.")

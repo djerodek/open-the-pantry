@@ -1683,3 +1683,13 @@ html { touch-action: manipulation; }
 .fallback-steps { padding-left: 1.2rem; margin: 0.25rem 0 0.75rem; }
 .fallback-steps li { margin-bottom: 0.35rem; }
 .fallback-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+
+/* A value the page shows but can't change (the HTTPS name from .env, the
+   email "From"): no box, so it doesn't look like a field to type in.
+   !important because the base input rule's chain of :not()s outranks any
+   plain selector here. */
+.field input[type="text"][readonly] {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding-left: 0 !important;
+}

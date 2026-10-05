@@ -476,10 +476,11 @@
 
     if (!st.credentials.found) {
       const box = el("div", { class: "setup-callout" }, [
-        el("strong", { text: tx("Step 1: add your cPanel login") }),
+        el("strong", { text: tx("Step 1: add your cPanel login and the name to use") }),
         el("p", { text: tx("The app creates its DNS records through your domain's cPanel. For safety the login isn't entered here: put it in a file named .env next to docker-compose.yml, then restart the app (docker compose up -d).") }),
+        el("p", { text: tx("PANTRY_DOMAIN is the one name this page can set up. It's kept with the login so that nobody using the app can have it create other names in your domain.") }),
         el("p", { text: tx("In cPanel: Security → Manage API Tokens → Create. Then add these lines to .env:") }),
-        el("pre", { class: "setup-code", text: "CPANEL_USERNAME=your-cpanel-username\nCPANEL_TOKEN=paste-the-api-token\nCPANEL_BASE_URL=https://your-cpanel-address:2083" }),
+        el("pre", { class: "setup-code", text: "CPANEL_USERNAME=your-cpanel-username\nCPANEL_TOKEN=paste-the-api-token\nCPANEL_BASE_URL=https://your-cpanel-address:2083\nPANTRY_DOMAIN=pantry.example.com" }),
         el("p", { class: "field-hint", text: tx("Missing now: {1}", { 1: st.credentials.missing.join(", ") }) }),
       ]);
       httpsPanel.appendChild(box);
@@ -492,20 +493,21 @@
       el("label", { for: id, text: label }), input, hint ? el("div", { class: "field-hint", text: hint }) : null,
     ]);
     const guessLan = st.lan_address || (isIPv4(location.hostname) ? location.hostname : "");
+    // The name comes from PANTRY_DOMAIN in .env and can't be changed here.
     const domainIn = el("input", { type: "text", id: "https-domain", placeholder: "pantry.example.com",
-      autocomplete: "off", autocapitalize: "off", spellcheck: "false", value: keep["https-domain"] ?? st.domain });
+      readonly: "", value: st.credentials.domain || st.domain });
     const lanIn = el("input", { type: "text", id: "https-lan", placeholder: "192.168.1.20", inputmode: "decimal",
       autocomplete: "off", value: keep["https-lan"] ?? guessLan });
     const emailIn = el("input", { type: "email", id: "https-email", placeholder: "you@example.com",
       autocomplete: "email", value: keep["https-email"] ?? (st.email || state.mail.from || "") });
     const portIn = el("input", { type: "number", id: "https-port", min: "1", max: "65535",
       value: keep["https-port"] ?? String(st.port || 8443) });
-    [domainIn, lanIn, emailIn, portIn].forEach((i) => { i.disabled = disabled; });
+    [lanIn, emailIn, portIn].forEach((i) => { i.disabled = disabled; });
 
     httpsPanel.appendChild(field("https-domain", tx("Address"), domainIn,
-      tx("A name in your domain that isn't in use yet. The app creates its DNS record.")));
+      tx("Set by PANTRY_DOMAIN in .env; the only name this page can set up. If it isn't in use yet, the app creates its DNS record.")));
     httpsPanel.appendChild(field("https-lan", tx("This server's address on your network"), lanIn,
-      tx("Where the name will point. Filled in from the address you're using now, if it's a number.")));
+      tx("Where the name will point: an address on your home network or VPN. Filled in from the address you're using now, if it's a number.")));
     httpsPanel.appendChild(field("https-email", tx("Email for Let's Encrypt"), emailIn,
       tx("Let's Encrypt writes here only if something is wrong with the certificate.")));
     httpsPanel.appendChild(field("https-port", tx("Port"), portIn,
@@ -539,7 +541,7 @@
         go.disabled = true;
         const res = await fetch(`${API}/https/setup`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ domain: domainIn.value.trim(), lan_address: lanIn.value.trim(),
+          body: JSON.stringify({ lan_address: lanIn.value.trim(),
             email: emailIn.value.trim(), port: parseInt(portIn.value, 10) || 8443 }),
         }).catch(() => null);
         if (!res || !res.ok) {

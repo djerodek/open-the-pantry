@@ -16,10 +16,16 @@ CPANEL_TOKEN, CPANEL_BASE_URL; the compose file passes in .env), never from
 the browser or the database: a cPanel token can do far more than add these
 records, and the app has no login of its own.
 
-Two limits protect the rest of the domain from someone on your network
-using this page: the app never touches the domain's own name (the zone
-apex), and it never changes an existing record for the chosen name unless
-it created that record itself.
+The app has no login, so anyone who can open Settings can use this page.
+These limits keep that from reaching the rest of the domain:
+  - The only name it will ever create or change is the one in PANTRY_DOMAIN
+    in .env, next to the cPanel login. The page can't pick another name.
+  - It never touches the domain's own name (the zone apex), and never
+    changes an existing record for that name unless it created it.
+  - The name can only point at a private network address (home LAN or
+    Tailscale), never at a server on the internet.
+  - At most MAX_REQUESTS_PER_WEEK certificate requests in 7 days, so the
+    page can't be used to use up Let's Encrypt's limits for the domain.
 """
 import asyncio
 import base64
@@ -62,6 +68,22 @@ TXT_TTL = 300
 A_TTL = 3600
 
 CREDENTIAL_VARS = ("CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL")
+# The one name this page may set up. Kept with the login, outside the app,
+# so someone using the page can't have the token create other names.
+DOMAIN_VAR = "PANTRY_DOMAIN"
+REQUIRED_VARS = CREDENTIAL_VARS + (DOMAIN_VAR,)
+
+# Let's Encrypt issues at most 5 certificates for the same name per week.
+# Requests are counted here so the page stops before that, with a date.
+MAX_REQUESTS_PER_WEEK = 5
+REQUESTS_PATH = os.path.join(HTTPS_DIR, "requests.json")
+
+# Where a home network or VPN puts its machines: the private ranges, plus
+# 100.64.0.0/10 (Tailscale and other carrier-grade NAT). Listed rather than
+# ipaddress's is_private, which also counts documentation ranges and the
+# like.
+NETWORK_RANGES = tuple(ipaddress.IPv4Network(n) for n in
+                       ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"))
 
 
 class HttpsError(Exception):
@@ -87,11 +109,20 @@ def _set_step(text: str):
     log.info("HTTPS: %s", text)
 
 
+def allowed_domain() -> str:
+    """PANTRY_DOMAIN, normalised; empty if unset or not a valid name."""
+    value = os.environ.get(DOMAIN_VAR, "").strip().lower().rstrip(".")
+    return value if _DOMAIN_RE.match(value) and len(value) <= 253 else ""
+
+
 def credentials_status() -> dict:
     missing = [v for v in CREDENTIAL_VARS if not os.environ.get(v, "").strip()]
+    if not allowed_domain():
+        missing.append(DOMAIN_VAR)
     base = os.environ.get("CPANEL_BASE_URL", "").strip()
     host = re.sub(r"^https?://", "", base).split("/")[0] if base else ""
-    return {"found": not missing, "missing": missing, "provider": "cPanel", "host": host}
+    return {"found": not missing, "missing": missing, "provider": "cPanel", "host": host,
+            "domain": allowed_domain()}
 
 
 def _settings(db) -> models.HttpsSettings:
@@ -141,18 +172,38 @@ _DOMAIN_RE = re.compile(rf"^{_LABEL}(?:\.{_LABEL})+$")
 _EMAIL_RE = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 
 
-def validate(domain: str, lan_address: str, email: str, port: int) -> tuple[str, str, str, int]:
-    domain = (domain or "").strip().lower().rstrip(".")
+def _not_pinned_error(domain: str, pinned: str) -> "HttpsError":
+    if not pinned:
+        return HttpsError(f"Add {DOMAIN_VAR}={domain} to .env next to docker-compose.yml, then restart "
+                          "the app. It's the only name this page can set up.")
+    return HttpsError(f"This page can only set up {pinned}, the name in {DOMAIN_VAR} in .env. "
+                      "To use another name, change it there and restart the app.")
+
+
+def is_network_address(ip: ipaddress.IPv4Address) -> bool:
+    """A home-network or VPN address: private ranges and Tailscale's."""
+    return any(ip in net for net in NETWORK_RANGES)
+
+
+def validate(domain: str, lan_address: str, email: str, port: int,
+             pinned: str | None = None) -> tuple[str, str, str, int]:
+    """pinned: the name allowed by PANTRY_DOMAIN (None reads it now). An
+    empty domain means that name."""
+    pinned = allowed_domain() if pinned is None else pinned
+    domain = (domain or "").strip().lower().rstrip(".") or pinned
     lan_address = (lan_address or "").strip()
     email = (email or "").strip()
     if not _DOMAIN_RE.match(domain) or len(domain) > 253:
         raise HttpsError("Enter a name like pantry.example.com.")
+    if domain != pinned:
+        raise _not_pinned_error(domain, pinned)
     try:
         ip = ipaddress.IPv4Address(lan_address)
     except ValueError:
         raise HttpsError("Enter this server's IPv4 address on your network, e.g. 192.168.1.20.")
-    if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
-        raise HttpsError("Enter this server's IPv4 address on your network, e.g. 192.168.1.20.")
+    if not is_network_address(ip):
+        raise HttpsError("Enter this server's address on your home network or VPN, e.g. 192.168.1.20. "
+                         "Internet addresses aren't accepted.")
     if not _EMAIL_RE.match(email):
         raise HttpsError("Enter an email address for Let's Encrypt.")
     if not 1 <= int(port) <= 65535:
@@ -260,6 +311,19 @@ class CpanelDns:
         self._edit(zone, recs, "add", {"dname": name, "ttl": A_TTL, "record_type": "A", "data": [ip]})
         return zone
 
+    def remove_a(self, fqdn: str, ip: str) -> bool:
+        """Removes fqdn's A record, only if it's the single record for that
+        name and still holds ip (the value this app wrote). Returns whether
+        it removed anything."""
+        zone = self.find_zone(fqdn)
+        recs = self.records(zone)
+        name = fqdn + "."
+        same = [r for r in recs if r["name"] == name]
+        if len(same) != 1 or same[0]["record_type"] != "A" or same[0]["data"] != [ip]:
+            return False
+        self._edit(zone, recs, "remove", str(same[0]["line_index"]))
+        return True
+
     def add_txt(self, zone: str, fqdn: str, value: str):
         recs = self.records(zone)
         name = fqdn + "."
@@ -286,11 +350,15 @@ class CpanelDns:
                 return
 
 
+def missing_settings_error(missing: list[str]) -> "HttpsError":
+    return HttpsError("Settings → HTTPS needs these in .env next to docker-compose.yml: " +
+                      ", ".join(missing) + ". Add them, then restart the app.")
+
+
 def _dns_client() -> CpanelDns:
     cred = credentials_status()
     if not cred["found"]:
-        raise HttpsError("The cPanel login isn't set: add " + ", ".join(cred["missing"]) +
-                         " to .env next to docker-compose.yml, then restart the app.")
+        raise missing_settings_error(cred["missing"])
     return CpanelDns(os.environ["CPANEL_BASE_URL"].strip(), os.environ["CPANEL_USERNAME"].strip(),
                      os.environ["CPANEL_TOKEN"].strip())
 
@@ -393,6 +461,33 @@ def _acme_client(email: str):
     return acme, key
 
 
+def _recent_requests(now: datetime) -> list[datetime]:
+    try:
+        with open(REQUESTS_PATH, encoding="utf-8") as f:
+            stamps = [datetime.fromisoformat(t) for t in json.load(f)]
+    except (OSError, ValueError, TypeError):
+        return []
+    return sorted(t for t in stamps if now - t < timedelta(days=7))
+
+
+def _check_request_budget():
+    now = datetime.now(timezone.utc)
+    recent = _recent_requests(now)
+    if len(recent) >= MAX_REQUESTS_PER_WEEK:
+        again = recent[len(recent) - MAX_REQUESTS_PER_WEEK] + timedelta(days=7)
+        raise HttpsError(f"{len(recent)} certificates were requested in the last 7 days; Let's Encrypt allows "
+                         f"{MAX_REQUESTS_PER_WEEK} a week for the same name. Try again after "
+                         f"{again.strftime('%Y-%m-%d %H:%M')} UTC.")
+
+
+def _count_request():
+    now = datetime.now(timezone.utc)
+    stamps = _recent_requests(now) + [now]
+    os.makedirs(HTTPS_DIR, exist_ok=True)
+    with open(REQUESTS_PATH, "w", encoding="utf-8") as f:
+        json.dump([t.isoformat() for t in stamps], f)
+
+
 def _issue(dns: CpanelDns, zone: str, domain: str, email: str) -> datetime:
     from acme import challenges, crypto_util, messages
     from cryptography import x509
@@ -404,6 +499,7 @@ def _issue(dns: CpanelDns, zone: str, domain: str, email: str) -> datetime:
     cert_key = ec.generate_private_key(ec.SECP256R1())
     key_pem = cert_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                                      serialization.NoEncryption())
+    _count_request()
     order = acme.new_order(crypto_util.make_csr(key_pem, [domain]))
 
     added = []
@@ -462,13 +558,28 @@ def run_setup(main_loop=None, app=None, request: dict | None = None):
         domain, lan, email = request["domain"], request["lan_address"], request["email"]
         # Only the record this app wrote for this same name may be changed.
         previous_a = s.a_record_value if domain == s.domain else None
+        old_name, old_a = s.domain, s.a_record_value
         try:
             os.makedirs(HTTPS_DIR, exist_ok=True)
+            # Checked here too, not only in the API: a renewal uses the saved
+            # name, which may predate PANTRY_DOMAIN or differ from it now.
+            pinned = allowed_domain()
+            if domain != pinned:
+                raise _not_pinned_error(domain, pinned)
+            _check_request_budget()
             _set_step("Checking the cPanel login…")
             dns = _dns_client()
             _set_step(f"Pointing {domain} at {lan}…")
             zone = dns.set_a(domain, lan, previous_a)
             expires = _issue(dns, zone, domain, email)
+            if old_name and old_name != domain and old_a:
+                # The previous name's record, if it's still the one this app
+                # wrote. Best effort: a leftover record is harmless.
+                try:
+                    if dns.remove_a(old_name, old_a):
+                        log.info("HTTPS: removed the old record for %s", old_name)
+                except Exception:
+                    log.warning("HTTPS: couldn't remove the old record for %s", old_name, exc_info=True)
             s.domain, s.lan_address, s.email, s.public_port = domain, lan, email, request["port"]
             s.a_record_value = lan
             s.cert_expires_at = expires
@@ -651,9 +762,14 @@ async def renewal_loop(app):
     loop = asyncio.get_running_loop()
     while True:
         try:
-            if cert_needs_renewal() and credentials_status()["found"]:
-                log.info("HTTPS: renewing the certificate")
-                start_job(loop, app)
+            if cert_needs_renewal():
+                cred = credentials_status()
+                if cred["found"]:
+                    log.info("HTTPS: renewing the certificate")
+                    start_job(loop, app)
+                else:
+                    log.warning("HTTPS: the certificate needs renewing, but .env is missing %s",
+                                ", ".join(cred["missing"]))
         except Exception:
             log.exception("HTTPS renewal check failed")
         await asyncio.sleep(12 * 3600)

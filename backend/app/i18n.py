@@ -207,9 +207,25 @@ _FR_PATTERNS = [
        "Entrez l'adresse IPv4 de ce serveur sur votre réseau, p. ex. 192.168.1.20."),
     _p(r"Enter an email address for Let's Encrypt\.", "Entrez une adresse courriel pour Let's Encrypt."),
     _p(r"The port must be between 1 and 65535\.", "Le port doit être entre 1 et 65535."),
-    _p(r"The cPanel login isn't set: add (.+?) to \.env next to docker-compose\.yml, then restart the app\.",
-       r"Les identifiants cPanel ne sont pas définis : ajoutez \1 à .env, à côté de docker-compose.yml, "
+    _p(r"Settings → HTTPS needs these in \.env next to docker-compose\.yml: (.+?)\. Add them, then restart the app\.",
+       r"Paramètres → HTTPS a besoin de ceci dans .env, à côté de docker-compose.yml : \1. Ajoutez-les, "
        r"puis redémarrez l'application."),
+    _p(r"Add PANTRY_DOMAIN=(\S+) to \.env next to docker-compose\.yml, then restart the app\. "
+       r"It's the only name this page can set up\.",
+       r"Ajoutez PANTRY_DOMAIN=\1 à .env, à côté de docker-compose.yml, puis redémarrez l'application. "
+       r"C'est le seul nom que cette page peut configurer."),
+    _p(r"This page can only set up (\S+), the name in PANTRY_DOMAIN in \.env\. To use another name, "
+       r"change it there and restart the app\.",
+       r"Cette page ne peut configurer que \1, le nom indiqué dans PANTRY_DOMAIN dans .env. Pour utiliser "
+       r"un autre nom, changez-le là et redémarrez l'application."),
+    _p(r"Enter this server's address on your home network or VPN, e\.g\. 192\.168\.1\.20\. "
+       r"Internet addresses aren't accepted\.",
+       "Entrez l'adresse de ce serveur sur votre réseau domestique ou votre RPV, p. ex. 192.168.1.20. "
+       "Les adresses Internet ne sont pas acceptées."),
+    _p(r"(\d+) certificates were requested in the last 7 days; Let's Encrypt allows (\d+) a week for the "
+       r"same name\. Try again after (\S+ \S+) UTC\.",
+       r"\1 certificats ont été demandés dans les 7 derniers jours; Let's Encrypt en permet \2 par semaine "
+       r"pour le même nom. Réessayez après le \3 UTC."),
     _p(r"HTTPS setup is already running\.", "La configuration HTTPS est déjà en cours."),
     _p(r"Set up HTTPS first\.", "Configurez d'abord HTTPS."),
     _p(r"Couldn't reach cPanel at (\S+): ", r"Impossible de joindre cPanel à \1 : "),

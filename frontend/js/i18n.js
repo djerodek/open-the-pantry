@@ -547,7 +547,9 @@
     "Could not load the HTTPS settings.": "Impossible de charger les paramètres HTTPS.",
     "Setting up HTTPS…": "Configuration de HTTPS…",
     "On: {1}": "Activé : {1}",
-    "Step 1: add your cPanel login": "Étape 1 : ajouter vos identifiants cPanel",
+    "Step 1: add your cPanel login and the name to use": "Étape 1 : ajouter vos identifiants cPanel et le nom à utiliser",
+    "PANTRY_DOMAIN is the one name this page can set up. It's kept with the login so that nobody using the app can have it create other names in your domain.":
+      "PANTRY_DOMAIN est le seul nom que cette page peut configurer. Il est gardé avec les identifiants pour que personne qui utilise l'application ne puisse lui faire créer d'autres noms dans votre domaine.",
     "The app creates its DNS records through your domain's cPanel. For safety the login isn't entered here: put it in a file named .env next to docker-compose.yml, then restart the app (docker compose up -d).":
       "L'application crée ses enregistrements DNS au moyen du cPanel de votre domaine. Par prudence, les identifiants ne s'entrent pas ici : placez-les dans un fichier nommé .env à côté de docker-compose.yml, puis redémarrez l'application (docker compose up -d).",
     "In cPanel: Security → Manage API Tokens → Create. Then add these lines to .env:":
@@ -555,11 +557,11 @@
     "Missing now: {1}": "Manquant : {1}",
     "cPanel login found ({1}).": "Identifiants cPanel trouvés ({1}).",
     "Address": "Adresse",
-    "A name in your domain that isn't in use yet. The app creates its DNS record.":
-      "Un nom de votre domaine qui n'est pas encore utilisé. L'application crée son enregistrement DNS.",
+    "Set by PANTRY_DOMAIN in .env; the only name this page can set up. If it isn't in use yet, the app creates its DNS record.":
+      "Défini par PANTRY_DOMAIN dans .env; le seul nom que cette page peut configurer. S'il n'est pas encore utilisé, l'application crée son enregistrement DNS.",
     "This server's address on your network": "Adresse de ce serveur sur votre réseau",
-    "Where the name will point. Filled in from the address you're using now, if it's a number.":
-      "L'adresse vers laquelle le nom pointera. Remplie à partir de l'adresse que vous utilisez en ce moment, si c'est une adresse numérique.",
+    "Where the name will point: an address on your home network or VPN. Filled in from the address you're using now, if it's a number.":
+      "L'adresse vers laquelle le nom pointera : une adresse de votre réseau domestique ou de votre RPV. Remplie à partir de l'adresse que vous utilisez en ce moment, si c'est une adresse numérique.",
     "Email for Let's Encrypt": "Courriel pour Let's Encrypt",
     "Let's Encrypt writes here only if something is wrong with the certificate.":
       "Let's Encrypt n'écrit à cette adresse qu'en cas de problème avec le certificat.",

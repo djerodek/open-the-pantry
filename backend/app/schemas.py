@@ -324,7 +324,7 @@ class EmailScanResult(BaseModel):
 
 
 class HttpsSetupIn(BaseModel):
-    domain: str = Field(max_length=253)
+    domain: str = Field(default="", max_length=253)  # empty = PANTRY_DOMAIN
     lan_address: str = Field(max_length=45)
     email: str = Field(max_length=254)
     port: int = 8443

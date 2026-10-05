@@ -95,13 +95,19 @@ def creds(monkeypatch):
     monkeypatch.setenv("CPANEL_USERNAME", "marc")
     monkeypatch.setenv("CPANEL_TOKEN", "tok")
     monkeypatch.setenv("CPANEL_BASE_URL", "https://cp.example.test:2083")
+    monkeypatch.setenv("PANTRY_DOMAIN", "pantry.example.test")
 
 
 @pytest.fixture
 def fresh_settings(client):
+    import os
     from app.database import SessionLocal
     from app import models, https_setup
+    if os.path.exists(https_setup.REQUESTS_PATH):
+        os.remove(https_setup.REQUESTS_PATH)
     yield
+    if os.path.exists(https_setup.REQUESTS_PATH):
+        os.remove(https_setup.REQUESTS_PATH)
     db = SessionLocal()
     db.query(models.HttpsSettings).delete()
     db.commit()
@@ -182,10 +188,10 @@ def test_bad_login_and_unknown_zone_say_so(monkeypatch, cpanel):
 def test_validation(domain, lan, email, ok):
     from app import https_setup
     if ok:
-        assert https_setup.validate(domain, lan, email, 8443)[0] == "pantry.example.com"
+        assert https_setup.validate(domain, lan, email, 8443, pinned="pantry.example.com")[0] == "pantry.example.com"
     else:
         with pytest.raises(https_setup.HttpsError):
-            https_setup.validate(domain, lan, email, 8443)
+            https_setup.validate(domain, lan, email, 8443, pinned="pantry.example.com")
 
 
 # ---------------------------------------------------------------------------
@@ -210,19 +216,23 @@ def test_setup_saves_only_on_success(monkeypatch, cpanel, creds, fresh_settings)
     assert st["state"] == "ready" and st["enabled"] and st["domain"] == "pantry.example.test"
     assert st["url"] == "https://pantry.example.test:8443" and https_setup.active_domain() == "pantry.example.test"
 
-    # A failed attempt with another name leaves the working setup alone.
+    # A failed attempt leaves the working setup alone: here the name in
+    # .env now points at the website's record, which the app won't take.
+    monkeypatch.setenv("PANTRY_DOMAIN", "www.example.test")
     _run(https_setup, {**good, "domain": "www.example.test"})
     st = https_setup.status()
     assert st["domain"] == "pantry.example.test" and st["state"] == "ready"
     assert "already points to" in st["last_error"]
     assert https_setup.active_domain() == "pantry.example.test"
+    assert fake.find("www.example.test.", "A")[0]["data"] == ["203.0.113.10"]
 
 
 def test_setup_without_a_login_explains_env(client, monkeypatch, fresh_settings):
-    for v in ("CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL"):
+    for v in ("CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL", "PANTRY_DOMAIN"):
         monkeypatch.delenv(v, raising=False)
     st = client.get("/api/https").json()
-    assert st["credentials"]["found"] is False and len(st["credentials"]["missing"]) == 3
+    assert st["credentials"]["found"] is False
+    assert st["credentials"]["missing"] == ["CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL", "PANTRY_DOMAIN"]
     r = client.post("/api/https/setup", json={"domain": "pantry.example.test", "lan_address": "192.168.60.20",
                                               "email": "me@example.test", "port": 8443})
     assert r.status_code == 400 and ".env" in r.json()["detail"]
@@ -292,3 +302,97 @@ def test_a_busy_port_does_not_stop_the_app(monkeypatch, tmp_path, fresh_settings
         assert "couldn't listen on port" in https_setup.status()["last_error"]
     finally:
         blocker.close()
+
+
+# ---------------------------------------------------------------------------
+# What someone using the page can't do (ChatGPT review, Oct 4): the cPanel
+# token can only ever touch the name in PANTRY_DOMAIN, pointed at a private
+# address, within Let's Encrypt's weekly limit.
+# ---------------------------------------------------------------------------
+
+def test_only_the_name_in_env_can_be_set_up(client, creds, fresh_settings):
+    body = {"lan_address": "192.168.60.20", "email": "me@example.test", "port": 8443}
+    r = client.post("/api/https/setup", json={**body, "domain": "evil.example.test"})
+    assert r.status_code == 400
+    assert r.json()["detail"].startswith("This page can only set up pantry.example.test, the name in PANTRY_DOMAIN")
+    fr = client.post("/api/https/setup", json={**body, "domain": "evil.example.test"}, headers={"X-App-Lang": "fr"})
+    assert fr.json()["detail"].startswith("Cette page ne peut configurer que pantry.example.test")
+    assert client.get("/api/https").json()["credentials"]["domain"] == "pantry.example.test"
+
+
+def test_an_empty_name_means_the_one_in_env():
+    from app import https_setup
+    assert https_setup.validate("", "192.168.60.20", "me@example.test", 8443,
+                                pinned="pantry.example.test")[0] == "pantry.example.test"
+    with pytest.raises(https_setup.HttpsError, match="Add PANTRY_DOMAIN=pantry.example.test to .env"):
+        https_setup.validate("pantry.example.test", "192.168.60.20", "me@example.test", 8443, pinned="")
+
+
+@pytest.mark.parametrize("lan, ok", [
+    ("192.168.60.20", True), ("10.0.0.5", True), ("172.20.1.1", True), ("100.101.102.103", True),
+    ("203.0.113.10", False), ("8.8.8.8", False), ("169.254.1.1", False), ("127.0.0.1", False),
+])
+def test_the_name_can_only_point_at_a_network_address(lan, ok):
+    from app import https_setup
+    if ok:
+        assert https_setup.validate("", lan, "me@example.test", 8443, pinned="pantry.example.test")[1] == lan
+    else:
+        with pytest.raises(https_setup.HttpsError, match="home network or VPN|IPv4 address"):
+            https_setup.validate("", lan, "me@example.test", 8443, pinned="pantry.example.test")
+
+
+def test_a_saved_name_that_isnt_the_one_in_env_isnt_renewed(monkeypatch, cpanel, creds, fresh_settings):
+    from app import https_setup
+    from app.database import SessionLocal
+    fake, _ = cpanel
+    db = SessionLocal()
+    s = https_setup._settings(db)
+    s.domain, s.lan_address, s.email, s.public_port = "old.example.test", "192.168.60.20", "me@example.test", 8443
+    db.commit()
+    db.close()
+    monkeypatch.setattr(https_setup, "_issue", lambda *a: pytest.fail("must not ask for a certificate"))
+    _run(https_setup)            # a renewal: no request, the saved values
+    assert "This page can only set up pantry.example.test" in https_setup.status()["last_error"]
+    assert fake.calls == []      # cPanel never contacted
+
+
+def test_certificate_requests_are_capped_per_week(monkeypatch, cpanel, creds, fresh_settings):
+    import json
+    import os
+    from app import https_setup
+    fake, _ = cpanel
+    now = datetime.now(timezone.utc)
+    stamps = [now - timedelta(days=8)] + [now - timedelta(days=d) for d in (6, 5, 3, 2, 1)]
+    os.makedirs(https_setup.HTTPS_DIR, exist_ok=True)
+    with open(https_setup.REQUESTS_PATH, "w") as f:
+        json.dump([t.isoformat() for t in stamps], f)
+    monkeypatch.setattr(https_setup, "_issue", lambda *a: pytest.fail("over the weekly cap"))
+    _run(https_setup, {"domain": "pantry.example.test", "lan_address": "192.168.60.20",
+                       "email": "me@example.test", "port": 8443})
+    err = https_setup.status()["last_error"]
+    assert err.startswith("5 certificates were requested in the last 7 days")
+    # Room again once the oldest of the five is a week old.
+    assert (now + timedelta(days=1)).strftime("%Y-%m-%d") in err
+    assert fake.calls == []
+
+
+def test_changing_the_name_removes_the_old_record_it_made(monkeypatch, cpanel, creds, fresh_settings):
+    from app import https_setup
+    fake, _ = cpanel
+    expires = datetime.now(timezone.utc) + timedelta(days=90)
+    monkeypatch.setattr(https_setup, "_issue", lambda dns, zone, domain, email: expires)
+    req = {"domain": "pantry.example.test", "lan_address": "192.168.60.20", "email": "me@example.test", "port": 8443}
+    _run(https_setup, req)
+    monkeypatch.setenv("PANTRY_DOMAIN", "recettes.example.test")
+    _run(https_setup, {**req, "domain": "recettes.example.test"})
+    assert https_setup.status()["domain"] == "recettes.example.test"
+    assert fake.find("pantry.example.test.", "A") == []
+    assert fake.find("recettes.example.test.", "A")[0]["data"] == ["192.168.60.20"]
+
+
+def test_an_old_record_someone_changed_is_left_alone(cpanel):
+    fake, dns = cpanel
+    dns.set_a("pantry.example.test", "192.168.60.20", None)
+    fake.find("pantry.example.test.", "A")[0]["data"] = ["192.168.60.99"]
+    assert dns.remove_a("pantry.example.test", "192.168.60.20") is False
+    assert fake.find("pantry.example.test.", "A")[0]["data"] == ["192.168.60.99"]

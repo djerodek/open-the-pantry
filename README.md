@@ -123,25 +123,27 @@ What has to happen outside the app, once:
 
 1. **Create a cPanel API token:** in cPanel, Security → Manage API Tokens →
    Create.
-2. **Put the login in `.env`** next to `docker-compose.yml`:
+2. **Put the login and the name in `.env`** next to `docker-compose.yml`:
 
    ```
    CPANEL_USERNAME=your-cpanel-username
    CPANEL_TOKEN=paste-the-api-token
    CPANEL_BASE_URL=https://your-cpanel-address:2083
+   PANTRY_DOMAIN=pantry.example.com
    ```
 
    `chmod 600 .env` -- the token can do anything your cPanel login can.
-   It is deliberately not entered in the app's Settings: the app has no
-   login of its own, and anyone who can open Settings could otherwise
-   change it.
+   Neither is entered in the app's Settings: the app has no login of its
+   own, and anyone who can open Settings could otherwise change them.
+   `PANTRY_DOMAIN` is the one name the app will ever create or change with
+   the token.
 3. **Restart:** `docker compose up -d`. The compose file already reads
    `.env` if it exists and publishes port 8443 (if your compose file is
    older than this, copy the `ports:` and `env_file:` lines from the
    current one).
 
-Then in Settings → HTTPS: enter the name (e.g. `pantry.example.com`), this
-server's LAN address (filled in when you're using one), and an email for
+Then in Settings → HTTPS, which shows the name from `.env`: enter this
+server's LAN address (filled in when you're using one) and an email for
 Let's Encrypt, and press **Set up HTTPS**. It takes a minute or two and
 shows each step. When it's done it shows the link,
 `https://pantry.example.com:8443`. On an iPhone, open that and add it to the
@@ -149,10 +151,20 @@ Home Screen again: settings such as language and theme are kept per
 address.
 
 Safeguards and notes:
-- The app only ever creates the record for the name you give, and never
+- The app only ever creates the record for `PANTRY_DOMAIN`, and never
   changes a record it didn't create. A name already in use (`www`, the
   domain itself, anything with a record) is refused, so the page can't be
   used to repoint your website.
+- The name can only point at a home-network or VPN address (`10.x`,
+  `172.16`–`172.31`, `192.168.x`, or Tailscale's `100.64`–`100.127`), never
+  at a server on the internet.
+- At most 5 certificate requests in 7 days, Let's Encrypt's own limit for
+  one name; past that the page says when it can try again.
+- Changing `PANTRY_DOMAIN` and setting up again removes the old name's
+  record, if it still holds what the app wrote there. **Upgrading from a
+  version without `PANTRY_DOMAIN`:** add it to `.env` (the name you set up)
+  and restart; until then, renewal waits and Settings → HTTPS says what's
+  missing.
 - The old `http://<address>:8090` keeps working.
 - For `https://pantry.example.com` with no port, change the left side of
   `8443:8443` in `docker-compose.yml` to `443` (if the machine doesn't
@@ -597,10 +609,13 @@ Safeguards and notes:
   up email.
 - **Settings → HTTPS uses a cPanel API token from `.env`.** The token
   never goes through the browser or into the database, and the app can't
-  show it. Anyone who can reach the app can still use the HTTPS page:
-  set it up for another unused name in your domain, or turn it off. It
-  can't change or take over a record it didn't create (so not your
-  website's), and the certificate's key stays on the server. The token
+  show it. Anyone who can reach the app can still use the HTTPS page, but
+  only for the name in `PANTRY_DOMAIN`: set it up again (at most 5
+  certificate requests a week), point it at another address on your
+  network, or turn HTTPS off. It can't create any other name, point the
+  name at the internet, or change or take over a record it didn't create
+  (so not your website's), and the certificate's key stays on the
+  server. The token
   itself can do anything your cPanel login can, so keep `.env` private
   (`chmod 600`), and give the token an expiry date if your host allows it
   (renewal then stops when it expires).

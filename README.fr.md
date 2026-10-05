@@ -144,36 +144,50 @@ Ce qui doit se faire hors de l'application, une seule fois :
 
 1. **Créez un jeton d'API cPanel :** dans cPanel, Security → Manage API
    Tokens → Create.
-2. **Mettez l'identifiant dans `.env`**, à côté de `docker-compose.yml` :
+2. **Mettez l'identifiant et le nom dans `.env`**, à côté de
+   `docker-compose.yml` :
 
    ```
    CPANEL_USERNAME=your-cpanel-username
    CPANEL_TOKEN=paste-the-api-token
    CPANEL_BASE_URL=https://your-cpanel-address:2083
+   PANTRY_DOMAIN=pantry.example.com
    ```
 
    `chmod 600 .env` — le jeton peut faire tout ce que votre connexion
-   cPanel peut faire. Il n'est volontairement pas saisi dans les Paramètres
+   cPanel peut faire. Ni l'un ni l'autre ne se saisit dans les Paramètres
    de l'application : l'application n'a pas de connexion à elle, et
-   quiconque peut ouvrir les Paramètres pourrait sinon le changer.
+   quiconque peut ouvrir les Paramètres pourrait sinon les changer.
+   `PANTRY_DOMAIN` est le seul nom que l'application créera ou modifiera
+   avec le jeton.
 3. **Redémarrez :** `docker compose up -d`. Le fichier compose lit déjà
    `.env` s'il existe et publie le port 8443 (si votre fichier compose est
    plus ancien, copiez les lignes `ports:` et `env_file:` de la version
    actuelle).
 
-Ensuite, dans Paramètres → HTTPS : entrez le nom (p. ex.
-`pantry.example.com`), l'adresse locale de ce serveur (déjà remplie si vous
-l'utilisez) et un courriel pour Let's Encrypt, puis appuyez sur
-**Configurer HTTPS**. Ça prend une minute ou deux et chaque étape est
+Ensuite, dans Paramètres → HTTPS, qui affiche le nom tiré de `.env` :
+entrez l'adresse locale de ce serveur (déjà remplie si vous l'utilisez) et
+un courriel pour Let's Encrypt, puis appuyez sur **Configurer HTTPS**. Ça prend une minute ou deux et chaque étape est
 affichée. À la fin, le lien s'affiche : `https://pantry.example.com:8443`.
 Sur un iPhone, ouvrez-le et ajoutez-le de nouveau à l'écran d'accueil : les
 réglages comme la langue et le thème sont conservés par adresse.
 
 Garde-fous et remarques :
-- L'application ne crée jamais que l'enregistrement du nom que vous donnez,
-  et ne modifie jamais un enregistrement qu'elle n'a pas créé. Un nom déjà
+- L'application ne crée jamais que l'enregistrement de `PANTRY_DOMAIN`, et
+  ne modifie jamais un enregistrement qu'elle n'a pas créé. Un nom déjà
   utilisé (`www`, le domaine lui-même, tout ce qui a un enregistrement) est
   refusé, pour que la page ne puisse pas servir à rediriger votre site Web.
+- Le nom ne peut pointer que vers une adresse de votre réseau domestique ou
+  de votre RPV (`10.x`, `172.16`–`172.31`, `192.168.x`, ou `100.64`–`100.127`
+  de Tailscale), jamais vers un serveur sur Internet.
+- Au plus 5 demandes de certificat en 7 jours, la limite de Let's Encrypt
+  pour un même nom; au-delà, la page indique quand elle pourra réessayer.
+- Changer `PANTRY_DOMAIN` puis refaire la configuration retire
+  l'enregistrement de l'ancien nom, s'il contient encore ce que
+  l'application y a écrit. **Mise à jour à partir d'une version sans
+  `PANTRY_DOMAIN` :** ajoutez-le à `.env` (le nom que vous avez configuré)
+  et redémarrez; d'ici là, le renouvellement attend et Paramètres → HTTPS
+  indique ce qui manque.
 - L'ancienne adresse `http://<adresse>:8090` continue de fonctionner.
 - Pour `https://pantry.example.com` sans port, changez la partie de gauche
   de `8443:8443` dans `docker-compose.yml` pour `443` (si la machine
@@ -718,11 +732,13 @@ courriel)**
 - **Paramètres → HTTPS utilise un jeton d'API cPanel tiré de `.env`.** Le
   jeton ne passe jamais par le navigateur ni par la base de données, et
   l'application ne peut pas l'afficher. Quiconque peut joindre
-  l'application peut quand même utiliser la page HTTPS : la configurer pour
-  un autre nom inutilisé de votre domaine, ou la désactiver. Elle ne peut
-  pas modifier ni s'approprier un enregistrement qu'elle n'a pas créé (donc
-  pas celui de votre site Web), et la clé du certificat reste sur le
-  serveur. Le jeton lui-même peut faire tout ce que votre connexion cPanel
+  l'application peut quand même utiliser la page HTTPS, mais seulement pour
+  le nom de `PANTRY_DOMAIN` : refaire la configuration (au plus 5 demandes
+  de certificat par semaine), faire pointer le nom vers une autre adresse de
+  votre réseau, ou désactiver HTTPS. Elle ne peut créer aucun autre nom,
+  faire pointer le nom vers Internet, ni modifier ou s'approprier un
+  enregistrement qu'elle n'a pas créé (donc pas celui de votre site Web), et
+  la clé du certificat reste sur le serveur. Le jeton lui-même peut faire tout ce que votre connexion cPanel
   peut faire, donc gardez `.env` privé (`chmod 600`), et donnez une date
   d'expiration au jeton si votre hébergeur le permet (le renouvellement
   s'arrête alors à l'expiration).
