@@ -2020,6 +2020,19 @@
     return el("span", { class: `badge badge-source-${recipe.source_type}`, text: label });
   }
 
+  // "View original": the page a web or emailed-link recipe was read from.
+  // Only http(s) is linked; source_url comes from stored data (including a
+  // restored backup), so anything else, such as a javascript: URL, is ignored.
+  function sourceLink(recipe) {
+    let url;
+    try { url = new URL(recipe.source_url); } catch (e) { return null; }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return el("a", {
+      class: "badge badge-link", href: url.href, target: "_blank", rel: "noopener noreferrer",
+      title: url.hostname.replace(/^www\./, ""),
+    }, [el("span", { text: tx("View original") }), el("span", { "aria-hidden": "true", text: " \u2197" })]);
+  }
+
   function confidenceBadge(recipe) {
     if (recipe.ocr_confidence == null) return null;
     const c = recipe.ocr_confidence;
@@ -2804,7 +2817,7 @@
       el("div", { class: "recipe-detail-header" }, [
         el("div", { class: "recipe-detail-header-main" }, [
           el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: recipe.title }),
-          el("div", { class: "recipe-detail-badges" }, [sourceBadge(recipe), confidenceBadge(recipe)]),
+          el("div", { class: "recipe-detail-badges" }, [sourceBadge(recipe), sourceLink(recipe), confidenceBadge(recipe)]),
         ]),
         shareMenu(recipe),
       ]),

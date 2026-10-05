@@ -848,6 +848,7 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
         recipe = models.Recipe(
             title=result["title"],
             source_type="email",
+            source_url=result.get("source_url"),
             raw_text=result.get("raw_text"),
             ocr_confidence=result.get("ocr_confidence"),
             image_path=image_path,

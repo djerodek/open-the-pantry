@@ -257,6 +257,32 @@ def test_extract_from_single_url_in_body(tmp_path):
     assert result["success"] is True
     assert result["title"] == "Linked Recipe"
     assert "URL in body" in result["source_detail"]
+    assert result["source_url"] == "https://example.com/recipe"
+
+
+def test_only_a_link_recipe_has_a_source_url(tmp_path):
+    from app.ingestion.email_processing import process_tagged_email
+
+    msg = _make_email(body="Body Recipe\nIngredients\n2 cups flour\nInstructions\n1. Mix\n2. Bake")
+    assert process_tagged_email(msg, str(tmp_path))["source_url"] is None
+
+
+def test_emailed_link_recipe_keeps_its_source_url(client):
+    """The recipe page links to the original; for an emailed link that
+    means the saved recipe has to carry the address."""
+    from app.main import _save_email_recipe, SessionLocal
+
+    base = {"title": "Source link test", "ingredients": [], "steps": ["Mix"], "tags": [],
+            "raw_text": "Mix", "ocr_confidence": None, "image_path": None}
+    db = SessionLocal()
+    try:
+        with_link = _save_email_recipe(db, {**base, "source_url": "https://example.com/r"}, "subject")
+        without = _save_email_recipe(db, {**base, "source_url": None}, "subject")
+    finally:
+        db.close()
+    got = client.get(f"/api/recipes/{with_link}").json()
+    assert (got["source_type"], got["source_url"]) == ("email", "https://example.com/r")
+    assert client.get(f"/api/recipes/{without}").json()["source_url"] is None
 
 
 def test_extract_failure_on_unusable_email(tmp_path):

@@ -199,7 +199,8 @@ def extract_email_parts(msg) -> dict:
     }
 
 
-def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_confidence=None, source_detail=""):
+def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_confidence=None, source_detail="",
+                  source_url=None):
     parsed_ingredients = parse_ingredient_block(ingredients_raw)
     tag_suggestions = suggest_tags(
         title, [i["name"] or i["raw_line"] for i in parsed_ingredients], raw_text
@@ -214,6 +215,9 @@ def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_
         "raw_text": raw_text,
         "ocr_confidence": ocr_confidence,
         "source_detail": source_detail,
+        # Only a recipe read from a link in the body has one; the recipe page
+        # shows it as a "View original" link.
+        "source_url": source_url,
     }
 
 
@@ -384,7 +388,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 url_result = require_complete(ingest_url(url))
                 return _build_result(
                     url_result.title, url_result.ingredients, url_result.steps,
-                    url_result.raw_text, source_detail=f"URL in body ({url})",
+                    url_result.raw_text, source_detail=f"URL in body ({url})", source_url=url,
                 )
             except Exception as e:
                 # Full traceback for the unexpected; the URL checks and a

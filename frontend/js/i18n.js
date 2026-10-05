@@ -190,6 +190,7 @@
       "Le navigateur n'a pas pu garder l'écran allumé; c'est peut-être bloqué quand la pile est faible.",
     "Substitutions, timing tweaks, how it turned out...": "Substitutions, ajustements de temps, le résultat…",
     "View or edit notes": "Voir ou modifier les notes",
+    "View original": "Voir l'original",
     "Add notes": "Ajouter des notes",
     "Notes": "Notes",
     "Save notes": "Enregistrer les notes",

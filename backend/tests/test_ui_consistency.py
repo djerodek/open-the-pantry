@@ -68,3 +68,13 @@ def test_https_setup_is_off_by_default_and_names_no_real_domain():
     assert ".env" in ignored and "letsencrypt/" in ignored
     # Plain `docker compose up -d` doesn't include it.
     assert "traefik" not in (ROOT / "docker-compose.yml").read_text(encoding="utf-8").lower()
+
+
+def test_source_link_only_for_web_addresses():
+    """The "View original" link is built from stored data, which a restored
+    backup can fill with anything; only http(s) may become a link."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("function sourceLink("):js.index("function confidenceBadge(")]
+    assert 'url.protocol !== "http:" && url.protocol !== "https:"' in body
+    assert 'rel: "noopener noreferrer"' in body and 'target: "_blank"' in body
+    assert "sourceLink(recipe)" in js

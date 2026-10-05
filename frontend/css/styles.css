@@ -980,6 +980,14 @@ main {
   gap: 0.35rem;
 }
 .recipe-detail-badges .badge { white-space: nowrap; }
+/* The "View original" link: same size and shape as the badges, drawn as an
+   outline (an inset ring, so it adds no height) to read as a link. */
+.badge-link {
+  color: var(--color-focus);
+  text-decoration: none;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.badge-link:hover { text-decoration: underline; }
 .badge-source-url { background: var(--badge-url-bg); color: var(--badge-url-fg); }
 .badge-source-pdf { background: var(--badge-pdf-bg); color: var(--badge-pdf-fg); }
 .badge-source-screenshot { background: var(--badge-screenshot-bg); color: var(--badge-screenshot-fg); }

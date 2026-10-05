@@ -533,7 +533,14 @@ Garde-fous et remarques :
   recettes qui ont des notes.
 - Les fiches sans photo n'affichent que le titre, sans espace vide. Les
   pastilles de source et de qualité de l'OCR sont sur la page de la
-  recette, pas sur les fiches.
+  recette, pas sur les fiches. Une recette lue à partir d'une adresse web
+  (saisie, ou lien dans un courriel de recette) a aussi un lien **Voir
+  l'original** à côté de la pastille de source. Il ouvre la page dans un
+  nouvel onglet ou une nouvelle fenêtre. Dans une application installée,
+  c'est le téléphone qui décide si c'est votre navigateur par défaut ou une
+  visionneuse intégrée à l'application; une page web ne peut pas choisir.
+  Les recettes enregistrées avant cette version à partir d'un lien reçu par
+  courriel n'ont pas d'adresse enregistrée, donc pas de lien.
 - Le bouton ☰ ouvre « Parcourir par étiquette » : les groupes d'étiquettes,
   où toucher une étiquette filtre la liste. Sur un téléphone, c'est un
   tiroir qui se ferme quand on touche à côté.
