@@ -78,3 +78,18 @@ def test_source_link_only_for_web_addresses():
     assert 'url.protocol !== "http:" && url.protocol !== "https:"' in body
     assert 'rel: "noopener noreferrer"' in body and 'target: "_blank"' in body
     assert "sourceLink(recipe)" in js
+
+
+def test_search_clear_button_is_wired_up():
+    """The X in the search box: present in the page, kept in step with the
+    box (including when "Clear filters" empties it from code, which fires no
+    input event), and the browser's own clear control hidden so there is one."""
+    root = CSS.parents[1]
+    html = (root / "index.html").read_text(encoding="utf-8")
+    js = (root / "js" / "app.js").read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    assert 'id="search-clear"' in html and 'aria-label="Clear search"' in html
+    assert '$("#search-input").addEventListener("input", syncSearchClear)' in js
+    clear_all = js[js.index("function clearAllFilters("):js.index("function syncClearFiltersButton(")]
+    assert "syncSearchClear()" in clear_all
+    assert "::-webkit-search-cancel-button" in css

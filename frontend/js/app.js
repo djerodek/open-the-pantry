@@ -1224,6 +1224,7 @@
     state.query = "";
     const searchInput = $("#search-input");
     if (searchInput) searchInput.value = "";
+    syncSearchClear();
     renderSidebar();
     if (!$("#filter-panel").hidden) renderFilterPanel();
     syncClearFiltersButton();
@@ -1580,6 +1581,24 @@
     state.query = $("#search-input").value.trim();
     syncClearFiltersButton();
     loadRecipes();
+  });
+
+  // The X shows while the box has text. It empties the box, puts the cursor
+  // back in it, and, if a search was active, shows the full list again.
+  function syncSearchClear() {
+    $("#search-clear").hidden = $("#search-input").value === "";
+  }
+  $("#search-input").addEventListener("input", syncSearchClear);
+  $("#search-clear").addEventListener("click", () => {
+    const input = $("#search-input");
+    input.value = "";
+    syncSearchClear();
+    input.focus();
+    if (state.query) {
+      state.query = "";
+      syncClearFiltersButton();
+      loadRecipes();
+    }
   });
 
   // -------------------------------------------------------------------

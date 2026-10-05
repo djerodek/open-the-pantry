@@ -29,11 +29,16 @@
 
   <form class="search-form" role="search" id="search-form">
     <label class="visually-hidden" for="search-input">Search recipes</label>
-    <input
-      type="search"
-      id="search-input"
-      name="q"
-      placeholder="Search recipes...">
+    <div class="search-field">
+      <input
+        type="search"
+        id="search-input"
+        name="q"
+        placeholder="Search recipes...">
+      <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
     <button type="submit" aria-label="Search">&#128269;</button>
   </form>
 

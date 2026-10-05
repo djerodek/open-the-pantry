@@ -55,6 +55,7 @@
     "Download started.": "Téléchargement lancé.",
     "Skip to content": "Aller au contenu",
     "Search": "Rechercher",
+    "Clear search": "Effacer la recherche",
     "Search recipes": "Rechercher des recettes",
     "Search recipes...": "Rechercher des recettes…",
     "Settings": "Paramètres",
