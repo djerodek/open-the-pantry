@@ -450,7 +450,10 @@ Safeguards and notes:
   read from a web address (typed in, or a link in an emailed recipe) also has a
   **View original** link next to the source badge. It opens the page in a new
   tab or window. In an installed app, the phone decides whether that is your
-  default browser or a viewer inside the app; a web page can't choose.
+  default browser or a viewer inside the app; a web page can't choose. A
+  printout or export shows the address itself. For an emailed link, the
+  address kept is the page the link led to, not the newsletter's tracking
+  link.
   Recipes saved before this version from an emailed link have no address
   stored, so they have no link.
 - The ☰ button opens "Browse by tag": the tag groups, where tapping tags

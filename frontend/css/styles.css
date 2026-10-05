@@ -1522,6 +1522,10 @@ main {
     padding: 0;
   }
   .recipe-detail { max-width: 100%; }
+  /* "View original" can't be followed on paper: print the address instead. */
+  .recipe-detail-badges .badge-link { box-shadow: none; padding-left: 0; white-space: normal; overflow-wrap: anywhere; }
+  .badge-link > span { display: none; }
+  .badge-link::after { content: attr(href); font-weight: normal; }
 }
 
 /* Edit + Delete, grouped at the foot of the recipe. */

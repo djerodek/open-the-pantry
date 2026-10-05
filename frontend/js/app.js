@@ -1585,11 +1585,12 @@
 
   // The X shows while the box has text. It empties the box, puts the cursor
   // back in it, and, if a search was active, shows the full list again.
+  // Escape in the box does the same: on its own the browser would empty the
+  // box and leave the list filtered.
   function syncSearchClear() {
     $("#search-clear").hidden = $("#search-input").value === "";
   }
-  $("#search-input").addEventListener("input", syncSearchClear);
-  $("#search-clear").addEventListener("click", () => {
+  function clearSearch() {
     const input = $("#search-input");
     input.value = "";
     syncSearchClear();
@@ -1599,7 +1600,19 @@
       syncClearFiltersButton();
       loadRecipes();
     }
+  }
+  $("#search-input").addEventListener("input", syncSearchClear);
+  $("#search-input").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && e.target.value !== "") {
+      e.preventDefault();
+      clearSearch();
+    }
   });
+  $("#search-clear").addEventListener("click", clearSearch);
+  // Going back to the page (and a reload in Firefox) can put the old text
+  // back in the box without an input event.
+  syncSearchClear();
+  window.addEventListener("pageshow", syncSearchClear);
 
   // -------------------------------------------------------------------
   // Grouping toggle

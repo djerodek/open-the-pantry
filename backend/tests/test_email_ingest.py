@@ -260,6 +260,40 @@ def test_extract_from_single_url_in_body(tmp_path):
     assert result["source_url"] == "https://example.com/recipe"
 
 
+def test_emailed_link_keeps_the_page_address_not_the_tracking_link(tmp_path):
+    """Newsletter links are click-tracking redirects that can expire; the
+    address kept for "View original" is where the redirects ended."""
+    from app.ingestion.email_processing import process_tagged_email
+
+    class FakeUrlResult:
+        title = "Linked Recipe"
+        ingredients = ["2 cups flour"]
+        steps = ["Mix"]
+        raw_text = "Mix"
+        final_url = "https://example.com/recipes/linked"
+
+    msg = _make_email(body="Click: https://click.example.net/t/abc123")
+    with patch("app.ingestion.email_processing.ingest_url", return_value=FakeUrlResult()):
+        result = process_tagged_email(msg, str(tmp_path))
+    assert result["source_url"] == "https://example.com/recipes/linked"
+
+
+def test_ingest_url_reports_the_address_after_redirects():
+    from app.ingestion import url_ingest
+
+    class FakeResp:
+        status_code = 200
+        url = "https://example.com/recipes/final"
+        text = ('<html><script type="application/ld+json">{"@type": "Recipe", "name": "R", '
+                '"recipeIngredient": ["1 cup flour"], "recipeInstructions": ["Mix"]}</script></html>')
+
+    with patch.object(url_ingest, "validate_public_url"), \
+         patch.object(url_ingest, "safe_get", return_value=FakeResp()), \
+         patch.object(url_ingest, "_try_recipe_scrapers", return_value=None):
+        result = url_ingest.ingest_url("https://click.example.net/t/abc123")
+    assert result.final_url == "https://example.com/recipes/final"
+
+
 def test_only_a_link_recipe_has_a_source_url(tmp_path):
     from app.ingestion.email_processing import process_tagged_email
 
@@ -282,6 +316,8 @@ def test_emailed_link_recipe_keeps_its_source_url(client):
         db.close()
     got = client.get(f"/api/recipes/{with_link}").json()
     assert (got["source_type"], got["source_url"]) == ("email", "https://example.com/r")
+    # The export prints the address for an emailed link recipe too.
+    assert "https://example.com/r" in client.get(f"/api/recipes/{with_link}/export.html").text
     assert client.get(f"/api/recipes/{without}").json()["source_url"] is None
 
 

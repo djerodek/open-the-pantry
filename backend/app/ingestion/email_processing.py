@@ -388,7 +388,8 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 url_result = require_complete(ingest_url(url))
                 return _build_result(
                     url_result.title, url_result.ingredients, url_result.steps,
-                    url_result.raw_text, source_detail=f"URL in body ({url})", source_url=url,
+                    url_result.raw_text, source_detail=f"URL in body ({url})",
+                    source_url=getattr(url_result, "final_url", None) or url,
                 )
             except Exception as e:
                 # Full traceback for the unexpected; the URL checks and a

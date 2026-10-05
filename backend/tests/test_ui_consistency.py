@@ -78,6 +78,10 @@ def test_source_link_only_for_web_addresses():
     assert 'url.protocol !== "http:" && url.protocol !== "https:"' in body
     assert 'rel: "noopener noreferrer"' in body and 'target: "_blank"' in body
     assert "sourceLink(recipe)" in js
+    # On paper the link can't be followed, so print shows the address.
+    css = CSS.read_text(encoding="utf-8")
+    print_css = css[css.index("@media print"):]
+    assert ".badge-link::after { content: attr(href)" in print_css
 
 
 def test_search_clear_button_is_wired_up():
@@ -93,3 +97,5 @@ def test_search_clear_button_is_wired_up():
     clear_all = js[js.index("function clearAllFilters("):js.index("function syncClearFiltersButton(")]
     assert "syncSearchClear()" in clear_all
     assert "::-webkit-search-cancel-button" in css
+    # Text the browser restores (back button, Firefox reload) fires no input event.
+    assert 'window.addEventListener("pageshow", syncSearchClear)' in js

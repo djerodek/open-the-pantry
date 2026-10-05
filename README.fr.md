@@ -539,6 +539,9 @@ Garde-fous et remarques :
   nouvel onglet ou une nouvelle fenêtre. Dans une application installée,
   c'est le téléphone qui décide si c'est votre navigateur par défaut ou une
   visionneuse intégrée à l'application; une page web ne peut pas choisir.
+  Une impression ou une exportation affiche l'adresse elle-même. Pour un
+  lien reçu par courriel, l'adresse gardée est celle de la page où menait le
+  lien, pas le lien de suivi de l'infolettre.
   Les recettes enregistrées avant cette version à partir d'un lien reçu par
   courriel n'ont pas d'adresse enregistrée, donc pas de lien.
 - Le bouton ☰ ouvre « Parcourir par étiquette » : les groupes d'étiquettes,

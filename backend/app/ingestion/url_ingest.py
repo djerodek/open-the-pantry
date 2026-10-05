@@ -227,6 +227,10 @@ class UrlIngestResult:
         self.image_url = image_url
         self.raw_text = raw_text
         self.method = method  # which extraction path succeeded, for debugging/UI
+        # The page's own address, after any redirects (set by ingest_url).
+        # An emailed newsletter link is usually a click-tracking redirect
+        # that can expire; this is the address worth keeping.
+        self.final_url = None
 
 
 def _try_recipe_scrapers(url: str, html: str):
@@ -458,6 +462,7 @@ def ingest_url(url: str) -> UrlIngestResult:
         if result:
             log.info("%s: got %r from %s (%d ingredients, %d steps)", name, result.title, url,
                      len(result.ingredients or []), len(result.steps or []))
+            result.final_url = resp.url or url
             return result
         log.info("%s: nothing usable on %s", name, url)
 

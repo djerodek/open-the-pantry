@@ -95,7 +95,7 @@
   {% endif %}
 
   <div class="source">
-    {% if recipe.source_type == 'url' and recipe.source_url %}
+    {% if recipe.source_url %}
       {{ t("Source") }}{{ colon }} {{ recipe.source_url }}
     {% elif recipe.source_type == 'manual' %}
       {{ t("Source") }}{{ colon }} {{ t("handwritten / manual entry") }}
