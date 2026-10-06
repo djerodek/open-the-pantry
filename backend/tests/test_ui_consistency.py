@@ -99,3 +99,14 @@ def test_search_clear_button_is_wired_up():
     assert "::-webkit-search-cancel-button" in css
     # Text the browser restores (back button, Firefox reload) fires no input event.
     assert 'window.addEventListener("pageshow", syncSearchClear)' in js
+
+
+def test_card_controls_do_not_follow_the_card_link():
+    """The favourite and rating buttons sit inside the card's <a href>. The
+    row stops the click from reaching the card, so it must also cancel the
+    link, or a tap on the heart navigates (on iOS: list redrawn at the top)."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("function cardQuickControls("):js.index("function recipeCard(")]
+    assert "onclick: (e) => { e.stopPropagation(); e.preventDefault(); }" in body
+    row = body[:body.index("return wrap;")]
+    assert 'el("a"' not in row and 'el("input"' not in row, "a real link or field in the row would be cancelled too"

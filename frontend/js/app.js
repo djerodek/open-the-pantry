@@ -2249,9 +2249,15 @@
   }
 
   function cardQuickControls(recipe, inline = false) {
+    // On a list card this row sits inside the card's link (<a href="#recipe-N">).
+    // Stopping the click here keeps the card's handler from opening the
+    // recipe, but that handler is also what cancelled the link, so a tap on
+    // the heart or a rating followed it: the address changed and iOS
+    // redrew the list at the top. The row holds only buttons, so cancelling
+    // the default here costs nothing.
     const wrap = el("div", {
       class: inline ? "card-quick-controls inline" : "card-quick-controls",
-      onclick: (e) => e.stopPropagation(),
+      onclick: (e) => { e.stopPropagation(); e.preventDefault(); },
     });
 
     const favBtn = el("button", {
