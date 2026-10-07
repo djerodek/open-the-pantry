@@ -10,12 +10,13 @@ Interface in English or French. No LLM dependency.
 
 **No authentication by default.** Anyone who can reach this container can read,
 modify, and delete every recipe, and use its API. There is no login screen and
-no user accounts.
+no user accounts. The exception: Email ingest, HTTPS, Logs and Email PDF, which
+use your email account or DNS login, need a settings password created in the
+app (15-minute unlock; forgotten: delete `data/admin-password.json`).
 
 **Do not expose it to the internet.** Run it on your LAN, or reach it remotely
 via VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse proxy that enforces
-authentication itself. If email is set up, anyone who can reach it can also
-send recipe PDFs from that account (capped at 10 an hour).
+authentication itself.
 
 This isn't theoretical: a vulnerability letting any unauthenticated caller read
 arbitrary files from the container and delete the app's own database was found

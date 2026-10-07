@@ -42,6 +42,7 @@ from . import email_client
 from . import crypto
 from . import i18n
 from . import https_setup
+from . import admin_lock
 
 _lock_file_handle = None
 
@@ -321,6 +322,20 @@ async def api_key_auth(request: Request, call_next):
     if not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), API_KEY.encode()):
         return JSONResponse(status_code=401, content={"detail": "Missing or invalid X-API-Key header."})
     return await call_next(request)
+
+
+@app.middleware("http")
+async def settings_password_gate(request: Request, call_next):
+    """Email, HTTPS, Logs and Email PDF need the settings password (see
+    admin_lock.py for the list and the reasons). Everything else is open."""
+    if not admin_lock.is_locked_path(request.url.path):
+        return await call_next(request)
+    if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
+        return await call_next(request)
+    detail = ("Locked. Enter the settings password." if admin_lock.password_set()
+              else "Create a settings password first.")
+    return JSONResponse(status_code=401, content={"detail": detail, "locked": True,
+                                                  "password_set": admin_lock.password_set()})
 
 
 # ---------------------------------------------------------------------------
@@ -2350,6 +2365,99 @@ def clear_logs_endpoint():
 # ---------------------------------------------------------------------------
 # Optional HTTPS (Settings -> HTTPS). See https_setup.py.
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Settings password (admin_lock.py)
+# ---------------------------------------------------------------------------
+def _admin_status(token: str | None) -> dict:
+    left = admin_lock.seconds_left(token)
+    return {"password_set": admin_lock.password_set(), "unlocked": left > 0, "seconds_left": left}
+
+
+def _with_session(request: Request, token: str) -> JSONResponse:
+    res = JSONResponse(_admin_status(token))
+    res.set_cookie(admin_lock.COOKIE_NAME, token, max_age=admin_lock.UNLOCK_SECONDS, path="/api",
+                   httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    return res
+
+
+def _client(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _too_many(e: admin_lock.TooManyTries):
+    raise HTTPException(status_code=429, detail=f"Too many wrong passwords. Try again in {e.wait} seconds.",
+                        headers={"Retry-After": str(e.wait)})
+
+
+@app.get("/api/admin/status")
+def admin_status(request: Request):
+    return _admin_status(request.cookies.get(admin_lock.COOKIE_NAME))
+
+
+@app.post("/api/admin/password")
+def admin_create_password(payload: schemas.AdminPasswordIn, request: Request):
+    """First use only: once a password exists, this is refused."""
+    try:
+        token = admin_lock.create(payload.password)
+    except admin_lock.PasswordError as e:
+        raise HTTPException(status_code=409 if admin_lock.password_set() else 400, detail=str(e))
+    log.info("Settings password created from %s", _client(request))
+    return _with_session(request, token)
+
+
+@app.post("/api/admin/unlock")
+def admin_unlock(payload: schemas.AdminPasswordIn, request: Request):
+    if not admin_lock.password_set():
+        raise HTTPException(status_code=400, detail="Create a settings password first.")
+    try:
+        token = admin_lock.unlock(payload.password, _client(request))
+    except admin_lock.TooManyTries as e:
+        _too_many(e)
+    if not token:
+        log.warning("Wrong settings password from %s", _client(request))
+        raise HTTPException(status_code=401, detail="Wrong password.")
+    return _with_session(request, token)
+
+
+@app.post("/api/admin/password/change")
+def admin_change_password(payload: schemas.AdminPasswordChangeIn, request: Request):
+    try:
+        admin_lock.check_new_password(payload.new_password)
+        token = admin_lock.change(payload.current_password, payload.new_password, _client(request))
+    except admin_lock.PasswordError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except admin_lock.TooManyTries as e:
+        _too_many(e)
+    if not token:
+        log.warning("Wrong settings password (change) from %s", _client(request))
+        raise HTTPException(status_code=401, detail="Wrong password.")
+    log.info("Settings password changed from %s", _client(request))
+    return _with_session(request, token)
+
+
+@app.post("/api/admin/lock")
+def admin_lock_now(request: Request):
+    admin_lock.lock(request.cookies.get(admin_lock.COOKIE_NAME))
+    res = JSONResponse(_admin_status(None))
+    res.delete_cookie(admin_lock.COOKIE_NAME, path="/api")
+    return res
+
+
+@app.get("/api/email-status")
+def email_status(db: Session = Depends(get_db)):
+    """Open (no password): only whether the Inbox button and Share -> Email
+    PDF should be offered. The settings themselves are behind the password."""
+    settings = _get_email_settings(db)
+    return {"enabled": bool(settings.enabled), "can_send": _can_send_email(settings)}
+
+
+@app.get("/api/https/summary")
+def https_summary():
+    """Open (no password): the line under Settings -> HTTPS."""
+    st = https_setup.status()
+    return {"state": st.get("state"), "enabled": bool(st.get("enabled")), "url": st.get("url")}
+
 
 @app.get("/api/https")
 def get_https_status():

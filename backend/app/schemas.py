@@ -328,3 +328,12 @@ class HttpsSetupIn(BaseModel):
     lan_address: str = Field(max_length=45)
     email: str = Field(max_length=254)
     port: int = 8443
+
+
+class AdminPasswordIn(BaseModel):
+    password: str = Field(max_length=256)
+
+
+class AdminPasswordChangeIn(BaseModel):
+    current_password: str = Field(max_length=256)
+    new_password: str = Field(max_length=256)

@@ -521,6 +521,34 @@
     "SMTP port": "Port SMTP",
     "Username": "Nom d'utilisateur",
     "Password": "Mot de passe",
+    "Settings password": "Mot de passe des paramètres",
+    "Change settings password": "Changer le mot de passe des paramètres",
+    "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they need a password. Everything else stays open.":
+      "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils demandent donc un mot de passe. Tout le reste demeure ouvert.",
+    "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.":
+      "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils sont donc protégés par un mot de passe. Créez-le maintenant. Tout le reste de l'application demeure ouvert.",
+    "Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.":
+      "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel sont verrouillés. Entrez le mot de passe des paramètres pour les déverrouiller sur cet appareil pendant 15 minutes.",
+    "Every other device that's unlocked gets locked.": "Tous les autres appareils déverrouillés seront verrouillés.",
+    "At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder; you'll be asked to create a new one.":
+      "Au moins 8 caractères. Oublié? Supprimez admin-password.json dans le dossier de données de l'application; on vous demandera d'en créer un nouveau.",
+    "Current password": "Mot de passe actuel",
+    "New password": "Nouveau mot de passe",
+    "Type it again": "Entrez-le de nouveau",
+    "Create password": "Créer le mot de passe",
+    "Unlock": "Déverrouiller",
+    "Change password": "Changer le mot de passe",
+    "Lock now": "Verrouiller maintenant",
+    "Locked.": "Verrouillé.",
+    "Settings password changed.": "Mot de passe des paramètres changé.",
+    "The two passwords don't match.": "Les deux mots de passe ne correspondent pas.",
+    "The password must be at least 8 characters.": "Le mot de passe doit compter au moins 8 caractères.",
+    "Not set yet. You'll create it the first time you open one of them.":
+      "Pas encore créé. Vous le créerez la première fois que vous ouvrirez l'un d'eux.",
+    "Unlocked on this device for {n} more minute.": "Déverrouillé sur cet appareil pour encore {n} minute.",
+    "Unlocked on this device for {n} more minutes.": "Déverrouillé sur cet appareil pour encore {n} minutes.",
+    "Locked again after 15 minutes. Close and reopen this section to enter the password.":
+      "Verrouillé de nouveau après 15 minutes. Fermez puis rouvrez cette section pour entrer le mot de passe.",
     "Send notifications to": "Envoyer les avis à",
     "Subject keyword": "Mot-clé de l'objet",
     "Only accept email from": "Accepter les courriels seulement de",

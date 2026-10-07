@@ -14,7 +14,10 @@ image, no LLM dependency required for any ingestion path.
 >
 > **This application has no authentication by default.** Anyone who can reach
 > its address can read, modify, and delete every recipe — and use its API.
-> There is no login screen, no user accounts, and no permission model.
+> There is no login screen, no user accounts, and no permission model. The
+> one exception is the parts that use your email account or DNS login
+> (Email ingest, HTTPS, Logs and Email PDF), which need a
+> [settings password](#security-notes) created in the app.
 >
 > **Do not expose it directly to the internet.** Run it on your LAN, or reach
 > it remotely through a VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse
@@ -62,8 +65,9 @@ in `./data` next to the compose file.
 
 Everything the app stores lives in one folder: whatever is on the left side
 of the `volumes:` line in `docker-compose.yml` (`./data` by default). It
-holds `recipes.db`, `uploads/` (photos and PDFs), and `encryption.key` if you
-set up email ingest from Settings. Moving the app to another drive means
+holds `recipes.db`, `uploads/` (photos and PDFs), `encryption.key` if you
+set up email ingest from Settings, and `admin-password.json` (the settings
+password) once it has been created. Moving the app to another drive means
 moving that folder and pointing the compose file at it.
 
 **Moving to another drive or path** (e.g. from `./data` to a NAS pool):
@@ -97,7 +101,9 @@ Restoring replaces the current library. The backup zip deliberately does
 **not** include `encryption.key`, so a leaked backup exposes no email
 password. After restoring onto a fresh install, either copy `encryption.key`
 across from the old data folder or set up encryption again in Settings and
-re-enter the email password. Nothing else depends on the key.
+re-enter the email password. Nothing else depends on the key. The settings
+password (`admin-password.json`) isn't in the zip either: copy it across
+too, or create a new one the first time you open Email ingest, HTTPS or Logs.
 
 To build from source instead of pulling the published image:
 
@@ -583,6 +589,26 @@ Safeguards and notes:
   your own VPN) — see the warning at the top of this file. Access control
   is your responsibility and is not optional if anything you don't control
   can reach it.
+- **Settings password for the parts that use credentials.** Settings →
+  Email ingest, Settings → HTTPS, Settings → Logs and Share → Email PDF use
+  your email account or the cPanel DNS token (the log holds email subjects
+  and senders), so they need a password; the rest of the app has none.
+  The inbox scan in the + menu stays open (it only reads the recipe inbox).
+  - The password is created in the app the first time one of those is
+    opened (at least 8 characters). Until then, anyone on the network who
+    opens one first would be the one to create it, so open one of them
+    soon after installing.
+  - Entering it unlocks that browser for 15 minutes. **Lock now** and
+    **Change password** are in Settings → Settings password; changing it
+    locks every other device. A restart locks everything.
+  - It's stored as a salted scrypt hash in `admin-password.json` in the
+    data folder, never in plain text. It isn't in the backup zip, so after
+    restoring you create a new one. **Forgotten password:** delete
+    `admin-password.json`; the next visit asks for a new one.
+  - After 5 wrong passwords in a row from one address, each further try
+    has to wait (30 seconds, doubling up to 15 minutes).
+  - The unlock is an HttpOnly, SameSite=Strict cookie: other websites
+    can't use it, and the page's own scripts can't read it.
 - **Optional API key**: set `RECIPE_APP_API_KEY` to require a matching
   `X-API-Key` header on every request except `/healthz`. This is
   API-level enforcement only — there's no frontend login screen in this
@@ -607,19 +633,14 @@ Safeguards and notes:
     page on another site can't add a custom header without the browser
     asking the app first, and the app never agrees. Scripts that call the
     API directly need to send it too (any value).
-- **Share → Email PDF sends from your email account.** Anyone who can
-  reach the app can use it to send a recipe PDF, with a message of their
-  choosing, to any address. That is the same trust boundary as the rest of
-  the app, but the result leaves your network under your name, so it's
-  capped: at most five recipients per email and 10 emails per hour. It's
-  only available once the email-ingest account has a saved password. If
-  anyone you don't fully trust can reach the app, set `RECIPE_APP_API_KEY`
-  or put it behind a VPN or an authenticating reverse proxy before setting
-  up email.
+- **Share → Email PDF sends from your email account**, so it needs the
+  settings password. It's also capped: at most five recipients per email
+  and 10 emails per hour. It's only offered once the email-ingest account
+  has a saved password.
 - **Settings → HTTPS uses a cPanel API token from `.env`.** The token
   never goes through the browser or into the database, and the app can't
-  show it. Anyone who can reach the app can still use the HTTPS page, but
-  only for the name in `PANTRY_DOMAIN`: set it up again (at most 5
+  show it. The HTTPS page needs the settings password, and even with it,
+  it works only for the name in `PANTRY_DOMAIN`: set it up again (at most 5
   certificate requests a week), point it at another address on your
   network, or turn HTTPS off. It can't create any other name, point the
   name at the internet, or change or take over a record it didn't create
@@ -630,7 +651,7 @@ Safeguards and notes:
   (renewal then stops when it expires).
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
-  reach the API could point the settings at their own server and press
+  open the email settings could point them at their own server and press
   "Send test email" to receive the password.
 - **Email from strangers can be ignored.** Settings → Email ingest → "Only
   accept email from" takes addresses and domains, with or without the
@@ -639,8 +660,8 @@ Safeguards and notes:
   results. Empty means anyone, as before. The From header can be forged,
   so this keeps out people who stumble on the address and keyword -- a
   dedicated, unguessable address still matters.
-- **The log is readable in Settings → Logs** by anyone who can reach the
-  app, like everything else in it. It holds email subjects and senders and
+- **The log is readable in Settings → Logs** with the settings password
+  (and from the host: `docker logs`, `data/logs/app.log`). It holds email subjects and senders and
   the URLs of recipes added, never passwords, keys, email bodies or page
   contents. The app's offline cache never keeps a copy of it.
 - **Page downloads are bounded:** 10 MB per page (20 MB for photos), 30
@@ -680,11 +701,11 @@ Safeguards and notes:
   indicating whether one is set.
 - **Two warnings specific to email ingest**, both worth reading before
   enabling it:
-  - The app has **no authentication by default** (see above). Storing
-    email credentials in an app that anyone on your network can reach is
-    a meaningfully bigger risk than storing recipes. If you enable email
-    ingest, enabling `RECIPE_APP_API_KEY` or putting the app behind
-    reverse-proxy auth stops being optional in practice.
+  - The email settings are behind the settings password, but the rest of
+    the app has **no authentication** (see above), and anyone who can reach
+    the app can try passwords, slowly. Pick a password that isn't used
+    anywhere else. If people you don't trust can reach the app, put it
+    behind a VPN or an authenticating reverse proxy anyway.
   - Use a **dedicated email address that handles nothing else** — an
     account or alias created solely for this purpose, with an
     app-specific password. Not your primary personal account, and not a
@@ -835,7 +856,7 @@ Safeguards and notes:
 
 ## Logs
 
-**Settings → Logs** shows the log in the app: the newest 500 entries,
+**Settings → Logs** (needs the settings password) shows the log in the app: the newest 500 entries,
 everything or only warnings and errors (a traceback stays with its entry),
 plus **Download** (the whole log, all rotated files, as one `.txt`) and
 **Clear log** (empties it, after a confirmation). Kept to about 4 MB: the

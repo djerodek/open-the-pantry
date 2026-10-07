@@ -286,6 +286,19 @@
       </div>
     </div>
 
+    <div class="filter-section" id="admin-lock-section">
+      <div class="filter-section-title">Settings password</div>
+      <div class="field-hint">
+        Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login,
+        so they need a password. Everything else stays open.
+      </div>
+      <p class="field-hint" id="admin-lock-status" role="status"></p>
+      <div class="logs-buttons" id="admin-lock-actions" hidden>
+        <button type="button" id="admin-lock-now" class="btn-secondary">Lock now</button>
+        <button type="button" id="admin-change-toggle" class="btn-secondary">Change password</button>
+      </div>
+    </div>
+
     <div class="filter-section">
       <div class="filter-section-title">Email ingest</div>
       <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
@@ -392,6 +405,20 @@
 </div>
 
 <div class="status-region" id="status-region" role="status" aria-live="polite"></div>
+
+<!-- Settings password: create, unlock or change (app.js fills the body) -->
+<div class="modal-overlay" id="admin-overlay" hidden>
+  <div
+    class="modal modal-sheet"
+    id="admin-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="admin-heading">
+    <button class="modal-close" id="admin-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="admin-heading">Settings password</h2>
+    <div id="admin-body"></div>
+  </div>
+</div>
 
 <script src="js/i18n.js"></script>
 <script src="js/app.js"></script>

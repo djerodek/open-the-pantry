@@ -139,6 +139,7 @@
   }
   function closeModal(overlay) {
     overlay.hidden = true;
+    if (overlay._onClose) { const done = overlay._onClose; overlay._onClose = null; done(); }
     if (!topOverlay()) document.removeEventListener("keydown", trapFocus);
     const back = focusBeforeModal.get(overlay);
     focusBeforeModal.delete(overlay);
@@ -387,7 +388,7 @@
     });
   }
 
-  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); openModal(settingsOverlay); });
+  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); openModal(settingsOverlay); });
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 
@@ -404,6 +405,148 @@
   ratingSheetOverlay.addEventListener("click", (e) => { if (e.target === ratingSheetOverlay) closeModal(ratingSheetOverlay); });
 
   // -------------------------------------------------------------------
+  // Settings password (backend: admin_lock.py)
+  // -------------------------------------------------------------------
+  // Email ingest, HTTPS, Logs and Share -> Email PDF use the email account
+  // or the DNS login, so they need the settings password; the rest of the
+  // app has none. The password is created here the first time it's needed.
+  // Entering it unlocks this browser for 15 minutes (an HttpOnly cookie the
+  // page never sees; the server keeps the clock).
+  const adminOverlay = $("#admin-overlay");
+  $("#admin-close").addEventListener("click", () => closeModal(adminOverlay));
+  adminOverlay.addEventListener("click", (e) => { if (e.target === adminOverlay) closeModal(adminOverlay); });
+
+  async function adminStatus() {
+    const res = await fetch(`${API}/admin/status`);
+    if (!res.ok) throw new Error(String(res.status));
+    return res.json();
+  }
+
+  // mode: "create" (first use), "unlock", or "change". Resolves true once
+  // the server has unlocked this browser, false if the dialog is closed.
+  function settingsPasswordDialog(mode) {
+    return new Promise((resolve) => {
+      const body = $("#admin-body");
+      body.innerHTML = "";
+      $("#admin-heading").textContent = mode === "change" ? tx("Change settings password") : tx("Settings password");
+      const status = el("p", { class: "field-hint admin-status", role: "status" });
+      const field = (id, label, autocomplete) => {
+        const input = el("input", { type: "password", id, autocomplete, required: "", maxlength: "256" });
+        return [input, el("div", { class: "field" }, [el("label", { for: id, text: label }), input])];
+      };
+      const [cur, curField] = field("admin-current", mode === "unlock" ? tx("Password") : tx("Current password"), "current-password");
+      const [pw, pwField] = field("admin-new", mode === "change" ? tx("New password") : tx("Password"), "new-password");
+      const [pw2, pw2Field] = field("admin-confirm", tx("Type it again"), "new-password");
+
+      const intro = mode === "create"
+        ? tx("Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.")
+        : mode === "unlock"
+          ? tx("Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.")
+          : tx("Every other device that's unlocked gets locked.");
+      body.appendChild(el("p", { class: "field-hint", text: intro }));
+      const fields = mode === "create" ? [pwField, pw2Field] : mode === "unlock" ? [curField] : [curField, pwField, pw2Field];
+      const submit = el("button", { class: "btn-primary", type: "submit",
+        text: mode === "create" ? tx("Create password") : mode === "unlock" ? tx("Unlock") : tx("Change password") });
+      const form = el("form", { class: "admin-form" }, [...fields, submit, status]);
+      if (mode !== "unlock") {
+        form.appendChild(el("p", { class: "field-hint", text: tx("At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder; you'll be asked to create a new one.") }));
+      }
+      body.appendChild(form);
+
+      let settled = false;
+      const finish = (ok) => { if (!settled) { settled = true; resolve(ok); } };
+      adminOverlay._onClose = () => finish(false);
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (mode !== "unlock" && pw.value !== pw2.value) { status.textContent = tx("The two passwords don't match."); pw2.focus(); return; }
+        if (mode !== "unlock" && pw.value.length < 8) { status.textContent = tx("The password must be at least 8 characters."); pw.focus(); return; }
+        const [url, payload] = mode === "create" ? [`${API}/admin/password`, { password: pw.value }]
+          : mode === "unlock" ? [`${API}/admin/unlock`, { password: cur.value }]
+            : [`${API}/admin/password/change`, { current_password: cur.value, new_password: pw.value }];
+        submit.disabled = true;
+        status.textContent = "";
+        try {
+          const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (res.ok) {
+            adminOverlay._onClose = null;
+            closeModal(adminOverlay);
+            refreshAdminSection();
+            if (mode === "change") announce(tx("Settings password changed."));
+            finish(true);
+            return;
+          }
+          const err = await res.json().catch(() => ({}));
+          status.textContent = apiErrorText(err, res.status);
+          (mode === "create" ? pw : cur).select();
+        } catch {
+          status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+        } finally {
+          submit.disabled = false;
+        }
+      });
+      openModal(adminOverlay);
+      (mode === "create" ? pw : cur).focus();
+    });
+  }
+
+  // True once this browser is unlocked, asking for (or creating) the
+  // password if needed. False if the person closes the dialog.
+  async function ensureUnlocked() {
+    let st;
+    try { st = await adminStatus(); } catch {
+      announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again."));
+      return false;
+    }
+    if (st.unlocked) return true;
+    return settingsPasswordDialog(st.password_set ? "unlock" : "create");
+  }
+
+  // fetch() for a locked route. If the 15 minutes ran out since the panel
+  // was opened, asks for the password and sends the request again.
+  async function adminFetch(url, options = {}, { prompt = true } = {}) {
+    const res = await fetch(url, options);
+    if (res.status !== 401) return res;
+    const body = await res.clone().json().catch(() => ({}));
+    if (!body.locked || !prompt) return res;
+    const ok = await settingsPasswordDialog(body.password_set ? "unlock" : "create");
+    return ok ? fetch(url, options) : res;
+  }
+
+  // Settings -> Settings password: the state, Lock now, Change password.
+  let adminTicker = null;
+  async function refreshAdminSection() {
+    clearTimeout(adminTicker);
+    const statusEl = $("#admin-lock-status");
+    const actions = $("#admin-lock-actions");
+    let st;
+    try { st = await adminStatus(); } catch { return; }
+    actions.hidden = !st.password_set;
+    $("#admin-lock-now").hidden = !st.unlocked;
+    if (!st.password_set) {
+      statusEl.textContent = tx("Not set yet. You'll create it the first time you open one of them.");
+    } else if (st.unlocked) {
+      const min = Math.max(1, Math.ceil(st.seconds_left / 60));
+      statusEl.textContent = txn(min, "Unlocked on this device for {n} more minute.", "Unlocked on this device for {n} more minutes.");
+      adminTicker = setTimeout(() => { if (!settingsOverlay.hidden) refreshAdminSection(); }, 30000);
+    } else {
+      statusEl.textContent = tx("Locked.");
+    }
+  }
+  $("#admin-lock-now").addEventListener("click", async () => {
+    await fetch(`${API}/admin/lock`, { method: "POST" }).catch(() => null);
+    // Close what the password was protecting, so nothing stays on screen.
+    for (const [panel, toggle] of [[emailPanel, emailToggle], [httpsPanel, httpsToggle], [logsPanel, logsToggle]]) {
+      if (!panel.hidden) toggle.click();
+    }
+    announce(tx("Locked."));
+    refreshAdminSection();
+  });
+  $("#admin-change-toggle").addEventListener("click", async () => {
+    await settingsPasswordDialog("change");
+  });
+
+  // -------------------------------------------------------------------
   // Email ingest settings (optional feature, collapsed by default)
   // -------------------------------------------------------------------
   const emailPanel = $("#email-settings-panel");
@@ -411,6 +554,7 @@
 
   emailToggle.addEventListener("click", async () => {
     const willOpen = emailPanel.hidden;
+    if (willOpen && !(await ensureUnlocked())) return;
     emailPanel.hidden = !willOpen;
     emailToggle.setAttribute("aria-expanded", String(willOpen));
     if (willOpen) await renderEmailSettings();
@@ -428,15 +572,16 @@
 
   httpsToggle.addEventListener("click", async () => {
     const willOpen = httpsPanel.hidden;
+    if (willOpen && !(await ensureUnlocked())) return;
     httpsPanel.hidden = !willOpen;
     httpsToggle.setAttribute("aria-expanded", String(willOpen));
     if (willOpen) await renderHttpsSettings();
     else clearTimeout(httpsPollTimer);
   });
 
-  async function fetchHttpsStatus() {
-    const res = await fetch(`${API}/https`);
-    if (!res.ok) throw new Error(String(res.status));
+  async function fetchHttpsStatus(prompt = true) {
+    const res = await adminFetch(`${API}/https`, {}, { prompt });
+    if (!res.ok) throw new Error(res.status === 401 ? "locked" : String(res.status));
     return res.json();
   }
 
@@ -448,8 +593,10 @@
 
   async function refreshHttpsSummary() {
     try {
-      const st = await fetchHttpsStatus();
-      const text = httpsSummaryText(st);
+      // The open summary: on/off and the address, no password needed.
+      const res = await fetch(`${API}/https/summary`);
+      if (!res.ok) return;
+      const text = httpsSummaryText(await res.json());
       if (text) httpsSummary.textContent = text;
     } catch { /* keep the static hint */ }
   }
@@ -458,14 +605,16 @@
     return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
   }
 
-  async function renderHttpsSettings() {
+  async function renderHttpsSettings(fromPoll = false) {
     clearTimeout(httpsPollTimer);
     let st;
     try {
-      st = await fetchHttpsStatus();
-    } catch {
+      st = await fetchHttpsStatus(!fromPoll);
+    } catch (e) {
       httpsPanel.innerHTML = "";
-      httpsPanel.appendChild(el("div", { class: "field-hint", text: tx("Could not load the HTTPS settings.") }));
+      httpsPanel.appendChild(el("div", { class: "field-hint", text: e.message === "locked"
+        ? tx("Locked again after 15 minutes. Close and reopen this section to enter the password.")
+        : tx("Could not load the HTTPS settings.") }));
       return;
     }
     const keep = {};  // values typed so far survive a re-render while polling
@@ -539,7 +688,7 @@
       text: st.enabled ? tx("Apply and renew") : tx("Set up HTTPS"),
       onclick: async () => {
         go.disabled = true;
-        const res = await fetch(`${API}/https/setup`, {
+        const res = await adminFetch(`${API}/https/setup`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lan_address: lanIn.value.trim(),
             email: emailIn.value.trim(), port: parseInt(portIn.value, 10) || 8443 }),
@@ -559,7 +708,7 @@
         class: "btn-secondary", type: "button", text: tx("Turn off HTTPS"), disabled: st.state === "working" ? "" : null,
         onclick: async () => {
           if (!confirm(tx("Turn off HTTPS? The https:// address stops working; the usual address keeps working. The DNS record stays."))) return;
-          const res = await fetch(`${API}/https`, { method: "DELETE" }).catch(() => null);
+          const res = await adminFetch(`${API}/https`, { method: "DELETE" }).catch(() => null);
           if (!res || !res.ok) { announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again.")); return; }
           announce(tx("HTTPS turned off."));
           httpsSummary.textContent = tx("Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.");
@@ -576,7 +725,7 @@
     }
     httpsLastState = st.state;
     if (st.state === "working") {
-      httpsPollTimer = setTimeout(() => { if (!httpsPanel.hidden) renderHttpsSettings(); }, 2000);
+      httpsPollTimer = setTimeout(() => { if (!httpsPanel.hidden) renderHttpsSettings(true); }, 2000);
     }
   }
 
@@ -589,6 +738,7 @@
 
   logsToggle.addEventListener("click", async () => {
     const willOpen = logsPanel.hidden;
+    if (willOpen && !(await ensureUnlocked())) return;
     logsPanel.hidden = !willOpen;
     logsToggle.setAttribute("aria-expanded", String(willOpen));
     logsToggle.textContent = willOpen ? tx("Hide log") : tx("View log");
@@ -612,7 +762,7 @@
     async function renderLogBody() {
       pre.textContent = tx("Loading...");
       try {
-        const res = await fetch(`${API}/logs?lines=500&problems=${logsProblemsOnly}`);
+        const res = await adminFetch(`${API}/logs?lines=500&problems=${logsProblemsOnly}`);
         if (!res.ok) throw new Error(String(res.status));
         const d = await res.json();
         pre.textContent = d.records.length ? d.records.join("\n")
@@ -629,8 +779,9 @@
   }
 
   $("#logs-download").addEventListener("click", async () => {
+    if (!(await ensureUnlocked())) return;
     try {
-      const res = await fetch(`${API}/logs/download`);
+      const res = await adminFetch(`${API}/logs/download`);
       if (!res.ok) throw new Error(String(res.status));
       saveBlob(await res.blob(), filenameFromResponse(res) || "open-the-pantry-log.txt");
       announce(tx("Download started."));
@@ -640,6 +791,7 @@
   });
 
   $("#logs-clear").addEventListener("click", async () => {
+    if (!(await ensureUnlocked())) return;
     if (!confirm(tx("Clear the log? Everything recorded so far is deleted. Download it first if you might need it."))) return;
     const result = await fetchWithTimeout(`${API}/logs`, { method: "DELETE" });
     if (!result.ok) { announceError(writeFailureMessage(result, tx("The log"))); return; }
@@ -691,7 +843,7 @@
 
     let settings;
     try {
-      const res = await fetch(`${API}/email-settings`);
+      const res = await adminFetch(`${API}/email-settings`);
       if (!res.ok) throw new Error(String(res.status));
       settings = await res.json();
     } catch {
@@ -734,7 +886,7 @@
             btn.disabled = true;
             setupStatus.textContent = tx("Creating key\u2026");
             try {
-              const res = await fetch(`${API}/email-settings/encryption-key`, { method: "POST" });
+              const res = await adminFetch(`${API}/email-settings/encryption-key`, { method: "POST" });
               if (res.ok || res.status === 409) {
                 announce(tx("Encryption is set up. You can now enter the email password."));
                 await renderEmailSettings();
@@ -854,7 +1006,7 @@
           cooldown_minutes: parseInt(cooldown.value, 10) || 0,
         };
         if (password.value) payload.password = password.value;
-        const res = await fetch(`${API}/email-settings`, {
+        const res = await adminFetch(`${API}/email-settings`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
@@ -884,7 +1036,7 @@
       onclick: async () => {
         statusLine.textContent = tx("Testing...");
         try {
-          const res = await fetch(`${API}/email-settings/test`, { method: "POST" });
+          const res = await adminFetch(`${API}/email-settings/test`, { method: "POST" });
           const body = await res.json();
           statusLine.textContent = (body.success ? "\u2713 " : "\u2717 ") + body.message;
         } catch {
@@ -904,6 +1056,7 @@
         class: "btn-secondary", type: "button", text: tx("Clear password"),
         onclick: async () => {
           if (!confirm(tx("Remove the stored email password? This also disables email ingest."))) return;
+          if (!(await ensureUnlocked())) return;
           const result = await fetchWithTimeout(`${API}/email-settings/password`, { method: "DELETE" });
           if (!result.ok) { announceError(writeFailureMessage(result, tx("The stored password"))); return; }
           announce(tx("Stored email password removed."));
@@ -934,15 +1087,24 @@
     };
   }
 
+  // At start-up only whether sending is set up (open, no password): enough
+  // to offer Share -> Email PDF. The From address and recent recipients
+  // come from the email settings, read once the password has been entered.
   async function loadMailState() {
     try {
-      const res = await fetch(`${API}/email-settings`);
-      if (res.ok) setMailState(await res.json());
+      const res = await fetch(`${API}/email-status`);
+      if (res.ok) state.mail.canSend = Boolean((await res.json()).can_send);
     } catch { /* offline: the Email PDF action just stays hidden */ }
+  }
+  async function loadMailDetails() {
+    const res = await adminFetch(`${API}/email-settings`);
+    if (!res.ok) return false;
+    setMailState(await res.json());
+    return true;
   }
 
   async function saveRecentRecipients(list) {
-    const res = await fetch(`${API}/email-settings/recipients`, {
+    const res = await adminFetch(`${API}/email-settings/recipients`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recipients: list }),
     });
@@ -1082,7 +1244,7 @@
         sendBtn.disabled = true;
         status.textContent = tx("Sending…");
         try {
-          const res = await fetch(`${API}/recipes/${recipe.id}/email`, {
+          const res = await adminFetch(`${API}/recipes/${recipe.id}/email`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ to, message: messageInput.value, include_notes: Boolean(notesBox && notesBox.checked) }),
           });
@@ -1194,8 +1356,8 @@
     // read your library, not a per-visit choice.
     sort: storageGet("recipe-app-sort") || "created",
     direction: storageGet("recipe-app-sort-dir") || "desc",
-    // Share -> Email PDF: whether sending is set up, the From address, and
-    // recent recipients. Read from the email settings at start-up.
+    // Share -> Email PDF: whether sending is set up (read at start-up), the
+    // From address and recent recipients (read once unlocked).
     mail: { canSend: false, from: "", recent: [] },
   };
   let uiTimeLevel1 = null;   // UI-only: which coarse hour bucket is expanded in the time filter
@@ -3023,7 +3185,12 @@
       }),
       state.mail.canSend ? el("button", {
         type: "button", text: tx("Email PDF"),
-        onclick: () => { onDone(); openEmailSheet(recipe); },
+        onclick: async () => {
+          onDone();
+          // Sends from your email account, so it needs the settings password.
+          if (!(await ensureUnlocked()) || !(await loadMailDetails())) return;
+          openEmailSheet(recipe);
+        },
       }) : null,
       el("button", {
         type: "button", text: tx("Download HTML"),
@@ -3187,7 +3354,7 @@
 
     // Only offered once email ingest is switched on; otherwise it would be
     // a button that can only say "not configured".
-    fetch(`${API}/email-settings`).then((r) => (r.ok ? r.json() : null)).then((settings) => {
+    fetch(`${API}/email-status`).then((r) => (r.ok ? r.json() : null)).then((settings) => {
       if (!settings || !settings.enabled || !picker.isConnected) return;
       const status = el("p", { class: "field-hint scan-status", role: "status" });
       const btn = el("button", {

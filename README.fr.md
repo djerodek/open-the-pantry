@@ -20,7 +20,11 @@ Docker, et aucun modèle de langage (LLM) requis pour aucune méthode d'ajout.
 > **Cette application n'a aucune authentification par défaut.** Quiconque
 > peut joindre son adresse peut lire, modifier et supprimer toutes les
 > recettes, et utiliser son API. Il n'y a pas d'écran de connexion, pas de
-> comptes d'utilisateur et pas de gestion des permissions.
+> comptes d'utilisateur et pas de gestion des permissions. Seule exception :
+> les parties qui utilisent votre compte de courriel ou votre accès DNS
+> (réception par courriel, HTTPS, journal et envoi du PDF par courriel)
+> demandent un [mot de passe des paramètres](#notes-de-sécurité) créé dans
+> l'application.
 >
 > **Ne l'exposez pas directement à Internet.** Utilisez-la sur votre réseau
 > local, ou joignez-la à distance par un RPV (WireGuard, Tailscale, OpenVPN)
@@ -73,9 +77,10 @@ téléversés) sont conservées dans `./data`, à côté du fichier compose.
 
 Tout ce que l'application conserve se trouve dans un seul dossier : ce qui
 est à gauche de la ligne `volumes:` dans `docker-compose.yml` (`./data` par
-défaut). Il contient `recipes.db`, `uploads/` (photos et PDF), et
+défaut). Il contient `recipes.db`, `uploads/` (photos et PDF),
 `encryption.key` si vous avez configuré la réception par courriel dans les
-Paramètres. Déplacer l'application vers un autre disque, c'est déplacer ce
+Paramètres, et `admin-password.json` (le mot de passe des paramètres) une
+fois celui-ci créé. Déplacer l'application vers un autre disque, c'est déplacer ce
 dossier et y faire pointer le fichier compose.
 
 **Déplacer vers un autre disque ou chemin** (p. ex. de `./data` vers un
@@ -116,7 +121,9 @@ qui fuit n'expose aucun mot de passe de courriel. Après une restauration
 sur une nouvelle installation, copiez `encryption.key` de l'ancien dossier
 de données, ou configurez de nouveau le chiffrement dans les Paramètres et
 entrez de nouveau le mot de passe du courriel. Rien d'autre ne dépend de la
-clé.
+clé. Le mot de passe des paramètres (`admin-password.json`) n'est pas dans
+le .zip non plus : copiez-le aussi, ou créez-en un nouveau la première fois
+que vous ouvrez la réception par courriel, HTTPS ou le journal.
 
 Pour construire à partir du code source plutôt que de télécharger l'image
 publiée :
@@ -697,6 +704,32 @@ courriel)**
   RPV) — voir l'avertissement au début de ce fichier. Le contrôle d'accès
   est votre responsabilité, et il n'est pas facultatif si quelque chose que
   vous ne contrôlez pas peut joindre l'application.
+- **Un mot de passe des paramètres pour les parties qui utilisent des
+  identifiants.** Paramètres → Réception par courriel, Paramètres → HTTPS,
+  Paramètres → Journal et Partager → Envoyer le PDF par courriel utilisent
+  votre compte de courriel ou le jeton DNS de cPanel (le journal contient
+  des objets et des expéditeurs de courriels); ils demandent donc un mot de
+  passe. Le reste de l'application n'en a pas. La vérification de la boîte
+  dans le menu + reste ouverte (elle ne lit que la boîte des recettes).
+  - Le mot de passe se crée dans l'application la première fois qu'on
+    ouvre l'une de ces parties (au moins 8 caractères). D'ici là, la
+    première personne du réseau à en ouvrir une le créerait; ouvrez-en donc
+    une peu après l'installation.
+  - L'entrer déverrouille ce navigateur pendant 15 minutes. **Verrouiller
+    maintenant** et **Changer le mot de passe** sont dans Paramètres → Mot
+    de passe des paramètres; le changer verrouille tous les autres
+    appareils. Un redémarrage verrouille tout.
+  - Il est conservé sous forme de hachage scrypt salé dans
+    `admin-password.json`, dans le dossier de données, jamais en clair. Il
+    n'est pas dans la sauvegarde .zip; après une restauration, vous en créez
+    un nouveau. **Mot de passe oublié :** supprimez `admin-password.json`;
+    la visite suivante en demande un nouveau.
+  - Après 5 mauvais mots de passe de suite à partir d'une même adresse,
+    chaque essai suivant doit attendre (30 secondes, puis le double à
+    chaque fois, jusqu'à 15 minutes).
+  - Le déverrouillage est un témoin HttpOnly et SameSite=Strict : les
+    autres sites ne peuvent pas s'en servir, et les scripts de la page ne
+    peuvent pas le lire.
 - **Clé d'API facultative** : définissez `RECIPE_APP_API_KEY` pour exiger un
   en-tête `X-API-Key` correspondant sur chaque requête sauf `/healthz`.
   C'est un contrôle au niveau de l'API seulement — il n'y a pas d'écran de
@@ -729,21 +762,15 @@ courriel)**
     appellent l'API directement doivent l'envoyer aussi (n'importe quelle
     valeur).
 - **Partager → Envoyer le PDF par courriel envoie à partir de votre compte
-  de courriel.** Quiconque peut joindre l'application peut s'en servir pour
-  envoyer le PDF d'une recette, avec le message de son choix, à n'importe
-  quelle adresse. C'est la même frontière de confiance que le reste de
-  l'application, mais le résultat quitte votre réseau sous votre nom, donc
-  c'est plafonné : au plus cinq destinataires par courriel et 10 courriels
+  de courriel**; il demande donc le mot de passe des paramètres. C'est
+  aussi plafonné : au plus cinq destinataires par courriel et 10 courriels
   par heure. L'option n'est offerte qu'une fois qu'un mot de passe est
-  enregistré pour le compte de réception par courriel. Si quelqu'un en qui
-  vous n'avez pas entièrement confiance peut joindre l'application,
-  définissez `RECIPE_APP_API_KEY` ou placez-la derrière un RPV ou un proxy
-  inverse avec authentification avant de configurer le courriel.
+  enregistré pour le compte de réception par courriel.
 - **Paramètres → HTTPS utilise un jeton d'API cPanel tiré de `.env`.** Le
   jeton ne passe jamais par le navigateur ni par la base de données, et
-  l'application ne peut pas l'afficher. Quiconque peut joindre
-  l'application peut quand même utiliser la page HTTPS, mais seulement pour
-  le nom de `PANTRY_DOMAIN` : refaire la configuration (au plus 5 demandes
+  l'application ne peut pas l'afficher. La page HTTPS demande le mot de
+  passe des paramètres, et même avec lui, elle ne vaut que pour le nom de
+  `PANTRY_DOMAIN` : refaire la configuration (au plus 5 demandes
   de certificat par semaine), faire pointer le nom vers une autre adresse de
   votre réseau, ou désactiver HTTPS. Elle ne peut créer aucun autre nom,
   faire pointer le nom vers Internet, ni modifier ou s'approprier un
@@ -754,8 +781,8 @@ courriel)**
   s'arrête alors à l'expiration).
 - **Changer le serveur de courriel ou le nom d'utilisateur efface le mot de
   passe enregistré**, sauf si un nouveau est saisi dans le même
-  enregistrement. Sinon, quiconque peut joindre l'API pourrait faire
-  pointer les paramètres vers son propre serveur et appuyer sur « Envoyer
+  enregistrement. Sinon, quiconque peut ouvrir les paramètres du courriel
+  pourrait les faire pointer vers son propre serveur et appuyer sur « Envoyer
   un courriel de test » pour recevoir le mot de passe.
 - **Les courriels d'inconnus peuvent être ignorés.** Paramètres → Réception
   par courriel → « Accepter les courriels seulement de » accepte des
@@ -766,8 +793,8 @@ courriel)**
   L'en-tête From peut être falsifié, donc ça tient à l'écart les gens qui
   tombent par hasard sur l'adresse et le mot-clé — une adresse dédiée et
   impossible à deviner reste importante.
-- **Le journal se lit dans Paramètres → Journal** par quiconque peut
-  joindre l'application, comme tout le reste. Il contient des objets et des
+- **Le journal se lit dans Paramètres → Journal** avec le mot de passe des
+  paramètres (et depuis l'hôte : `docker logs`, `data/logs/app.log`). Il contient des objets et des
   expéditeurs de courriels et les URL des recettes ajoutées, jamais de mots
   de passe, de clés, de corps de courriels ni de contenu de pages. Le cache
   hors ligne de l'application n'en garde jamais de copie.
@@ -815,13 +842,13 @@ courriel)**
   booléen qui indique s'il est défini.
 - **Deux avertissements propres à la réception par courriel**, à lire avant
   de l'activer :
-  - L'application n'a **aucune authentification par défaut** (voir
-    ci-dessus). Conserver des identifiants de courriel dans une application
-    que n'importe qui sur votre réseau peut joindre est un risque nettement
-    plus grand que d'y conserver des recettes. Si vous activez la réception
-    par courriel, activer `RECIPE_APP_API_KEY` ou placer l'application
-    derrière un proxy inverse avec authentification n'est plus facultatif
-    en pratique.
+  - Les paramètres du courriel sont protégés par le mot de passe des
+    paramètres, mais le reste de l'application n'a **aucune
+    authentification** (voir ci-dessus), et quiconque peut la joindre peut
+    essayer des mots de passe, lentement. Choisissez un mot de passe qui ne
+    sert nulle part ailleurs. Si des gens en qui vous n'avez pas confiance
+    peuvent joindre l'application, placez-la quand même derrière un RPV ou
+    un proxy inverse avec authentification.
   - Utilisez une **adresse de courriel dédiée qui ne sert à rien d'autre** —
     un compte ou un alias créé seulement pour ça, avec un mot de passe
     propre à l'application. Pas votre compte personnel principal, ni un
@@ -1001,7 +1028,7 @@ courriel)**
 
 ## Journal
 
-**Paramètres → Journal** affiche le journal dans l'application : les 500
+**Paramètres → Journal** (demande le mot de passe des paramètres) affiche le journal dans l'application : les 500
 entrées les plus récentes, tout ou seulement les avertissements et les
 erreurs (une trace d'appels reste avec son entrée), plus **Télécharger**
 (tout le journal, tous les fichiers en rotation, en un seul `.txt`) et

@@ -31,7 +31,16 @@ def client(data_dir):
     # X-Requested-With: every write from the app's own pages carries it (see
     # cross_site_guard); tests act as the app.
     with TestClient(app, headers={"X-Requested-With": "OpenThePantry"}) as c:  # context-manager form actually runs lifespan
+        # Email, HTTPS, Logs and Email PDF need the settings password. This
+        # client acts as the owner: it creates the password and stays
+        # unlocked. test_settings_password.py checks the lock with clients
+        # that don't carry this cookie.
+        r = c.post("/api/admin/password", json={"password": TEST_SETTINGS_PASSWORD})
+        assert r.status_code == 200, r.text
         yield c
+
+
+TEST_SETTINGS_PASSWORD = "test-settings-password"
 
 
 @pytest.fixture

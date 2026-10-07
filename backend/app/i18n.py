@@ -67,6 +67,16 @@ _FR_PATTERNS = [
     _p(r"Missing or invalid X-API-Key header\.", "En-tête X-API-Key manquant ou invalide."),
     _p(r"Too many requests, slow down\.", "Trop de requêtes; ralentissez."),
 
+    # Settings password (admin_lock.py)
+    _p(r"^Locked\. Enter the settings password\.$", "Verrouillé. Entrez le mot de passe des paramètres."),
+    _p(r"^Create a settings password first\.$", "Créez d'abord un mot de passe pour les paramètres."),
+    _p(r"^A settings password already exists\.$", "Un mot de passe des paramètres existe déjà."),
+    _p(r"^The password must be at least (\d+) characters\.$", r"Le mot de passe doit compter au moins \1 caractères."),
+    _p(r"^The password can be at most (\d+) characters\.$", r"Le mot de passe peut compter au plus \1 caractères."),
+    _p(r"^Too many wrong passwords\. Try again in (\d+) seconds\.$",
+       r"Trop de mots de passe erronés. Réessayez dans \1 secondes."),
+    _p(r"^Wrong password\.$", "Mot de passe erroné."),
+
     # Uploads and ingest
     _p(r"File too large \(max (\d+) MB\)\.", r"Fichier trop volumineux (maximum \1 Mo)."),
     _p(r"Uploaded file is empty\.", "Le fichier envoyé est vide."),
