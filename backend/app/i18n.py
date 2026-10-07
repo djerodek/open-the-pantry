@@ -353,6 +353,8 @@ _FR_PATTERNS = [
     _p(r"These images didn't give a complete recipe \(no ", "Ces images ne donnent pas une recette complète (aucun "),
     _p(r"body text: only part of a recipe \(no ", "texte du corps : seulement une partie d'une recette (aucun "),
     _p(r": only part of a recipe \(no ", " : seulement une partie d'une recette (aucun "),
+    # The three lines above leave "(aucun ingredients ... found)": these
+    # finish that half-translated text. "aucun" never comes from English.
     _p(r"\(aucun ingredients or steps found\)", "(aucun ingrédient ni étape trouvés)"),
     _p(r"\(aucun ingredients found\)", "(aucun ingrédient trouvé)"),
     _p(r"\(aucun steps found\)", "(aucune étape trouvée)"),

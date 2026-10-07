@@ -297,37 +297,14 @@ def _host_allowed(host_header: str) -> bool:
 
 
 @app.middleware("http")
-async def cross_site_guard(request: Request, call_next):
-    if request.url.path == "/healthz":
-        return await call_next(request)
-    if not _host_allowed(request.headers.get("host", "")):
-        log.warning("Refused request for host %r from %s (not in RECIPE_APP_ALLOWED_HOSTS)",
-                    request.headers.get("host"), request.client.host if request.client else "?")
-        return JSONResponse(status_code=400, content={
-            "detail": "This host name isn't allowed. Add it to RECIPE_APP_ALLOWED_HOSTS in docker-compose.yml."})
-    if (request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/")
-            and not request.headers.get(WRITE_HEADER)):
-        log.warning("Refused %s %s without the %s header", request.method, request.url.path, WRITE_HEADER)
-        return JSONResponse(status_code=403, content={
-            "detail": "Missing X-Requested-With header. Requests that change data must send it."})
-    return await call_next(request)
-
-
-@app.middleware("http")
-async def api_key_auth(request: Request, call_next):
-    if not API_KEY or request.url.path == "/healthz":
-        return await call_next(request)
-    # Constant-time comparison: != stops at the first differing byte, which
-    # in principle leaks how much of a guess was right.
-    if not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), API_KEY.encode()):
-        return JSONResponse(status_code=401, content={"detail": "Missing or invalid X-API-Key header."})
-    return await call_next(request)
-
-
-@app.middleware("http")
 async def settings_password_gate(request: Request, call_next):
     """Email, HTTPS, Logs and Email PDF need the settings password (see
-    admin_lock.py for the list and the reasons). Everything else is open."""
+    admin_lock.py for the list and the reasons). Everything else is open.
+
+    Registered before cross_site_guard and api_key_auth, so it runs after
+    them (the last middleware registered runs first): an unknown host or a
+    write without X-Requested-With is refused before this one says anything
+    about the lock."""
     if not admin_lock.is_locked_path(request.url.path):
         return await call_next(request)
     if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
@@ -354,6 +331,34 @@ RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RECIPE_APP_RATE_LIMIT", "120"))
 _request_log: dict[str, deque] = defaultdict(deque)
 _rate_limit_lock = threading.Lock()
 _rate_limit_last_prune = 0.0  # when idle IPs were last dropped from _request_log
+
+
+@app.middleware("http")
+async def cross_site_guard(request: Request, call_next):
+    if request.url.path == "/healthz":
+        return await call_next(request)
+    if not _host_allowed(request.headers.get("host", "")):
+        log.warning("Refused request for host %r from %s (not in RECIPE_APP_ALLOWED_HOSTS)",
+                    request.headers.get("host"), request.client.host if request.client else "?")
+        return JSONResponse(status_code=400, content={
+            "detail": "This host name isn't allowed. Add it to RECIPE_APP_ALLOWED_HOSTS in docker-compose.yml."})
+    if (request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/")
+            and not request.headers.get(WRITE_HEADER)):
+        log.warning("Refused %s %s without the %s header", request.method, request.url.path, WRITE_HEADER)
+        return JSONResponse(status_code=403, content={
+            "detail": "Missing X-Requested-With header. Requests that change data must send it."})
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def api_key_auth(request: Request, call_next):
+    if not API_KEY or request.url.path == "/healthz":
+        return await call_next(request)
+    # Constant-time comparison: != stops at the first differing byte, which
+    # in principle leaks how much of a guess was right.
+    if not hmac.compare_digest(request.headers.get("X-API-Key", "").encode(), API_KEY.encode()):
+        return JSONResponse(status_code=401, content={"detail": "Missing or invalid X-API-Key header."})
+    return await call_next(request)
 
 
 @app.middleware("http")

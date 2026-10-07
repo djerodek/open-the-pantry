@@ -261,3 +261,23 @@ def test_changing_the_password_clears_nothing(credentials, stranger):
     assert r.status_code == 200
     st = _state()
     assert st["email_password"] == "encrypted-blob" and st["https_enabled"] is True and all(st["files"].values())
+
+
+def test_cross_site_and_host_checks_come_before_the_lock(stranger):
+    """A write without X-Requested-With, or a request for an unknown host,
+    is refused by those checks first, so it learns nothing about the lock."""
+    from app.main import app
+    bare = TestClient(app)
+    r = bare.post("/api/email-settings/test")
+    assert r.status_code == 403 and "locked" not in r.json()
+    r = stranger.get("/api/email-settings", headers={"Host": "evil.example.com"})
+    assert r.status_code == 400 and "locked" not in r.json()
+
+
+def test_a_password_is_not_kept_without_its_marker(own_file, monkeypatch, tmp_path):
+    """Without the marker a later reset would clear nothing, so if it can't
+    be written the password is undone and the error reported."""
+    monkeypatch.setattr(own_file, "MARKER_PATH", str(tmp_path / "no-such-dir" / "admin-password.created"))
+    with pytest.raises(OSError):
+        own_file.create("first-password")
+    assert not own_file.password_set()

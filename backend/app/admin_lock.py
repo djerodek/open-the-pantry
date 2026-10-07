@@ -22,6 +22,7 @@ data/admin-password.created records that a password has existed; without
 it (a first install, or an upgrade from before the password) creating one
 clears nothing.
 """
+import contextlib
 import hashlib
 import hmac
 import json
@@ -32,6 +33,9 @@ import threading
 import time
 
 from .database import DATA_DIR
+from .logging_setup import get_logger
+
+log = get_logger("settings-password")
 
 PASSWORD_PATH = os.path.join(DATA_DIR, "admin-password.json")
 MARKER_PATH = os.path.join(DATA_DIR, "admin-password.created")
@@ -151,7 +155,9 @@ def _new_session() -> str:
         for t, (exp, _) in list(_sessions.items()):
             if exp <= now:
                 del _sessions[t]
-        _sessions[token] = (now + UNLOCK_SECONDS, _fingerprint(d))
+        # d is None only if the file was deleted (a reset) in the instant
+        # since it was checked: the session then starts out invalid.
+        _sessions[token] = (now + UNLOCK_SECONDS, _fingerprint(d) if d else "")
     return token
 
 
@@ -162,9 +168,17 @@ def create(password: str) -> str:
         if password_set():
             raise PasswordError("A settings password already exists.")
         _write(password)
+        # The marker is what makes a later reset clear the credentials, so
+        # a password without one isn't kept: undo it and report the error.
         if not os.path.exists(MARKER_PATH):
-            with open(MARKER_PATH, "w", encoding="utf-8") as f:
-                f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+            try:
+                with open(MARKER_PATH, "w", encoding="utf-8") as f:
+                    f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+            except OSError:
+                log.exception("Couldn't write %s; the new settings password is undone", MARKER_PATH)
+                with contextlib.suppress(OSError):
+                    os.remove(PASSWORD_PATH)
+                raise
     return _new_session()
 
 
@@ -181,10 +195,15 @@ def _record(client: str, ok: bool):
         if ok:
             _failures.pop(client, None)
             return
+        now = time.time()
+        # Forget addresses whose last wrong guess is long past.
+        for c, (_, allowed_at) in list(_failures.items()):
+            if allowed_at < now - BACKOFF_MAX:
+                del _failures[c]
         count, _ = _failures.get(client, (0, 0.0))
         count += 1
         wait = 0 if count < FREE_TRIES else min(BACKOFF_START * 2 ** (count - FREE_TRIES), BACKOFF_MAX)
-        _failures[client] = (count, time.time() + wait)
+        _failures[client] = (count, now + wait)
 
 
 def unlock(password: str, client: str) -> str | None:
