@@ -110,3 +110,11 @@ def test_card_controls_do_not_follow_the_card_link():
     assert "onclick: (e) => { e.stopPropagation(); e.preventDefault(); }" in body
     row = body[:body.index("return wrap;")]
     assert 'el("a"' not in row and 'el("input"' not in row, "a real link or field in the row would be cancelled too"
+
+
+def test_card_share_sheet_skips_the_missing_email_button():
+    """Without email sending, Email PDF is null in the share actions; the
+    card's share sheet appended it anyway, threw, and lost the buttons after it."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("function openShareSheet("):js.index("function openShareSheet(") + 600]
+    assert ".filter(Boolean).forEach((b) => actions.appendChild(b))" in body

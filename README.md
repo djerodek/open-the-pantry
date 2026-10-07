@@ -104,6 +104,9 @@ across from the old data folder or set up encryption again in Settings and
 re-enter the email password. Nothing else depends on the key. The settings
 password (`admin-password.json`) isn't in the zip either: copy it across
 too, or create a new one the first time you open Email ingest, HTTPS or Logs.
+If the old data folder had a password and its `admin-password.created`
+comes along without `admin-password.json`, creating the new one counts as a
+reset and clears the email password and HTTPS.
 
 To build from source instead of pulling the published image:
 
@@ -603,8 +606,16 @@ Safeguards and notes:
     locks every other device. A restart locks everything.
   - It's stored as a salted scrypt hash in `admin-password.json` in the
     data folder, never in plain text. It isn't in the backup zip, so after
-    restoring you create a new one. **Forgotten password:** delete
-    `admin-password.json`; the next visit asks for a new one.
+    restoring you create a new one.
+  - **Forgotten password:** delete `admin-password.json` from the data
+    folder (no restart needed); the next visit asks for a new one. Creating
+    it **clears the saved email password and turns HTTPS off**, deleting
+    the certificate, so whoever sets the new password also enters those
+    again. The email server, username and recipient list, the HTTPS name
+    and address, the recipes and everything else are kept. The cPanel
+    token in `.env` is out of the app's reach and stays. The first password
+    on an install upgraded from before 0052 clears nothing: the app keeps
+    `admin-password.created` to tell a reset from a first setup.
   - After 5 wrong passwords in a row from one address, each further try
     has to wait (30 seconds, doubling up to 15 minutes).
   - The unlock is an HttpOnly, SameSite=Strict cookie: other websites

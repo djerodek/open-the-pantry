@@ -12,7 +12,8 @@ Interface in English or French. No LLM dependency.
 modify, and delete every recipe, and use its API. There is no login screen and
 no user accounts. The exception: Email ingest, HTTPS, Logs and Email PDF, which
 use your email account or DNS login, need a settings password created in the
-app (15-minute unlock; forgotten: delete `data/admin-password.json`).
+app (15-minute unlock). Forgotten: delete `data/admin-password.json`; the new
+password then clears the saved email password and HTTPS, to be set up again.
 
 **Do not expose it to the internet.** Run it on your LAN, or reach it remotely
 via VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse proxy that enforces

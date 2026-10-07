@@ -123,7 +123,10 @@ de données, ou configurez de nouveau le chiffrement dans les Paramètres et
 entrez de nouveau le mot de passe du courriel. Rien d'autre ne dépend de la
 clé. Le mot de passe des paramètres (`admin-password.json`) n'est pas dans
 le .zip non plus : copiez-le aussi, ou créez-en un nouveau la première fois
-que vous ouvrez la réception par courriel, HTTPS ou le journal.
+que vous ouvrez la réception par courriel, HTTPS ou le journal. Si l'ancien
+dossier avait un mot de passe et que son `admin-password.created` est copié
+sans `admin-password.json`, créer le nouveau compte comme une
+réinitialisation et efface le mot de passe de courriel et HTTPS.
 
 Pour construire à partir du code source plutôt que de télécharger l'image
 publiée :
@@ -722,8 +725,19 @@ courriel)**
   - Il est conservé sous forme de hachage scrypt salé dans
     `admin-password.json`, dans le dossier de données, jamais en clair. Il
     n'est pas dans la sauvegarde .zip; après une restauration, vous en créez
-    un nouveau. **Mot de passe oublié :** supprimez `admin-password.json`;
-    la visite suivante en demande un nouveau.
+    un nouveau.
+  - **Mot de passe oublié :** supprimez `admin-password.json` du dossier de
+    données (sans redémarrer); la visite suivante en demande un nouveau. Le
+    créer **efface le mot de passe de courriel enregistré et désactive
+    HTTPS**, en supprimant le certificat; la personne qui crée le nouveau
+    mot de passe entre donc ceux-ci de nouveau. Le serveur de courriel, le
+    nom d'utilisateur et la liste des destinataires, le nom et l'adresse
+    HTTPS, les recettes et tout le reste sont conservés. Le jeton cPanel
+    dans `.env` est hors de portée de l'application et reste. Le premier
+    mot de passe d'une installation mise à jour depuis une version
+    antérieure à 0052 n'efface rien : l'application garde
+    `admin-password.created` pour distinguer une réinitialisation d'une
+    première configuration.
   - Après 5 mauvais mots de passe de suite à partir d'une même adresse,
     chaque essai suivant doit attendre (30 secondes, puis le double à
     chaque fois, jusqu'à 15 minutes).

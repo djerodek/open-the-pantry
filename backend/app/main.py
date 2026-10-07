@@ -335,7 +335,8 @@ async def settings_password_gate(request: Request, call_next):
     detail = ("Locked. Enter the settings password." if admin_lock.password_set()
               else "Create a settings password first.")
     return JSONResponse(status_code=401, content={"detail": detail, "locked": True,
-                                                  "password_set": admin_lock.password_set()})
+                                                  "password_set": admin_lock.password_set(),
+                                                  "reset": admin_lock.was_reset()})
 
 
 # ---------------------------------------------------------------------------
@@ -2371,7 +2372,8 @@ def clear_logs_endpoint():
 # ---------------------------------------------------------------------------
 def _admin_status(token: str | None) -> dict:
     left = admin_lock.seconds_left(token)
-    return {"password_set": admin_lock.password_set(), "unlocked": left > 0, "seconds_left": left}
+    return {"password_set": admin_lock.password_set(), "unlocked": left > 0, "seconds_left": left,
+            "reset": admin_lock.was_reset()}
 
 
 def _with_session(request: Request, token: str) -> JSONResponse:
@@ -2395,14 +2397,46 @@ def admin_status(request: Request):
     return _admin_status(request.cookies.get(admin_lock.COOKIE_NAME))
 
 
+async def _clear_credentials_after_reset():
+    """The settings password was reset (its file deleted): whoever creates
+    the new one sets the email password and HTTPS up again."""
+    db = SessionLocal()
+    try:
+        settings = _get_email_settings(db)
+        settings.password_encrypted = None
+        settings.enabled = False
+        db.commit()
+    finally:
+        db.close()
+    await https_setup.stop_server()
+    https_setup.forget_certificate()
+
+
 @app.post("/api/admin/password")
-def admin_create_password(payload: schemas.AdminPasswordIn, request: Request):
-    """First use only: once a password exists, this is refused."""
+async def admin_create_password(payload: schemas.AdminPasswordIn, request: Request):
+    """First use only: once a password exists, this is refused. After a
+    reset, the saved email password and HTTPS are cleared first."""
+    if admin_lock.password_set():
+        raise HTTPException(status_code=409, detail="A settings password already exists.")
+    try:
+        admin_lock.check_new_password(payload.password)
+    except admin_lock.PasswordError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    cleared = admin_lock.was_reset()
+    if cleared:
+        try:
+            await _clear_credentials_after_reset()
+        except https_setup.HttpsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
     try:
         token = admin_lock.create(payload.password)
     except admin_lock.PasswordError as e:
         raise HTTPException(status_code=409 if admin_lock.password_set() else 400, detail=str(e))
-    log.info("Settings password created from %s", _client(request))
+    if cleared:
+        log.warning("Settings password was reset and created again from %s: the email password was "
+                    "cleared and HTTPS turned off (certificate deleted)", _client(request))
+    else:
+        log.info("Settings password created from %s", _client(request))
     return _with_session(request, token)
 
 

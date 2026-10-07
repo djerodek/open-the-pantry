@@ -70,7 +70,7 @@ def test_open_summaries_reveal_no_settings(stranger, client):
 
 def test_unlock_and_lock(stranger):
     st = stranger.get("/api/admin/status").json()
-    assert st == {"password_set": True, "unlocked": False, "seconds_left": 0}
+    assert st == {"password_set": True, "unlocked": False, "seconds_left": 0, "reset": False}
     assert stranger.post("/api/admin/unlock", json={"password": "not it"}).status_code == 401
     r = stranger.post("/api/admin/unlock", json={"password": TEST_SETTINGS_PASSWORD})
     assert r.status_code == 200 and r.json()["unlocked"] is True
@@ -115,6 +115,7 @@ def test_password_file_is_a_salted_hash_and_not_in_backups(client):
 def own_file(tmp_path, monkeypatch):
     from app import admin_lock
     monkeypatch.setattr(admin_lock, "PASSWORD_PATH", str(tmp_path / "admin-password.json"))
+    monkeypatch.setattr(admin_lock, "MARKER_PATH", str(tmp_path / "admin-password.created"))
     saved = dict(admin_lock._sessions)
     yield admin_lock
     with admin_lock._lock:
@@ -151,3 +152,112 @@ def test_changing_the_password_locks_other_browsers(own_file):
     mine = own_file.change("first-password", "new-password-1", "c")
     assert own_file.seconds_left(other) == 0 and own_file.seconds_left(mine) > 0
     assert own_file.unlock("new-password-1", "c") and not own_file.unlock("first-password", "c")
+
+
+# A reset (the password file deleted after a password existed) clears the
+# saved email password and HTTPS when the new password is created. A first
+# password -- including on an install upgraded from before the password --
+# clears nothing.
+@pytest.fixture
+def credentials(own_file, client):
+    """Saved email password and a working HTTPS setup, restored afterwards."""
+    import os
+    from datetime import datetime, timedelta, timezone
+    from app import https_setup
+    from app.database import SessionLocal
+    from app import models
+    from app.main import _get_email_settings
+
+    db = SessionLocal()
+    em = _get_email_settings(db)
+    saved_email = (em.password_encrypted, em.enabled)
+    em.password_encrypted, em.enabled = "encrypted-blob", True
+    hs = https_setup._settings(db)
+    saved_https = {k: getattr(hs, k) for k in ("enabled", "state", "domain", "lan_address", "a_record_value",
+                                               "cert_expires_at")}
+    hs.enabled, hs.state, hs.domain, hs.lan_address = True, "ready", "pantry.example.com", "192.168.1.20"
+    hs.a_record_value, hs.cert_expires_at = "192.168.1.20", datetime.now(timezone.utc) + timedelta(days=60)
+    db.commit()
+    db.close()
+    os.makedirs(https_setup.HTTPS_DIR, exist_ok=True)
+    files = [https_setup.KEY_PATH, https_setup.CERT_PATH, https_setup.ACCOUNT_KEY_PATH, https_setup.REQUESTS_PATH]
+    saved_files = {f: open(f, "rb").read() if os.path.exists(f) else None for f in files}
+    for f in files:
+        with open(f, "wb") as fh:
+            fh.write(b"[]" if f == https_setup.REQUESTS_PATH else b"material")
+    yield own_file
+    db = SessionLocal()
+    em = _get_email_settings(db)
+    em.password_encrypted, em.enabled = saved_email
+    hs = https_setup._settings(db)
+    for k, v in saved_https.items():
+        setattr(hs, k, v)
+    db.commit()
+    db.close()
+    for f, data in saved_files.items():
+        if data is None:
+            if os.path.exists(f):
+                os.remove(f)
+        else:
+            with open(f, "wb") as fh:
+                fh.write(data)
+
+
+def _state():
+    import os
+    from app import https_setup
+    from app.database import SessionLocal
+    from app.main import _get_email_settings
+    db = SessionLocal()
+    try:
+        em = _get_email_settings(db)
+        hs = https_setup._settings(db)
+        return {
+            "email_password": em.password_encrypted, "email_enabled": em.enabled,
+            "https_enabled": hs.enabled, "cert_expires_at": hs.cert_expires_at,
+            "domain": hs.domain, "a_record_value": hs.a_record_value,
+            "files": {os.path.basename(f): os.path.exists(f) for f in
+                      (https_setup.KEY_PATH, https_setup.CERT_PATH, https_setup.ACCOUNT_KEY_PATH, https_setup.REQUESTS_PATH)},
+        }
+    finally:
+        db.close()
+
+
+def test_first_password_on_an_upgraded_install_keeps_the_credentials(credentials, stranger):
+    assert not credentials.was_reset()
+    r = stranger.post("/api/admin/password", json={"password": "first-password"})
+    assert r.status_code == 200 and r.json()["reset"] is False
+    st = _state()
+    assert st["email_password"] == "encrypted-blob" and st["email_enabled"] is True
+    assert st["https_enabled"] is True and all(st["files"].values())
+
+
+def test_new_password_after_a_reset_clears_email_and_https(credentials, stranger):
+    import os
+    assert stranger.post("/api/admin/password", json={"password": "first-password"}).status_code == 200
+    os.remove(credentials.PASSWORD_PATH)            # the reset: done on the server, not in the app
+    st = stranger.get("/api/admin/status").json()
+    assert st["reset"] is True and st["unlocked"] is False
+    assert stranger.get("/api/email-settings").json()["reset"] is True
+    # A short password is refused before anything is cleared.
+    assert stranger.post("/api/admin/password", json={"password": "short"}).status_code == 400
+    assert _state()["email_password"] == "encrypted-blob"
+
+    r = stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 200
+    st = _state()
+    assert st["email_password"] is None and st["email_enabled"] is False
+    assert st["https_enabled"] is False and st["cert_expires_at"] is None
+    assert st["files"] == {"privkey.pem": False, "fullchain.pem": False, "account.key": False,
+                           "requests.json": True}       # Let's Encrypt's weekly count is kept
+    assert st["domain"] == "pantry.example.com" and st["a_record_value"] == "192.168.1.20"
+    assert not credentials.was_reset() and stranger.get("/api/admin/status").json()["unlocked"] is True
+
+
+def test_changing_the_password_clears_nothing(credentials, stranger):
+    stranger.post("/api/admin/password", json={"password": "first-password"})
+    r = stranger.post("/api/admin/password/change",
+                      json={"current_password": "first-password", "new_password": "second-password"})
+    assert r.status_code == 200
+    st = _state()
+    assert st["email_password"] == "encrypted-blob" and st["https_enabled"] is True and all(st["files"].values())

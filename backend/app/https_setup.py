@@ -636,6 +636,31 @@ def turn_off():
     _active_domain = None
 
 
+def forget_certificate():
+    """After the settings password is reset (admin_lock.py): HTTPS off, and
+    the certificate, its key and the Let's Encrypt account key deleted, so
+    HTTPS has to be set up again. Kept: the name, address and email (they
+    prefill the form), the A record value the app last wrote (so it can
+    still update its own record), and the weekly request count (Let's
+    Encrypt's limit doesn't reset). The cPanel token is in .env, out of
+    the app's reach. Call stop_server() first."""
+    if not _job_lock.acquire(blocking=False):
+        raise HttpsError("HTTPS setup is running. Try again when it has finished.")
+    try:
+        turn_off()
+        for path in (KEY_PATH, CERT_PATH, ACCOUNT_KEY_PATH):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(path)
+        db = SessionLocal()
+        try:
+            _settings(db).cert_expires_at = None
+            db.commit()
+        finally:
+            db.close()
+    finally:
+        _job_lock.release()
+
+
 # ---------------------------------------------------------------------------
 # The HTTPS listener: a second uvicorn server for the same app
 # ---------------------------------------------------------------------------

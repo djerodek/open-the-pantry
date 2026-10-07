@@ -14,6 +14,13 @@ data/admin-password.json (not in the database, so not in backups), and
 reset by deleting that file. Entering it unlocks that browser for 15
 minutes: an HttpOnly, SameSite=Strict cookie holding a random token that
 only lives in this process's memory, so a restart locks everything.
+
+A reset is not a fresh start for the credentials: creating a password
+after one clears the saved email password and HTTPS (main.py does the
+clearing), so whoever sets the new password has to enter them again.
+data/admin-password.created records that a password has existed; without
+it (a first install, or an upgrade from before the password) creating one
+clears nothing.
 """
 import hashlib
 import hmac
@@ -27,6 +34,7 @@ import time
 from .database import DATA_DIR
 
 PASSWORD_PATH = os.path.join(DATA_DIR, "admin-password.json")
+MARKER_PATH = os.path.join(DATA_DIR, "admin-password.created")
 COOKIE_NAME = "pantry_settings"
 UNLOCK_SECONDS = 15 * 60
 MIN_LENGTH = 8
@@ -92,6 +100,11 @@ def password_set() -> bool:
     return _read() is not None
 
 
+def was_reset() -> bool:
+    """A password existed and its file has been deleted."""
+    return not password_set() and os.path.exists(MARKER_PATH)
+
+
 def _fingerprint(d: dict) -> str:
     return d["hash"][:16]
 
@@ -149,6 +162,9 @@ def create(password: str) -> str:
         if password_set():
             raise PasswordError("A settings password already exists.")
         _write(password)
+        if not os.path.exists(MARKER_PATH):
+            with open(MARKER_PATH, "w", encoding="utf-8") as f:
+                f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
     return _new_session()
 
 

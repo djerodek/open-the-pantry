@@ -76,6 +76,8 @@ _FR_PATTERNS = [
     _p(r"^Too many wrong passwords\. Try again in (\d+) seconds\.$",
        r"Trop de mots de passe erronés. Réessayez dans \1 secondes."),
     _p(r"^Wrong password\.$", "Mot de passe erroné."),
+    _p(r"^HTTPS setup is running\. Try again when it has finished\.$",
+       "La configuration HTTPS est en cours. Réessayez quand elle sera terminée."),
 
     # Uploads and ingest
     _p(r"File too large \(max (\d+) MB\)\.", r"Fichier trop volumineux (maximum \1 Mo)."),

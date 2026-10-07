@@ -424,7 +424,9 @@
 
   // mode: "create" (first use), "unlock", or "change". Resolves true once
   // the server has unlocked this browser, false if the dialog is closed.
-  function settingsPasswordDialog(mode) {
+  // reset: the password file was deleted; creating a new password clears
+  // the saved email password and HTTPS (the server does it).
+  function settingsPasswordDialog(mode, reset = false) {
     return new Promise((resolve) => {
       const body = $("#admin-body");
       body.innerHTML = "";
@@ -438,7 +440,9 @@
       const [pw, pwField] = field("admin-new", mode === "change" ? tx("New password") : tx("Password"), "new-password");
       const [pw2, pw2Field] = field("admin-confirm", tx("Type it again"), "new-password");
 
-      const intro = mode === "create"
+      const intro = mode === "create" && reset
+        ? tx("The settings password was reset. Creating a new one clears the saved email password and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.")
+        : mode === "create"
         ? tx("Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.")
         : mode === "unlock"
           ? tx("Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.")
@@ -448,9 +452,9 @@
       const submit = el("button", { class: "btn-primary", type: "submit",
         text: mode === "create" ? tx("Create password") : mode === "unlock" ? tx("Unlock") : tx("Change password") });
       const form = el("form", { class: "admin-form" }, [...fields, submit, status]);
-      if (mode !== "unlock") {
-        form.appendChild(el("p", { class: "field-hint", text: tx("At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder; you'll be asked to create a new one.") }));
-      }
+      form.appendChild(el("p", { class: "field-hint", text: mode === "unlock"
+        ? tx("Forgot it? Delete admin-password.json in the app's data folder. Creating a new password then clears the saved email password and HTTPS, which you set up again.")
+        : tx("At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder. Creating a new password then clears the saved email password and HTTPS, which you set up again.") }));
       body.appendChild(form);
 
       let settled = false;
@@ -473,6 +477,11 @@
             closeModal(adminOverlay);
             refreshAdminSection();
             if (mode === "change") announce(tx("Settings password changed."));
+            if (mode === "create" && reset) {
+              await loadMailState();   // Email PDF is gone until the email password is entered again
+              httpsSummary.textContent = HTTPS_HINT();
+              announce(tx("New password set. The email password was cleared and HTTPS turned off; set them up again."));
+            }
             finish(true);
             return;
           }
@@ -499,7 +508,7 @@
       return false;
     }
     if (st.unlocked) return true;
-    return settingsPasswordDialog(st.password_set ? "unlock" : "create");
+    return settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
   }
 
   // fetch() for a locked route. If the 15 minutes ran out since the panel
@@ -509,7 +518,7 @@
     if (res.status !== 401) return res;
     const body = await res.clone().json().catch(() => ({}));
     if (!body.locked || !prompt) return res;
-    const ok = await settingsPasswordDialog(body.password_set ? "unlock" : "create");
+    const ok = await settingsPasswordDialog(body.password_set ? "unlock" : "create", Boolean(body.reset));
     return ok ? fetch(url, options) : res;
   }
 
@@ -523,7 +532,9 @@
     try { st = await adminStatus(); } catch { return; }
     actions.hidden = !st.password_set;
     $("#admin-lock-now").hidden = !st.unlocked;
-    if (!st.password_set) {
+    if (!st.password_set && st.reset) {
+      statusEl.textContent = tx("Reset. Creating a new password clears the saved email password and turns HTTPS off.");
+    } else if (!st.password_set) {
       statusEl.textContent = tx("Not set yet. You'll create it the first time you open one of them.");
     } else if (st.unlocked) {
       const min = Math.max(1, Math.ceil(st.seconds_left / 60));
@@ -567,6 +578,7 @@
   const httpsPanel = $("#https-settings-panel");
   const httpsToggle = $("#https-settings-toggle");
   const httpsSummary = $("#https-summary");
+  const HTTPS_HINT = () => tx("Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.");
   let httpsPollTimer = null;
   let httpsLastState = null;
 
@@ -711,7 +723,7 @@
           const res = await adminFetch(`${API}/https`, { method: "DELETE" }).catch(() => null);
           if (!res || !res.ok) { announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again.")); return; }
           announce(tx("HTTPS turned off."));
-          httpsSummary.textContent = tx("Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.");
+          httpsSummary.textContent = HTTPS_HINT();
           await renderHttpsSettings();
         },
       }));
@@ -3220,7 +3232,9 @@
     $("#share-sheet-title").textContent = recipe.title;
     const actions = $("#share-sheet-actions");
     actions.innerHTML = "";
-    shareActionButtons(recipe, () => closeModal(overlay)).forEach((b) => actions.appendChild(b));
+    // filter(Boolean): Email PDF is null when sending isn't set up. Appending
+    // that null threw, and every button after it went missing.
+    shareActionButtons(recipe, () => closeModal(overlay)).filter(Boolean).forEach((b) => actions.appendChild(b));
     openModal(overlay);
   }
 

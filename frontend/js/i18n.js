@@ -530,8 +530,16 @@
     "Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.":
       "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel sont verrouillés. Entrez le mot de passe des paramètres pour les déverrouiller sur cet appareil pendant 15 minutes.",
     "Every other device that's unlocked gets locked.": "Tous les autres appareils déverrouillés seront verrouillés.",
-    "At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder; you'll be asked to create a new one.":
-      "Au moins 8 caractères. Oublié? Supprimez admin-password.json dans le dossier de données de l'application; on vous demandera d'en créer un nouveau.",
+    "At least 8 characters. Forgot it? Delete admin-password.json in the app's data folder. Creating a new password then clears the saved email password and HTTPS, which you set up again.":
+      "Au moins 8 caractères. Oublié? Supprimez admin-password.json dans le dossier de données de l'application. Créer un nouveau mot de passe efface alors le mot de passe de courriel enregistré et HTTPS, que vous configurez de nouveau.",
+    "Forgot it? Delete admin-password.json in the app's data folder. Creating a new password then clears the saved email password and HTTPS, which you set up again.":
+      "Oublié? Supprimez admin-password.json dans le dossier de données de l'application. Créer un nouveau mot de passe efface alors le mot de passe de courriel enregistré et HTTPS, que vous configurez de nouveau.",
+    "The settings password was reset. Creating a new one clears the saved email password and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.":
+      "Le mot de passe des paramètres a été réinitialisé. En créer un nouveau efface le mot de passe de courriel enregistré et désactive HTTPS (son certificat est supprimé); vous configurez ensuite les deux de nouveau. Les recettes et tout le reste sont conservés.",
+    "New password set. The email password was cleared and HTTPS turned off; set them up again.":
+      "Nouveau mot de passe créé. Le mot de passe de courriel a été effacé et HTTPS désactivé; configurez-les de nouveau.",
+    "Reset. Creating a new password clears the saved email password and turns HTTPS off.":
+      "Réinitialisé. Créer un nouveau mot de passe efface le mot de passe de courriel enregistré et désactive HTTPS.",
     "Current password": "Mot de passe actuel",
     "New password": "Nouveau mot de passe",
     "Type it again": "Entrez-le de nouveau",
