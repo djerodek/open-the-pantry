@@ -76,6 +76,11 @@ _FR_PATTERNS = [
     _p(r"^Too many wrong passwords\. Try again in (\d+) seconds\.$",
        r"Trop de mots de passe erronés. Réessayez dans \1 secondes."),
     _p(r"^Wrong password\.$", "Mot de passe erroné."),
+    _p(r"^The new password couldn't be saved\. The email password and HTTPS were already cleared; try again\. ",
+       "Le nouveau mot de passe n'a pas pu être enregistré. Le mot de passe de courriel et HTTPS ont déjà été "
+       "effacés; réessayez. "),
+    _p(r"^The new password couldn't be saved; try again\. ",
+       "Le nouveau mot de passe n'a pas pu être enregistré; réessayez. "),
     _p(r"^HTTPS setup is running\. Try again when it has finished\.$",
        "La configuration HTTPS est en cours. Réessayez quand elle sera terminée."),
 

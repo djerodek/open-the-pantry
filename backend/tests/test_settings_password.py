@@ -281,3 +281,19 @@ def test_a_password_is_not_kept_without_its_marker(own_file, monkeypatch, tmp_pa
     with pytest.raises(OSError):
         own_file.create("first-password")
     assert not own_file.password_set()
+
+
+def test_a_failed_save_after_a_reset_says_what_was_cleared(credentials, stranger, monkeypatch):
+    """Credentials are cleared before the new password is written, so a
+    failed write must say they're gone and that trying again is enough."""
+    import os
+    stranger.post("/api/admin/password", json={"password": "first-password"})
+    os.remove(credentials.PASSWORD_PATH)
+
+    def disk_full(password):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(credentials, "_write", disk_full)
+    r = stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 500
+    assert "already cleared; try again" in r.json()["detail"]
+    assert credentials.was_reset()                 # still a reset: the retry clears (nothing left) and saves

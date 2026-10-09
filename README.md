@@ -61,6 +61,11 @@ docker compose up -d
 Open `http://localhost:8090`. Data (SQLite DB + uploaded images/PDFs) persists
 in `./data` next to the compose file.
 
+**Then create the settings password right away:** Settings → Email ingest
+(or HTTPS, or Logs) asks for it the first time. Until it exists, the first
+person on your network to open one of those sections sets it. See
+[Security notes](#security-notes).
+
 ### Moving or restoring your data
 
 Everything the app stores lives in one folder: whatever is on the left side

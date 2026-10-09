@@ -73,6 +73,11 @@ docker compose up -d
 Ouvrez `http://localhost:8090`. Les données (base SQLite, images et PDF
 téléversés) sont conservées dans `./data`, à côté du fichier compose.
 
+**Créez ensuite le mot de passe des paramètres tout de suite :** Paramètres
+→ Réception par courriel (ou HTTPS, ou Journal) le demande la première fois.
+D'ici là, la première personne de votre réseau à ouvrir l'une de ces
+sections le crée. Voir [Notes de sécurité](#notes-de-sécurité).
+
 ### Déplacer ou restaurer vos données
 
 Tout ce que l'application conserve se trouve dans un seul dossier : ce qui

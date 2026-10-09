@@ -62,6 +62,9 @@ Then:
     docker compose up -d
 
 Open http://localhost:8090 — data persists in `./data` beside the compose file.
+Then create the settings password right away (Settings → Email ingest asks for
+it): until it exists, the first person on your network to open that section
+sets it.
 
 Updating:
 

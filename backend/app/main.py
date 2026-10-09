@@ -301,10 +301,10 @@ async def settings_password_gate(request: Request, call_next):
     """Email, HTTPS, Logs and Email PDF need the settings password (see
     admin_lock.py for the list and the reasons). Everything else is open.
 
-    Registered before cross_site_guard and api_key_auth, so it runs after
-    them (the last middleware registered runs first): an unknown host or a
-    write without X-Requested-With is refused before this one says anything
-    about the lock."""
+    Defined above cross_site_guard and api_key_auth in this file, so
+    Starlette runs it after them (the last middleware declared is the
+    outermost): an unknown host or a write without X-Requested-With is
+    refused before this one says anything about the lock."""
     if not admin_lock.is_locked_path(request.url.path):
         return await call_next(request)
     if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
@@ -2437,6 +2437,15 @@ async def admin_create_password(payload: schemas.AdminPasswordIn, request: Reque
         token = admin_lock.create(payload.password)
     except admin_lock.PasswordError as e:
         raise HTTPException(status_code=409 if admin_lock.password_set() else 400, detail=str(e))
+    except OSError as e:
+        # Clearing comes first on purpose: if it ran second and failed, the
+        # new password would inherit the old credentials. So a failure here
+        # leaves them cleared; say so, and that trying again is all it takes.
+        log.exception("Couldn't save the new settings password")
+        raise HTTPException(status_code=500, detail=(
+            "The new password couldn't be saved. The email password and HTTPS were already cleared; "
+            f"try again. ({e.strerror or e})" if cleared else
+            f"The new password couldn't be saved; try again. ({e.strerror or e})"))
     if cleared:
         log.warning("Settings password was reset and created again from %s: the email password was "
                     "cleared and HTTPS turned off (certificate deleted)", _client(request))
