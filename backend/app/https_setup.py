@@ -11,15 +11,17 @@ What it does, once you press "Set up HTTPS":
      next to the usual plain-HTTP 8090, and renews the certificate before
      it expires.
 
-The DNS host login is read from the environment (CPANEL_USERNAME,
-CPANEL_TOKEN, CPANEL_BASE_URL; the compose file passes in .env), never from
-the browser or the database: a cPanel token can do far more than add these
-records, and the app has no login of its own.
+The DNS host login (cPanel username, address, API token) and the one name
+to set up are entered in Settings -> HTTPS, which needs the settings
+password (admin_lock.py), and saved in data/https/cpanel-login.json with
+the token encrypted like the email password. The data/https folder is never
+in a backup or served (test_tls_key_containment.py). Values in the
+environment (CPANEL_USERNAME, CPANEL_TOKEN, CPANEL_BASE_URL, PANTRY_DOMAIN,
+from .env) take precedence over the saved ones, field by field.
 
-The app has no login, so anyone who can open Settings can use this page.
-These limits keep that from reaching the rest of the domain:
-  - The only name it will ever create or change is the one in PANTRY_DOMAIN
-    in .env, next to the cPanel login. The page can't pick another name.
+Limits that keep this page from reaching the rest of the domain:
+  - The only name it will ever create or change is the saved one
+    (PANTRY_DOMAIN). Changing it is a settings change, behind the password.
   - It never touches the domain's own name (the zone apex), and never
     changes an existing record for that name unless it created it.
   - The name can only point at a private network address (home LAN or
@@ -42,6 +44,7 @@ import requests
 
 from .database import DATA_DIR, SessionLocal
 from . import models
+from . import crypto
 from .logging_setup import get_logger
 
 log = get_logger("https")
@@ -109,20 +112,123 @@ def _set_step(text: str):
     log.info("HTTPS: %s", text)
 
 
-def allowed_domain() -> str:
-    """PANTRY_DOMAIN, normalised; empty if unset or not a valid name."""
-    value = os.environ.get(DOMAIN_VAR, "").strip().lower().rstrip(".")
+# ---------------------------------------------------------------------------
+# The cPanel login and the name: saved by Settings -> HTTPS, or from .env
+# ---------------------------------------------------------------------------
+LOGIN_PATH = os.path.join(HTTPS_DIR, "cpanel-login.json")
+_FIELDS = {"username": "CPANEL_USERNAME", "base_url": "CPANEL_BASE_URL", "domain": DOMAIN_VAR}
+
+
+def _stored_login() -> dict:
+    try:
+        with open(LOGIN_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_login(d: dict):
+    os.makedirs(HTTPS_DIR, exist_ok=True)
+    _write_private(LOGIN_PATH, json.dumps(d).encode("utf-8"))
+
+
+def _value(field: str) -> tuple[str, bool]:
+    """A login field and whether it comes from .env (which wins)."""
+    env = os.environ.get(_FIELDS[field], "").strip()
+    return (env, True) if env else (str(_stored_login().get(field) or "").strip(), False)
+
+
+def _normal_domain(value: str) -> str:
+    value = value.strip().lower().rstrip(".")
     return value if _DOMAIN_RE.match(value) and len(value) <= 253 else ""
 
 
+def allowed_domain() -> str:
+    """The one name this page may set up, normalised; empty if unset or
+    not a valid name."""
+    return _normal_domain(_value("domain")[0])
+
+
+def _token() -> tuple[str, bool]:
+    env = os.environ.get("CPANEL_TOKEN", "").strip()
+    if env:
+        return env, True
+    enc = _stored_login().get("token_encrypted")
+    if not enc:
+        return "", False
+    try:
+        return crypto.decrypt_secret(enc), False
+    except Exception as e:
+        log.warning("The saved cPanel token can't be read: %s", e)
+        raise HttpsError("The saved cPanel token can't be read (the encryption key changed or is missing). "
+                         "Enter it again in Settings → HTTPS.")
+
+
 def credentials_status() -> dict:
-    missing = [v for v in CREDENTIAL_VARS if not os.environ.get(v, "").strip()]
-    if not allowed_domain():
-        missing.append(DOMAIN_VAR)
-    base = os.environ.get("CPANEL_BASE_URL", "").strip()
+    username, user_env = _value("username")
+    base, base_env = _value("base_url")
+    domain_env = _value("domain")[1]
+    token_env = bool(os.environ.get("CPANEL_TOKEN", "").strip())
+    token_set = token_env or bool(_stored_login().get("token_encrypted"))
+    missing = [var for var, ok in (("CPANEL_USERNAME", username), ("CPANEL_TOKEN", token_set),
+                                   ("CPANEL_BASE_URL", base), (DOMAIN_VAR, allowed_domain())) if not ok]
     host = re.sub(r"^https?://", "", base).split("/")[0] if base else ""
+    from_env = [f for f, on in (("username", user_env), ("base_url", base_env), ("token", token_env),
+                                ("domain", domain_env)) if on]
     return {"found": not missing, "missing": missing, "provider": "cPanel", "host": host,
-            "domain": allowed_domain()}
+            "domain": allowed_domain(), "username": username, "base_url": base, "token_set": token_set,
+            "from_env": from_env}
+
+
+def save_login(username: str, base_url: str, domain: str, token: str | None):
+    """Settings -> HTTPS: saves the cPanel login and the name. Fields set in
+    .env are left to .env. Changing the username or address without entering
+    the token again clears the saved token: otherwise the page could send
+    the token to whatever address someone typed in."""
+    if _progress["running"]:
+        raise HttpsError("HTTPS setup is running. Try again when it has finished.")
+    old = _stored_login()
+    new = dict(old)
+    username, base_url, token = username.strip(), base_url.strip().rstrip("/"), (token or "").strip()
+    if not _value("username")[1]:
+        if not username:
+            raise HttpsError("Enter the cPanel username.")
+        new["username"] = username
+    if not _value("base_url")[1]:
+        if not re.match(r"^https://[^\s/:]+(:\d{1,5})?$", base_url):
+            raise HttpsError("Enter the cPanel address as https://host:port, e.g. https://cpanel.example.com:2083.")
+        new["base_url"] = base_url
+    if not _value("domain")[1]:
+        d = _normal_domain(domain)
+        if not d:
+            raise HttpsError("Enter the name to use, e.g. pantry.example.com.")
+        new["domain"] = d
+    if (new.get("username") != old.get("username") or new.get("base_url") != old.get("base_url")) and not token:
+        new.pop("token_encrypted", None)
+    if token:
+        if not crypto.encryption_configured():
+            if crypto.key_source() is None:
+                crypto.generate_key_file()      # same key file the email password uses
+            else:
+                raise HttpsError("The token wasn't saved: the encryption key is damaged. "
+                                 "Settings → Email ingest explains how to fix it.")
+        new["token_encrypted"] = crypto.encrypt_secret(token)
+    _write_login(new)
+    log.info("HTTPS: cPanel login saved (user %s, %s, name %s, token %s)", new.get("username"),
+             new.get("base_url"), new.get("domain"), "set" if new.get("token_encrypted") else "not set")
+
+
+def forget_token():
+    """Settings password reset: the saved token goes; the rest stays."""
+    d = _stored_login()
+    if d.pop("token_encrypted", None) is not None:
+        _write_login(d)
+
+
+def clear_login():
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(LOGIN_PATH)
 
 
 def _settings(db) -> models.HttpsSettings:
@@ -174,10 +280,10 @@ _EMAIL_RE = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 
 def _not_pinned_error(domain: str, pinned: str) -> "HttpsError":
     if not pinned:
-        return HttpsError(f"Add {DOMAIN_VAR}={domain} to .env next to docker-compose.yml, then restart "
-                          "the app. It's the only name this page can set up.")
-    return HttpsError(f"This page can only set up {pinned}, the name in {DOMAIN_VAR} in .env. "
-                      "To use another name, change it there and restart the app.")
+        return HttpsError("Enter the name to use (e.g. pantry.example.com) with the cPanel login above, "
+                          "then save.")
+    return HttpsError(f"This page can only set up {pinned}, the saved name. To use another name, "
+                      "change it with the cPanel login above.")
 
 
 def is_network_address(ip: ipaddress.IPv4Address) -> bool:
@@ -229,13 +335,13 @@ class CpanelDns:
         except requests.RequestException as e:
             raise HttpsError(f"Couldn't reach cPanel at {self.base}: {e}")
         if r.status_code in (401, 403):
-            raise HttpsError("cPanel refused the login. Check CPANEL_USERNAME and CPANEL_TOKEN in .env.")
+            raise HttpsError("cPanel refused the login. Check the cPanel username and API token in Settings → HTTPS.")
         if r.status_code != 200:
             raise HttpsError(f"cPanel answered with HTTP {r.status_code}.")
         try:
             body = r.json()
         except ValueError:
-            raise HttpsError("cPanel's answer wasn't JSON. Check CPANEL_BASE_URL (e.g. https://host:2083).")
+            raise HttpsError("cPanel's answer wasn't JSON. Check the cPanel address (e.g. https://host:2083).")
         if not body.get("status"):
             errors = "; ".join(body.get("errors") or []) or "unknown error"
             raise HttpsError(f"cPanel refused the request: {errors}")
@@ -350,17 +456,20 @@ class CpanelDns:
                 return
 
 
+_MISSING_NAMES = {"CPANEL_USERNAME": "cPanel username", "CPANEL_TOKEN": "API token",
+                  "CPANEL_BASE_URL": "cPanel address", DOMAIN_VAR: "name"}
+
+
 def missing_settings_error(missing: list[str]) -> "HttpsError":
-    return HttpsError("Settings → HTTPS needs these in .env next to docker-compose.yml: " +
-                      ", ".join(missing) + ". Add them, then restart the app.")
+    return HttpsError("Settings → HTTPS still needs: " + ", ".join(_MISSING_NAMES.get(m, m) for m in missing) +
+                      ". Fill them in with the cPanel login and save.")
 
 
 def _dns_client() -> CpanelDns:
     cred = credentials_status()
     if not cred["found"]:
         raise missing_settings_error(cred["missing"])
-    return CpanelDns(os.environ["CPANEL_BASE_URL"].strip(), os.environ["CPANEL_USERNAME"].strip(),
-                     os.environ["CPANEL_TOKEN"].strip())
+    return CpanelDns(_value("base_url")[0], _value("username")[0], _token()[0])
 
 
 # ---------------------------------------------------------------------------

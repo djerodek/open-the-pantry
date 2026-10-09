@@ -23,7 +23,7 @@ def planted_keys(client):
     from app import https_setup
 
     os.makedirs(https_setup.HTTPS_DIR, exist_ok=True)
-    paths = [https_setup.KEY_PATH, https_setup.ACCOUNT_KEY_PATH]
+    paths = [https_setup.KEY_PATH, https_setup.ACCOUNT_KEY_PATH, https_setup.LOGIN_PATH]
     saved = {p: open(p, "rb").read() if os.path.exists(p) else None for p in paths}
     for p in paths:
         with open(p, "wb") as f:
@@ -43,7 +43,7 @@ def _zip_leaks(content: bytes) -> list[str]:
     leaks = []
     with zipfile.ZipFile(io.BytesIO(content)) as z:
         for name in z.namelist():
-            if "privkey" in name or "account.key" in name or name.startswith("https/"):
+            if "privkey" in name or "account.key" in name or "cpanel-login" in name or name.startswith("https/"):
                 leaks.append(name)
             elif MARKER in z.read(name):
                 leaks.append(name)
@@ -62,6 +62,8 @@ def test_backups_do_not_contain_the_tls_keys(client, sample_recipe_payload, plan
     "/https/privkey.pem",
     "/data/https/privkey.pem",
     "/https/account.key",
+    "/https/cpanel-login.json",
+    "/uploads/../https/cpanel-login.json",
     "/uploads/../https/privkey.pem",
     "/uploads/%2e%2e/https/privkey.pem",
     "/uploads/..%2fhttps%2fprivkey.pem",

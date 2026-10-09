@@ -337,3 +337,11 @@ class AdminPasswordIn(BaseModel):
 class AdminPasswordChangeIn(BaseModel):
     current_password: str = Field(max_length=256)
     new_password: str = Field(max_length=256)
+
+
+class HttpsLoginIn(BaseModel):
+    username: str = Field(default="", max_length=200)
+    base_url: str = Field(default="", max_length=300)
+    domain: str = Field(default="", max_length=253)
+    # Empty keeps the saved token (unless the username or address changes).
+    token: Optional[str] = Field(default=None, max_length=500)

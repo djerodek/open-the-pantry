@@ -103,11 +103,13 @@ def fresh_settings(client):
     import os
     from app.database import SessionLocal
     from app import models, https_setup
-    if os.path.exists(https_setup.REQUESTS_PATH):
-        os.remove(https_setup.REQUESTS_PATH)
+    for p in (https_setup.REQUESTS_PATH, https_setup.LOGIN_PATH):
+        if os.path.exists(p):
+            os.remove(p)
     yield
-    if os.path.exists(https_setup.REQUESTS_PATH):
-        os.remove(https_setup.REQUESTS_PATH)
+    for p in (https_setup.REQUESTS_PATH, https_setup.LOGIN_PATH):
+        if os.path.exists(p):
+            os.remove(p)
     db = SessionLocal()
     db.query(models.HttpsSettings).delete()
     db.commit()
@@ -227,7 +229,7 @@ def test_setup_saves_only_on_success(monkeypatch, cpanel, creds, fresh_settings)
     assert fake.find("www.example.test.", "A")[0]["data"] == ["203.0.113.10"]
 
 
-def test_setup_without_a_login_explains_env(client, monkeypatch, fresh_settings):
+def test_setup_without_a_login_says_what_to_fill_in(client, monkeypatch, fresh_settings):
     for v in ("CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL", "PANTRY_DOMAIN"):
         monkeypatch.delenv(v, raising=False)
     st = client.get("/api/https").json()
@@ -235,7 +237,7 @@ def test_setup_without_a_login_explains_env(client, monkeypatch, fresh_settings)
     assert st["credentials"]["missing"] == ["CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL", "PANTRY_DOMAIN"]
     r = client.post("/api/https/setup", json={"domain": "pantry.example.test", "lan_address": "192.168.60.20",
                                               "email": "me@example.test", "port": 8443})
-    assert r.status_code == 400 and ".env" in r.json()["detail"]
+    assert r.status_code == 400 and "cPanel login above" in r.json()["detail"]
     fr = client.post("/api/https/setup", headers={"X-App-Lang": "fr"},
                      json={"domain": "pantry", "lan_address": "192.168.60.20", "email": "me@example.test"})
     assert fr.json()["detail"] == "Entrez un nom comme pantry.example.com."
@@ -314,17 +316,17 @@ def test_only_the_name_in_env_can_be_set_up(client, creds, fresh_settings):
     body = {"lan_address": "192.168.60.20", "email": "me@example.test", "port": 8443}
     r = client.post("/api/https/setup", json={**body, "domain": "evil.example.test"})
     assert r.status_code == 400
-    assert r.json()["detail"].startswith("This page can only set up pantry.example.test, the name in PANTRY_DOMAIN")
+    assert r.json()["detail"].startswith("This page can only set up pantry.example.test, the saved name")
     fr = client.post("/api/https/setup", json={**body, "domain": "evil.example.test"}, headers={"X-App-Lang": "fr"})
     assert fr.json()["detail"].startswith("Cette page ne peut configurer que pantry.example.test")
     assert client.get("/api/https").json()["credentials"]["domain"] == "pantry.example.test"
 
 
-def test_an_empty_name_means_the_one_in_env():
+def test_an_empty_name_means_the_saved_one():
     from app import https_setup
     assert https_setup.validate("", "192.168.60.20", "me@example.test", 8443,
                                 pinned="pantry.example.test")[0] == "pantry.example.test"
-    with pytest.raises(https_setup.HttpsError, match="Add PANTRY_DOMAIN=pantry.example.test to .env"):
+    with pytest.raises(https_setup.HttpsError, match="Enter the name to use"):
         https_setup.validate("pantry.example.test", "192.168.60.20", "me@example.test", 8443, pinned="")
 
 
@@ -396,3 +398,72 @@ def test_an_old_record_someone_changed_is_left_alone(cpanel):
     fake.find("pantry.example.test.", "A")[0]["data"] = ["192.168.60.99"]
     assert dns.remove_a("pantry.example.test", "192.168.60.20") is False
     assert fake.find("pantry.example.test.", "A")[0]["data"] == ["192.168.60.99"]
+
+
+# The cPanel login entered in Settings -> HTTPS instead of .env (0057).
+@pytest.fixture
+def no_env(monkeypatch):
+    for v in ("CPANEL_USERNAME", "CPANEL_TOKEN", "CPANEL_BASE_URL", "PANTRY_DOMAIN"):
+        monkeypatch.delenv(v, raising=False)
+
+
+LOGIN = {"username": "marc", "base_url": "https://cp.example.test:2083", "domain": "pantry.example.test",
+         "token": "SECRET-TOKEN-123"}
+
+
+def test_the_login_can_be_saved_in_the_app(client, no_env, fresh_settings):
+    from app import https_setup
+    r = client.put("/api/https/credentials", json=LOGIN)
+    assert r.status_code == 200, r.text
+    cred = r.json()["credentials"]
+    assert cred["found"] is True and cred["token_set"] is True and cred["from_env"] == []
+    assert (cred["username"], cred["host"], cred["domain"]) == ("marc", "cp.example.test:2083", "pantry.example.test")
+    assert "SECRET-TOKEN-123" not in r.text and "SECRET-TOKEN-123" not in client.get("/api/https").text
+    raw = open(https_setup.LOGIN_PATH, encoding="utf-8").read()
+    assert "SECRET-TOKEN-123" not in raw and "token_encrypted" in raw
+    dns = https_setup._dns_client()
+    assert (dns.base, dns.auth) == ("https://cp.example.test:2083", "cpanel marc:SECRET-TOKEN-123")
+
+
+def test_saving_without_the_token_keeps_it_unless_the_login_changes(client, no_env, fresh_settings):
+    from app import https_setup
+    client.put("/api/https/credentials", json=LOGIN)
+    keep = {**LOGIN, "token": None, "domain": "kitchen.example.test"}
+    assert client.put("/api/https/credentials", json=keep).json()["credentials"]["token_set"] is True
+    # A new address without the token: the saved token mustn't go to it.
+    moved = {**LOGIN, "token": "", "base_url": "https://elsewhere.example.test:2083"}
+    assert client.put("/api/https/credentials", json=moved).json()["credentials"]["token_set"] is False
+    assert "token_encrypted" not in https_setup._stored_login()
+
+
+@pytest.mark.parametrize("field, value", [("base_url", "http://cp.example.test:2083"), ("base_url", "cp.example.test"),
+                                          ("domain", "pantry"), ("username", "")])
+def test_bad_login_values_are_refused(client, no_env, fresh_settings, field, value):
+    r = client.put("/api/https/credentials", json={**LOGIN, field: value})
+    assert r.status_code == 400
+
+
+def test_env_values_win_field_by_field(client, no_env, fresh_settings, monkeypatch):
+    client.put("/api/https/credentials", json=LOGIN)
+    monkeypatch.setenv("PANTRY_DOMAIN", "fromenv.example.test")
+    monkeypatch.setenv("CPANEL_TOKEN", "env-token")
+    cred = client.get("/api/https").json()["credentials"]
+    assert cred["domain"] == "fromenv.example.test" and cred["username"] == "marc"
+    assert sorted(cred["from_env"]) == ["domain", "token"]
+    # Saving leaves the .env fields alone.
+    r = client.put("/api/https/credentials", json={**LOGIN, "domain": "", "token": None})
+    assert r.status_code == 200 and r.json()["credentials"]["domain"] == "fromenv.example.test"
+
+
+def test_a_settings_password_reset_forgets_the_saved_token(client, no_env, fresh_settings):
+    from app import https_setup
+    client.put("/api/https/credentials", json=LOGIN)
+    https_setup.forget_token()
+    d = https_setup._stored_login()
+    assert "token_encrypted" not in d and d["username"] == "marc"
+
+
+def test_the_login_can_be_cleared(client, no_env, fresh_settings):
+    client.put("/api/https/credentials", json=LOGIN)
+    cred = client.delete("/api/https/credentials").json()["credentials"]
+    assert cred["found"] is False and cred["username"] == ""

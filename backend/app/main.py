@@ -2445,6 +2445,7 @@ async def _clear_credentials_after_reset():
         db.close()
     await https_setup.stop_server()
     https_setup.forget_certificate()
+    https_setup.forget_token()
 
 
 @app.post("/api/admin/password")
@@ -2542,6 +2543,25 @@ def https_summary():
 
 @app.get("/api/https")
 def get_https_status():
+    return https_setup.status()
+
+
+@app.put("/api/https/credentials")
+def save_https_login(payload: schemas.HttpsLoginIn):
+    """The cPanel login and the name, entered in Settings -> HTTPS (behind
+    the settings password like every /api/https route)."""
+    try:
+        https_setup.save_login(payload.username, payload.base_url, payload.domain, payload.token)
+    except (https_setup.HttpsError, crypto.EncryptionNotConfiguredError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return https_setup.status()
+
+
+@app.delete("/api/https/credentials")
+def clear_https_login():
+    if https_setup.status()["state"] == "working":
+        raise HTTPException(status_code=409, detail="HTTPS setup is running. Try again when it has finished.")
+    https_setup.clear_login()
     return https_setup.status()
 
 

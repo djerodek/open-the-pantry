@@ -522,6 +522,29 @@
     "Username": "Nom d'utilisateur",
     "Password": "Mot de passe",
     "Settings password": "Mot de passe des paramètres",
+    "cPanel login": "Identifiant cPanel",
+    "Step 1: your cPanel login and the name to use": "Étape 1 : votre identifiant cPanel et le nom à utiliser",
+    "The app creates its DNS record through your domain's cPanel. In cPanel: Security → Manage API Tokens → Create. Give the token an expiry date and, if cPanel offers it, access to DNS only.":
+      "L'application crée son enregistrement DNS par le cPanel de votre domaine. Dans cPanel : Security → Manage API Tokens → Create. Donnez au jeton une date d'expiration et, si cPanel le permet, un accès au DNS seulement.",
+    "cPanel username": "Nom d'utilisateur cPanel",
+    "cPanel address": "Adresse cPanel",
+    "The address you log in to cPanel at, with its port.": "L'adresse où vous vous connectez à cPanel, avec son port.",
+    "API token": "Jeton d'API",
+    "Paste the API token": "Collez le jeton d'API",
+    "Saved; leave empty to keep it": "Enregistré; laissez vide pour le garder",
+    "Stored encrypted, and never shown again. Changing the username or address clears it unless you enter it again.":
+      "Conservé chiffré, et jamais réaffiché. Changer le nom d'utilisateur ou l'adresse l'efface, sauf si vous l'entrez de nouveau.",
+    "Name to use": "Nom à utiliser",
+    "The only name this page will create or change, e.g. pantry.example.com. If it isn't in use yet, the app creates its DNS record.":
+      "Le seul nom que cette page créera ou modifiera, p. ex. pantry.example.com. S'il n'est pas encore utilisé, l'application crée son enregistrement DNS.",
+    "Set in .env": "Défini dans .env",
+    "Save login": "Enregistrer l'identifiant",
+    "Clear login": "Effacer l'identifiant",
+    "Remove the saved cPanel login? HTTPS keeps working until the certificate needs renewing.":
+      "Retirer l'identifiant cPanel enregistré? HTTPS continue de fonctionner jusqu'au renouvellement du certificat.",
+    "cPanel login saved.": "Identifiant cPanel enregistré.",
+    "cPanel login removed.": "Identifiant cPanel retiré.",
+    "Still needed: {1}": "Encore requis : {1}",
     "HTTPS is on, so Email ingest, HTTPS, Logs and Email PDF open only at the secure address. Over this plain http:// address the password could be read on the network.":
       "HTTPS est activé, donc la réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel s'ouvrent seulement à l'adresse sécurisée. Sur cette adresse http:// ordinaire, le mot de passe pourrait être lu sur le réseau.",
     "HTTPS is on. From now on this section opens only at the secure address:":
@@ -540,12 +563,12 @@
       "Au moins 8 caractères. Oublié? Supprimez admin-password.json dans le dossier de données de l'application. Créer un nouveau mot de passe efface alors le mot de passe de courriel enregistré et HTTPS, que vous configurez de nouveau.",
     "Forgot it? Delete admin-password.json in the app's data folder. Creating a new password then clears the saved email password and HTTPS, which you set up again.":
       "Oublié? Supprimez admin-password.json dans le dossier de données de l'application. Créer un nouveau mot de passe efface alors le mot de passe de courriel enregistré et HTTPS, que vous configurez de nouveau.",
-    "The settings password was reset. Creating a new one clears the saved email password and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.":
-      "Le mot de passe des paramètres a été réinitialisé. En créer un nouveau efface le mot de passe de courriel enregistré et désactive HTTPS (son certificat est supprimé); vous configurez ensuite les deux de nouveau. Les recettes et tout le reste sont conservés.",
+    "The settings password was reset. Creating a new one clears the saved email password and cPanel token and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.":
+      "Le mot de passe des paramètres a été réinitialisé. En créer un nouveau efface le mot de passe de courriel et le jeton cPanel enregistrés, et désactive HTTPS (son certificat est supprimé); vous configurez ensuite les deux de nouveau. Les recettes et tout le reste sont conservés.",
     "New password set. The email password was cleared and HTTPS turned off; set them up again.":
       "Nouveau mot de passe créé. Le mot de passe de courriel a été effacé et HTTPS désactivé; configurez-les de nouveau.",
-    "Reset. Creating a new password clears the saved email password and turns HTTPS off.":
-      "Réinitialisé. Créer un nouveau mot de passe efface le mot de passe de courriel enregistré et désactive HTTPS.",
+    "Reset. Creating a new password clears the saved email password and cPanel token and turns HTTPS off.":
+      "Réinitialisé. Créer un nouveau mot de passe efface le mot de passe de courriel et le jeton cPanel enregistrés, et désactive HTTPS.",
     "Current password": "Mot de passe actuel",
     "New password": "Nouveau mot de passe",
     "Type it again": "Entrez-le de nouveau",

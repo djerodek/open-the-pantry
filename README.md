@@ -111,7 +111,9 @@ password (`admin-password.json`) isn't in the zip either: copy it across
 too, or create a new one the first time you open Email ingest, HTTPS or Logs.
 If the old data folder had a password and its `admin-password.created`
 comes along without `admin-password.json`, creating the new one counts as a
-reset and clears the email password and HTTPS.
+reset and clears the email password and HTTPS. HTTPS itself (`https/`: the
+certificate and the saved cPanel login) isn't in the zip: copy that folder
+too, or set HTTPS up again.
 
 To build from source instead of pulling the published image:
 
@@ -133,48 +135,43 @@ name, e.g. `pantry.example.com`, pointing at this server's LAN address, and
 proves to Let's Encrypt that the name is yours with a temporary record it
 removes again. It renews the certificate by itself.
 
-What has to happen outside the app, once:
+What has to happen outside the app, once: **create a cPanel API token**
+(in cPanel, Security → Manage API Tokens → Create). Give it an **expiry
+date** (a year, say; renewal stops when it expires, and Settings → HTTPS
+says so). If your cPanel offers it, untick full access and allow only the
+DNS feature (Zone Editor), then check that **Set up HTTPS** still works.
+The token is kept inside the app's data, and the app reads files and pages
+from outside (PDFs, photos, email, web pages); limiting the token limits
+what anyone who ever broke into the app could do with your hosting account.
 
-1. **Create a cPanel API token:** in cPanel, Security → Manage API Tokens →
-   Create. Give it an **expiry date** (a year, say; renewal stops when it
-   expires, and Settings → HTTPS says so). If your cPanel offers it, untick
-   full access and allow only the DNS feature (Zone Editor), then check
-   that **Set up HTTPS** still works. The token sits inside the app's
-   container, which reads files and pages from outside (PDFs, photos,
-   email, web pages); limiting it limits what anyone who ever broke into
-   the app could do with your hosting account.
-2. **Put the login and the name in `.env`** next to `docker-compose.yml`:
+Then in **Settings → HTTPS** (it asks for the settings password):
 
-   ```
-   CPANEL_USERNAME=your-cpanel-username
-   CPANEL_TOKEN=paste-the-api-token
-   CPANEL_BASE_URL=https://your-cpanel-address:2083
-   PANTRY_DOMAIN=pantry.example.com
-   ```
+1. Enter the **cPanel username**, the **cPanel address** (where you log in,
+   with its port, e.g. `https://cpanel.example.com:2083`), the **API
+   token**, and the **name to use**, e.g. `pantry.example.com`, and press
+   **Save login**. The token is stored encrypted and never shown again.
+   The name is the only one the app will ever create or change with it.
+2. Enter this server's LAN address (filled in when you're using one) and an
+   email for Let's Encrypt, and press **Set up HTTPS**. It takes a minute
+   or two and shows each step. When it's done it shows the link,
+   `https://pantry.example.com:8443`. On an iPhone, open that and add it to
+   the Home Screen again: settings such as language and theme are kept per
+   address.
 
-   `chmod 600 .env` -- a full-access token can do anything your cPanel
-   login can. Neither is entered in the app's Settings, so they never pass
-   through a browser.
-   `PANTRY_DOMAIN` is the one name the app will ever create or change with
-   the token.
-3. **Restart:** `docker compose up -d`. The compose file already reads
-   `.env` if it exists and publishes port 8443 (if your compose file is
-   older than this, copy the `ports:` and `env_file:` lines from the
-   current one). The `required: false` form of `env_file` needs Docker
-   Compose 2.24 or later (`docker compose version`); with an older one,
-   either upgrade or replace those three lines with `env_file: .env` and
-   keep a `.env` file there, even an empty one.
+The default `docker-compose.yml` already publishes port 8443 (if yours is
+older, copy its `ports:` lines from the current one). No restart is needed.
 
-Then in Settings → HTTPS, which shows the name from `.env`: enter this
-server's LAN address (filled in when you're using one) and an email for
-Let's Encrypt, and press **Set up HTTPS**. It takes a minute or two and
-shows each step. When it's done it shows the link,
-`https://pantry.example.com:8443`. On an iPhone, open that and add it to the
-Home Screen again: settings such as language and theme are kept per
-address.
+**Prefer `.env`?** `CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` and
+`PANTRY_DOMAIN` in a `.env` file next to `docker-compose.yml` still work
+and win over what's saved in the app, field by field; Settings → HTTPS
+shows them as "Set in .env". Installs that already use `.env` need no
+change. The `env_file:` form with `required: false` in the default compose
+file needs Docker Compose 2.24 or later (`docker compose version`); with an
+older one, upgrade it or replace those three lines with `env_file: .env` and
+keep a `.env` file there, even an empty one.
 
 Safeguards and notes:
-- The app only ever creates the record for `PANTRY_DOMAIN`, and never
+- The app only ever creates the record for the saved name, and never
   changes a record it didn't create. A name already in use (`www`, the
   domain itself, anything with a record) is refused, so the page can't be
   used to repoint your website.
@@ -183,11 +180,11 @@ Safeguards and notes:
   at a server on the internet.
 - At most 5 certificate requests in 7 days, Let's Encrypt's own limit for
   one name; past that the page says when it can try again.
-- Changing `PANTRY_DOMAIN` and setting up again removes the old name's
-  record, if it still holds what the app wrote there. **Upgrading from a
-  version without `PANTRY_DOMAIN`:** add it to `.env` (the name you set up)
-  and restart; until then, renewal waits and Settings → HTTPS says what's
-  missing.
+- Changing the name and setting up again removes the old name's record,
+  if it still holds what the app wrote there.
+- Changing the cPanel username or address without entering the token again
+  clears the saved token, so the token can't be sent to an address someone
+  else typed in.
 - The old `http://<address>:8090` keeps working.
 - For `https://pantry.example.com` with no port, change the left side of
   `8443:8443` in `docker-compose.yml` to `443` (if the machine doesn't
@@ -639,11 +636,12 @@ Safeguards and notes:
     restoring you create a new one.
   - **Forgotten password:** delete `admin-password.json` from the data
     folder (no restart needed); the next visit asks for a new one. Creating
-    it **clears the saved email password and turns HTTPS off**, deleting
-    the certificate, so whoever sets the new password also enters those
-    again. The email server, username and recipient list, the HTTPS name
-    and address, the recipes and everything else are kept. The cPanel
-    token in `.env` is out of the app's reach and stays. The first password
+    it **clears the saved email password and cPanel token and turns HTTPS
+    off**, deleting the certificate, so whoever sets the new password also
+    enters those again. The email server, username and recipient list, the
+    cPanel username and address, the HTTPS name and address, the recipes
+    and everything else are kept. A token set in `.env` is out of the
+    app's reach and stays. The first password
     on an install upgraded from before 0052 clears nothing: the app keeps
     `admin-password.created` to tell a reset from a first setup.
   - Passwords are checked one at a time. After 5 wrong ones in a row from
@@ -689,19 +687,22 @@ Safeguards and notes:
   settings password. It's also capped: at most five recipients per email
   and 10 emails per hour. It's only offered once the email-ingest account
   has a saved password.
-- **Settings → HTTPS uses a cPanel API token from `.env`.** The token
-  never goes through the browser or into the database, and the app can't
-  show it. The HTTPS page needs the settings password, and even with it,
-  it works only for the name in `PANTRY_DOMAIN`: set it up again (at most 5
-  certificate requests a week), point it at another address on your
-  network, or turn HTTPS off. It can't create any other name, point the
-  name at the internet, or change or take over a record it didn't create
-  (so not your website's), and the certificate's key stays on the
-  server. But the token lives in the app's container, so anyone who got
-  code running there would have the token itself, with everything it
-  allows: give it an expiry date and, where cPanel allows it, DNS access
-  only (see *Optional: HTTPS on your network*), and keep `.env` private
-  (`chmod 600`).
+- **Settings → HTTPS keeps a cPanel API token.** It's entered on that page
+  (behind the settings password) or in `.env`, stored encrypted with the
+  same key as the email password in `data/https/cpanel-login.json`, never
+  shown again, never in a backup and never served. Changing the cPanel
+  username or address without entering it again clears it. A settings
+  password reset clears it too (one set in `.env` stays: the app can't
+  change that file). Even with the password, the page works only for the
+  saved name: set it up again (at most 5 certificate requests a week),
+  point it at another address on your network, or turn HTTPS off. It can't
+  create any other name, point the name at the internet, or change or take
+  over a record it didn't create (so not your website's), and the
+  certificate's key stays on the server. But the token is inside the
+  app's container, so anyone who got code running there would have the
+  token itself, with everything it allows: give it an expiry date and,
+  where cPanel allows it, DNS access only (see *Optional: HTTPS on your
+  network*).
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
   open the email settings could point them at their own server and press

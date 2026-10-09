@@ -76,6 +76,37 @@ _FR_PATTERNS = [
     _p(r"^Too many wrong passwords\. Try again in (\d+) seconds\.$",
        r"Trop de mots de passe erronés. Réessayez dans \1 secondes."),
     _p(r"^Wrong password\.$", "Mot de passe erroné."),
+    # Settings -> HTTPS: the cPanel login saved in the app
+    _p(r"^The saved cPanel token can't be read \(the encryption key changed or is missing\)\. "
+       r"Enter it again in Settings → HTTPS\.$",
+       "Le jeton cPanel enregistré ne peut pas être lu (la clé de chiffrement a changé ou manque). "
+       "Entrez-le de nouveau dans Paramètres → HTTPS."),
+    _p(r"^Enter the cPanel username\.$", "Entrez le nom d'utilisateur cPanel."),
+    _p(r"^Enter the cPanel address as https://host:port, e\.g\. https://cpanel\.example\.com:2083\.$",
+       "Entrez l'adresse cPanel sous la forme https://hôte:port, p. ex. https://cpanel.example.com:2083."),
+    _p(r"^Enter the name to use, e\.g\. pantry\.example\.com\.$",
+       "Entrez le nom à utiliser, p. ex. pantry.example.com."),
+    _p(r"^The token wasn't saved: the encryption key is damaged\. Settings → Email ingest explains how to fix it\.$",
+       "Le jeton n'a pas été enregistré : la clé de chiffrement est endommagée. Paramètres → Réception par "
+       "courriel explique comment la réparer."),
+    _p(r"^Enter the name to use \(e\.g\. pantry\.example\.com\) with the cPanel login above, then save\.$",
+       "Entrez le nom à utiliser (p. ex. pantry.example.com) avec l'identifiant cPanel ci-dessus, puis "
+       "enregistrez."),
+    _p(r"^This page can only set up (\S+), the saved name\. To use another name, change it with the cPanel "
+       r"login above\.$",
+       r"Cette page ne peut configurer que \1, le nom enregistré. Pour utiliser un autre nom, changez-le avec "
+       r"l'identifiant cPanel ci-dessus."),
+    _p(r"^Settings → HTTPS still needs: (.*)\. Fill them in with the cPanel login and save\.$",
+       r"Paramètres → HTTPS demande encore : \1. Remplissez-les avec l'identifiant cPanel et enregistrez."),
+    _p(r"cPanel username(?=[,.])", "nom d'utilisateur cPanel"),
+    _p(r"API token(?=[,.])", "jeton d'API"),
+    _p(r"cPanel address(?=[,.])", "adresse cPanel"),
+    _p(r"(?<=: |, )name(?=[,.])", "nom"),
+    _p(r"^cPanel refused the login\. Check the cPanel username and API token in Settings → HTTPS\.$",
+       "cPanel a refusé la connexion. Vérifiez le nom d'utilisateur cPanel et le jeton d'API dans Paramètres → "
+       "HTTPS."),
+    _p(r"^cPanel's answer wasn't JSON\. Check the cPanel address \(e\.g\. https://host:2083\)\.$",
+       "La réponse de cPanel n'était pas du JSON. Vérifiez l'adresse cPanel (p. ex. https://hôte:2083)."),
     _p(r"^HTTPS is on, so this opens only at the secure address: ",
        "HTTPS est activé, donc ceci s'ouvre seulement à l'adresse sécurisée : "),
     _p(r"^The new password couldn't be saved\. The email password and HTTPS were already cleared; try again\. ",

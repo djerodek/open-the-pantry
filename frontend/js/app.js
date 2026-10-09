@@ -441,7 +441,7 @@
       const [pw2, pw2Field] = field("admin-confirm", tx("Type it again"), "new-password");
 
       const intro = mode === "create" && reset
-        ? tx("The settings password was reset. Creating a new one clears the saved email password and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.")
+        ? tx("The settings password was reset. Creating a new one clears the saved email password and cPanel token and turns HTTPS off (its certificate is deleted); you then set both up again. Recipes and everything else are kept.")
         : mode === "create"
         ? tx("Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.")
         : mode === "unlock"
@@ -556,7 +556,7 @@
     if (st.https_url) {
       statusEl.textContent = tx("HTTPS is on: these open only at {1}", { 1: st.https_url });
     } else if (!st.password_set && st.reset) {
-      statusEl.textContent = tx("Reset. Creating a new password clears the saved email password and turns HTTPS off.");
+      statusEl.textContent = tx("Reset. Creating a new password clears the saved email password and cPanel token and turns HTTPS off.");
     } else if (!st.password_set) {
       statusEl.textContent = tx("Not set yet. You'll create it the first time you open one of them.");
     } else if (st.unlocked) {
@@ -644,6 +644,75 @@
     return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
   }
 
+  // Step 1 of Settings -> HTTPS: the cPanel login and the one name to set up.
+  // Saved in the app (token encrypted, never shown again). A value set in
+  // .env wins and is shown read-only.
+  function httpsLoginSection(st, keep) {
+    const c = st.credentials;
+    const fromEnv = new Set(c.from_env || []);
+    const wrap = el("div", { class: "setup-callout https-login" });
+    wrap.appendChild(el("strong", { text: c.found ? tx("cPanel login") : tx("Step 1: your cPanel login and the name to use") }));
+    if (!c.found) {
+      wrap.appendChild(el("p", { text: tx("The app creates its DNS record through your domain's cPanel. In cPanel: Security → Manage API Tokens → Create. Give the token an expiry date and, if cPanel offers it, access to DNS only.") }));
+    }
+    const input = (id, type, value, placeholder, envField) => {
+      const i = el("input", { type, id, placeholder, autocomplete: "off", value: keep[id] ?? value ?? "" });
+      i.dataset.env = envField;
+      if (fromEnv.has(envField)) { i.readOnly = true; i.value = type === "password" ? "" : value || ""; i.placeholder = tx("Set in .env"); }
+      return i;
+    };
+    const userIn = input("https-cp-user", "text", c.username, "your-cpanel-username", "username");
+    const baseIn = input("https-cp-base", "url", c.base_url, "https://cpanel.example.com:2083", "base_url");
+    const tokenIn = input("https-cp-token", "password", "", c.token_set ? tx("Saved; leave empty to keep it") : tx("Paste the API token"), "token");
+    const domainIn = input("https-domain", "text", c.domain || st.domain, "pantry.example.com", "domain");
+    const row = (id, label, i, hint) => el("div", { class: "field" }, [
+      el("label", { for: id, text: label }), i,
+      fromEnv.has(i.dataset.env) ? null : hint ? el("div", { class: "field-hint", text: hint }) : null,
+    ]);
+    wrap.appendChild(row("https-cp-user", tx("cPanel username"), userIn));
+    wrap.appendChild(row("https-cp-base", tx("cPanel address"), baseIn, tx("The address you log in to cPanel at, with its port.")));
+    wrap.appendChild(row("https-cp-token", tx("API token"), tokenIn,
+      tx("Stored encrypted, and never shown again. Changing the username or address clears it unless you enter it again.")));
+    wrap.appendChild(row("https-domain", tx("Name to use"), domainIn,
+      tx("The only name this page will create or change, e.g. pantry.example.com. If it isn't in use yet, the app creates its DNS record.")));
+    const status = el("p", { class: "field-hint", role: "status" });
+    const save = el("button", { class: "btn-primary", type: "button", text: tx("Save login"), onclick: async () => {
+      save.disabled = true;
+      status.textContent = "";
+      const res = await adminFetch(`${API}/https/credentials`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: userIn.value.trim(), base_url: baseIn.value.trim(),
+          domain: domainIn.value.trim(), token: tokenIn.value.trim() || null }),
+      }).catch(() => null);
+      save.disabled = false;
+      if (!res || !res.ok) {
+        const body = res ? await res.json().catch(() => ({})) : {};
+        status.textContent = apiErrorText(body, res ? res.status : 0);
+        return;
+      }
+      announce(tx("cPanel login saved."));
+      ["https-cp-user", "https-cp-base", "https-cp-token", "https-domain"].forEach((k) => { delete keep[k]; });
+      await renderHttpsSettings();
+    } });
+    const buttons = [save];
+    if ((c.username || c.token_set) && fromEnv.size < 4) {
+      buttons.push(el("button", { class: "btn-secondary", type: "button", text: tx("Clear login"), onclick: async () => {
+        if (!confirm(tx("Remove the saved cPanel login? HTTPS keeps working until the certificate needs renewing."))) return;
+        const res = await adminFetch(`${API}/https/credentials`, { method: "DELETE" }).catch(() => null);
+        if (!res || !res.ok) { announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again.")); return; }
+        announce(tx("cPanel login removed."));
+        await renderHttpsSettings();
+      } }));
+    }
+    wrap.appendChild(el("div", { style: "display:flex;gap:0.5rem;flex-wrap:wrap;" }, buttons));
+    wrap.appendChild(status);
+    if (!c.found && c.missing && c.missing.length && (c.username || c.token_set || c.domain)) {
+      status.textContent = tx("Still needed: {1}", { 1: c.missing.map((m) => ({ CPANEL_USERNAME: tx("cPanel username"),
+        CPANEL_TOKEN: tx("API token"), CPANEL_BASE_URL: tx("cPanel address"), PANTRY_DOMAIN: tx("Name to use") })[m] || m).join(", ") });
+    }
+    return wrap;
+  }
+
   async function renderHttpsSettings(fromPoll = false) {
     clearTimeout(httpsPollTimer);
     let st;
@@ -662,33 +731,19 @@
       return;
     }
     const keep = {};  // values typed so far survive a re-render while polling
-    $$("input", httpsPanel).forEach((i) => { keep[i.id] = i.value; });
+    // The token is never carried over: a saved form must not send it again.
+    $$("input", httpsPanel).forEach((i) => { if (i.type !== "password") keep[i.id] = i.value; });
     httpsPanel.innerHTML = "";
     const summary = httpsSummaryText(st);
     if (summary) httpsSummary.textContent = summary;
 
-    if (!st.credentials.found) {
-      const box = el("div", { class: "setup-callout" }, [
-        el("strong", { text: tx("Step 1: add your cPanel login and the name to use") }),
-        el("p", { text: tx("The app creates its DNS records through your domain's cPanel. For safety the login isn't entered here: put it in a file named .env next to docker-compose.yml, then restart the app (docker compose up -d).") }),
-        el("p", { text: tx("PANTRY_DOMAIN is the one name this page can set up. It's kept with the login so that nobody using the app can have it create other names in your domain.") }),
-        el("p", { text: tx("In cPanel: Security → Manage API Tokens → Create. Then add these lines to .env:") }),
-        el("pre", { class: "setup-code", text: "CPANEL_USERNAME=your-cpanel-username\nCPANEL_TOKEN=paste-the-api-token\nCPANEL_BASE_URL=https://your-cpanel-address:2083\nPANTRY_DOMAIN=pantry.example.com" }),
-        el("p", { class: "field-hint", text: tx("Missing now: {1}", { 1: st.credentials.missing.join(", ") }) }),
-      ]);
-      httpsPanel.appendChild(box);
-    } else {
-      httpsPanel.appendChild(el("div", { class: "field-hint", text: tx("cPanel login found ({1}).", { 1: st.credentials.host }) }));
-    }
+    httpsPanel.appendChild(httpsLoginSection(st, keep));
 
     const disabled = !st.credentials.found || st.state === "working";
     const field = (id, label, input, hint) => el("div", { class: "field" }, [
       el("label", { for: id, text: label }), input, hint ? el("div", { class: "field-hint", text: hint }) : null,
     ]);
     const guessLan = st.lan_address || (isIPv4(location.hostname) ? location.hostname : "");
-    // The name comes from PANTRY_DOMAIN in .env and can't be changed here.
-    const domainIn = el("input", { type: "text", id: "https-domain", placeholder: "pantry.example.com",
-      readonly: "", value: st.credentials.domain || st.domain });
     const lanIn = el("input", { type: "text", id: "https-lan", placeholder: "192.168.1.20", inputmode: "decimal",
       autocomplete: "off", value: keep["https-lan"] ?? guessLan });
     const emailIn = el("input", { type: "email", id: "https-email", placeholder: "you@example.com",
@@ -697,8 +752,6 @@
       value: keep["https-port"] ?? String(st.port || 8443) });
     [lanIn, emailIn, portIn].forEach((i) => { i.disabled = disabled; });
 
-    httpsPanel.appendChild(field("https-domain", tx("Address"), domainIn,
-      tx("Set by PANTRY_DOMAIN in .env; the only name this page can set up. If it isn't in use yet, the app creates its DNS record.")));
     httpsPanel.appendChild(field("https-lan", tx("This server's address on your network"), lanIn,
       tx("Where the name will point: an address on your home network or VPN. Filled in from the address you're using now, if it's a number.")));
     httpsPanel.appendChild(field("https-email", tx("Email for Let's Encrypt"), emailIn,
