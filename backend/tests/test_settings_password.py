@@ -346,9 +346,11 @@ def test_changing_address_doesnt_buy_more_guesses(own_file):
     assert outcomes[own_file.FREE_TRIES_ALL:] == ["wait"] * 3
 
 
-def test_once_https_is_on_the_password_needs_the_secure_address(credentials, stranger, secure_stranger):
+def test_once_https_is_on_the_password_needs_the_secure_address(credentials, stranger, secure_stranger, monkeypatch):
     """Claude review round 4: after HTTPS is set up, the password and the
     unlock cookie still crossed the network in plain text on port 8090."""
+    from app import https_setup
+    monkeypatch.setattr(https_setup, "_server", object())        # the listener is up
     assert secure_stranger.post("/api/admin/password", json={"password": "first-password"}).status_code == 200
     st = stranger.get("/api/admin/status").json()
     assert st["https_url"] == "https://pantry.example.com:8443"
@@ -374,8 +376,46 @@ def test_the_server_itself_may_use_plain_http():
     from types import SimpleNamespace
     from app.main import _https_only_url
     from unittest.mock import patch
-    on = {"enabled": True, "url": "https://pantry.example.com:8443"}
+    on = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": True}
     with patch("app.main.https_setup.status", return_value=on):
         for host, expected in [("127.0.0.1", None), ("::1", None), ("192.168.1.30", on["url"])]:
             req = SimpleNamespace(url=SimpleNamespace(scheme="http"), client=SimpleNamespace(host=host))
             assert _https_only_url(req) == expected, host
+
+
+def test_https_that_isnt_listening_doesnt_lock_out_settings():
+    """ChatGPT review of 0057: with HTTPS on but its listener down (port in
+    use), the secure address doesn't answer, so plain http must still work."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from app.main import _https_only_url
+    req = SimpleNamespace(url=SimpleNamespace(scheme="http"), client=SimpleNamespace(host="192.168.1.30"))
+    down = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": False}
+    with patch("app.main.https_setup.status", return_value=down):
+        assert _https_only_url(req) is None
+
+
+def test_https_from_a_proxy_also_closes_plain_http(stranger, secure_stranger, monkeypatch):
+    """ChatGPT review of 0057: on the Traefik route the app's own HTTPS is off,
+    so port 8090 still took the password in plain text."""
+    monkeypatch.setenv("RECIPE_APP_HTTPS_URL", "https://pantry.example.com")
+    r = stranger.post("/api/admin/unlock", json={"password": TEST_SETTINGS_PASSWORD})
+    assert r.status_code == 403 and "https://pantry.example.com" in r.json()["detail"]
+    assert stranger.get("/api/email-settings").status_code == 403
+    assert stranger.get("/api/admin/status").json()["https_url"] == "https://pantry.example.com"
+    # Through the proxy (https), as usual.
+    assert secure_stranger.post("/api/admin/unlock", json={"password": TEST_SETTINGS_PASSWORD}).status_code == 200
+    assert stranger.get("/api/recipes").status_code == 200
+
+
+def test_a_reset_during_https_setup_clears_nothing(credentials, secure_stranger, monkeypatch):
+    """ChatGPT review of 0057: the email password was cleared before the
+    running HTTPS job made the request fail."""
+    import os
+    from app import https_setup
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
+    os.remove(credentials.PASSWORD_PATH)
+    monkeypatch.setitem(https_setup._progress, "running", True)
+    r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 409
+    assert _state()["email_password"] == "encrypted-blob" and credentials.was_reset()

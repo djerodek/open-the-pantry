@@ -300,13 +300,22 @@ def _https_only_url(request: Request) -> str | None:
     """Once the app's own HTTPS is on, the settings password, its cookie and
     the locked pages are refused over plain http:// (anyone on the Wi-Fi
     could read them there), except from the server itself. Returns the
-    https:// address to use instead, or None when the request may go ahead."""
+    https:// address to use instead, or None when the request may go ahead.
+
+    HTTPS from a proxy (the Traefik route) sets RECIPE_APP_HTTPS_URL; the
+    proxy's requests arrive as https (FORWARDED_ALLOW_IPS), direct ones to
+    8090 don't. The app's own HTTPS counts only while its listener is
+    actually up: if it couldn't start, the secure address doesn't work
+    either, and refusing would only lock the owner out of Settings."""
     if request.url.scheme == "https":
         return None
     if request.client and request.client.host in ("127.0.0.1", "::1"):
         return None
+    external = os.environ.get("RECIPE_APP_HTTPS_URL", "").strip()
+    if external:
+        return external
     st = https_setup.status()
-    return st.get("url") if st.get("enabled") and st.get("url") else None
+    return st.get("url") if st.get("enabled") and st.get("url") and st.get("listening") else None
 
 
 def _https_only_response(url: str) -> JSONResponse:
@@ -2435,6 +2444,9 @@ def admin_status(request: Request):
 async def _clear_credentials_after_reset():
     """The settings password was reset (its file deleted): whoever creates
     the new one sets the email password and HTTPS up again."""
+    # Checked before anything is cleared, so a refusal leaves nothing half done.
+    if https_setup.status()["state"] == "working":
+        raise https_setup.HttpsError("HTTPS setup is running. Try again when it has finished.")
     db = SessionLocal()
     try:
         settings = _get_email_settings(db)

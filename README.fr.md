@@ -133,7 +133,8 @@ dossier avait un mot de passe et que son `admin-password.created` est copié
 sans `admin-password.json`, créer le nouveau compte comme une
 réinitialisation et efface le mot de passe de courriel et HTTPS. HTTPS
 lui-même (`https/` : le certificat et l'identifiant cPanel enregistré)
-n'est pas dans le .zip : copiez ce dossier aussi, ou configurez HTTPS de
+n'est pas dans le .zip : copiez ce dossier avec `encryption.key` (le jeton
+cPanel enregistré est chiffré avec cette clé), ou configurez HTTPS de
 nouveau.
 
 Pour construire à partir du code source plutôt que de télécharger l'image
@@ -241,6 +242,12 @@ Garde-fous et remarques :
     Traefik lui transmet depuis celle-là seulement. Chaque visiteur a alors
     sa propre limite de requêtes et son propre compte de mauvais mots de
     passe.
+  - Le mot de passe des paramètres et les sections qu'il protège ne s'ouvrent
+    qu'à l'adresse `https://`, jamais sur `http://…:8090`
+    (`RECIPE_APP_HTTPS_URL` dans le fichier compose). S'ils indiquent qu'ils
+    s'ouvrent seulement à l'adresse sécurisée alors que vous y êtes déjà,
+    l'application ne voit pas l'adresse de Traefik : vérifiez
+    `PANTRY_TRAEFIK_IP`.
   - **Mise à jour de cette méthode depuis une version antérieure à 0056 :**
     déplacez les lignes du jeton de `.env` vers `traefik.env`, puis faites
     une fois `docker compose down` et `docker compose up -d` (la plage
@@ -783,7 +790,8 @@ courriel)**
     double à chaque fois, jusqu'à 15 minutes). La deuxième limite veut dire
     que quelqu'un qui devine peut vous faire attendre aussi; un bon mot de
     passe ou un redémarrage l'efface.
-  - **Une fois le HTTPS de l'application activé,** le mot de passe et ces
+  - **Une fois le HTTPS de l'application activé** (et en marche; ou avec
+    Traefik), le mot de passe et ces
     sections ne fonctionnent qu'à l'adresse `https://`; sur
     `http://…:8090`, où le mot de passe pourrait être lu sur le réseau,
     l'application donne plutôt un lien vers l'adresse sécurisée. Les

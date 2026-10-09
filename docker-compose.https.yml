@@ -29,6 +29,10 @@ services:
       # shared wrong-password count for everybody. Never "*" while 8090 is
       # also published: anyone could then claim any address.
       FORWARDED_ALLOW_IPS: ${PANTRY_TRAEFIK_IP:-172.31.250.10}
+      # The secure address. The settings password and the sections behind
+      # it then open only through Traefik, never over the plain http://
+      # port 8090 below, where the password could be read on the network.
+      RECIPE_APP_HTTPS_URL: https://${PANTRY_DOMAIN}:${PANTRY_HTTPS_PORT:-443}
     labels:
       open-the-pantry.https: "true"
       traefik.enable: "true"

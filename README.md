@@ -113,7 +113,8 @@ If the old data folder had a password and its `admin-password.created`
 comes along without `admin-password.json`, creating the new one counts as a
 reset and clears the email password and HTTPS. HTTPS itself (`https/`: the
 certificate and the saved cPanel login) isn't in the zip: copy that folder
-too, or set HTTPS up again.
+together with `encryption.key` (the saved cPanel token is encrypted with
+it), or set HTTPS up again.
 
 To build from source instead of pulling the published image:
 
@@ -207,6 +208,11 @@ Safeguards and notes:
     is in use), and the app trusts the visitor addresses Traefik passes on
     from there only. Each visitor then gets their own request limit and
     wrong-password count.
+  - The settings password and the sections behind it open only at the
+    `https://` address there, never over `http://…:8090`
+    (`RECIPE_APP_HTTPS_URL` in the compose file). If they say "opens only at
+    the secure address" while you're already on it, the app isn't seeing
+    Traefik's address: check `PANTRY_TRAEFIK_IP`.
   - **Upgrading this route from before 0056:** move the token lines from
     `.env` to `traefik.env`, then `docker compose down` and
     `docker compose up -d` once (the network's address range changes).
@@ -649,8 +655,9 @@ Safeguards and notes:
     to wait (30 seconds, doubling up to 15 minutes). The second limit means
     someone guessing can make you wait too; a correct password or a
     restart clears it.
-  - **Once the app's own HTTPS is on,** the password and these sections
-    work only at the `https://` address; over `http://…:8090`, where the
+  - **Once the app's own HTTPS is on** (and running; or on the Traefik
+    route), the password and these sections work only at the `https://`
+    address; over `http://…:8090`, where the
     password could be read on the network, the app links to the secure
     address instead. Requests from the server itself are exempt.
   - The full backup (Settings → Backup) stays open, like the recipes. It
