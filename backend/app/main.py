@@ -296,6 +296,24 @@ def _host_allowed(host_header: str) -> bool:
     return "." not in host or host.endswith(_LOCAL_SUFFIXES)
 
 
+def _https_only_url(request: Request) -> str | None:
+    """Once the app's own HTTPS is on, the settings password, its cookie and
+    the locked pages are refused over plain http:// (anyone on the Wi-Fi
+    could read them there), except from the server itself. Returns the
+    https:// address to use instead, or None when the request may go ahead."""
+    if request.url.scheme == "https":
+        return None
+    if request.client and request.client.host in ("127.0.0.1", "::1"):
+        return None
+    st = https_setup.status()
+    return st.get("url") if st.get("enabled") and st.get("url") else None
+
+
+def _https_only_response(url: str) -> JSONResponse:
+    return JSONResponse(status_code=403, content={
+        "detail": f"HTTPS is on, so this opens only at the secure address: {url}", "https_url": url})
+
+
 @app.middleware("http")
 async def settings_password_gate(request: Request, call_next):
     """Email, HTTPS, Logs and Email PDF need the settings password (see
@@ -307,6 +325,9 @@ async def settings_password_gate(request: Request, call_next):
     refused before this one says anything about the lock."""
     if not admin_lock.is_locked_path(request.url.path):
         return await call_next(request)
+    secure_url = _https_only_url(request)
+    if secure_url:
+        return _https_only_response(secure_url)
     if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
         return await call_next(request)
     detail = ("Locked. Enter the settings password." if admin_lock.password_set()
@@ -2375,14 +2396,17 @@ def clear_logs_endpoint():
 # ---------------------------------------------------------------------------
 # Settings password (admin_lock.py)
 # ---------------------------------------------------------------------------
-def _admin_status(token: str | None) -> dict:
+def _admin_status(token: str | None, request: Request | None = None) -> dict:
     left = admin_lock.seconds_left(token)
     return {"password_set": admin_lock.password_set(), "unlocked": left > 0, "seconds_left": left,
-            "reset": admin_lock.was_reset()}
+            "reset": admin_lock.was_reset(),
+            # Set when this request came over plain http:// while HTTPS is on:
+            # the page then links to the secure address instead of asking.
+            "https_url": _https_only_url(request) if request is not None else None}
 
 
 def _with_session(request: Request, token: str) -> JSONResponse:
-    res = JSONResponse(_admin_status(token))
+    res = JSONResponse(_admin_status(token, request))
     res.set_cookie(admin_lock.COOKIE_NAME, token, max_age=admin_lock.UNLOCK_SECONDS, path="/api",
                    httponly=True, samesite="strict", secure=request.url.scheme == "https")
     return res
@@ -2397,9 +2421,15 @@ def _too_many(e: admin_lock.TooManyTries):
                         headers={"Retry-After": str(e.wait)})
 
 
+def _refuse_plain_http(request: Request):
+    url = _https_only_url(request)
+    if url:
+        raise HTTPException(status_code=403, detail=f"HTTPS is on, so this opens only at the secure address: {url}")
+
+
 @app.get("/api/admin/status")
 def admin_status(request: Request):
-    return _admin_status(request.cookies.get(admin_lock.COOKIE_NAME))
+    return _admin_status(request.cookies.get(admin_lock.COOKIE_NAME), request)
 
 
 async def _clear_credentials_after_reset():
@@ -2421,6 +2451,7 @@ async def _clear_credentials_after_reset():
 async def admin_create_password(payload: schemas.AdminPasswordIn, request: Request):
     """First use only: once a password exists, this is refused. After a
     reset, the saved email password and HTTPS are cleared first."""
+    _refuse_plain_http(request)
     if admin_lock.password_set():
         raise HTTPException(status_code=409, detail="A settings password already exists.")
     try:
@@ -2456,6 +2487,7 @@ async def admin_create_password(payload: schemas.AdminPasswordIn, request: Reque
 
 @app.post("/api/admin/unlock")
 def admin_unlock(payload: schemas.AdminPasswordIn, request: Request):
+    _refuse_plain_http(request)
     if not admin_lock.password_set():
         raise HTTPException(status_code=400, detail="Create a settings password first.")
     try:
@@ -2470,6 +2502,7 @@ def admin_unlock(payload: schemas.AdminPasswordIn, request: Request):
 
 @app.post("/api/admin/password/change")
 def admin_change_password(payload: schemas.AdminPasswordChangeIn, request: Request):
+    _refuse_plain_http(request)
     try:
         admin_lock.check_new_password(payload.new_password)
         token = admin_lock.change(payload.current_password, payload.new_password, _client(request))

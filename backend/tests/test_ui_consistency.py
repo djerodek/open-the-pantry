@@ -58,6 +58,7 @@ def test_https_setup_is_off_by_default_and_names_no_real_domain():
     refuses to start without them; the repo carries only placeholders."""
     yml = (ROOT / "docker-compose.https.yml").read_text(encoding="utf-8")
     example = (ROOT / "https.env.example").read_text(encoding="utf-8")
+    example += (ROOT / "traefik.env.example").read_text(encoding="utf-8")
     for var in ("PANTRY_DOMAIN", "ACME_EMAIL", "ACME_DNS_PROVIDER"):
         assert re.search(r"\$\{" + var + r":\?", yml), var
     # Any domain-looking name must be a documentation placeholder.
@@ -65,9 +66,15 @@ def test_https_setup_is_off_by_default_and_names_no_real_domain():
     allowed = {"example.com", "pantry.example.com", "cpanel.example.com", "ns1.example.com", "go-acme.github.io"}
     assert names <= allowed, names - allowed
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").split()
-    assert ".env" in ignored and "letsencrypt/" in ignored
+    assert ".env" in ignored and "traefik.env" in ignored and "letsencrypt/" in ignored
     # Plain `docker compose up -d` doesn't include it.
     assert "traefik" not in (ROOT / "docker-compose.yml").read_text(encoding="utf-8").lower()
+    # Claude review round 4: the DNS token is Traefik's alone (the app gets
+    # .env), and the example doesn't steer cPanel users into this route.
+    assert re.search(r"open-the-pantry-https:.*?env_file:\s*\n\s*- traefik\.env", yml, re.S)
+    https_example = (ROOT / "https.env.example").read_text(encoding="utf-8")
+    assert "ACME_DNS_PROVIDER=cpanel" not in https_example and "TOKEN" not in https_example.replace("token", "")
+    assert "FORWARDED_ALLOW_IPS" in yml and "FORWARDED_ALLOW_IPS: \"*\"" not in yml
 
 
 def test_source_link_only_for_web_addresses():

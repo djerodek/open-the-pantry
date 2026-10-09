@@ -49,12 +49,22 @@ MAX_LENGTH = 256
 _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
 # Wrong guesses: after FREE_TRIES in a row from one address, each further
-# try must wait, doubling from BACKOFF_START up to BACKOFF_MAX.
+# try must wait, doubling from BACKOFF_START up to BACKOFF_MAX. The same
+# applies to all addresses together after FREE_TRIES_ALL, so changing
+# address (IPv6 makes that easy) doesn't buy more guesses. A correct
+# password clears both counts.
 FREE_TRIES = 5
+FREE_TRIES_ALL = 20
 BACKOFF_START = 30
 BACKOFF_MAX = 15 * 60
+_ALL = "*"   # the key of the all-addresses count in _failures
 
 _lock = threading.Lock()
+# One password check at a time: the limit is checked, the slow scrypt run
+# and the result recorded as one step, so guesses sent all at once can't
+# all get past the limit before the first failure is counted. Also keeps
+# memory to one 16 MB check at a time.
+_check_lock = threading.Lock()
 _sessions: dict[str, tuple[float, str]] = {}   # token -> (expires_at, password fingerprint)
 _failures: dict[str, tuple[int, float]] = {}   # client address -> (failures in a row, next try allowed at)
 
@@ -184,42 +194,50 @@ def create(password: str) -> str:
 
 def _check_backoff(client: str):
     with _lock:
-        count, allowed_at = _failures.get(client, (0, 0.0))
-        wait = int(allowed_at - time.time() + 0.999)
-        if wait > 0:
-            raise TooManyTries(wait)
+        now = time.time()
+        for key in (client, _ALL):
+            _, allowed_at = _failures.get(key, (0, 0.0))
+            wait = int(allowed_at - now + 0.999)
+            if wait > 0:
+                raise TooManyTries(wait)
 
 
 def _record(client: str, ok: bool):
     with _lock:
         if ok:
             _failures.pop(client, None)
+            _failures.pop(_ALL, None)
             return
         now = time.time()
         # Forget addresses whose last wrong guess is long past.
         for c, (_, allowed_at) in list(_failures.items()):
             if allowed_at < now - BACKOFF_MAX:
                 del _failures[c]
-        count, _ = _failures.get(client, (0, 0.0))
-        count += 1
-        wait = 0 if count < FREE_TRIES else min(BACKOFF_START * 2 ** (count - FREE_TRIES), BACKOFF_MAX)
-        _failures[client] = (count, now + wait)
+        for key, free in ((client, FREE_TRIES), (_ALL, FREE_TRIES_ALL)):
+            count, _ = _failures.get(key, (0, 0.0))
+            count += 1
+            wait = 0 if count < free else min(BACKOFF_START * 2 ** (count - free), BACKOFF_MAX)
+            _failures[key] = (count, now + wait)
+
+
+def _checked(password: str, client: str) -> bool:
+    """The password check behind unlock and change: limit, scrypt and
+    record, one request at a time."""
+    with _check_lock:
+        _check_backoff(client)
+        ok = _verify(password)
+        _record(client, ok)
+    return ok
 
 
 def unlock(password: str, client: str) -> str | None:
     """A session token for the right password, None for a wrong one."""
-    _check_backoff(client)
-    ok = _verify(password)
-    _record(client, ok)
-    return _new_session() if ok else None
+    return _new_session() if _checked(password, client) else None
 
 
 def change(current: str, new: str, client: str) -> str | None:
     """Replaces the password; every other unlocked browser is locked."""
-    _check_backoff(client)
-    ok = _verify(current)
-    _record(client, ok)
-    if not ok:
+    if not _checked(current, client):
         return None
     _write(new)
     with _lock:

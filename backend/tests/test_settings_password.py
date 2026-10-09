@@ -22,6 +22,17 @@ def stranger(client):
         admin_lock._failures.clear()
 
 
+@pytest.fixture
+def secure_stranger(client):
+    """Someone else, over https:// (needed once HTTPS is on)."""
+    from app.main import app
+    from app import admin_lock
+    c = TestClient(app, base_url="https://testserver", headers={"X-Requested-With": "OpenThePantry"})
+    yield c
+    with admin_lock._lock:
+        admin_lock._failures.clear()
+
+
 def _routes():
     from app.main import app
     for r in app.routes:
@@ -70,7 +81,7 @@ def test_open_summaries_reveal_no_settings(stranger, client):
 
 def test_unlock_and_lock(stranger):
     st = stranger.get("/api/admin/status").json()
-    assert st == {"password_set": True, "unlocked": False, "seconds_left": 0, "reset": False}
+    assert st == {"password_set": True, "unlocked": False, "seconds_left": 0, "reset": False, "https_url": None}
     assert stranger.post("/api/admin/unlock", json={"password": "not it"}).status_code == 401
     r = stranger.post("/api/admin/unlock", json={"password": TEST_SETTINGS_PASSWORD})
     assert r.status_code == 200 and r.json()["unlocked"] is True
@@ -223,27 +234,27 @@ def _state():
         db.close()
 
 
-def test_first_password_on_an_upgraded_install_keeps_the_credentials(credentials, stranger):
+def test_first_password_on_an_upgraded_install_keeps_the_credentials(credentials, secure_stranger):
     assert not credentials.was_reset()
-    r = stranger.post("/api/admin/password", json={"password": "first-password"})
+    r = secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     assert r.status_code == 200 and r.json()["reset"] is False
     st = _state()
     assert st["email_password"] == "encrypted-blob" and st["email_enabled"] is True
     assert st["https_enabled"] is True and all(st["files"].values())
 
 
-def test_new_password_after_a_reset_clears_email_and_https(credentials, stranger):
+def test_new_password_after_a_reset_clears_email_and_https(credentials, secure_stranger):
     import os
-    assert stranger.post("/api/admin/password", json={"password": "first-password"}).status_code == 200
+    assert secure_stranger.post("/api/admin/password", json={"password": "first-password"}).status_code == 200
     os.remove(credentials.PASSWORD_PATH)            # the reset: done on the server, not in the app
-    st = stranger.get("/api/admin/status").json()
+    st = secure_stranger.get("/api/admin/status").json()
     assert st["reset"] is True and st["unlocked"] is False
-    assert stranger.get("/api/email-settings").json()["reset"] is True
+    assert secure_stranger.get("/api/email-settings").json()["reset"] is True
     # A short password is refused before anything is cleared.
-    assert stranger.post("/api/admin/password", json={"password": "short"}).status_code == 400
+    assert secure_stranger.post("/api/admin/password", json={"password": "short"}).status_code == 400
     assert _state()["email_password"] == "encrypted-blob"
 
-    r = stranger.post("/api/admin/password", json={"password": "second-password"})
+    r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
     assert r.status_code == 200
     st = _state()
     assert st["email_password"] is None and st["email_enabled"] is False
@@ -251,12 +262,12 @@ def test_new_password_after_a_reset_clears_email_and_https(credentials, stranger
     assert st["files"] == {"privkey.pem": False, "fullchain.pem": False, "account.key": False,
                            "requests.json": True}       # Let's Encrypt's weekly count is kept
     assert st["domain"] == "pantry.example.com" and st["a_record_value"] == "192.168.1.20"
-    assert not credentials.was_reset() and stranger.get("/api/admin/status").json()["unlocked"] is True
+    assert not credentials.was_reset() and secure_stranger.get("/api/admin/status").json()["unlocked"] is True
 
 
-def test_changing_the_password_clears_nothing(credentials, stranger):
-    stranger.post("/api/admin/password", json={"password": "first-password"})
-    r = stranger.post("/api/admin/password/change",
+def test_changing_the_password_clears_nothing(credentials, secure_stranger):
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
+    r = secure_stranger.post("/api/admin/password/change",
                       json={"current_password": "first-password", "new_password": "second-password"})
     assert r.status_code == 200
     st = _state()
@@ -283,17 +294,88 @@ def test_a_password_is_not_kept_without_its_marker(own_file, monkeypatch, tmp_pa
     assert not own_file.password_set()
 
 
-def test_a_failed_save_after_a_reset_says_what_was_cleared(credentials, stranger, monkeypatch):
+def test_a_failed_save_after_a_reset_says_what_was_cleared(credentials, secure_stranger, monkeypatch):
     """Credentials are cleared before the new password is written, so a
     failed write must say they're gone and that trying again is enough."""
     import os
-    stranger.post("/api/admin/password", json={"password": "first-password"})
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     os.remove(credentials.PASSWORD_PATH)
 
     def disk_full(password):
         raise OSError(28, "No space left on device")
     monkeypatch.setattr(credentials, "_write", disk_full)
-    r = stranger.post("/api/admin/password", json={"password": "second-password"})
+    r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
     assert r.status_code == 500
     assert "already cleared; try again" in r.json()["detail"]
     assert credentials.was_reset()                 # still a reset: the retry clears (nothing left) and saves
+
+
+def test_guesses_sent_at_once_still_stop_at_the_limit(own_file, monkeypatch):
+    """Claude review round 4: 60 guesses at the same moment were all checked,
+    because each one passed the limit before any failure was recorded."""
+    import threading
+    own_file.create("the-real-password")
+    checked = []
+    real_verify = own_file._verify
+    monkeypatch.setattr(own_file, "_verify", lambda p: checked.append(p) or real_verify(p))
+    results = []
+
+    def guess(i):
+        try:
+            results.append(own_file.unlock(f"wrong-{i}", "10.0.0.9"))
+        except own_file.TooManyTries:
+            results.append("wait")
+    threads = [threading.Thread(target=guess, args=(i,)) for i in range(30)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(checked) == own_file.FREE_TRIES
+    assert results.count("wait") == 30 - own_file.FREE_TRIES
+
+
+def test_changing_address_doesnt_buy_more_guesses(own_file):
+    own_file.create("the-real-password")
+    outcomes = []
+    for i in range(own_file.FREE_TRIES_ALL + 3):
+        try:
+            outcomes.append(own_file.unlock("wrong", f"2001:db8::{i}"))   # a new address every time
+        except own_file.TooManyTries:
+            outcomes.append("wait")
+    assert outcomes[:own_file.FREE_TRIES_ALL] == [None] * own_file.FREE_TRIES_ALL
+    assert outcomes[own_file.FREE_TRIES_ALL:] == ["wait"] * 3
+
+
+def test_once_https_is_on_the_password_needs_the_secure_address(credentials, stranger, secure_stranger):
+    """Claude review round 4: after HTTPS is set up, the password and the
+    unlock cookie still crossed the network in plain text on port 8090."""
+    assert secure_stranger.post("/api/admin/password", json={"password": "first-password"}).status_code == 200
+    st = stranger.get("/api/admin/status").json()
+    assert st["https_url"] == "https://pantry.example.com:8443"
+    for method, path, body in [("POST", "/api/admin/unlock", {"password": "first-password"}),
+                               ("POST", "/api/admin/password/change",
+                                {"current_password": "first-password", "new_password": "other-password"}),
+                               ("GET", "/api/email-settings", None), ("GET", "/api/logs", None)]:
+        r = stranger.request(method, path, json=body)
+        assert r.status_code == 403 and "secure address" in r.json()["detail"], (path, r.status_code)
+    # An unlocked cookie from plain http:// doesn't help either.
+    stranger.cookies.set("pantry_settings", secure_stranger.cookies.get("pantry_settings"), path="/api")
+    assert stranger.get("/api/email-settings").status_code == 403
+    # Over https:// all is as usual, and the cookie is marked Secure.
+    assert secure_stranger.get("/api/admin/status").json()["https_url"] is None
+    assert secure_stranger.get("/api/email-settings").status_code == 200
+    r = secure_stranger.post("/api/admin/unlock", json={"password": "first-password"})
+    assert "secure" in r.headers["set-cookie"].lower()
+    # The rest of the app is unaffected.
+    assert stranger.get("/api/recipes").status_code == 200
+
+
+def test_the_server_itself_may_use_plain_http():
+    from types import SimpleNamespace
+    from app.main import _https_only_url
+    from unittest.mock import patch
+    on = {"enabled": True, "url": "https://pantry.example.com:8443"}
+    with patch("app.main.https_setup.status", return_value=on):
+        for host, expected in [("127.0.0.1", None), ("::1", None), ("192.168.1.30", on["url"])]:
+            req = SimpleNamespace(url=SimpleNamespace(scheme="http"), client=SimpleNamespace(host=host))
+            assert _https_only_url(req) == expected, host

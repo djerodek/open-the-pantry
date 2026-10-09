@@ -158,7 +158,15 @@ temporaire qu'elle retire ensuite. Elle renouvelle le certificat d'elle-même.
 Ce qui doit se faire hors de l'application, une seule fois :
 
 1. **Créez un jeton d'API cPanel :** dans cPanel, Security → Manage API
-   Tokens → Create.
+   Tokens → Create. Donnez-lui une **date d'expiration** (un an, par
+   exemple; le renouvellement s'arrête à l'expiration, et Paramètres →
+   HTTPS l'indique). Si votre cPanel le permet, décochez l'accès complet et
+   autorisez seulement la fonction DNS (Zone Editor), puis vérifiez que
+   **Configurer HTTPS** fonctionne encore. Le jeton se trouve dans le
+   conteneur de l'application, qui lit des fichiers et des pages venus de
+   l'extérieur (PDF, photos, courriels, pages Web); le limiter limite ce
+   que pourrait faire avec votre compte d'hébergement quiconque
+   s'introduirait dans l'application.
 2. **Mettez l'identifiant et le nom dans `.env`**, à côté de
    `docker-compose.yml` :
 
@@ -169,16 +177,19 @@ Ce qui doit se faire hors de l'application, une seule fois :
    PANTRY_DOMAIN=pantry.example.com
    ```
 
-   `chmod 600 .env` — le jeton peut faire tout ce que votre connexion
-   cPanel peut faire. Ni l'un ni l'autre ne se saisit dans les Paramètres
-   de l'application : l'application n'a pas de connexion à elle, et
-   quiconque peut ouvrir les Paramètres pourrait sinon les changer.
+   `chmod 600 .env` — un jeton à accès complet peut faire tout ce que
+   votre connexion cPanel peut faire. Ni l'un ni l'autre ne se saisit dans
+   les Paramètres de l'application; ils ne passent donc jamais par un
+   navigateur.
    `PANTRY_DOMAIN` est le seul nom que l'application créera ou modifiera
    avec le jeton.
 3. **Redémarrez :** `docker compose up -d`. Le fichier compose lit déjà
    `.env` s'il existe et publie le port 8443 (si votre fichier compose est
    plus ancien, copiez les lignes `ports:` et `env_file:` de la version
-   actuelle).
+   actuelle). La forme `required: false` de `env_file` demande Docker
+   Compose 2.24 ou plus récent (`docker compose version`); avec une version
+   plus ancienne, mettez Compose à jour ou remplacez ces trois lignes par
+   `env_file: .env` en gardant un fichier `.env` à cet endroit, même vide.
 
 Ensuite, dans Paramètres → HTTPS, qui affiche le nom tiré de `.env` :
 entrez l'adresse locale de ce serveur (déjà remplie si vous l'utilisez) et
@@ -215,9 +226,29 @@ Garde-fous et remarques :
   Let's Encrypt; l'adresse privée vers laquelle il pointe est inutile de
   l'extérieur.
 - **Autres hébergeurs DNS** (Cloudflare, OVH, Gandi et environ 150 autres) :
-  `docker-compose.https.yml` fait la même chose avec Traefik, configuré dans
-  `.env` à partir de `https.env.example`; voir les commentaires dans ces
-  fichiers. Cette méthode n'a pas de page dans les Paramètres.
+  `docker-compose.https.yml` fait la même chose avec Traefik. Pas pour
+  cPanel : utiliser les deux ferait demander le même nom à Let's Encrypt
+  par deux clients. Les réglages vont dans `.env` (à partir de
+  `https.env.example`) et le jeton d'API de l'hébergeur DNS dans
+  `traefik.env` (à partir de `traefik.env.example`), que seul Traefik lit;
+  voir les commentaires dans ces fichiers. Cette méthode n'a pas de page
+  dans les Paramètres.
+  - Traefik reçoit une adresse fixe (`172.31.250.10`; changez
+    `PANTRY_NETWORK_SUBNET` et `PANTRY_TRAEFIK_IP` dans `.env` si cette plage
+    est déjà utilisée), et l'application croit les adresses de visiteurs que
+    Traefik lui transmet depuis celle-là seulement. Chaque visiteur a alors
+    sa propre limite de requêtes et son propre compte de mauvais mots de
+    passe.
+  - **Mise à jour de cette méthode depuis une version antérieure à 0056 :**
+    déplacez les lignes du jeton de `.env` vers `traefik.env`, puis faites
+    une fois `docker compose down` et `docker compose up -d` (la plage
+    d'adresses du réseau change).
+  - Traefik lit le socket Docker pour trouver l'application. Le monter en
+    `:ro` ne rend pas l'API Docker en lecture seule : quiconque prend le
+    contrôle de Traefik contrôle Docker, donc l'hôte en root. Un proxy de
+    socket qui ne permet que de lister les conteneurs (p. ex.
+    `tecnativa/docker-socket-proxy` avec `CONTAINERS=1`) règle ça, si ça
+    compte sur votre réseau.
 
 ## Ce que fait l'application
 
@@ -743,9 +774,22 @@ courriel)**
     antérieure à 0052 n'efface rien : l'application garde
     `admin-password.created` pour distinguer une réinitialisation d'une
     première configuration.
-  - Après 5 mauvais mots de passe de suite à partir d'une même adresse,
-    chaque essai suivant doit attendre (30 secondes, puis le double à
-    chaque fois, jusqu'à 15 minutes).
+  - Les mots de passe sont vérifiés un à la fois. Après 5 mauvais de
+    suite à partir d'une même adresse, ou 20 de toutes les adresses
+    ensemble, chaque essai suivant doit attendre (30 secondes, puis le
+    double à chaque fois, jusqu'à 15 minutes). La deuxième limite veut dire
+    que quelqu'un qui devine peut vous faire attendre aussi; un bon mot de
+    passe ou un redémarrage l'efface.
+  - **Une fois le HTTPS de l'application activé,** le mot de passe et ces
+    sections ne fonctionnent qu'à l'adresse `https://`; sur
+    `http://…:8090`, où le mot de passe pourrait être lu sur le réseau,
+    l'application donne plutôt un lien vers l'adresse sécurisée. Les
+    requêtes du serveur lui-même sont exemptées.
+  - La sauvegarde complète (Paramètres → Sauvegarde) reste ouverte, comme
+    les recettes. Elle contient le serveur de courriel, le nom
+    d'utilisateur, l'adresse des avis, les expéditeurs acceptés et les
+    destinataires récents, mais aucun mot de passe (seulement sa forme
+    chiffrée, sans la clé).
   - Le déverrouillage est un témoin HttpOnly et SameSite=Strict : les
     autres sites ne peuvent pas s'en servir, et les scripts de la page ne
     peuvent pas le lire.
@@ -794,10 +838,12 @@ courriel)**
   votre réseau, ou désactiver HTTPS. Elle ne peut créer aucun autre nom,
   faire pointer le nom vers Internet, ni modifier ou s'approprier un
   enregistrement qu'elle n'a pas créé (donc pas celui de votre site Web), et
-  la clé du certificat reste sur le serveur. Le jeton lui-même peut faire tout ce que votre connexion cPanel
-  peut faire, donc gardez `.env` privé (`chmod 600`), et donnez une date
-  d'expiration au jeton si votre hébergeur le permet (le renouvellement
-  s'arrête alors à l'expiration).
+  la clé du certificat reste sur le serveur. Mais le jeton se trouve dans
+  le conteneur de l'application : quiconque y ferait exécuter du code
+  aurait le jeton lui-même, avec tout ce qu'il permet. Donnez-lui une date
+  d'expiration et, là où cPanel le permet, un accès au DNS seulement (voir
+  *Facultatif : HTTPS sur votre réseau*), et gardez `.env` privé
+  (`chmod 600`).
 - **Changer le serveur de courriel ou le nom d'utilisateur efface le mot de
   passe enregistré**, sauf si un nouveau est saisi dans le même
   enregistrement. Sinon, quiconque peut ouvrir les paramètres du courriel

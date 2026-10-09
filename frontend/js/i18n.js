@@ -522,6 +522,12 @@
     "Username": "Nom d'utilisateur",
     "Password": "Mot de passe",
     "Settings password": "Mot de passe des paramètres",
+    "HTTPS is on, so Email ingest, HTTPS, Logs and Email PDF open only at the secure address. Over this plain http:// address the password could be read on the network.":
+      "HTTPS est activé, donc la réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel s'ouvrent seulement à l'adresse sécurisée. Sur cette adresse http:// ordinaire, le mot de passe pourrait être lu sur le réseau.",
+    "HTTPS is on. From now on this section opens only at the secure address:":
+      "HTTPS est activé. Désormais, cette section s'ouvre seulement à l'adresse sécurisée :",
+    "Open {1}": "Ouvrir {1}",
+    "HTTPS is on: these open only at {1}": "HTTPS est activé : ils s'ouvrent seulement à {1}",
     "Change settings password": "Changer le mot de passe des paramètres",
     "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they need a password. Everything else stays open.":
       "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils demandent donc un mot de passe. Tout le reste demeure ouvert.",

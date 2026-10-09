@@ -136,7 +136,13 @@ removes again. It renews the certificate by itself.
 What has to happen outside the app, once:
 
 1. **Create a cPanel API token:** in cPanel, Security → Manage API Tokens →
-   Create.
+   Create. Give it an **expiry date** (a year, say; renewal stops when it
+   expires, and Settings → HTTPS says so). If your cPanel offers it, untick
+   full access and allow only the DNS feature (Zone Editor), then check
+   that **Set up HTTPS** still works. The token sits inside the app's
+   container, which reads files and pages from outside (PDFs, photos,
+   email, web pages); limiting it limits what anyone who ever broke into
+   the app could do with your hosting account.
 2. **Put the login and the name in `.env`** next to `docker-compose.yml`:
 
    ```
@@ -146,15 +152,18 @@ What has to happen outside the app, once:
    PANTRY_DOMAIN=pantry.example.com
    ```
 
-   `chmod 600 .env` -- the token can do anything your cPanel login can.
-   Neither is entered in the app's Settings: the app has no login of its
-   own, and anyone who can open Settings could otherwise change them.
+   `chmod 600 .env` -- a full-access token can do anything your cPanel
+   login can. Neither is entered in the app's Settings, so they never pass
+   through a browser.
    `PANTRY_DOMAIN` is the one name the app will ever create or change with
    the token.
 3. **Restart:** `docker compose up -d`. The compose file already reads
    `.env` if it exists and publishes port 8443 (if your compose file is
    older than this, copy the `ports:` and `env_file:` lines from the
-   current one).
+   current one). The `required: false` form of `env_file` needs Docker
+   Compose 2.24 or later (`docker compose version`); with an older one,
+   either upgrade or replace those three lines with `env_file: .env` and
+   keep a `.env` file there, even an empty one.
 
 Then in Settings → HTTPS, which shows the name from `.env`: enter this
 server's LAN address (filled in when you're using one) and an email for
@@ -190,9 +199,25 @@ Safeguards and notes:
 - The name appears in public certificate logs, as every Let's Encrypt name
   does; the private address it points to is useless from outside.
 - **Other DNS hosts** (Cloudflare, OVH, Gandi and about 150 others):
-  `docker-compose.https.yml` does the same with Traefik, configured in
-  `.env` from `https.env.example`; see the comments in those files. That
-  route has no Settings page.
+  `docker-compose.https.yml` does the same with Traefik. Not for cPanel:
+  running both would have two clients asking Let's Encrypt for the same
+  name. Settings go in `.env` (from `https.env.example`) and the DNS
+  host's API token in `traefik.env` (from `traefik.env.example`), which
+  only Traefik reads; see the comments in those files. That route has no
+  Settings page.
+  - Traefik gets a fixed address (`172.31.250.10`; change
+    `PANTRY_NETWORK_SUBNET` and `PANTRY_TRAEFIK_IP` in `.env` if that range
+    is in use), and the app trusts the visitor addresses Traefik passes on
+    from there only. Each visitor then gets their own request limit and
+    wrong-password count.
+  - **Upgrading this route from before 0056:** move the token lines from
+    `.env` to `traefik.env`, then `docker compose down` and
+    `docker compose up -d` once (the network's address range changes).
+  - Traefik reads the Docker socket to find the app. Mounting it `:ro`
+    does not make the Docker API read-only: whoever takes over Traefik
+    controls Docker, which is root on the host. A socket proxy that only
+    allows listing containers (e.g. `tecnativa/docker-socket-proxy` with
+    `CONTAINERS=1`) closes that, if it matters on your network.
 
 ## What it does
 
@@ -621,8 +646,19 @@ Safeguards and notes:
     token in `.env` is out of the app's reach and stays. The first password
     on an install upgraded from before 0052 clears nothing: the app keeps
     `admin-password.created` to tell a reset from a first setup.
-  - After 5 wrong passwords in a row from one address, each further try
-    has to wait (30 seconds, doubling up to 15 minutes).
+  - Passwords are checked one at a time. After 5 wrong ones in a row from
+    one address, or 20 from all addresses together, each further try has
+    to wait (30 seconds, doubling up to 15 minutes). The second limit means
+    someone guessing can make you wait too; a correct password or a
+    restart clears it.
+  - **Once the app's own HTTPS is on,** the password and these sections
+    work only at the `https://` address; over `http://…:8090`, where the
+    password could be read on the network, the app links to the secure
+    address instead. Requests from the server itself are exempt.
+  - The full backup (Settings → Backup) stays open, like the recipes. It
+    holds the email server, username, notification address, allowed
+    senders and recent recipients, but no password (only its encrypted
+    form, without the key).
   - The unlock is an HttpOnly, SameSite=Strict cookie: other websites
     can't use it, and the page's own scripts can't read it.
 - **Optional API key**: set `RECIPE_APP_API_KEY` to require a matching
@@ -661,10 +697,11 @@ Safeguards and notes:
   network, or turn HTTPS off. It can't create any other name, point the
   name at the internet, or change or take over a record it didn't create
   (so not your website's), and the certificate's key stays on the
-  server. The token
-  itself can do anything your cPanel login can, so keep `.env` private
-  (`chmod 600`), and give the token an expiry date if your host allows it
-  (renewal then stops when it expires).
+  server. But the token lives in the app's container, so anyone who got
+  code running there would have the token itself, with everything it
+  allows: give it an expiry date and, where cPanel allows it, DNS access
+  only (see *Optional: HTTPS on your network*), and keep `.env` private
+  (`chmod 600`).
 - **Changing the email server or username clears the saved password**
   unless a new one is entered in the same save. Otherwise anyone who can
   open the email settings could point them at their own server and press
@@ -1084,7 +1121,8 @@ DOCKERHUB.md                   Docker Hub overview (synced by docker-publish.yml
 docker-compose.yml            pulls published image
 docker-compose.build.yml       builds from source
 docker-compose.https.yml       optional HTTPS via Traefik, for DNS hosts other than cPanel
-https.env.example              settings template for the above
+https.env.example              settings template for the above (copied to .env)
+traefik.env.example            DNS API token template for the above (copied to traefik.env, Traefik only)
 .github/workflows/
   docker-publish.yml             builds + publishes to Docker Hub on release
   ci.yml                           tests + dependency audit + build check on every push/PR

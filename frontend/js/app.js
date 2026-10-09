@@ -499,6 +499,21 @@
     });
   }
 
+  // Once HTTPS is on, the server refuses the password and the locked
+  // sections over plain http:// (they could be read on the network there).
+  // Instead of asking for the password, link to the secure address.
+  function httpsOnlyDialog(url) {
+    return new Promise((resolve) => {
+      const body = $("#admin-body");
+      body.innerHTML = "";
+      $("#admin-heading").textContent = tx("Settings password");
+      body.appendChild(el("p", { class: "field-hint", text: tx("HTTPS is on, so Email ingest, HTTPS, Logs and Email PDF open only at the secure address. Over this plain http:// address the password could be read on the network.") }));
+      body.appendChild(el("a", { class: "btn-primary", href: url, text: tx("Open {1}", { 1: url }) }));
+      adminOverlay._onClose = () => resolve(false);
+      openModal(adminOverlay);
+    });
+  }
+
   // True once this browser is unlocked, asking for (or creating) the
   // password if needed. False if the person closes the dialog.
   async function ensureUnlocked() {
@@ -507,6 +522,7 @@
       announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again."));
       return false;
     }
+    if (st.https_url) return httpsOnlyDialog(st.https_url);
     if (st.unlocked) return true;
     return settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
   }
@@ -515,6 +531,11 @@
   // was opened, asks for the password and sends the request again.
   async function adminFetch(url, options = {}, { prompt = true } = {}) {
     const res = await fetch(url, options);
+    if (res.status === 403) {
+      const b = await res.clone().json().catch(() => ({}));
+      if (b.https_url && prompt) await httpsOnlyDialog(b.https_url);
+      return res;
+    }
     if (res.status !== 401) return res;
     const body = await res.clone().json().catch(() => ({}));
     if (!body.locked || !prompt) return res;
@@ -530,9 +551,11 @@
     const actions = $("#admin-lock-actions");
     let st;
     try { st = await adminStatus(); } catch { return; }
-    actions.hidden = !st.password_set;
+    actions.hidden = !st.password_set || Boolean(st.https_url);
     $("#admin-lock-now").hidden = !st.unlocked;
-    if (!st.password_set && st.reset) {
+    if (st.https_url) {
+      statusEl.textContent = tx("HTTPS is on: these open only at {1}", { 1: st.https_url });
+    } else if (!st.password_set && st.reset) {
       statusEl.textContent = tx("Reset. Creating a new password clears the saved email password and turns HTTPS off.");
     } else if (!st.password_set) {
       statusEl.textContent = tx("Not set yet. You'll create it the first time you open one of them.");
@@ -593,6 +616,10 @@
 
   async function fetchHttpsStatus(prompt = true) {
     const res = await adminFetch(`${API}/https`, {}, { prompt });
+    if (res.status === 403) {
+      const b = await res.json().catch(() => ({}));
+      if (b.https_url) { const e = new Error("https"); e.url = b.https_url; throw e; }
+    }
     if (!res.ok) throw new Error(res.status === 401 ? "locked" : String(res.status));
     return res.json();
   }
@@ -624,6 +651,11 @@
       st = await fetchHttpsStatus(!fromPoll);
     } catch (e) {
       httpsPanel.innerHTML = "";
+      if (e.message === "https") {
+        httpsPanel.appendChild(el("p", { class: "field-hint", text: tx("HTTPS is on. From now on this section opens only at the secure address:") }));
+        httpsPanel.appendChild(el("a", { class: "btn-primary", href: e.url, text: tx("Open {1}", { 1: e.url }) }));
+        return;
+      }
       httpsPanel.appendChild(el("div", { class: "field-hint", text: e.message === "locked"
         ? tx("Locked again after 15 minutes. Close and reopen this section to enter the password.")
         : tx("Could not load the HTTPS settings.") }));

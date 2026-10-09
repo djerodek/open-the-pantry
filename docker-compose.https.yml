@@ -4,12 +4,12 @@
 #
 # Not used unless you turn it on -- nothing here runs with the plain
 # `docker compose up -d`. Setup is in the README, "Optional: HTTPS on your
-# network". In short: copy https.env.example to .env next to your
-# docker-compose.yml, fill it in, then `docker compose up -d`.
+# network". In short: copy https.env.example to .env and traefik.env.example
+# to traefik.env, next to your docker-compose.yml, fill both in, then
+# `docker compose up -d`.
 #
-# Why: browsers only offer some features on https:// pages, notably the
-# real "keep screen awake" (Screen Wake Lock API). Over plain http:// the
-# app uses a fallback instead.
+# Why: browsers only offer some features on https:// pages, notably "keep
+# screen awake" (Screen Wake Lock API).
 #
 # How: Traefik (a reverse proxy) gets a Let's Encrypt certificate for a
 # name in a domain you own, proving ownership with a DNS record it creates
@@ -23,6 +23,12 @@ services:
       # The app refuses host names it doesn't know (see README, "Other
       # websites can't use the app through your browser").
       RECIPE_APP_ALLOWED_HOSTS: ${PANTRY_DOMAIN:?Set PANTRY_DOMAIN in .env (see https.env.example)}
+      # Believe the visitor's address and https:// as Traefik reports them,
+      # but only from Traefik's fixed address below. Without this the app
+      # sees every visitor as Traefik: one shared request limit and one
+      # shared wrong-password count for everybody. Never "*" while 8090 is
+      # also published: anyone could then claim any address.
+      FORWARDED_ALLOW_IPS: ${PANTRY_TRAEFIK_IP:-172.31.250.10}
     labels:
       open-the-pantry.https: "true"
       traefik.enable: "true"
@@ -49,15 +55,33 @@ services:
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${ACME_DNS_PROVIDER:?Set ACME_DNS_PROVIDER in .env (see https.env.example)}
       # Check the challenge record on public resolvers, not the LAN's DNS.
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
-    # The DNS host's API credentials (CPANEL_*, CLOUDFLARE_*...) are read
-    # from .env by Traefik itself.
+    # The DNS host's API credentials (CF_DNS_API_TOKEN, OVH_*...), from
+    # traefik.env. Only Traefik reads that file: the app container gets
+    # .env, which holds none of them.
     env_file:
-      - .env
+      - traefik.env
+    networks:
+      default:
+        ipv4_address: ${PANTRY_TRAEFIK_IP:-172.31.250.10}
     ports:
       - "${PANTRY_HTTPS_PORT:-443}:8443"
     volumes:
-      # Read-only: Traefik reads which containers to route to. It only
-      # acts on the one labelled open-the-pantry.https above.
+      # Traefik reads which containers to route to here. ":ro" only stops
+      # the socket file itself being replaced; it does NOT make the Docker
+      # API read-only, so anything that takes over Traefik controls Docker
+      # (root on the host). To limit that, put a socket proxy that allows
+      # only container listing in front of it (README, "Optional: HTTPS on
+      # your network").
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # The certificate and Let's Encrypt account, kept across restarts.
       - ./letsencrypt:/letsencrypt
+
+# A fixed address range, so Traefik's address (trusted above) never
+# changes. Change PANTRY_NETWORK_SUBNET and PANTRY_TRAEFIK_IP in .env if
+# the range is already used on this machine. Switching an existing install
+# to this needs one `docker compose down` first.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${PANTRY_NETWORK_SUBNET:-172.31.250.0/24}
