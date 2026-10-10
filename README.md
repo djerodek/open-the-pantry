@@ -620,7 +620,9 @@ Safeguards and notes:
 
 - **No built-in authentication by default.** Every API endpoint is
   reachable by anyone who can reach the container's network address unless
-  you opt into the API key below — there's no session, no login UI. This
+  you opt into the API key below — no accounts, no login screen. The only
+  exception is the settings password just below, which covers the parts
+  that use outside credentials and nothing else. This
   matches the app's intended use (a personal tool on your own LAN or behind
   your own VPN) — see the warning at the top of this file. Access control
   is your responsibility and is not optional if anything you don't control
@@ -698,10 +700,11 @@ Safeguards and notes:
   settings password. It's also capped: at most five recipients per email
   and 10 emails per hour. It's only offered once the email-ingest account
   has a saved password.
-- **Settings → HTTPS keeps a cPanel API token.** It's entered on that page
-  (behind the settings password) or in `.env`, stored encrypted with the
-  same key as the email password in `data/https/cpanel-login.json`, never
-  shown again, never in a backup and never served. Changing the cPanel
+- **Settings → HTTPS keeps a cPanel API token.** Entered on that page
+  (behind the settings password), it's stored encrypted with the same key
+  as the email password in `data/https/cpanel-login.json`, never shown
+  again, never in a backup and never served. One put in `.env` instead
+  stays there as plain text, so keep that file private (`chmod 600`). Changing the cPanel
   username or address without entering it again clears it. A settings
   password reset clears it too (one set in `.env` stays: the app can't
   change that file). Even with the password, the page works only for the

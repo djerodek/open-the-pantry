@@ -747,7 +747,9 @@ courriel)**
 - **Aucune authentification intégrée par défaut.** Chaque point d'accès de
   l'API est joignable par quiconque peut joindre l'adresse réseau du
   conteneur, sauf si vous activez la clé d'API ci-dessous — pas de
-  session, pas d'écran de connexion. Ça correspond à l'usage prévu (un
+  comptes, pas d'écran de connexion. Seule exception : le mot de passe des
+  paramètres juste en dessous, qui couvre les parties utilisant des
+  identifiants externes et rien d'autre. Ça correspond à l'usage prévu (un
   outil personnel sur votre propre réseau local ou derrière votre propre
   RPV) — voir l'avertissement au début de ce fichier. Le contrôle d'accès
   est votre responsabilité, et il n'est pas facultatif si quelque chose que
@@ -845,11 +847,12 @@ courriel)**
   aussi plafonné : au plus cinq destinataires par courriel et 10 courriels
   par heure. L'option n'est offerte qu'une fois qu'un mot de passe est
   enregistré pour le compte de réception par courriel.
-- **Paramètres → HTTPS conserve un jeton d'API cPanel.** Il est entré sur
-  cette page (protégée par le mot de passe des paramètres) ou dans `.env`,
-  conservé chiffré avec la même clé que le mot de passe de courriel dans
+- **Paramètres → HTTPS conserve un jeton d'API cPanel.** Entré sur cette
+  page (protégée par le mot de passe des paramètres), il est conservé
+  chiffré avec la même clé que le mot de passe de courriel dans
   `data/https/cpanel-login.json`, jamais réaffiché, jamais dans une
-  sauvegarde et jamais servi. Changer le nom d'utilisateur ou l'adresse
+  sauvegarde et jamais servi. Celui mis plutôt dans `.env` y reste en
+  clair; gardez donc ce fichier privé (`chmod 600`). Changer le nom d'utilisateur ou l'adresse
   cPanel sans l'entrer de nouveau l'efface. Une réinitialisation du mot de
   passe des paramètres l'efface aussi (celui de `.env` reste :
   l'application ne peut pas modifier ce fichier). Même avec le mot de
