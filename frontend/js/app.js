@@ -66,9 +66,13 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  // Pinch zoom: Safari has ignored user-scalable=no since iOS 10, so the
-  // gesture is cancelled here as well. Settings -> Text size replaces it.
-  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+  // Pinch zoom on phones and tablets: Safari has ignored user-scalable=no
+  // since iOS 10, so the gesture is cancelled here as well; Settings -> Text
+  // size replaces it. Only on touch screens: Safari on a Mac sends the same
+  // event for a trackpad pinch, and there zooming must keep working.
+  if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+  }
 
   function announce(msg) {
     $("#status-region").textContent = msg;
@@ -180,7 +184,8 @@
   // -------------------------------------------------------------------
   // Text size control (persisted; scales the whole app via rem units)
   // -------------------------------------------------------------------
-  const SIZE_STEPS = [14, 16, 18, 20, 22];
+  // 24 and 26 are for laptops and desktops read from across the kitchen.
+  const SIZE_STEPS = [14, 16, 18, 20, 22, 24, 26];
   function getSizeIndex() {
     const stored = parseInt(storageGet("recipe-app-font-size-idx"), 10);
     return Number.isInteger(stored) && stored >= 0 && stored < SIZE_STEPS.length ? stored : 1;
@@ -3132,12 +3137,20 @@
         el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
       ]),
       notesSection(recipe),
-      el("h2", { text: tx("Ingredients") }),
-      el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
-        el("li", { text: ingredientText(i) })
-      )),
-      el("h2", { text: tx("Instructions") }),
-      el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
+      // Side by side on a wide screen (ingredients stay in view while the
+      // steps scroll), one after the other on a narrow one.
+      el("div", { class: "recipe-body" }, [
+        el("section", { class: "recipe-ingredients" }, [
+          el("h2", { text: tx("Ingredients") }),
+          el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
+            el("li", { text: ingredientText(i) })
+          )),
+        ]),
+        el("section", { class: "recipe-steps" }, [
+          el("h2", { text: tx("Instructions") }),
+          el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
+        ]),
+      ]),
       // Edit and Delete are grouped at the foot of the recipe: both are
       // operations on the record rather than part of reading it, and Edit
       // was previously orphaned between the ratings row and the cook-time

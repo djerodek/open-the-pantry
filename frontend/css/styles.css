@@ -1100,6 +1100,9 @@ main {
    reading a recipe. Containing it keeps the gesture inside the modal. */
 .modal {
   background: var(--color-bg-raised);
+  /* An edge: in the true-black theme the box and the dimmed page behind it
+     are both black, so the dialog seemed to run under the top bar. */
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   max-width: 40rem;
   width: 100%;
@@ -1328,6 +1331,33 @@ main {
    two touch targets end up edge-to-edge (measured 0px apart), and a missed
    tap on Share discards the recipe view instead. */
 .recipe-detail-header .share-menu-wrap { margin-right: 0.85rem; }
+/* Wide screens (laptops, desktops): the recipe uses more of the window,
+   with ingredients beside the steps and slightly larger text. The text
+   still follows Settings -> Text size (everything is in rem). */
+@media screen and (min-width: 64rem) {
+  #recipe-detail-modal { max-width: min(78rem, 94vw); padding: 1.75rem 2.25rem; }
+  #recipe-detail-modal .recipe-detail { max-width: none; }
+  .recipe-body {
+    display: grid;
+    grid-template-columns: minmax(15rem, 1fr) 2fr;
+    gap: 0 3rem;
+    align-items: start;
+    font-size: 1.1rem;
+  }
+  /* Stays in view while a long list of steps scrolls past (the modal is
+     the scrolling box, so top:0 is its top edge). */
+  .recipe-ingredients {
+    position: sticky;
+    top: 0;
+    max-height: calc(90dvh - 4rem);
+    overflow-y: auto;
+  }
+  .recipe-detail img.hero { max-height: 16rem; }
+}
+@media screen and (min-width: 100rem) {
+  .recipe-body { font-size: 1.2rem; }
+}
+
 .recipe-detail img.hero {
   width: 100%;
   max-height: 11rem;

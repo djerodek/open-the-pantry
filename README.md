@@ -598,11 +598,15 @@ Safeguards and notes:
 - Light / dark / system theme (Settings menu). Dark mode is true black
   (`#000000`), not a dark-gray substitute — surface separation comes from
   hairline borders, not a lighter fill.
-- Adjustable in-app text size (Settings), layered on top of the OS
-  text-size setting. Page zoom is turned off -- pinch, double-tap, and the
-  automatic zoom iOS does when you tap a small text field -- because it
-  kept pushing buttons off screen; text fields are at least 16px so iOS
-  has no reason to zoom.
+- Adjustable in-app text size (Settings, up to 26px), layered on top of
+  the OS text-size setting. On phones and tablets page zoom is turned off
+  -- pinch, double-tap, and the automatic zoom iOS does when you tap a
+  small text field -- because it kept pushing buttons off screen; text
+  fields are at least 16px so iOS has no reason to zoom. On a computer,
+  browser zoom (Ctrl/Cmd +/-) and trackpad pinch work as usual.
+- Wide screens (laptop and up) show a recipe in a wider dialog with the
+  ingredients beside the instructions, the ingredient list staying in view
+  while the instructions scroll, and slightly larger text.
 - **Keep screen awake while reading a recipe** — useful when your hands are
   busy and the phone is propped on the counter. Optional: switch on Settings
   → Screen → "Keep screen awake when viewing a recipe" once, and every

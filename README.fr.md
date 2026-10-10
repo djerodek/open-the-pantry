@@ -718,12 +718,18 @@ courriel)**
 - Thème clair / sombre / système (menu des Paramètres). Le mode sombre est
   un vrai noir (`#000000`), pas un gris foncé — les surfaces sont séparées
   par de fines bordures, pas par un fond plus pâle.
-- Taille du texte réglable dans l'application (Paramètres), en plus du
-  réglage de taille du texte du système. Le zoom de la page est désactivé —
-  pincer, toucher deux fois, et le zoom automatique d'iOS quand on touche
-  un petit champ de texte — parce qu'il poussait des boutons hors de
-  l'écran; les champs de texte font au moins 16 px pour qu'iOS n'ait pas de
-  raison de zoomer.
+- Taille du texte réglable dans l'application (Paramètres, jusqu'à 26 px),
+  en plus du réglage de taille du texte du système. Sur téléphone et
+  tablette, le zoom de la page est désactivé — pincer, toucher deux fois, et
+  le zoom automatique d'iOS quand on touche un petit champ de texte — parce
+  qu'il poussait des boutons hors de l'écran; les champs de texte font au
+  moins 16 px pour qu'iOS n'ait pas de raison de zoomer. Sur ordinateur, le
+  zoom du navigateur (Ctrl/Cmd +/-) et le pincement sur le pavé tactile
+  fonctionnent normalement.
+- Sur grand écran (portable et plus), une recette s'affiche dans une
+  fenêtre plus large, les ingrédients à côté des instructions; la liste
+  d'ingrédients reste visible pendant que les instructions défilent, et le
+  texte est un peu plus grand.
 - **Garder l'écran allumé pendant la lecture d'une recette** — pratique
   quand on a les mains occupées et le téléphone appuyé sur le comptoir.
   Facultatif : activez une fois Paramètres → Écran → « Garder l'écran
