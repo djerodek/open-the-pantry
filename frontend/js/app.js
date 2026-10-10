@@ -2517,11 +2517,17 @@
     // Stopping the click here keeps the card's handler from opening the
     // recipe, but that handler is also what cancelled the link, so a tap on
     // the heart or a rating followed it: the address changed and iOS
-    // redrew the list at the top. The row holds only buttons, so cancelling
-    // the default here costs nothing.
+    // redrew the list at the top.
+    // Only a tap on a control is kept from the card. The row is as wide as
+    // the card (Share sits at the far end), and a tap on the empty space
+    // between the ratings and Share used to do nothing at all; it now opens
+    // the recipe like the rest of the card.
     const wrap = el("div", {
       class: inline ? "card-quick-controls inline" : "card-quick-controls",
-      onclick: (e) => { e.stopPropagation(); e.preventDefault(); },
+      onclick: (e) => {
+        if (!e.target.closest("button, .rating-popover")) return;
+        e.stopPropagation(); e.preventDefault();
+      },
     });
 
     const favBtn = el("button", {
@@ -2583,7 +2589,9 @@
       card.appendChild(el("img", {
         class: "recipe-card-image",
         src: `/uploads/${recipe.image_path}`,
-        alt: "", loading: "lazy",
+        // async: a large photo is decoded off the main thread, so scrolling
+        // and taps don't wait on it.
+        alt: "", loading: "lazy", decoding: "async",
       }));
     }
 
@@ -2719,12 +2727,31 @@
   $("#recipe-detail-close").addEventListener("click", closeRecipeDetail);
   detailOverlay.addEventListener("click", (e) => { if (e.target === detailOverlay) closeRecipeDetail(); });
 
+  // The dialog opens on the tap itself and fills in when the recipe
+  // arrives. It used to open only after the download, so on a slow
+  // connection (the NAS busy, or the list's photos still downloading) a
+  // tap seemed to do nothing and people tapped again. Only the latest tap
+  // counts, and closing the dialog while it loads cancels the open.
+  let detailTicket = 0;
   async function openRecipeDetail(id) {
-    const res = await fetch(`${API}/recipes/${id}`);
-    if (!res.ok) { announceError(tx("Could not load recipe.")); return; }
-    const recipe = await res.json();
+    const ticket = ++detailTicket;
+    const body = $("#recipe-detail-body");
+    wakeLockListeners.clear();
+    body.replaceChildren(el("p", { class: "detail-loading", role: "status", text: tx("Loading...") }));
+    $("#recipe-detail-modal").scrollTop = 0;
+    if (detailOverlay.hidden) openModal(detailOverlay);
+    let recipe = null;
+    try {
+      const res = await fetch(`${API}/recipes/${id}`, { priority: "high" });
+      if (res.ok) recipe = await res.json();
+    } catch { /* offline with nothing cached: handled below */ }
+    if (ticket !== detailTicket || detailOverlay.hidden) return;   // superseded or closed
+    if (!recipe) {
+      closeModal(detailOverlay);
+      announceError(tx("Could not load recipe."));
+      return;
+    }
     renderRecipeDetail(recipe);
-    openModal(detailOverlay);
     if (wakeLockSupported && getWakeLockDefault()) await setWakeLockWanted(true);
   }
 

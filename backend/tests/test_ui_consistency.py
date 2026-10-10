@@ -111,10 +111,12 @@ def test_search_clear_button_is_wired_up():
 def test_card_controls_do_not_follow_the_card_link():
     """The favourite and rating buttons sit inside the card's <a href>. The
     row stops the click from reaching the card, so it must also cancel the
-    link, or a tap on the heart navigates (on iOS: list redrawn at the top)."""
+    link, or a tap on the heart navigates (on iOS: list redrawn at the top).
+    Only taps on a control are held back: the empty part of the row opens
+    the recipe like the rest of the card (it used to do nothing)."""
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     body = js[js.index("function cardQuickControls("):js.index("function recipeCard(")]
-    assert "onclick: (e) => { e.stopPropagation(); e.preventDefault(); }" in body
+    assert 'if (!e.target.closest("button, .rating-popover")) return;\n        e.stopPropagation(); e.preventDefault();' in body
     row = body[:body.index("return wrap;")]
     assert 'el("a"' not in row and 'el("input"' not in row, "a real link or field in the row would be cancelled too"
 
@@ -125,3 +127,13 @@ def test_card_share_sheet_skips_the_missing_email_button():
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     body = js[js.index("function openShareSheet("):js.index("function openShareSheet(") + 600]
     assert ".filter(Boolean).forEach((b) => actions.appendChild(b))" in body
+
+
+def test_recipe_dialog_opens_on_the_tap():
+    """The recipe dialog opens before the recipe has downloaded, so a slow
+    response doesn't read as a missed tap; only the latest tap is shown,
+    and a dialog closed while loading stays closed."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    body = js[js.index("async function openRecipeDetail("):js.index("function wakeLockToggle(")]
+    assert body.index("openModal(detailOverlay)") < body.index("await fetch(")
+    assert "if (ticket !== detailTicket || detailOverlay.hidden) return;" in body
