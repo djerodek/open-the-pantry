@@ -745,29 +745,41 @@ def turn_off():
     _active_domain = None
 
 
+@contextlib.contextmanager
+def reserved():
+    """Holds the setup-job lock for a whole operation: no setup or renewal
+    can start until it ends (start_job is refused), and it is refused itself
+    if one is running. The settings-password reset runs inside this, so it
+    can't be cut in half by a setup that starts between its check and its
+    clearing."""
+    if not _job_lock.acquire(blocking=False):
+        raise HttpsError("HTTPS setup is running. Try again when it has finished.")
+    try:
+        yield
+    finally:
+        _job_lock.release()
+
+
 def forget_certificate():
     """After the settings password is reset (admin_lock.py): HTTPS off, and
     the certificate, its key and the Let's Encrypt account key deleted, so
     HTTPS has to be set up again. Kept: the name, address and email (they
     prefill the form), the A record value the app last wrote (so it can
     still update its own record), and the weekly request count (Let's
-    Encrypt's limit doesn't reset). The cPanel token is in .env, out of
-    the app's reach. Call stop_server() first."""
-    if not _job_lock.acquire(blocking=False):
-        raise HttpsError("HTTPS setup is running. Try again when it has finished.")
+    Encrypt's limit doesn't reset). Call stop_server() first, and only
+    inside reserved()."""
+    if not _job_lock.locked():
+        raise RuntimeError("forget_certificate() must run inside reserved()")
+    turn_off()
+    for path in (KEY_PATH, CERT_PATH, ACCOUNT_KEY_PATH):
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(path)
+    db = SessionLocal()
     try:
-        turn_off()
-        for path in (KEY_PATH, CERT_PATH, ACCOUNT_KEY_PATH):
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(path)
-        db = SessionLocal()
-        try:
-            _settings(db).cert_expires_at = None
-            db.commit()
-        finally:
-            db.close()
+        _settings(db).cert_expires_at = None
+        db.commit()
     finally:
-        _job_lock.release()
+        db.close()
 
 
 # ---------------------------------------------------------------------------

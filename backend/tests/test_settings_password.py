@@ -415,7 +415,33 @@ def test_a_reset_during_https_setup_clears_nothing(credentials, secure_stranger,
     from app import https_setup
     secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     os.remove(credentials.PASSWORD_PATH)
-    monkeypatch.setitem(https_setup._progress, "running", True)
-    r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert https_setup._job_lock.acquire(blocking=False)          # a setup job is running
+    try:
+        r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    finally:
+        https_setup._job_lock.release()
     assert r.status_code == 409
     assert _state()["email_password"] == "encrypted-blob" and credentials.was_reset()
+
+
+def test_a_setup_started_during_a_reset_is_refused(credentials, secure_stranger, monkeypatch):
+    """ChatGPT review of 0060: a setup could start between the reset's check
+    and its clearing, leaving the email password cleared and HTTPS not. The
+    reset now holds the setup lock throughout, so the setup is the one
+    refused, and the reset completes."""
+    import os
+    from app import https_setup
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
+    os.remove(credentials.PASSWORD_PATH)
+    started = []
+    real_stop = https_setup.stop_server
+
+    async def stop_then_try_a_setup():
+        await real_stop()
+        started.append(https_setup.start_job(None, None, None))    # a setup arriving mid-reset
+    monkeypatch.setattr(https_setup, "stop_server", stop_then_try_a_setup)
+    r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 200
+    assert started == [False]
+    st = _state()
+    assert st["email_password"] is None and st["https_enabled"] is False and not st["files"]["privkey.pem"]

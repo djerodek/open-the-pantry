@@ -247,7 +247,10 @@ Garde-fous et remarques :
     (`RECIPE_APP_HTTPS_URL` dans le fichier compose). S'ils indiquent qu'ils
     s'ouvrent seulement à l'adresse sécurisée alors que vous y êtes déjà,
     l'application ne voit pas l'adresse de Traefik : vérifiez
-    `PANTRY_TRAEFIK_IP`.
+    `PANTRY_TRAEFIK_IP`. Si Traefik lui-même est arrêté, ils restent fermés
+    sur `http://`, volontairement; sur le serveur, consultez
+    `docker compose logs open-the-pantry-https`, puis faites
+    `docker compose up -d`.
   - **Mise à jour de cette méthode depuis une version antérieure à 0056 :**
     déplacez les lignes du jeton de `.env` vers `traefik.env`, puis faites
     une fois `docker compose down` et `docker compose up -d` (la plage

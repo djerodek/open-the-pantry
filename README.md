@@ -212,7 +212,10 @@ Safeguards and notes:
     `https://` address there, never over `http://…:8090`
     (`RECIPE_APP_HTTPS_URL` in the compose file). If they say "opens only at
     the secure address" while you're already on it, the app isn't seeing
-    Traefik's address: check `PANTRY_TRAEFIK_IP`.
+    Traefik's address: check `PANTRY_TRAEFIK_IP`. If Traefik itself is down,
+    they stay closed over `http://` on purpose; on the server, look at
+    `docker compose logs open-the-pantry-https`, then
+    `docker compose up -d`.
   - **Upgrading this route from before 0056:** move the token lines from
     `.env` to `traefik.env`, then `docker compose down` and
     `docker compose up -d` once (the network's address range changes).

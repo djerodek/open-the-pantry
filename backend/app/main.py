@@ -2445,21 +2445,21 @@ def admin_status(request: Request):
 
 async def _clear_credentials_after_reset():
     """The settings password was reset (its file deleted): whoever creates
-    the new one sets the email password and HTTPS up again."""
-    # Checked before anything is cleared, so a refusal leaves nothing half done.
-    if https_setup.status()["state"] == "working":
-        raise https_setup.HttpsError("HTTPS setup is running. Try again when it has finished.")
-    db = SessionLocal()
-    try:
-        settings = _get_email_settings(db)
-        settings.password_encrypted = None
-        settings.enabled = False
-        db.commit()
-    finally:
-        db.close()
-    await https_setup.stop_server()
-    https_setup.forget_certificate()
-    https_setup.forget_token()
+    the new one sets the email password and HTTPS up again. Runs with the
+    HTTPS setup lock held throughout: refused before anything is cleared if
+    a setup is running, and no setup can start until it's done."""
+    with https_setup.reserved():
+        db = SessionLocal()
+        try:
+            settings = _get_email_settings(db)
+            settings.password_encrypted = None
+            settings.enabled = False
+            db.commit()
+        finally:
+            db.close()
+        await https_setup.stop_server()
+        https_setup.forget_certificate()
+        https_setup.forget_token()
 
 
 @app.post("/api/admin/password")
