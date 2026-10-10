@@ -788,14 +788,19 @@ courriel)**
     suite à partir d'une même adresse, ou 20 de toutes les adresses
     ensemble, chaque essai suivant doit attendre (30 secondes, puis le
     double à chaque fois, jusqu'à 15 minutes). La deuxième limite veut dire
-    que quelqu'un qui devine peut vous faire attendre aussi; un bon mot de
-    passe ou un redémarrage l'efface.
+    que quelqu'un qui devine peut vous faire attendre aussi, même depuis
+    votre propre appareil : un mauvais essai à chaque fin d'attente la
+    garde à 15 minutes. **Trop de mauvais mots de passe venant de plusieurs
+    appareils : redémarrez le conteneur** (`docker compose restart`); les
+    comptes ne sont gardés qu'en mémoire.
   - **Une fois le HTTPS de l'application activé** (et en marche; ou avec
     Traefik), le mot de passe et ces
     sections ne fonctionnent qu'à l'adresse `https://`; sur
     `http://…:8090`, où le mot de passe pourrait être lu sur le réseau,
-    l'application donne plutôt un lien vers l'adresse sécurisée. Les
-    requêtes du serveur lui-même sont exemptées.
+    l'application donne plutôt un lien vers l'adresse sécurisée. Seules les
+    requêtes venant de l'intérieur du conteneur sont exemptées (p. ex.
+    `docker exec open-the-pantry curl http://localhost:8090/…`); un
+    navigateur sur le NAS lui-même compte comme le réseau.
   - La sauvegarde complète (Paramètres → Sauvegarde) reste ouverte, comme
     les recettes. Elle contient le serveur de courriel, le nom
     d'utilisateur, l'adresse des avis, les expéditeurs acceptés et les

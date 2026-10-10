@@ -299,7 +299,9 @@ def _host_allowed(host_header: str) -> bool:
 def _https_only_url(request: Request) -> str | None:
     """Once the app's own HTTPS is on, the settings password, its cookie and
     the locked pages are refused over plain http:// (anyone on the Wi-Fi
-    could read them there), except from the server itself. Returns the
+    could read them there), except from inside the container (loopback;
+    a browser on the host comes through Docker's bridge, so it counts as
+    the network). Returns the
     https:// address to use instead, or None when the request may go ahead.
 
     HTTPS from a proxy (the Traefik route) sets RECIPE_APP_HTTPS_URL; the

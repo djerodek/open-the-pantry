@@ -653,13 +653,17 @@ Safeguards and notes:
   - Passwords are checked one at a time. After 5 wrong ones in a row from
     one address, or 20 from all addresses together, each further try has
     to wait (30 seconds, doubling up to 15 minutes). The second limit means
-    someone guessing can make you wait too; a correct password or a
-    restart clears it.
+    someone guessing can keep you waiting too, even from your own device:
+    one wrong guess each time the wait ends keeps it at 15 minutes. **Too
+    many wrong passwords from several devices: restart the container**
+    (`docker compose restart`); the counts are kept in memory only.
   - **Once the app's own HTTPS is on** (and running; or on the Traefik
     route), the password and these sections work only at the `https://`
     address; over `http://…:8090`, where the
     password could be read on the network, the app links to the secure
-    address instead. Requests from the server itself are exempt.
+    address instead. Only requests from inside the container are exempt
+    (e.g. `docker exec open-the-pantry curl http://localhost:8090/…`); a
+    browser on the NAS itself still counts as the network.
   - The full backup (Settings → Backup) stays open, like the recipes. It
     holds the email server, username, notification address, allowed
     senders and recent recipients, but no password (only its encrypted
