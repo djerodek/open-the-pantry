@@ -2747,7 +2747,7 @@
     } catch { /* offline with nothing cached: handled below */ }
     if (ticket !== detailTicket || detailOverlay.hidden) return;   // superseded or closed
     if (!recipe) {
-      closeModal(detailOverlay);
+      closeRecipeDetail();   // also releases the wake lock, if one is held
       announceError(tx("Could not load recipe."));
       return;
     }

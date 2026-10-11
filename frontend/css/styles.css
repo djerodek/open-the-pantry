@@ -957,7 +957,9 @@ main {
 --------------------------------------------------------------------- */
 .recipe-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  /* min(..., 100%): at a large text size 15rem is wider than a phone
+     (390px at 26px), and the one card overflowed the screen sideways. */
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -1322,7 +1324,9 @@ main {
    Recipe detail
 --------------------------------------------------------------------- */
 .recipe-detail { max-width: 42rem; margin: 0 auto; }
-.recipe-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+/* wrap: on a small phone at the largest text sizes the title and Share
+   don't fit side by side, and Share was pushed under the close button. */
+.recipe-detail-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 /* Title + badges stack on the left; the share button holds the top-right
    corner. min-width:0 lets a long title wrap instead of shoving the button
    off the edge. */

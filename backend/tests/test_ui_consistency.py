@@ -137,3 +137,13 @@ def test_recipe_dialog_opens_on_the_tap():
     body = js[js.index("async function openRecipeDetail("):js.index("function wakeLockToggle(")]
     assert body.index("openModal(detailOverlay)") < body.index("await fetch(")
     assert "if (ticket !== detailTicket || detailOverlay.hidden) return;" in body
+
+
+def test_largest_text_size_fits_a_phone():
+    """Settings -> Text size goes up to 26px. At that size 15rem is 390px,
+    wider than most phones: the card grid must not demand it, and the
+    recipe header must be free to put Share below the title rather than
+    under the close button."""
+    css = CSS.read_text(encoding="utf-8")
+    assert "repeat(auto-fill, minmax(min(15rem, 100%), 1fr))" in css
+    assert ".recipe-detail-header { display: flex; flex-wrap: wrap;" in css
