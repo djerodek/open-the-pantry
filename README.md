@@ -522,6 +522,10 @@ Safeguards and notes:
   off and would cover the title); the detail page uses an inline popover,
   where there's room. The sheet also shows the current value and offers to
   clear it.
+- Servings, typed in by hand on the recipe (or when adding it; a web
+  recipe's stated yield fills it in): free text such as `4`, `4-6` or
+  `12 cookies`, up to 100 characters. For reading only -- no filter, sort
+  or search uses it.
 - Optional real-world cook time (`dd:hh:mm`), logged separately from
   whatever prep/cook/total time a source states — this is what drives the
   time filter. Up to 60 days (long cures and ferments); hours under 24 and

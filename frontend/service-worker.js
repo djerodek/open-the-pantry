@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v46";
+const CACHE_NAME = "open-the-pantry-shell-v47";
 const SHELL_ASSETS = [
   "/",
   "/index.html",

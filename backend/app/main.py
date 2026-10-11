@@ -1864,6 +1864,8 @@ def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = D
     # Like the ratings: null or "" clears, absent leaves it alone.
     if "actual_cook_time" in provided:
         recipe.actual_cook_time_minutes = ddhhmm_to_minutes(payload.actual_cook_time) if payload.actual_cook_time else None
+    if "servings" in provided:
+        recipe.servings = (payload.servings or "").strip() or None
 
     db.commit()
     db.refresh(recipe)

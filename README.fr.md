@@ -625,6 +625,10 @@ Garde-fous et remarques :
   une fenêtre contextuelle serait tronquée et cacherait le titre); la page
   de la recette utilise une fenêtre contextuelle, puisqu'il y a la place.
   La feuille affiche aussi la valeur actuelle et permet de l'effacer.
+- Portions, saisies à la main sur la recette (ou à l'ajout; pour une
+  recette web, le rendement indiqué la remplit) : texte libre comme `4`,
+  `4-6` ou `12 biscuits`, jusqu'à 100 caractères. Pour information
+  seulement — aucun filtre, tri ou recherche ne s'en sert.
 - Temps de cuisson réel facultatif (`dd:hh:mm`), inscrit séparément de tout
   temps de préparation, de cuisson ou total indiqué par la source — c'est
   lui qui alimente le filtre de temps. Jusqu'à 60 jours (salaisons et

@@ -929,6 +929,9 @@ main {
 /* ---------------------------------------------------------------------
    Duration input (dd:hh:mm)
 --------------------------------------------------------------------- */
+/* Servings on the recipe: short ("4", "4-6"), so a short box. */
+.field input.servings-input[type="text"] { width: 8rem; max-width: 100%; }
+
 .duration-input {
   display: flex;
   align-items: center;

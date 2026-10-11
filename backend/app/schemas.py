@@ -217,6 +217,9 @@ class RatingUpdate(BaseModel):
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
     actual_cook_time: Optional[str] = None  # 'dd:hh:mm'; '' or null clears
+    # How many it serves, as written ("4", "4-6", "12 cookies"). Shown on
+    # the recipe only: no filter, sort or search uses it.
+    servings: Optional[str] = Field(default=None, max_length=100)
     _check_cook_time = field_validator("actual_cook_time")(_validate_cook_time)
 
 

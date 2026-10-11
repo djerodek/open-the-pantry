@@ -2947,7 +2947,7 @@
     wakeLockListeners.clear();
 
     const titleInput = el("input", { type: "text", id: "edit-title", value: recipe.title || "" });
-    const servingsInput = el("input", { type: "text", id: "edit-servings", value: recipe.servings || "" });
+    const servingsInput = el("input", { type: "text", id: "edit-servings", maxlength: "100", value: recipe.servings || "" });
     const prepInput = el("input", { type: "text", id: "edit-prep", value: recipe.prep_time || "" });
     const cookInput = el("input", { type: "text", id: "edit-cook", value: recipe.cook_time || "" });
     const totalInput = el("input", { type: "text", id: "edit-total", value: recipe.total_time || "" });
@@ -3140,6 +3140,29 @@
       },
     });
 
+    // Servings: typed in by hand, shown on the recipe, nothing filters or
+    // sorts by it. Enter saves, like the button.
+    const servingsInput = el("input", {
+      type: "text", id: `detail-servings-${recipe.id}`, class: "servings-input",
+      maxlength: "100", placeholder: tx("e.g. 4"), value: recipe.servings || "",
+    });
+    const saveServings = async () => {
+      const res = await fetch(`${API}/recipes/${recipe.id}/rating`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ servings: servingsInput.value.trim() }),
+      }).catch(() => null);
+      if (res && res.ok) {
+        recipe.servings = (await res.json()).servings;
+        servingsInput.value = recipe.servings || "";
+        announce(tx("Servings updated."));
+        return;
+      }
+      const body = res ? await res.json().catch(() => ({})) : {};
+      announceError(apiErrorText(body, res ? res.status : 0));
+    };
+    servingsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveServings(); } });
+    const servingsSaveBtn = el("button", { class: "btn-secondary", type: "button", text: tx("Save"), onclick: saveServings });
+
     body.appendChild(el("div", { class: "recipe-detail" }, [
       // Share lives at the top right of the recipe card; the source/OCR
       // badges move under the title so the corner stays a single action.
@@ -3152,13 +3175,16 @@
       ]),
       showcaseImageSection(recipe),
       el("div", { class: "recipe-meta" }, [
-        recipe.servings ? el("span", { text: tx("Servings: {1}", { 1: recipe.servings }) }) : null,
         recipe.prep_time ? el("span", { text: tx("Prep: {1}", { 1: recipe.prep_time }) }) : null,
         recipe.cook_time ? el("span", { text: tx("Cook: {1}", { 1: recipe.cook_time }) }) : null,
         recipe.total_time ? el("span", { text: tx("Total: {1}", { 1: recipe.total_time }) }) : null,
       ]),
       cardQuickControls(recipe, true),
       wakeLockToggle(),
+      el("div", { class: "field" }, [
+        el("label", { for: `detail-servings-${recipe.id}`, text: tx("Servings") }),
+        el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [servingsInput, servingsSaveBtn]),
+      ]),
       el("div", { class: "field" }, [
         el("label", { text: tx("Real-world cook time") }),
         el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
@@ -3871,6 +3897,7 @@
     }
 
     const titleInput = el("input", { type: "text", id: "review-title", value: draft.title || "" });
+    const servingsInput = el("input", { type: "text", id: "review-servings", maxlength: "100", placeholder: tx("e.g. 4"), value: draft.servings || "" });
     const ingredientsArea = el("textarea", { id: "review-ingredients" });
     ingredientsArea.value = (draft.ingredients || [])
       .map((i) => ingredientText(i))
@@ -3909,6 +3936,7 @@
       ]),
       el("div", {}, [
         el("div", { class: "field" }, [el("label", { for: "review-title", text: tx("Title") }), titleInput]),
+        el("div", { class: "field" }, [el("label", { for: "review-servings", text: tx("Servings (optional)") }), servingsInput]),
         imagePreviewWrap,
         el("div", { class: "field" }, [
           el("label", { for: "review-ingredients", text: tx("Ingredients (one per line)") }),
@@ -3960,7 +3988,7 @@
             title: titleInput.value.trim() || tx("Untitled Recipe"),
             source_type: draft.source_type,
             source_url: draft.source_url || null,
-            servings: draft.servings || null,
+            servings: servingsInput.value.trim() || null,
             prep_time: draft.prep_time || null,
             cook_time: draft.cook_time || null,
             total_time: draft.total_time || null,
@@ -4011,6 +4039,7 @@
     addBody.appendChild(el("h3", { text: tx("Manual / handwritten entry") }));
 
     const titleInput = el("input", { type: "text", id: "manual-title", required: "" });
+    const servingsInput = el("input", { type: "text", id: "manual-servings", maxlength: "100", placeholder: tx("e.g. 4") });
     const ingredientsArea = el("textarea", { id: "manual-ingredients", placeholder: tx("One ingredient per line") });
     const stepsArea = el("textarea", { id: "manual-steps", placeholder: tx("One step per line") });
     const tagsInput = el("input", { type: "text", id: "manual-tags", placeholder: tx("e.g. dinner, stovetop, beef") });
@@ -4047,6 +4076,7 @@
           const payload = {
             title: titleInput.value.trim() || tx("Untitled Recipe"),
             source_type: "manual",
+            servings: servingsInput.value.trim() || null,
             image_path: storedFile,
             actual_cook_time: duration.getValue(),
             ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim()).map((line) => ({ raw_line: line, name: line })),
@@ -4070,6 +4100,7 @@
       },
     }, [
       el("div", { class: "field" }, [el("label", { for: "manual-title", text: tx("Title") }), titleInput]),
+      el("div", { class: "field" }, [el("label", { for: "manual-servings", text: tx("Servings (optional)") }), servingsInput]),
       el("div", { class: "field" }, [el("label", { for: "manual-ingredients", text: tx("Ingredients (one per line)") }), ingredientsArea]),
       el("div", { class: "field" }, [el("label", { for: "manual-steps", text: tx("Steps (one per line)") }), stepsArea]),
       el("div", { class: "field" }, [el("label", { for: "manual-tags", text: tx("Tags (comma or semicolon separated)") }), tagsInput]),
