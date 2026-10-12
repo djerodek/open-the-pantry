@@ -492,3 +492,61 @@ def test_main_hands_the_ocr_semaphore_to_learning(client):
     from app import main
     from app.ml import service
     assert service._heavy_gate is main._heavy_job_semaphore
+
+
+# ---------------------------------------------------------------------------
+# ChatGPT review of 0070
+# ---------------------------------------------------------------------------
+
+def test_a_tag_made_by_saving_a_recipe_can_be_suggested_after_training(client, sample_recipe_payload, learning_reset):
+    """The list of existing tags was only refreshed by Settings, so a tag
+    first created on a recipe was filtered out of learned suggestions."""
+    service = learning_reset
+    from app.ingestion import tagger
+    r = client.post("/api/recipes", json={**sample_recipe_payload, "title": "New tag via recipe",
+                                          "tags": [{"name": "Grandma's", "category": "custom"}]})
+    rid = r.json()["id"]
+    try:
+        assert service._known_tags is None or ("Grandma's", "custom") not in service._known_tags
+        assert client.post("/api/learning/train").status_code == 200
+        assert ("Grandma's", "custom") in service._known_tags
+        service._apply(None, _FakeTagModel([("Grandma's", "custom", None)]))
+        assert ("Grandma's", "custom", None) in tagger.suggest_tags("Pie", ["apples"], "")
+    finally:
+        service._apply(None, None)
+        client.delete(f"/api/recipes/{rid}")
+
+
+def test_a_deletion_drops_the_tag_before_it_commits(client, learning_reset, monkeypatch):
+    service = learning_reset
+    from app import main
+    g = client.post("/api/tag-groups", json={"label": "Race group"}).json()
+    t = client.post("/api/tags", json={"name": "Racy", "category": g["key"], "keywords": ""}).json()
+    seen = []
+    real = main._remove_tags
+
+    def spy(db, tags):
+        seen.append(("Racy", g["key"]) in service._known_tags)   # at this point nothing is committed
+        return real(db, tags)
+    monkeypatch.setattr(main, "_remove_tags", spy)
+    assert client.delete(f"/api/tags/{t['id']}").status_code == 200
+    assert seen == [False]
+    client.delete(f"/api/tag-groups/{g['key']}")
+
+
+def test_known_tag_refreshes_are_atomic():
+    import threading
+    from app.ml import service
+    order = []
+
+    def slow_query():
+        order.append("read")
+        threading.Event().wait(0.05)
+        return [("A", "custom")]
+    t = threading.Thread(target=service.refresh_known_tags, args=(slow_query,))
+    t.start()
+    threading.Event().wait(0.01)
+    service.drop_known_tags([("A", "custom")])       # waits for the refresh to finish
+    order.append("dropped")
+    t.join()
+    assert order == ["read", "dropped"] and ("A", "custom") not in service._known_tags

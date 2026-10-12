@@ -115,10 +115,40 @@ def set_heavy_gate(gate):
     _heavy_gate = gate
 
 
+_known_lock = threading.Lock()
+
+
 def set_known_tags(tags):
     """{(name, category)} of every tag that exists."""
     global _known_tags
-    _known_tags = frozenset(tags)
+    _known_tags = frozenset((n, c) for n, c in tags)
+
+
+def refresh_known_tags(query):
+    """Reads the tags (query() -> [(name, category)]) and sets them, as one
+    step: a refresh that read the table before a deletion can't overwrite
+    one that read it after."""
+    with _known_lock:
+        set_known_tags(query())
+
+
+def drop_known_tags(tags):
+    """Before a deletion is committed: an import running meanwhile can no
+    longer take the tag from the learned model."""
+    global _known_tags
+    with _known_lock:
+        if _known_tags is not None:
+            _known_tags = _known_tags - frozenset((n, c) for n, c in tags)
+
+
+def _refresh_known_from_db():
+    from .. import models
+    from ..database import SessionLocal
+    db = SessionLocal()
+    try:
+        refresh_known_tags(lambda: db.query(models.Tag.name, models.Tag.category).all())
+    finally:
+        db.close()
 
 
 def _learned_tagger(model):
@@ -241,6 +271,9 @@ def _train_locked() -> dict:
         _write_json("model.json", report)          # the switch to this training
         _remove_stale_weights({f for f in files.values() if f})
         _report = report
+        # Tags can also be created by saving a recipe or an import, which
+        # don't refresh the list; the model just trained may know them.
+        _refresh_known_from_db()
         # Turned off while this ran: keep the files, but don't use them.
         if enabled():
             _apply(seg_model, tag_model)

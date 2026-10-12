@@ -90,7 +90,7 @@ def refresh_user_keywords(db=None):
                            for t in rows])
         # The learned tagger only suggests tags that still exist (a deleted
         # tag would otherwise be created again, until the next retrain).
-        learning.set_known_tags(db.query(models.Tag.name, models.Tag.category).all())
+        learning.refresh_known_tags(lambda: db.query(models.Tag.name, models.Tag.category).all())
     finally:
         if own:
             db.close()
@@ -2129,6 +2129,7 @@ def delete_tag_group(key: str, db: Session = Depends(get_db)):
     if group.builtin:
         raise HTTPException(status_code=400, detail="Built-in groups can't be deleted.")
     tags = db.query(models.Tag).filter_by(category=key).all()
+    learning.drop_known_tags([(t.name, t.category) for t in tags])
     touched = _remove_tags(db, tags)
     db.delete(group)
     db.commit()
@@ -2191,6 +2192,7 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Tag not found")
     if not tag.user_defined:
         raise HTTPException(status_code=400, detail="Only tags added in Settings can be deleted here.")
+    learning.drop_known_tags([(tag.name, tag.category)])
     touched = _remove_tags(db, [tag])
     db.commit()
     refresh_user_keywords(db)
