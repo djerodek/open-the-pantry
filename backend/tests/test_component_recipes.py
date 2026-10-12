@@ -120,3 +120,9 @@ def test_the_page_shows_part_names_as_headings():
     js = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
     assert "function isPartName(text)" in js
     assert 'el("li", { value: String(++n), text: s.text })' in js
+
+
+def test_the_boxes_explain_how_to_start_a_section():
+    import pathlib
+    js = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    assert js.count("partHint(ingredientsArea)") == 3 and js.count("partHint(stepsArea)") == 3

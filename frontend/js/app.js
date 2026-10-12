@@ -3175,10 +3175,12 @@
       el("div", { class: "field" }, [
         el("label", { for: "edit-ingredients", text: tx("Ingredients (one per line)") }),
         ingredientsArea,
+        partHint(ingredientsArea),
       ]),
       el("div", { class: "field" }, [
         el("label", { for: "edit-steps", text: tx("Steps (one per line)") }),
         stepsArea,
+        partHint(stepsArea),
       ]),
       el("div", { class: "field" }, [
         el("label", { for: "edit-tags", text: tx("Tags (comma or semicolon separated)") }),
@@ -3212,6 +3214,14 @@
       el("div", { style: "display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;" }, [saveBtn, cancelBtn]),
       statusLine,
     ]));
+  }
+
+  // Under the ingredient and step boxes: how to start a part of the recipe
+  // (shown as a heading; see isPartName). Linked to its box for screen readers.
+  function partHint(area) {
+    const id = `${area.id}-hint`;
+    area.setAttribute("aria-describedby", id);
+    return el("div", { class: "field-hint", id, text: tx("A short line ending in “:” starts a section, e.g. “Sauce:”.") });
   }
 
   // "Sauce tartare:", "For the dough:" -- a part of the recipe, shown as a
@@ -4081,10 +4091,12 @@
         el("div", { class: "field" }, [
           el("label", { for: "review-ingredients", text: tx("Ingredients (one per line)") }),
           ingredientsArea,
+          partHint(ingredientsArea),
         ]),
         el("div", { class: "field" }, [
           el("label", { for: "review-steps", text: tx("Steps (one per line)") }),
           stepsArea,
+          partHint(stepsArea),
         ]),
         el("div", { class: "field" }, [
           el("label", { for: "review-tags", text: tx("Tags (comma or semicolon separated)") }),
@@ -4241,8 +4253,8 @@
     }, [
       el("div", { class: "field" }, [el("label", { for: "manual-title", text: tx("Title") }), titleInput]),
       el("div", { class: "field" }, [el("label", { for: "manual-servings", text: tx("Servings (optional)") }), servingsInput]),
-      el("div", { class: "field" }, [el("label", { for: "manual-ingredients", text: tx("Ingredients (one per line)") }), ingredientsArea]),
-      el("div", { class: "field" }, [el("label", { for: "manual-steps", text: tx("Steps (one per line)") }), stepsArea]),
+      el("div", { class: "field" }, [el("label", { for: "manual-ingredients", text: tx("Ingredients (one per line)") }), ingredientsArea, partHint(ingredientsArea)]),
+      el("div", { class: "field" }, [el("label", { for: "manual-steps", text: tx("Steps (one per line)") }), stepsArea, partHint(stepsArea)]),
       el("div", { class: "field" }, [el("label", { for: "manual-tags", text: tx("Tags (comma or semicolon separated)") }), tagsInput]),
       el("div", { class: "field" }, [
         el("label", { text: tx("Real-world cook time (optional)") }),

@@ -953,7 +953,9 @@ Safeguards and notes:
   its own, and so on), are read part by part: the ingredients together and
   the steps together, each part's name kept as a small heading in both
   lists. A yield line ("Makes 12", "Serves 4", "Donne environ 10
-  croquettes") fills in Servings instead of becoming an ingredient.
+  croquettes") fills in Servings instead of becoming an ingredient. By
+  hand: a short line (six words at most) ending in ":" in the Ingredients
+  or Steps box starts a section ("Sauce:"); the boxes say so.
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based until Settings → Learning has enough of your corrected imports to
   do better, and even then it learns only from what you've saved — expect

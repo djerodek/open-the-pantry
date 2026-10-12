@@ -209,6 +209,7 @@
     "Could not remove photo.": "Impossible de retirer la photo.",
     "Servings: {1}": "Portions : {1}",
     "Real-world cook time: {1}": "Temps de cuisson réel : {1}",
+    "A short line ending in “:” starts a section, e.g. “Sauce:”.": "Une ligne courte qui se termine par « : » commence une section, p. ex. « Sauce : ».",
     "Learning": "Apprentissage",
     "Learn from my recipes": "Apprendre de mes recettes",
     "Learns from the recipes you've saved how your photo, PDF and email imports are laid out and how you tag. It runs on this server, retrains itself after changes, and is only used where it does better than the built-in rules.": "L'application apprend, à partir des recettes que vous avez enregistrées, comment sont présentées vos importations de photos, de PDF et de courriels, et comment vous étiquetez. Tout se fait sur ce serveur; le modèle se réentraîne après les changements et n'est utilisé que là où il fait mieux que les règles intégrées.",
