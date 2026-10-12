@@ -98,6 +98,7 @@ class HttpsError(Exception):
 # ---------------------------------------------------------------------------
 
 _job_lock = threading.Lock()
+_reserved_by: int | None = None   # thread inside reserved(), if any
 _progress = {"running": False, "step": ""}
 # Host name the app answers to over HTTPS; read by the host check in main.py.
 _active_domain: str | None = None
@@ -211,8 +212,10 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
             if crypto.key_source() is None:
                 crypto.generate_key_file()      # same key file the email password uses
             else:
-                raise HttpsError("The token wasn't saved: the encryption key is damaged. "
-                                 "Settings → Email ingest explains how to fix it.")
+                raise HttpsError("The token wasn't saved: encryption.key in the data folder is damaged (the "
+                                 "email password uses it too). Put back the copy it came from; or delete it "
+                                 "and save the token again, which makes a new key, then enter the email "
+                                 "password again in Settings → Email ingest.")
         new["token_encrypted"] = crypto.encrypt_secret(token)
     _write_login(new)
     log.info("HTTPS: cPanel login saved (user %s, %s, name %s, token %s)", new.get("username"),
@@ -752,11 +755,14 @@ def reserved():
     if one is running. The settings-password reset runs inside this, so it
     can't be cut in half by a setup that starts between its check and its
     clearing."""
+    global _reserved_by
     if not _job_lock.acquire(blocking=False):
         raise HttpsError("HTTPS setup is running. Try again when it has finished.")
+    _reserved_by = threading.get_ident()
     try:
         yield
     finally:
+        _reserved_by = None
         _job_lock.release()
 
 
@@ -768,7 +774,9 @@ def forget_certificate():
     still update its own record), and the weekly request count (Let's
     Encrypt's limit doesn't reset). Call stop_server() first, and only
     inside reserved()."""
-    if not _job_lock.locked():
+    # This thread's reserved(), not just any holder of the lock (a running
+    # setup job holds it too).
+    if _reserved_by != threading.get_ident():
         raise RuntimeError("forget_certificate() must run inside reserved()")
     turn_off()
     for path in (KEY_PATH, CERT_PATH, ACCOUNT_KEY_PATH):

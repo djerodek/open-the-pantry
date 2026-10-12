@@ -87,9 +87,13 @@ _FR_PATTERNS = [
        "Entrez l'adresse cPanel sous la forme https://hôte:port, p. ex. https://cpanel.example.com:2083."),
     _p(r"^Enter the name to use, e\.g\. pantry\.example\.com\.$",
        "Entrez le nom à utiliser, p. ex. pantry.example.com."),
-    _p(r"^The token wasn't saved: the encryption key is damaged\. Settings → Email ingest explains how to fix it\.$",
-       "Le jeton n'a pas été enregistré : la clé de chiffrement est endommagée. Paramètres → Réception par "
-       "courriel explique comment la réparer."),
+    _p(r"^The token wasn't saved: encryption\.key in the data folder is damaged \(the email password uses it "
+       r"too\)\. Put back the copy it came from; or delete it and save the token again, which makes a new key, "
+       r"then enter the email password again in Settings → Email ingest\.$",
+       "Le jeton n'a pas été enregistré : encryption.key, dans le dossier de données, est endommagé (le mot de "
+       "passe du courriel l'utilise aussi). Remettez la copie d'origine; ou supprimez-le et enregistrez de "
+       "nouveau le jeton, ce qui crée une nouvelle clé, puis entrez de nouveau le mot de passe du courriel dans "
+       "Paramètres → Réception par courriel."),
     _p(r"^Enter the name to use \(e\.g\. pantry\.example\.com\) with the cPanel login above, then save\.$",
        "Entrez le nom à utiliser (p. ex. pantry.example.com) avec l'identifiant cPanel ci-dessus, puis "
        "enregistrez."),
@@ -102,7 +106,9 @@ _FR_PATTERNS = [
     _p(r"cPanel username(?=[,.])", "nom d'utilisateur cPanel"),
     _p(r"API token(?=[,.])", "jeton d'API"),
     _p(r"cPanel address(?=[,.])", "adresse cPanel"),
-    _p(r"(?<=: |, )name(?=[,.])", "nom"),
+    # Only in the "still needs" list above (already French by now: it
+    # starts "Paramètres → HTTPS demande encore"), not any "name" after a comma.
+    _p(r"^(Paramètres → HTTPS demande encore : (?:[^.]*?, )?)name(?=[,.])", r"\1nom"),
     _p(r"^cPanel refused the login\. Check the cPanel username and API token in Settings → HTTPS\.$",
        "cPanel a refusé la connexion. Vérifiez le nom d'utilisateur cPanel et le jeton d'API dans Paramètres → "
        "HTTPS."),

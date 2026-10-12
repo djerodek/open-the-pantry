@@ -262,7 +262,8 @@ async def retrain_after_changes(request: Request, call_next):
     response = await call_next(request)
     if (request.method in ("POST", "PUT", "PATCH", "DELETE") and 200 <= response.status_code < 300
             and _RETRAIN_AFTER.match(request.url.path)
-            and not request.url.path.endswith(("/rating", "/notes", "/email", "/suggest"))):
+            and not request.url.path.endswith(("/rating", "/notes", "/email", "/suggest"))
+            and request.query_params.get("dry_run", "").lower() not in ("1", "true")):
         learning.schedule_retrain()
     return response
 
@@ -346,9 +347,20 @@ def _https_only_url(request: Request) -> str | None:
     return st.get("url") if st.get("enabled") and st.get("url") and st.get("listening") else None
 
 
+class _HttpsOnly(Exception):
+    def __init__(self, url: str):
+        super().__init__(url)
+        self.url = url
+
+
 def _https_only_response(url: str) -> JSONResponse:
     return JSONResponse(status_code=403, content={
         "detail": f"HTTPS is on, so this opens only at the secure address: {url}", "https_url": url})
+
+
+@app.exception_handler(_HttpsOnly)
+async def _https_only_handler(request: Request, exc: _HttpsOnly):
+    return _https_only_response(exc.url)
 
 
 @app.middleware("http")
@@ -2495,7 +2507,9 @@ def _too_many(e: admin_lock.TooManyTries):
 def _refuse_plain_http(request: Request):
     url = _https_only_url(request)
     if url:
-        raise HTTPException(status_code=403, detail=f"HTTPS is on, so this opens only at the secure address: {url}")
+        # Same body as the middleware's refusal, so the page can offer the
+        # link whichever of the two refused (HTTPS turned on mid-session).
+        raise _HttpsOnly(url)
 
 
 @app.get("/api/admin/status")
@@ -2525,7 +2539,14 @@ async def _clear_credentials_after_reset():
 @app.post("/api/admin/password")
 async def admin_create_password(payload: schemas.AdminPasswordIn, request: Request):
     """First use only: once a password exists, this is refused. After a
-    reset, the saved email password and HTTPS are cleared first."""
+    reset, the saved email password and HTTPS are cleared first.
+
+    Clearing first is a trade-off, not an oversight (reviewed three times).
+    Password first, clearing second: if the clearing then failed, the new
+    password would open the old credentials -- the one thing a reset must
+    not allow. Clearing first: if saving the password then fails, the
+    credentials are gone and no password exists yet; the error says so and
+    a retry works. The second failure only costs re-entering credentials."""
     _refuse_plain_http(request)
     if admin_lock.password_set():
         raise HTTPException(status_code=409, detail="A settings password already exists.")

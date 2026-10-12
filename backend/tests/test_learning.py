@@ -89,21 +89,38 @@ def _examples(data, start=0):
 
 
 def test_segmenter_beats_the_rules_where_they_struggle_and_is_used():
+    """Exact results on new documents, layout by layout: the learned model
+    must get most of the hard layouts right (where the rules get none) and
+    never do worse than the rules on any layout. (It used to check steps
+    only "or layout == screenshot", which hid screenshot steps being wrong
+    every time -- DeepSeek review of 0067.)"""
     from app.ml import segmenter as S
     from app.ingestion import pdf_ingest as P
-    data = corpus(30, seed=11)
-    model, report = S.train(_examples(data))
+    model, report = S.train(_examples(corpus(30, seed=11)))
     assert report["status"] == "active", report
     assert report["learned_accuracy"] >= report["rules_accuracy"] + S.MIN_GAIN
-    # New documents in the layouts the rules get wrong.
-    fixed = 0
-    for raw, title, ings, steps, layout in corpus(10, seed=12, layouts=["screenshot", "cookbook"]):
-        rules = P.rule_segment_raw_text(raw)
-        out = model.segment(raw, rules) or rules
-        assert out["steps"] == steps or layout == "screenshot"
-        if out["ingredients"] == ings and rules["ingredients"] != ings:
-            fixed += 1
-    assert fixed >= 5
+    for layout in ("screenshot", "cookbook", "email", "blog", "french"):
+        learned = {"ingredients": 0, "steps": 0}
+        rules_ok = {"ingredients": 0, "steps": 0}
+        for raw, title, ings, steps, _ in corpus(10, seed=12, layouts=[layout]):
+            rules = P.rule_segment_raw_text(raw)
+            out = model.segment(raw, rules) or rules
+            for key, want in (("ingredients", ings), ("steps", steps)):
+                learned[key] += out[key] == want
+                rules_ok[key] += rules[key] == want
+        for key in learned:
+            assert learned[key] >= rules_ok[key], (layout, key, learned, rules_ok)
+            if layout in ("screenshot", "cookbook"):
+                assert learned[key] >= 8, (layout, key, learned)
+
+
+def test_circle_markers_and_misread_numbers_are_not_step_numbers():
+    from app.ml.segmenter import _real_step_numbers
+    assert _real_step_numbers(["1. Heat the oil.", "2. Add the onion.", "and stir.", "3. Serve."])
+    assert _real_step_numbers(["Étape 1", "Chauffer.", "Étape 2", "Servir."])
+    assert not _real_step_numbers(["9 Transfer the mix.", "3) Bake it."])          # misread circles
+    assert not _real_step_numbers(["1. Heat the oil.", "@ Add the onion."])          # symbol leftover
+    assert not _real_step_numbers(["Heat the oil.", "Add the onion."])
 
 
 def test_segmenter_stays_off_when_the_rules_do_as_well():
@@ -387,3 +404,38 @@ def test_an_unreadable_settings_file_means_off(client, learning_reset):
         f.write("{not json")
     assert not service.enabled()
     assert client.put("/api/learning", json={"enabled": True}).json()["enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek review of 0067
+# ---------------------------------------------------------------------------
+
+def test_a_dry_run_of_the_tag_scan_does_not_retrain(client, monkeypatch):
+    from app.ml import service
+    calls = []
+    monkeypatch.setattr(service, "schedule_retrain", lambda *a, **k: calls.append(1))
+    assert client.post("/api/tags/auto-apply?dry_run=true").status_code == 200
+    assert calls == []
+
+
+def test_name_is_translated_only_in_the_https_list():
+    from app.i18n import translate
+    fr = translate("Settings → HTTPS still needs: cPanel username, API token, cPanel address, name. "
+                   "Fill them in with the cPanel login and save.", "fr")
+    assert fr == ("Paramètres → HTTPS demande encore : nom d'utilisateur cPanel, jeton d'API, adresse cPanel, nom. "
+                  "Remplissez-les avec l'identifiant cPanel et enregistrez.")
+    assert translate("Settings → HTTPS still needs: name. Fill them in with the cPanel login and save.", "fr") \
+        .startswith("Paramètres → HTTPS demande encore : nom.")
+    assert translate("Unknown field: name, try again.", "fr") == "Unknown field: name, try again."
+
+
+def test_the_damaged_key_message_says_what_to_do_here():
+    from app.i18n import translate
+    from app import https_setup
+    import inspect
+    src = inspect.getsource(https_setup.save_login)
+    assert "Settings → Email ingest explains" not in src
+    msg = ("The token wasn't saved: encryption.key in the data folder is damaged (the email password uses it "
+           "too). Put back the copy it came from; or delete it and save the token again, which makes a new key, "
+           "then enter the email password again in Settings → Email ingest.")
+    assert translate(msg, "fr").startswith("Le jeton n'a pas été enregistré : encryption.key")

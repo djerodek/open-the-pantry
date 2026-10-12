@@ -491,6 +491,13 @@
             return;
           }
           const err = await res.json().catch(() => ({}));
+          if (res.status === 403 && err.https_url) {
+            // HTTPS was turned on since this dialog opened: offer the link.
+            adminOverlay._onClose = null;
+            closeModal(adminOverlay);
+            finish(await httpsOnlyDialog(err.https_url));
+            return;
+          }
           status.textContent = apiErrorText(err, res.status);
           (mode === "create" ? pw : cur).select();
         } catch {

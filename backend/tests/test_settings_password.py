@@ -360,6 +360,9 @@ def test_once_https_is_on_the_password_needs_the_secure_address(credentials, str
                                ("GET", "/api/email-settings", None), ("GET", "/api/logs", None)]:
         r = stranger.request(method, path, json=body)
         assert r.status_code == 403 and "secure address" in r.json()["detail"], (path, r.status_code)
+        # The admin endpoints and the gate refuse alike, link included, so
+        # the page can offer it either way (DeepSeek review of 0067).
+        assert r.json()["https_url"] == "https://pantry.example.com:8443", path
     # An unlocked cookie from plain http:// doesn't help either.
     stranger.cookies.set("pantry_settings", secure_stranger.cookies.get("pantry_settings"), path="/api")
     assert stranger.get("/api/email-settings").status_code == 403
@@ -445,3 +448,24 @@ def test_a_setup_started_during_a_reset_is_refused(credentials, secure_stranger,
     assert started == [False]
     st = _state()
     assert st["email_password"] is None and st["https_enabled"] is False and not st["files"]["privkey.pem"]
+
+
+def test_forget_certificate_needs_this_threads_reservation():
+    """DeepSeek review of 0067: it only checked that someone held the job
+    lock, which a running setup on another thread also does."""
+    import threading
+    import pytest
+    from app import https_setup
+    assert https_setup._job_lock.acquire(blocking=False)       # a setup job elsewhere holds it
+    try:
+        with pytest.raises(RuntimeError):
+            https_setup.forget_certificate()
+    finally:
+        https_setup._job_lock.release()
+    seen = []
+    with https_setup.reserved():
+        t = threading.Thread(target=lambda: seen.append(https_setup._reserved_by == threading.get_ident()))
+        t.start()
+        t.join()
+        assert https_setup._reserved_by == threading.get_ident()
+    assert seen == [False] and https_setup._reserved_by is None

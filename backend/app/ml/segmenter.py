@@ -146,6 +146,26 @@ def prepare(ex: Example) -> bool:
     return True
 
 
+# What OCR makes of a step number drawn in a circle: a symbol or a few
+# letters with a bracket, before the capital that starts the step.
+_SYMBOL_MARK = re.compile(rf"^\s*(?:[^\w\s]{{1,2}}|[a-z]{{1,3}}\))\s+(?=[{P._UPPER}])")
+_DIGITS = re.compile(r"\d{1,2}")
+
+
+def _real_step_numbers(lines: list[str]) -> bool:
+    """Printed step numbers that can be split on: at least two, counting up
+    by one, and no circle-marker leftovers among them. A screenshot's "9"
+    and "3)" are misread circles, not numbers."""
+    if any(_SYMBOL_MARK.match(l) for l in lines):
+        return False
+    nums = []
+    for l in lines:
+        m = P._STEP_START.match(l) or P._BARE_NUMBER.match(l)
+        if m:
+            nums.append(int(_DIGITS.search(m.group(0)).group(0)))
+    return len(nums) >= 2 and nums == list(range(nums[0], nums[0] + len(nums)))
+
+
 @dataclass
 class SegmenterModel:
     W: np.ndarray
@@ -166,11 +186,11 @@ class SegmenterModel:
         path, probs = self.label(lines, rule_labels(lines, rule_result))
         ingredients = P._clean_ingredients([_CHECKBOX.sub("", l) for l, y in zip(lines, path) if y == ING])
         step_lines = [l for l, y in zip(lines, path) if y == STEP]
-        if any(P._STEP_START.match(l) or P._BARE_NUMBER.match(l) for l in step_lines):
+        if _real_step_numbers(step_lines):
             steps = P._clean_steps(step_lines)
         else:
-            # No step numbers the rules can read: split at sentence ends and
-            # drop what OCR made of numbers drawn in circles ("@", "©", "9").
+            # No step numbers to go by: split at sentence ends and drop what
+            # OCR made of numbers drawn in circles ("@", "©", "faa)", "9").
             steps = P._prose_steps(step_lines)
         # Never worse than nothing: if the model finds no ingredients or no
         # steps where the rules did, keep the rules' result.
