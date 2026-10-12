@@ -497,8 +497,11 @@ Safeguards and notes:
     review.
 
   Both retrain by themselves a couple of minutes after recipes or tags
-  change, and at startup (seconds for a few hundred recipes); "Retrain
-  now" does it at once. The models live in `data/ml/` as plain number
+  change, and at startup; "Retrain now" does it at once. A training takes
+  from a few seconds to about a minute for a few hundred recipes and a
+  couple of hundred MB at most; only the 50 most-used tags get a model,
+  and a training takes one of the three OCR/PDF job slots, so it never
+  adds to the worst case below. The models live in `data/ml/` as plain number
   arrays, are rebuilt from the recipes, and aren't in backups. Turning
   learning off goes back to the rules and keywords alone.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
@@ -1003,7 +1006,8 @@ sizes, and URLs are.
 ## Deployment notes
 
 **Resource limits.** The app bounds its own work (at most three OCR/PDF
-jobs at once, 35 MP per page, batch size caps), but Docker doesn't cap the
+jobs at once -- Settings → Learning's training takes one of those slots --,
+35 MP per page, batch size caps), but Docker doesn't cap the
 container. Measured worst case is about 3.4 GB (three large scans at once);
 idle is about 160 MB. The compose files have commented-out `mem_limit`,
 `cpus` and `pids_limit` lines if you want a hard ceiling.

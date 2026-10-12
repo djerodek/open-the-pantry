@@ -26,6 +26,7 @@ MIN_NEGATIVE = 5
 PRECISION = 0.85     # required precision of the extra suggestions, cross-validated
 MIN_HITS = 3         # ...over at least this many correct extra suggestions
 FLOOR = 0.5          # never suggest below this probability
+MAX_TAGS = 50        # only the most-used tags get a model: training time and memory stay bounded
 
 
 @dataclass
@@ -56,7 +57,7 @@ class TagModel:
 
     @classmethod
     def from_arrays(cls, a, tags) -> "TagModel":
-        return cls(W=a["W"].astype(np.float64), tags=[tuple(t) for t in tags], thresholds=a["thresholds"])
+        return cls(W=a["W"].astype(np.float32), tags=[tuple(t) for t in tags], thresholds=a["thresholds"])
 
 
 def _threshold(probs: np.ndarray, truth: np.ndarray) -> float | None:
@@ -85,9 +86,14 @@ def train(examples: list[TagExample], subgroups: dict, folds: int = 5) -> tuple[
     for ex in examples:
         for t in ex.tags:
             counts[t] = counts.get(t, 0) + 1
-    candidates = sorted(t for t, c in counts.items()
-                        if c >= MIN_POSITIVE and len(examples) - c >= MIN_NEGATIVE and t in subgroups)
+    eligible = [t for t, c in counts.items()
+                if c >= MIN_POSITIVE and len(examples) - c >= MIN_NEGATIVE and t in subgroups]
+    # The most-used first; a library with hundreds of rarely used tags
+    # trains the same MAX_TAGS models (Claude review round 6: 400 tags
+    # took 72 s and 2.8 GB).
+    candidates = sorted(sorted(eligible, key=lambda t: (-counts[t], t))[:MAX_TAGS])
     report["tags_considered"] = len(candidates)
+    report["tags_skipped"] = len(eligible) - len(candidates)
     if not candidates:
         report["status"] = "no_tags"
         return None, report
@@ -96,12 +102,16 @@ def train(examples: list[TagExample], subgroups: dict, folds: int = 5) -> tuple[
     Y = np.array([[1.0 if t in ex.tags else 0.0 for t in candidates] for ex in examples])
     KW = np.array([[t in ex.keyword for t in candidates] for ex in examples])
 
+    # One tag at a time: the optimiser's memory is a few MB for one tag,
+    # but it grew by that much for every tag trained together.
     oof = np.zeros_like(Y)
     k = min(folds, len(examples))
     for rows in linear.grouped_folds([ex.recipe_id for ex in examples], k, seed=1):
         train_rows = np.setdiff1d(np.arange(len(examples)), rows)
-        W = linear.train_sigmoid(X.take(train_rows), Y[train_rows])
-        oof[rows] = linear.predict_sigmoid(X.take(rows), W)
+        X_train, X_held = X.take(train_rows), X.take(rows)
+        for j in range(len(candidates)):
+            w = linear.train_sigmoid(X_train, Y[train_rows][:, [j]])
+            oof[rows, j] = linear.predict_sigmoid(X_held, w)[:, 0]
 
     keep, thresholds = [], []
     for j, t in enumerate(candidates):
@@ -113,7 +123,9 @@ def train(examples: list[TagExample], subgroups: dict, folds: int = 5) -> tuple[
     if not keep:
         report["status"] = "nothing_learned"
         return None, report
-    W = linear.train_sigmoid(X, Y[:, keep])
+    W = np.zeros((X.dim, len(keep)), dtype=np.float32)
+    for col, j in enumerate(keep):
+        W[:, col] = linear.train_sigmoid(X, Y[:, [j]])[:, 0]
     tags = [(candidates[j][0], candidates[j][1], subgroups.get(candidates[j])) for j in keep]
     report["status"] = "active"
     report["learned"] = sorted(t[0] for t in tags)

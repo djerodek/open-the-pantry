@@ -53,6 +53,9 @@ _report: dict = {}
 # every tag or group change). A learned suggestion for a tag deleted since
 # the last training is dropped: saving it would create the tag again.
 _known_tags: frozenset | None = None
+# main.py hands over the semaphore that limits OCR and PDF work to a few at
+# once; training takes a slot too, so it never runs alongside three OCR jobs.
+_heavy_gate = None
 _warned_settings = False
 
 
@@ -105,6 +108,11 @@ def _remove_stale_weights(keep: set):
                 os.remove(_path(name))
             except OSError:
                 log.warning("Learning: couldn't remove old model file %s", name, exc_info=True)
+
+
+def set_heavy_gate(gate):
+    global _heavy_gate
+    _heavy_gate = gate
 
 
 def set_known_tags(tags):
@@ -192,7 +200,11 @@ def train_now() -> dict | None:
     if not _lock.acquire(blocking=False):
         return None
     try:
-        return _train_locked()
+        gate = _heavy_gate
+        if gate is None:
+            return _train_locked()
+        with gate:
+            return _train_locked()
     finally:
         _lock.release()
 

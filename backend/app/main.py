@@ -108,6 +108,7 @@ TMP_SWEEP_INTERVAL_SECONDS = 6 * 60 * 60  # re-sweep periodically, not just at s
 # self-hosted tool has no legitimate reason to run more than a few at once.
 MAX_CONCURRENT_HEAVY_JOBS = 3
 _heavy_job_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_HEAVY_JOBS)
+learning.set_heavy_gate(_heavy_job_semaphore)
 
 
 def _run_heavy(fn, *args, **kwargs):

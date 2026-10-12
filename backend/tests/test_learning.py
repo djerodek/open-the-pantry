@@ -439,3 +439,56 @@ def test_the_damaged_key_message_says_what_to_do_here():
            "too). Put back the copy it came from; or delete it and save the token again, which makes a new key, "
            "then enter the email password again in Settings → Email ingest.")
     assert translate(msg, "fr").startswith("Le jeton n'a pas été enregistré : encryption.key")
+
+
+# ---------------------------------------------------------------------------
+# Claude review round 6
+# ---------------------------------------------------------------------------
+
+def test_tag_learning_is_bounded_by_the_most_used_tags():
+    """400 tags used to be trained together: 72 s and 2.8 GB."""
+    import random
+    from app.ml import tags as T
+    rng = random.Random(3)
+    names = [f"tag{i}" for i in range(120)]
+    ex = []
+    for i in range(80):
+        tags = {(t, "custom") for t in names if rng.random() < 0.2}
+        ex.append(T.TagExample(i, f"recipe {i}", ["flour", "water"], "mix", tags, set()))
+    model, report = T.train(ex, {(t, "custom"): None for t in names})
+    assert report["tags_considered"] == T.MAX_TAGS and report["tags_skipped"] == 120 - T.MAX_TAGS
+
+
+def test_tag_learning_still_finds_the_learnable_tags_one_at_a_time():
+    from app.ml import tags as T
+    model, report = T.train(_tag_examples(tagged_recipes(80)), SUBGROUPS)
+    assert set(report["learned"]) == {"Curry", "Pasta night"}
+    assert model.W.shape[1] == 2
+
+
+def test_a_recipe_carries_a_bounded_number_of_tags(client, sample_recipe_payload):
+    many = [{"name": f"t{i}", "category": "custom"} for i in range(51)]
+    assert client.post("/api/recipes", json={**sample_recipe_payload, "tags": many}).status_code == 422
+    long_name = [{"name": "x" * 101, "category": "custom"}]
+    assert client.post("/api/recipes", json={**sample_recipe_payload, "tags": long_name}).status_code == 422
+
+
+def test_training_takes_a_heavy_job_slot(learning_reset, monkeypatch):
+    service = learning_reset
+    entered = []
+
+    class Gate:
+        def __enter__(self):
+            entered.append(1)
+
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr(service, "_heavy_gate", Gate())
+    monkeypatch.setattr(service, "_train_locked", lambda: {"ok": True})
+    assert service.train_now() == {"ok": True} and entered == [1]
+
+
+def test_main_hands_the_ocr_semaphore_to_learning(client):
+    from app import main
+    from app.ml import service
+    assert service._heavy_gate is main._heavy_job_semaphore

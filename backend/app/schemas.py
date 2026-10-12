@@ -42,9 +42,12 @@ class IngredientIn(BaseModel):
 
 
 class TagIn(BaseModel):
-    name: str
-    category: str
-    subgroup: Optional[str] = None
+    # Bounded like the Settings tag form (TagDefIn), with room for older
+    # tags typed on a recipe (Claude review round 6: unbounded tags fed the
+    # tag learning).
+    name: str = Field(..., min_length=1, max_length=100)
+    category: str = Field(..., min_length=1, max_length=60)
+    subgroup: Optional[str] = Field(default=None, max_length=60)
 
 
 class RecipeCreate(BaseModel):
@@ -71,7 +74,7 @@ class RecipeCreate(BaseModel):
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
     ingredients: list[IngredientIn] = []
     steps: list[str] = []
-    tags: list[TagIn] = []
+    tags: list[TagIn] = Field(default_factory=list, max_length=50)
 
     _check_image_path = field_validator("image_path")(_validate_stored_filename)
 

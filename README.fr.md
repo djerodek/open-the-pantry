@@ -596,9 +596,12 @@ Garde-fous et remarques :
     étiquettes sans révision.
 
   Les deux se réentraînent seuls quelques minutes après un changement de
-  recettes ou d'étiquettes, et au démarrage (quelques secondes pour
-  quelques centaines de recettes); « Réentraîner maintenant » le fait tout
-  de suite. Les modèles sont dans `data/ml/` sous forme de simples tableaux
+  recettes ou d'étiquettes, et au démarrage; « Réentraîner maintenant » le
+  fait tout de suite. Un entraînement prend de quelques secondes à environ
+  une minute pour quelques centaines de recettes, et quelques centaines de
+  Mo au plus; seules les 50 étiquettes les plus utilisées ont un modèle,
+  et un entraînement occupe l'une des trois places des traitements
+  OCR/PDF, donc il ne s'ajoute jamais au pire cas ci-dessous. Les modèles sont dans `data/ml/` sous forme de simples tableaux
   de nombres, sont reconstruits à partir des recettes et ne sont pas dans
   les sauvegardes. Désactiver l'apprentissage revient aux règles et aux
   mots-clés seuls.
@@ -1216,7 +1219,8 @@ jointes et les URL le sont.
 ## Notes de déploiement
 
 **Limites de ressources.** L'application limite son propre travail (au
-plus trois traitements OCR/PDF à la fois, 35 Mpx par page, plafonds de
+plus trois traitements OCR/PDF à la fois — l'entraînement de Paramètres →
+Apprentissage occupe l'une de ces places —, 35 Mpx par page, plafonds de
 taille des lots), mais Docker ne plafonne pas le conteneur. Le pire cas
 mesuré est d'environ 3,4 Go (trois grosses numérisations à la fois); au
 repos, environ 160 Mo. Les fichiers compose ont des lignes `mem_limit`,
