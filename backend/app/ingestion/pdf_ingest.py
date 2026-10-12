@@ -312,7 +312,8 @@ def _clean_ingredients(lines):
                 label = label.lower()
             if not label.lower().startswith("for "):
                 label = f"For the {label[0].lower() + label[1:]}"
-            out.append(f"{label}:")
+            # "FOR THE BASE" came out as "for the base:".
+            out.append(f"{label[0].upper()}{label[1:]}:")
             continue
         prev = out[-1] if out else None
         continues = prev is not None and not prev.endswith(":") and not _QTY_START.match(line) and (
@@ -480,7 +481,43 @@ def _prose_steps(lines):
     return steps
 
 
+def prepare_lines(raw_text: str) -> list[str]:
+    """The text as the segmenter reads it: one cleaned line per printed
+    line, blank lines dropped. Shared with the learned segmenter (app/ml),
+    which labels exactly these lines."""
+    lines = [_normalize_line(l) for l in (raw_text or "").split("\n")]
+    return [l for l in lines if l]
+
+
+# Settings -> Learning: a model trained on the user's own corrected imports
+# (app/ml/segmenter.py). Set by app/ml/service.py when one is in use; it
+# gets the text and this module's own result, and returns its result or
+# None to keep the rules' one.
+_learned_segmenter = None
+
+
+def set_learned_segmenter(fn):
+    global _learned_segmenter
+    _learned_segmenter = fn
+
+
 def segment_raw_text(raw_text: str) -> dict:
+    """Title, ingredients and steps from extracted or OCR'd text: the rules
+    below, or the learned model when one is in use and it beat the rules
+    on the user's own recipes. No LLM either way."""
+    result = rule_segment_raw_text(raw_text)
+    learned = _learned_segmenter
+    if learned is not None:
+        try:
+            out = learned(raw_text, result)
+            if out is not None:
+                return out
+        except Exception:
+            log.exception("Learned segmenter failed; using the rules' result")
+    return result
+
+
+def rule_segment_raw_text(raw_text: str) -> dict:
     """
     Heuristic segmentation of raw extracted/OCR'd text into title/ingredients/steps.
     No LLM. Used as a starting point for the manual-review screen -- expected to
@@ -490,8 +527,7 @@ def segment_raw_text(raw_text: str) -> dict:
     ingredients before its recipe card), the heading followed by the most
     quantity lines is the one used.
     """
-    lines = [_normalize_line(l) for l in raw_text.split("\n")]
-    lines = [l for l in lines if l]
+    lines = prepare_lines(raw_text)
 
     ing_idx = [i for i, l in enumerate(lines) if HEADING_INGREDIENTS.match(l)]
     step_idx = [i for i, l in enumerate(lines) if HEADING_STEPS.match(l)]

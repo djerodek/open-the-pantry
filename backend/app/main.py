@@ -43,6 +43,7 @@ from . import crypto
 from . import i18n
 from . import https_setup
 from . import admin_lock
+from .ml import service as learning
 
 _lock_file_handle = None
 
@@ -212,6 +213,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("HTTPS listener couldn't start")
     https_renew_task = asyncio.create_task(https_setup.renewal_loop(app))
+    # Settings -> Learning: use the saved models, then retrain from the
+    # recipes as they are now (in the background).
+    try:
+        learning.load()
+    except Exception:
+        log.exception("Learning: couldn't load the saved models")
+    learning.schedule_retrain(delay=learning.STARTUP_DELAY)
     yield
     sweep_task.cancel()
     email_scan_task.cancel()
@@ -239,6 +247,21 @@ API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
 if API_KEY:
     log.warning("RECIPE_APP_API_KEY is set: every request needs an X-API-Key header, and the app's own "
                 "pages don't send one. The web app in a browser won't work unless a reverse proxy adds it.")
+
+
+# Changes the learned models train on: recipes saved, edited or deleted,
+# tags changed, batch and email imports.
+_RETRAIN_AFTER = re.compile(r"^/api/(recipes|tags|tag-groups|ingest/(url|pdf)/batch|email-settings/scan)(/|$)")
+
+
+@app.middleware("http")
+async def retrain_after_changes(request: Request, call_next):
+    response = await call_next(request)
+    if (request.method in ("POST", "PUT", "PATCH", "DELETE") and 200 <= response.status_code < 300
+            and _RETRAIN_AFTER.match(request.url.path)
+            and not request.url.path.endswith(("/rating", "/notes", "/email", "/suggest"))):
+        learning.schedule_retrain()
+    return response
 
 
 @app.middleware("http")
@@ -1137,6 +1160,7 @@ async def _daily_email_scan_loop():
                 continue
             last_scan_day = today
             await anyio.to_thread.run_sync(run_email_scan)
+            learning.schedule_retrain()
         except Exception:
             # A scheduled scan failing must never kill the loop -- the
             # next day's attempt should still happen.
@@ -2021,6 +2045,28 @@ def suggest_tags_for_form(payload: schemas.TagSuggestRequest):
     has_meat = any(t in {m.lower() for m in meat} for t in current) or any(n in meat for n, _, _ in suggested)
     return [schemas.TagIn(name=n, category=c, subgroup=sg) for n, c, sg in suggested
             if n.lower() not in current and not (n == "Vegetarian" and has_meat)]
+
+
+# ---------------------------------------------------------------------------
+# Settings -> Learning: models trained on the user's own recipes (app/ml)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/learning")
+def learning_status():
+    return learning.status()
+
+
+@app.post("/api/learning/train")
+def learning_train():
+    """Retrain now (takes seconds); returns the new status."""
+    if not learning.enabled():
+        raise HTTPException(status_code=409, detail="Learning is turned off.")
+    return learning.train_now()
+
+
+@app.put("/api/learning")
+def learning_settings(payload: schemas.LearningSettingsIn):
+    return learning.set_enabled(payload.enabled)
 
 
 # ---------------------------------------------------------------------------

@@ -572,6 +572,36 @@ Garde-fous et remarques :
   Personnalisées au démarrage. Les modes de cuisson propres aux cocktails
   (Agité, Remué, Monté au verre, Mélangé) s'affichent dans un
   sous-onglet de Mode de cuisson.
+- Paramètres → Apprentissage (« Apprendre de mes recettes », activé par
+  défaut) : deux petits modèles entraînés sur ce serveur à partir de vos
+  propres recettes enregistrées, sans LLM ni service extérieur.
+  - **Lecture des importations.** Pour une recette importée d'une photo,
+    d'un PDF ou d'un courriel, le texte d'origine est gardé à côté de ce
+    que vous avez enregistré après l'écran de révision; chaque ligne en est
+    donc étiquetée — titre, ingrédient, partie d'une étape, ou rien —
+    corrections comprises. Un classificateur apprend ces étiquettes à
+    partir des mots et de la forme de chaque ligne, de ses voisines et de
+    ce que les règles intégrées en ont fait : il apprend où les règles se
+    trompent sur vos sources. Il lui faut 8 recettes de ce genre, et il
+    n'est utilisé que s'il classe plus de lignes correctement que les
+    règles en validation croisée sur vos recettes; les Paramètres
+    affichent les deux résultats. Les règles restent la solution de repli
+    pour toute importation où il ne trouve ni ingrédients ni étapes.
+  - **Suggestions d'étiquettes.** Un modèle par étiquette, à partir des
+    mots du titre, des ingrédients et des étapes de vos recettes
+    étiquetées (15 nécessaires, 5 par étiquette). Il s'ajoute aux
+    suggestions par mots-clés : une étiquette n'a un modèle que si, en
+    validation croisée, les suggestions de plus qu'il ferait étaient justes
+    au moins 85 % du temps — l'ajout par lot et par courriel enregistre les
+    étiquettes sans révision.
+
+  Les deux se réentraînent seuls quelques minutes après un changement de
+  recettes ou d'étiquettes, et au démarrage (quelques secondes pour
+  quelques centaines de recettes); « Réentraîner maintenant » le fait tout
+  de suite. Les modèles sont dans `data/ml/` sous forme de simples tableaux
+  de nombres, sont reconstruits à partir des recettes et ne sont pas dans
+  les sauvegardes. Désactiver l'apprentissage revient aux règles et aux
+  mots-clés seuls.
 - Recherche plein texte (SQLite FTS5) dans les titres, ingrédients, étapes,
   notes, texte source *et* noms d'étiquettes, chaque résultat indiquant
   s'il correspond à la recette ou à une étiquette. Les mots correspondent à
@@ -1112,8 +1142,10 @@ courriel)**
   Un PDF coupé avant les étapes est refusé avec ce conseil (voir Ajout de
   recettes).
 - L'analyse heuristique (URL sans JSON-LD, découpage des PDF et de l'OCR)
-  repose sur des expressions régulières et des règles, pas sur
-  l'apprentissage automatique — attendez-vous à corriger des champs sur des
+  repose sur des expressions régulières et des règles tant que Paramètres →
+  Apprentissage n'a pas assez de vos importations corrigées pour faire
+  mieux, et même alors il n'apprend que de ce que vous avez enregistré —
+  attendez-vous à corriger des champs sur des
   mises en page désordonnées ou inhabituelles, avec l'écran de révision
   affiché après l'ajout d'un seul élément. L'ajout par lot saute cette
   révision, donc vérifiez les résultats ensuite.
@@ -1264,7 +1296,10 @@ imbriqué, les contraintes des notes, la validation des téléversements
 l'échappement XSS à l'exportation, la protection SSRF (y compris le cas
 des redirections), le cycle de vie des fichiers brouillons, les
 heuristiques d'ajout (détection de la couche de texte des PDF, découpage
-en sections, analyse des ingrédients, suggestion d'étiquettes), la
+en sections, analyse des ingrédients, suggestion d'étiquettes), le
+découpage et les étiquettes appris (contre un ensemble généré
+d'importations en cinq mises en page : ils doivent battre les règles là où
+elles peinent et rester inactifs ailleurs), la
 couverture du français (chaque texte de l'interface a une version
 française) et Paramètres → HTTPS de bout en bout contre une fausse API
 cPanel et une autorité de certification de test.

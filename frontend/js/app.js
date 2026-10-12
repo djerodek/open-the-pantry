@@ -393,7 +393,7 @@
     });
   }
 
-  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); openModal(settingsOverlay); });
+  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); refreshLearning(); openModal(settingsOverlay); });
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 
@@ -2184,6 +2184,86 @@
 
   // Photos on/off: a switch in Settings (it was a toolbar button). The list
   // behind the Settings dialog updates as soon as it's flipped.
+  // -------------------------------------------------------------------
+  // Settings -> Learning: models trained on the user's own recipes
+  // (backend app/ml). Shows what is in use and lets it be retrained or
+  // turned off.
+  // -------------------------------------------------------------------
+  const learningEnabled = $("#learning-enabled");
+  const learningTrainBtn = $("#learning-train");
+  const pct = (x) => Math.round((x || 0) * 100);
+
+  function renderLearning(s) {
+    learningEnabled.checked = !!s.enabled;
+    learningTrainBtn.hidden = !s.enabled;
+    learningTrainBtn.disabled = !!s.training;
+    const seg = s.segmenter || {}, tags = s.tags || {};
+    let imports, tagText;
+    if (!s.enabled) {
+      imports = tx("Off: imports and tag suggestions use the built-in rules only.");
+      tagText = "";
+    } else {
+      imports = {
+        active: () => tx("Reading imports: learned model in use. On your {1} imported recipes it put {2}% of lines in the right place, against {3}% for the built-in rules.",
+          { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy) }),
+        rules_better: () => tx("Reading imports: built-in rules. On your {1} imported recipes the learned model did no better ({2}% of lines in the right place, against {3}% for the rules).",
+          { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy) }),
+        not_enough_data: () => tx("Reading imports: built-in rules. Learning starts after {1} recipes imported from a photo, PDF or email ({2} so far).",
+          { 1: seg.needed, 2: seg.imported_recipes || 0 }),
+      }[seg.status];
+      imports = imports ? imports() : tx("Reading imports: not trained yet.");
+      tagText = {
+        active: () => tx("Tag suggestions: keywords, plus learned suggestions for {1}.", { 1: (tags.learned || []).map((n) => tagLabel(n)).join(", ") }),
+        not_enough_data: () => tx("Tag suggestions: keywords only. Learning starts after {1} tagged recipes ({2} so far).",
+          { 1: tags.needed, 2: tags.tagged_recipes || 0 }),
+        no_tags: () => tx("Tag suggestions: keywords only. No tag is on enough recipes yet to learn from."),
+        nothing_learned: () => tx("Tag suggestions: keywords only. No tag could yet be predicted reliably enough to add suggestions."),
+      }[tags.status];
+      tagText = tagText ? tagText() : tx("Tag suggestions: not trained yet.");
+    }
+    $("#learning-imports").textContent = imports;
+    $("#learning-tags").textContent = tagText;
+    $("#learning-tags").hidden = !tagText;
+    let trained = "";
+    if (s.training) trained = tx("Training…");
+    else if (s.error) trained = tx("The last training failed: {1}", { 1: s.error });
+    else if (s.trained_at && s.enabled) trained = tx("Last trained: {1}", { 1: fmtDateTime(s.trained_at) });
+    $("#learning-trained").textContent = trained;
+    $("#learning-trained").hidden = !trained;
+  }
+
+  async function refreshLearning() {
+    const res = await fetch(`${API}/learning`).catch(() => null);
+    if (res && res.ok) renderLearning(await res.json());
+  }
+
+  learningEnabled.addEventListener("change", async () => {
+    const res = await fetch(`${API}/learning`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: learningEnabled.checked }),
+    }).catch(() => null);
+    if (res && res.ok) { renderLearning(await res.json()); return; }
+    learningEnabled.checked = !learningEnabled.checked;
+    const body = res ? await res.json().catch(() => ({})) : {};
+    announceError(apiErrorText(body, res ? res.status : 0));
+  });
+
+  learningTrainBtn.addEventListener("click", async () => {
+    learningTrainBtn.disabled = true;
+    $("#learning-trained").hidden = false;
+    $("#learning-trained").textContent = tx("Training…");
+    const res = await fetch(`${API}/learning/train`, { method: "POST" }).catch(() => null);
+    if (res && res.ok) {
+      renderLearning(await res.json());
+      announce(tx("Training finished."));
+      return;
+    }
+    learningTrainBtn.disabled = false;
+    const body = res ? await res.json().catch(() => ({})) : {};
+    announceError(apiErrorText(body, res ? res.status : 0));
+    refreshLearning();
+  });
+
   const thumbnailsSetting = $("#thumbnails-setting");
   thumbnailsSetting.checked = state.showThumbnails;
   thumbnailsSetting.addEventListener("change", () => {

@@ -15,6 +15,9 @@ def data_dir(tmp_path_factory):
     # rather than weakened in the app itself. Must be set before
     # app.main is imported -- the limit is read at import time.
     os.environ.setdefault("RECIPE_APP_RATE_LIMIT", "100000")
+    # No background retraining mid-suite: it would change what other
+    # tests' imports return. Learning tests train explicitly.
+    os.environ["RECIPE_APP_LEARNING_AUTOTRAIN"] = "0"
     return d
 
 

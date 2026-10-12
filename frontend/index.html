@@ -286,6 +286,24 @@
       </div>
     </div>
 
+    <div class="filter-section" id="learning-section">
+      <div class="filter-section-title">Learning</div>
+      <label class="switch-row" for="learning-enabled">
+        <span>Learn from my recipes</span>
+        <input type="checkbox" role="switch" id="learning-enabled" class="switch">
+      </label>
+      <div class="field-hint">
+        Learns from the recipes you've saved how your photo, PDF and email
+        imports are laid out and how you tag. It runs on this server, retrains
+        itself after changes, and is only used where it does better than the
+        built-in rules.
+      </div>
+      <p class="field-hint" id="learning-imports" role="status"></p>
+      <p class="field-hint" id="learning-tags"></p>
+      <p class="field-hint" id="learning-trained"></p>
+      <button type="button" id="learning-train" class="btn-secondary">Retrain now</button>
+    </div>
+
     <div class="filter-section" id="admin-lock-section">
       <div class="filter-section-title">Settings password</div>
       <div class="field-hint">

@@ -476,6 +476,31 @@ Safeguards and notes:
   exists (a database edited outside the app, say) is moved to Custom at
   startup. Cocktail-specific cooking-style tags
   (shaken/stirred/built/blended) render as a subtab under Cooking Style.
+- Settings → Learning ("Learn from my recipes", on by default): two small
+  models trained on this server from your own saved recipes, no LLM and no
+  outside service.
+  - **Reading imports.** For a recipe imported from a photo, PDF or email,
+    the original text is kept next to what you saved after the review
+    screen, so every line of it is labelled -- title, ingredient, part of a
+    step, or neither -- corrections included. A classifier learns those
+    labels from each line's words and shape, its neighbours, and what the
+    built-in rules made of it, so it learns where the rules go wrong on
+    your sources. It needs 8 such recipes, and is used only when it puts
+    more lines in the right place than the rules in cross-validation on
+    your recipes; Settings shows both scores. The rules stay as the
+    fallback for any import where it finds no ingredients or steps.
+  - **Tag suggestions.** One model per tag, from the words of the title,
+    ingredients and steps of your tagged recipes (15 needed, 5 per tag). It
+    adds to the keyword suggestions: a tag gets a model only if, in
+    cross-validation, the extra suggestions it would make were right at
+    least 85% of the time -- batch and email imports save tags without
+    review.
+
+  Both retrain by themselves a couple of minutes after recipes or tags
+  change, and at startup (seconds for a few hundred recipes); "Retrain
+  now" does it at once. The models live in `data/ml/` as plain number
+  arrays, are rebuilt from the recipes, and aren't in backups. Turning
+  learning off goes back to the rules and keywords alone.
 - Full-text search (SQLite FTS5) across titles, ingredients, steps, notes,
   source text *and* tag names, with each result labeled by whether it
   matched the recipe or a tag. Words match from their start ("chick" finds
@@ -921,8 +946,10 @@ Safeguards and notes:
   PDF cut off before the steps is refused with that advice (see
   Ingestion).
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
-  based, not ML-based — expect to correct fields on messy or non-standard
-  layouts via the review screen shown after single-item ingestion. Batch
+  based until Settings → Learning has enough of your corrected imports to
+  do better, and even then it learns only from what you've saved — expect
+  to correct fields on messy or non-standard layouts via the review screen
+  shown after single-item ingestion. Batch
   ingestion skips that review, so check results afterward.
 - Screenshot OCR confidence is surfaced as a badge (`OCR quality: low` etc.)
   based on Tesseract's per-word confidence; treat low-confidence extractions
@@ -1045,7 +1072,9 @@ rating constraints, upload validation (size/magic-byte/extension-spoofing/
 polyglot-payload stripping), XSS escaping on export, the SSRF guard
 (including the redirect case), draft-file lifecycle, and the ingestion
 heuristics (PDF text-layer detection, section segmentation, ingredient
-parsing, tag suggestion), French coverage (every interface string has a
+parsing, tag suggestion), the learned segmenter and tags (against a
+generated set of imports in five layouts: they must beat the rules where
+the rules struggle and stay off where they don't), French coverage (every interface string has a
 French version), and Settings → HTTPS end to end against a fake cPanel
 API and a test certificate authority.
 
@@ -1118,6 +1147,13 @@ backend/
                                              (PDF + photo paths)
       ingredient_parser.py                  regex quantity/unit/name parsing
       tagger.py                               keyword-based auto-tagging
+    ml/                                     Settings -> Learning (numpy only)
+      linear.py                               sparse logistic regression,
+                                               L-BFGS, Viterbi
+      features.py                             line and recipe features
+      segmenter.py                            learned import segmentation
+      tags.py                                 learned tag suggestions
+      service.py                              training, files, status
       email_processing.py                       tagged-email extraction:
                                                  PDF -> photo -> links -> body
       completeness.py                         a whole recipe needs ingredients

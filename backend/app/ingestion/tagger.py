@@ -129,7 +129,50 @@ def meat_tag_names() -> set[str]:
     return set(MEAT_FISH_TAGS) | {n for n, c, _, _, rov in _user_keywords if rov and c == "main_ingredient"}
 
 
+# Settings -> Learning: tags learned from the user's own tagged recipes
+# (app/ml/tags.py). Set by app/ml/service.py when a model is in use; called
+# with (title, ingredient_names, step_text), returns (name, category,
+# subgroup) suggestions.
+_learned_tagger = None
+
+
+def set_learned_tagger(fn):
+    global _learned_tagger
+    _learned_tagger = fn
+
+
 def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -> list[tuple[str, str, str | None]]:
+    """The keyword suggestions, plus any the learned model adds. A learned
+    meat or fish tag also withdraws the keywords' Vegetarian (that one only
+    means "no meat word found"); a learned Vegetarian is dropped when meat
+    or fish was found."""
+    suggestions = keyword_suggestions(title, ingredient_names, step_text)
+    learned = _learned_tagger
+    if learned is None:
+        return suggestions
+    try:
+        extra = learned(title, ingredient_names, step_text)
+    except Exception:
+        from ..logging_setup import get_logger
+        _log = get_logger("tags")
+        _log.exception("Learned tagger failed; keyword suggestions only")
+        return suggestions
+    meat = meat_tag_names()
+    have = {(n, c) for n, c, _ in suggestions}
+    keyword_meat = any(n in meat for n, _, _ in suggestions) or ("Vegetarian", "main_ingredient") not in have
+    for name, category, subgroup in extra:
+        if (name, category) in have:
+            continue
+        if name == "Vegetarian" and keyword_meat:
+            continue
+        suggestions.append((name, category, subgroup))
+        have.add((name, category))
+    if any(n in meat for n, _, _ in suggestions):
+        suggestions = [t for t in suggestions if t[0] != "Vegetarian"]
+    return suggestions
+
+
+def keyword_suggestions(title: str, ingredient_names: list[str], step_text: str = "") -> list[tuple[str, str, str | None]]:
     """
     Returns a list of (tag_name, category, subgroup) suggestions based on simple
     keyword matching. No LLM. Intended as a starting point the user can accept,

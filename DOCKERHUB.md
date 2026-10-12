@@ -85,6 +85,9 @@ updates apply.
 - Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
   plus your own groups and keywords; automatic tag suggestions (English and
   French words), applied to new recipes or, after a review, to all of them
+- Learns from your own saved recipes, on the server (no LLM, no outside
+  service): how your photo, PDF and email imports are laid out, and how you
+  tag; used only where it beats the built-in rules on your recipes
 - Full-text search across recipes and tags; stacked filters; pace and
   cook-time filters; sort by date, title, rating, cook time or difficulty
 - Ratings, favorites, per-recipe notes (marked on the recipe cards),
