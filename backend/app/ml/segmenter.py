@@ -198,7 +198,8 @@ class SegmenterModel:
             return None
         titles = [i for i, y in enumerate(path) if y == TITLE]
         title = lines[max(titles, key=lambda i: probs[i, TITLE])] if titles else rule_result.get("title_guess")
-        return {"title_guess": title or "Untitled Recipe", "ingredients": ingredients, "steps": steps}
+        return {"title_guess": title or "Untitled Recipe", "ingredients": ingredients, "steps": steps,
+                "servings": rule_result.get("servings")}
 
     def arrays(self) -> dict:
         return {"W": self.W.astype(np.float32), "log_trans": self.log_trans,

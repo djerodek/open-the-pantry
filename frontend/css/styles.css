@@ -1497,6 +1497,16 @@ main {
   gap: 0.4rem;
 }
 .steps-list li { margin-bottom: 0.7rem; }
+/* A part of the recipe ("Sauce tartare:"): a small heading, no bullet or number. */
+.ingredients-list li.list-part,
+.steps-list li.list-part {
+  list-style: none;
+  border-bottom: none;
+  font-weight: 600;
+  padding-top: 0.8rem;
+  margin-left: -1.2rem;
+}
+.ingredients-list li.list-part { margin-left: 0; }
 
 .status-region {
   position: fixed;

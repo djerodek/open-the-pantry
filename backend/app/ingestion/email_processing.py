@@ -200,7 +200,7 @@ def extract_email_parts(msg) -> dict:
 
 
 def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_confidence=None, source_detail="",
-                  source_url=None):
+                  source_url=None, servings=None):
     parsed_ingredients = parse_ingredient_block(ingredients_raw)
     tag_suggestions = suggest_tags(
         title, [i["name"] or i["raw_line"] for i in parsed_ingredients], raw_text
@@ -218,6 +218,7 @@ def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_
         # Only a recipe read from a link in the body has one; the recipe page
         # shows it as a "View original" link.
         "source_url": source_url,
+        "servings": servings,
     }
 
 
@@ -321,7 +322,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     pdf_result.raw_text, ocr_confidence=pdf_result.avg_ocr_confidence,
-                    source_detail="PDF attachment",
+                    source_detail="PDF attachment", servings=segmented.get("servings"),
                 )
             elif segmented["ingredients"] or segmented["steps"]:
                 incomplete_hint = True
@@ -357,7 +358,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 return _build_result(
                     segmented["title_guess"], segmented["ingredients"], segmented["steps"],
                     ocr_result.raw_text, image_path=image_name, ocr_confidence=ocr_result.ocr_confidence,
-                    source_detail="image attachment",
+                    source_detail="image attachment", servings=segmented.get("servings"),
                 )
             elif segmented["ingredients"] or segmented["steps"]:
                 os.remove(image_path)
@@ -389,7 +390,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 return _build_result(
                     url_result.title, url_result.ingredients, url_result.steps,
                     url_result.raw_text, source_detail=f"URL in body ({url})",
-                    source_url=getattr(url_result, "final_url", None) or url,
+                    source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
                 )
             except Exception as e:
                 # Full traceback for the unexpected; the URL checks and a
@@ -410,7 +411,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
         if not missing_sections(segmented["ingredients"], segmented["steps"]):
             return _build_result(
                 segmented["title_guess"], segmented["ingredients"], segmented["steps"],
-                parts["body_text"], source_detail="email body text",
+                parts["body_text"], source_detail="email body text", servings=segmented.get("servings"),
             )
         if segmented["ingredients"] or segmented["steps"]:
             tried.append("body text: only part of a recipe "

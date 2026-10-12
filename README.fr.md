@@ -1144,6 +1144,14 @@ courriel)**
   Imprimer → PDF, qui découpe la page, ou le bouton d'impression du site.
   Un PDF coupé avant les étapes est refusé avec ce conseil (voir Ajout de
   recettes).
+- Les recettes en plusieurs parties sans titres Ingrédients/Préparation,
+  comme on les tape dans un traitement de texte (les ingrédients et la
+  préparation du plat, puis « Sauce tartare » avec les siens, etc.), sont
+  lues partie par partie : les ingrédients ensemble et les étapes ensemble,
+  le nom de chaque partie gardé comme petit titre dans les deux listes. Une
+  ligne de rendement (« Donne environ 10 croquettes », « Pour 4
+  personnes », « Makes 12 ») remplit Portions au lieu de devenir un
+  ingrédient.
 - L'analyse heuristique (URL sans JSON-LD, découpage des PDF et de l'OCR)
   repose sur des expressions régulières et des règles tant que Paramètres →
   Apprentissage n'a pas assez de vos importations corrigées pour faire

@@ -947,6 +947,7 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
             title=result["title"],
             source_type="email",
             source_url=result.get("source_url"),
+            servings=result.get("servings"),
             raw_text=result.get("raw_text"),
             ocr_confidence=result.get("ocr_confidence"),
             image_path=image_path,
@@ -1362,6 +1363,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "pdf",
+        "servings": segmented.get("servings"),
         "raw_text": pdf_result.raw_text,
         "image_path": image_path,  # draft reference; promoted on save
         "ingredients": parsed_ingredients,
@@ -1421,6 +1423,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
             recipe = models.Recipe(
                 title=segmented["title_guess"],
                 source_type="pdf",
+                servings=segmented.get("servings"),
                 raw_text=pdf_result.raw_text,
                 ocr_confidence=pdf_result.avg_ocr_confidence,
             )
@@ -1476,6 +1479,7 @@ def ingest_from_image(file: UploadFile = File(...)):
         "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "screenshot",
+        "servings": segmented.get("servings"),
         "raw_text": segmented["raw_text"],
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
@@ -1560,6 +1564,7 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
         "incomplete": incomplete,
         "title": segmented["title_guess"],
         "source_type": "screenshot",
+        "servings": segmented.get("servings"),
         "raw_text": combined_raw_text,
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],

@@ -381,7 +381,10 @@ def _guess_title(lines, ing_line_index):
     def ok(l):
         return (not _is_junk(l) and not _BYLINE.match(l) and not _BREADCRUMB.search(l)
                 and 2 <= len(l) <= 80 and not HEADING_INGREDIENTS.match(l) and not HEADING_STEPS.match(l)
-                and not re.search(r"\$\d", l))
+                and not re.search(r"\$\d", l)
+                # "Sel et poivre au goût" under two sub-recipes is repeated,
+                # but it's an ingredient, not the name.
+                and not _QTY_START.match(l) and not _INGREDIENT_TAIL.search(l) and not _YIELD.match(l))
 
     limit = ing_line_index if ing_line_index is not None else len(lines)
     for i in range(limit - 1, 0, -1):
@@ -446,7 +449,8 @@ saupoudrer servir tailler trancher transferer verser dans pendant entre-temps en
 # after the last measured ingredient, where one would become step 1.
 _INGREDIENT_TAIL = re.compile(
     r"\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|"
-    r"au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin)\b", re.IGNORECASE)
+    r"au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin|en quantit[ée] suffisante|"
+    r"pour (?:la )?friture|for frying|for deep[- ]frying)\b", re.IGNORECASE)
 
 
 def _is_prose(line: str) -> bool:
@@ -517,6 +521,116 @@ def segment_raw_text(raw_text: str) -> dict:
     return result
 
 
+# "(Donne environ 10 croquettes)", "Makes 12 cookies", "Serves 4",
+# "Portions : 6", "Rendement : 2 litres". The servings, not an ingredient.
+_YIELD = re.compile(
+    r"^\s*\(?\s*(?:donne|makes|serves|yield(?:s)?|rendement|portions?|servings?|pour(?=\s+\d+\s*(?:personnes?|portions?)))\s*:?\s+(.{1,60}?)\s*\)?\s*$",
+    re.IGNORECASE)
+
+
+def _yield_of(line: str) -> str | None:
+    m = _YIELD.match(line)
+    if not m or not re.search(r"\d", m.group(1)):
+        return None
+    return m.group(1).strip(" .")
+
+
+def _is_paragraph_line(line: str) -> bool:
+    """Method text in a paragraph, as a word processor wraps it: a long line
+    with a sentence break inside, or many words, or the usual prose test."""
+    words = line.split()
+    if _QTY_START.match(line) and len(words) < 12:
+        return False
+    return ((len(line) >= 60 and (re.search(r"[.!?]\s+\S", line) is not None or len(words) >= 10))
+            or _is_prose(line))
+
+
+def _join_paragraph(lines):
+    """Lines of one paragraph, joined; a word split at the line end
+    ("Mille-" + "Îles") is put back together."""
+    text = ""
+    for line in lines:
+        line = line.strip()
+        if text.endswith("-") and len(text) > 1 and text[-2].isalpha() and line[:1].isalpha():
+            text += line
+        else:
+            text = f"{text} {line}".strip()
+    return text
+
+
+def _component_recipe(body: list[str]):
+    """A recipe in parts with no Ingredients/Method headings, as written in
+    a word processor: [part name] ingredient lines, a method paragraph,
+    then the next part ("Sauce tartare", its ingredients, "Mix
+    everything."). Returns (ingredients, steps, servings), or None when the
+    text isn't laid out that way (at least two parts, each a run of
+    ingredients followed by method text)."""
+    kinds = []
+    servings = None
+    for line in body:
+        prev_kind, prev_line = (kinds[-1], body[len(kinds) - 1]) if kinds else (None, "")
+        if _yield_of(line) and servings is None:
+            servings = _yield_of(line)
+            kinds.append("yield")
+        elif prev_kind == "prose" and not re.search(r"[.!?:]\s*$", prev_line):
+            kinds.append("prose")                     # the paragraph goes on
+        elif _is_prose(line):                         # "9 Cook the garlic." is a circled step number
+            kinds.append("prose")
+        elif _QTY_START.match(line) or (_INGREDIENT_TAIL.search(line) and len(line.split()) <= 12):
+            kinds.append("ing")
+        elif _is_paragraph_line(line):
+            kinds.append("prose")
+        elif len(line.split()) <= 5 and not re.search(r"[.!?]\s*$", line) and (
+                line.rstrip().endswith(":") or line.isupper() or prev_kind == "prose"
+                or all(w[:1].isupper() for w in line.split() if len(w) > 2)):
+            # "Panure :", "SAUCE", "Sauce Tartare", or any short line
+            # right after a method paragraph; not "Jus et zeste d'un citron".
+            kinds.append("label")
+        else:
+            kinds.append("ing")
+    # Runs of the same kind, in order.
+    runs = []
+    for kind, line in zip(kinds, body):
+        if kind == "yield":
+            continue
+        if runs and runs[-1][0] == kind and kind != "label":
+            runs[-1][1].append(line)
+        else:
+            runs.append((kind, [line]))
+    # A part: two or more ingredient lines, then method text.
+    parts = sum(1 for i, (k, _) in enumerate(runs)
+                if k == "prose" and i > 0 and runs[i - 1][0] == "ing" and len(runs[i - 1][1]) >= 2)
+    if parts < 2:
+        return None
+
+    def label_text(line):
+        label = line.strip().rstrip(":").strip()
+        if label.isupper():
+            label = label.capitalize()
+        return f"{label}:"
+
+    ingredients, steps = [], []
+    after_method = False      # a part name follows a method paragraph
+    part_label = None
+    for kind, lines in runs:
+        if kind == "label":
+            label = label_text(lines[0])
+            ingredients.append(label)
+            if after_method:
+                part_label = label
+            after_method = False
+        elif kind == "ing":
+            ingredients += _clean_ingredients(lines)
+            after_method = False
+        else:
+            if part_label:
+                steps.append(part_label)
+                part_label = None
+            steps.append(_join_paragraph(lines))
+            after_method = True
+    return ingredients, steps, servings
+
+
 def rule_segment_raw_text(raw_text: str) -> dict:
     """
     Heuristic segmentation of raw extracted/OCR'd text into title/ingredients/steps.
@@ -534,6 +648,7 @@ def rule_segment_raw_text(raw_text: str) -> dict:
 
     ingredients, steps = [], []
     chosen_ing = None
+    servings = next((y for y in (_yield_of(l) for l in lines[:12]) if y), None)
 
     if ing_idx and step_idx:
         best = None
@@ -576,9 +691,12 @@ def rule_segment_raw_text(raw_text: str) -> dict:
         # numbers in circles, which OCR reads as "@", "9", "©" or "faa)",
         # so steps are split at sentence ends rather than by number.
         body = [l for l in lines[1:] if not _is_junk(l)]
+        parts = _component_recipe(body)
         qty = [k for k, l in enumerate(body) if QUANTITY_LEAD.match(l) and not _is_prose(l)]
         prose = [k for k, l in enumerate(body) if _is_prose(l)]
-        if qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:
+        if parts:
+            ingredients, steps, servings = parts
+        elif qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:
             first = next(k for k in prose if k > qty[-1])
             # Everything from the first measured line up to the method,
             # including unmeasured lines like "Salt and pepper to taste".
@@ -591,8 +709,11 @@ def rule_segment_raw_text(raw_text: str) -> dict:
                 elif QUANTITY_LEAD.match(line):
                     ingredients.append(line)
 
+    # A yield line read as an ingredient ("Makes 12 cookies") is the servings.
+    ingredients = [l for l in ingredients if not _yield_of(l)]
     return {
         "title_guess": _guess_title(lines, chosen_ing),
         "ingredients": ingredients,
         "steps": steps,
+        "servings": servings,
     }

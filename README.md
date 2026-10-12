@@ -948,6 +948,12 @@ Safeguards and notes:
   Print → PDF, which splits the page, or the site's own print button. A
   PDF cut off before the steps is refused with that advice (see
   Ingestion).
+- Recipes in parts with no Ingredients/Method headings, as typed in a word
+  processor (the dish's ingredients and method, then "Sauce tartare" with
+  its own, and so on), are read part by part: the ingredients together and
+  the steps together, each part's name kept as a small heading in both
+  lists. A yield line ("Makes 12", "Serves 4", "Donne environ 10
+  croquettes") fills in Servings instead of becoming an ingredient.
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based until Settings → Learning has enough of your corrected imports to
   do better, and even then it learns only from what you've saved — expect

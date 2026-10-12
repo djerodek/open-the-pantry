@@ -3214,6 +3214,13 @@
     ]));
   }
 
+  // "Sauce tartare:", "For the dough:" -- a part of the recipe, shown as a
+  // small heading in the lists (same test as the export template).
+  function isPartName(text) {
+    const t = (text || "").trim();
+    return t.endsWith(":") && t.split(/\s+/).length <= 6;
+  }
+
   function renderRecipeDetail(recipe) {
     const body = $("#recipe-detail-body");
     body.innerHTML = "";
@@ -3320,13 +3327,21 @@
       el("div", { class: "recipe-body" }, [
         el("section", { class: "recipe-ingredients" }, [
           el("h2", { text: tx("Ingredients") }),
-          el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) =>
-            el("li", { text: ingredientText(i) })
-          )),
+          el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) => {
+            const text = ingredientText(i);
+            return el("li", { class: isPartName(text) ? "list-part" : null, text });
+          })),
         ]),
         el("section", { class: "recipe-steps" }, [
           el("h2", { text: tx("Instructions") }),
-          el("ol", { class: "steps-list" }, recipe.steps.map((s) => el("li", { text: s.text }))),
+          el("ol", { class: "steps-list" }, (() => {
+            // Part names ("Sauce tartare:") aren't numbered; the steps
+            // after them carry on from the last number.
+            let n = 0;
+            return recipe.steps.map((s) => isPartName(s.text)
+              ? el("li", { class: "list-part", text: s.text })
+              : el("li", { value: String(++n), text: s.text }));
+          })()),
         ]),
       ]),
       // Edit and Delete are grouped at the foot of the recipe: both are
