@@ -205,6 +205,9 @@ def init_db():
         # Recipes added from a page with no yield before that was fixed in
         # url_ingest hold the text "None" as their servings.
         conn.execute(text("UPDATE recipes SET servings = NULL WHERE servings = 'None'"))
+        # A cook time of 0 is no cook time: the page showed "0 min" and the
+        # export nothing. Not stored as 0 any more (main._logged_minutes).
+        conn.execute(text("UPDATE recipes SET actual_cook_time_minutes = NULL WHERE actual_cook_time_minutes = 0"))
         conn.commit()
 
     # 4. Seed tag data.

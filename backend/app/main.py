@@ -88,6 +88,9 @@ def refresh_user_keywords(db=None):
             (models.Tag.keywords != "") | (models.Tag.rules_out_vegetarian.is_(True))).all()
         set_user_keywords([(t.name, t.category, t.subgroup, _split_keywords(t.keywords), bool(t.rules_out_vegetarian))
                            for t in rows])
+        # The learned tagger only suggests tags that still exist (a deleted
+        # tag would otherwise be created again, until the next retrain).
+        learning.set_known_tags(db.query(models.Tag.name, models.Tag.category).all())
     finally:
         if own:
             db.close()
@@ -670,6 +673,12 @@ def _extract_pdf_showcase_image(pdf_path: str, dest_dir: str, name_prefix: str) 
     if not image_bytes:
         return None
     return validate_and_save_image_bytes(image_bytes, dest_dir, name_prefix)
+
+
+def _logged_minutes(value) -> int | None:
+    """A real-world cook time in minutes; 0 (or blank) is no time logged,
+    so the recipe page and the export agree."""
+    return ddhhmm_to_minutes(value) or None
 
 
 def _get_or_create_tags(db: Session, tag_ins: list[schemas.TagIn]) -> list[models.Tag]:
@@ -1598,7 +1607,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
             tastiness_rating=payload.tastiness_rating,
             cook_time_rating=payload.cook_time_rating,
             difficulty_rating=payload.difficulty_rating,
-            actual_cook_time_minutes=ddhhmm_to_minutes(payload.actual_cook_time),
+            actual_cook_time_minutes=_logged_minutes(payload.actual_cook_time),
         )
         db.add(recipe)
         db.flush()
@@ -1827,7 +1836,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
         recipe.tastiness_rating = payload.tastiness_rating
         recipe.cook_time_rating = payload.cook_time_rating
         recipe.difficulty_rating = payload.difficulty_rating
-        recipe.actual_cook_time_minutes = ddhhmm_to_minutes(payload.actual_cook_time)
+        recipe.actual_cook_time_minutes = _logged_minutes(payload.actual_cook_time)
 
         db.query(models.Ingredient).filter_by(recipe_id=recipe.id).delete()
         db.query(models.Step).filter_by(recipe_id=recipe.id).delete()
@@ -1887,7 +1896,7 @@ def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = D
         recipe.difficulty_rating = payload.difficulty_rating
     # Like the ratings: null or "" clears, absent leaves it alone.
     if "actual_cook_time" in provided:
-        recipe.actual_cook_time_minutes = ddhhmm_to_minutes(payload.actual_cook_time) if payload.actual_cook_time else None
+        recipe.actual_cook_time_minutes = _logged_minutes(payload.actual_cook_time)
     if "servings" in provided:
         recipe.servings = (payload.servings or "").strip() or None
 
@@ -2061,7 +2070,10 @@ def learning_train():
     """Retrain now (takes seconds); returns the new status."""
     if not learning.enabled():
         raise HTTPException(status_code=409, detail="Learning is turned off.")
-    return learning.train_now()
+    result = learning.train_now()
+    if result is None:
+        raise HTTPException(status_code=409, detail="Training is already running.")
+    return result
 
 
 @app.put("/api/learning")

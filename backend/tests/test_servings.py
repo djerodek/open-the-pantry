@@ -64,3 +64,27 @@ def test_export_cook_time_label_parts():
     assert cook_time_label(45, "en") == "45 min"
     assert cook_time_label(120, "en") == "2 h"
     assert cook_time_label(24 * 60 + 5, "fr") == "1 j 5 min"
+
+
+def test_servings_cap_and_trim_apply_on_create_too(client, sample_recipe_payload):
+    """ChatGPT review of 0067: only the recipe page's field was capped."""
+    r = client.post("/api/recipes", json={**sample_recipe_payload, "title": "Cap on create", "servings": "x" * 101})
+    assert r.status_code == 422
+    r = client.post("/api/recipes", json={**sample_recipe_payload, "title": "Trim on create", "servings": "  4  "})
+    assert r.json()["servings"] == "4"
+    r2 = client.put(f"/api/recipes/{r.json()['id']}", json={**sample_recipe_payload, "title": "Trim", "servings": "   "})
+    assert r2.status_code == 200 and r2.json()["servings"] is None
+
+
+def test_a_zero_cook_time_is_no_cook_time(client, sample_recipe_payload):
+    """The page showed "0 min" and the export nothing; now neither."""
+    r = client.post("/api/recipes", json={**sample_recipe_payload, "title": "Zero time", "actual_cook_time": "00:00:00"})
+    assert r.json()["actual_cook_time"] is None
+    rid = r.json()["id"]
+    client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:00:00"})
+    assert client.get(f"/api/recipes/{rid}").json()["actual_cook_time"] is None
+
+
+def test_a_long_web_yield_is_cut_to_the_cap():
+    from app.ingestion.url_ingest import UrlIngestResult
+    assert len(UrlIngestResult("t", ["a"], ["b"], servings="y" * 300).servings) == 100

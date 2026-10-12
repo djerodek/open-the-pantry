@@ -435,6 +435,7 @@ _FR_PATTERNS = [
     _p(r"body text: no ingredient or step lines", "texte du corps : aucune ligne d'ingrédient ou d'étape"),
     _p(r"body: empty", "corps : vide"),
     _p(r"Learning is turned off\.", "L'apprentissage est désactivé."),
+    _p(r"Training is already running\.", "Un entraînement est déjà en cours."),
 ]
 
 

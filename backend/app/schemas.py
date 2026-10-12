@@ -16,6 +16,17 @@ def _validate_stored_filename(v):
 
 
 
+SERVINGS_MAX = 100
+
+
+def _strip_servings(v):
+    """Trimmed; blank is none."""
+    if isinstance(v, str):
+        v = v.strip()
+        return v or None
+    return v
+
+
 def _validate_cook_time(v):
     from .time_utils import ddhhmm_error
     err = ddhhmm_error(v)
@@ -40,7 +51,9 @@ class RecipeCreate(BaseModel):
     title: str
     source_type: str  # 'url' | 'pdf' | 'screenshot' | 'manual' | 'email'
     source_url: Optional[str] = None
-    servings: Optional[str] = None
+    # Same cap as the Servings field on the recipe page (RatingUpdate).
+    servings: Optional[str] = Field(default=None, max_length=SERVINGS_MAX)
+    _trim_servings = field_validator("servings", mode="before")(_strip_servings)
     prep_time: Optional[str] = None
     cook_time: Optional[str] = None
     total_time: Optional[str] = None
@@ -219,7 +232,8 @@ class RatingUpdate(BaseModel):
     actual_cook_time: Optional[str] = None  # 'dd:hh:mm'; '' or null clears
     # How many it serves, as written ("4", "4-6", "12 cookies"). Shown on
     # the recipe only: no filter, sort or search uses it.
-    servings: Optional[str] = Field(default=None, max_length=100)
+    servings: Optional[str] = Field(default=None, max_length=SERVINGS_MAX)
+    _trim_servings = field_validator("servings", mode="before")(_strip_servings)
     _check_cook_time = field_validator("actual_cook_time")(_validate_cook_time)
 
 

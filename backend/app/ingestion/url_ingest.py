@@ -220,7 +220,9 @@ class UrlIngestResult:
         self.title = title
         self.ingredients = ingredients  # list[str] raw lines
         self.steps = steps  # list[str] raw lines
-        self.servings = servings
+        # Capped like the Servings field (schemas.SERVINGS_MAX): a site's
+        # long yield text would otherwise make the save fail.
+        self.servings = (str(servings).strip()[:100].strip() or None) if servings else None
         self.prep_time = prep_time
         self.cook_time = cook_time
         self.total_time = total_time

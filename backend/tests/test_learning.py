@@ -218,12 +218,11 @@ def learning_reset(client):
     yield service
     pdf_ingest.set_learned_segmenter(None)
     tagger.set_learned_tagger(None)
-    for name in ("model.json", "segmenter.npz", "tags.npz", "settings.json"):
-        try:
+    if os.path.isdir(service.ML_DIR):
+        for name in os.listdir(service.ML_DIR):
             os.remove(os.path.join(service.ML_DIR, name))
-        except FileNotFoundError:
-            pass
     service._report.clear()
+    service._warned_settings = False
 
 
 def test_train_status_toggle_and_reload(client, learning_reset):
@@ -244,7 +243,7 @@ def test_train_status_toggle_and_reload(client, learning_reset):
         assert st["enabled"] and not st["training"] and st["trained_at"]
         assert st["segmenter"]["status"] == "active", st
         assert pdf_ingest._learned_segmenter is not None
-        assert os.path.exists(os.path.join(service.ML_DIR, "segmenter.npz"))
+        assert any(n.startswith("segmenter-") and n.endswith(".npz") for n in os.listdir(service.ML_DIR))
 
         # A restart reads the saved model back.
         pdf_ingest.set_learned_segmenter(None)
@@ -311,3 +310,80 @@ def test_model_files_hold_no_pickles_and_stay_out_of_backups(client, learning_re
     finally:
         for rid in made:
             client.delete(f"/api/recipes/{rid}")
+
+
+# ---------------------------------------------------------------------------
+# ChatGPT review of 0067
+# ---------------------------------------------------------------------------
+
+class _FakeTagModel:
+    def __init__(self, tags):
+        self.tags = tags
+
+    def suggest(self, *a):
+        return list(self.tags)
+
+
+def test_a_deleted_tag_is_not_suggested_or_created_again(client, learning_reset):
+    """The learned model still knows a tag deleted since its last training;
+    batch and email imports save suggestions, which would have created the
+    tag again (and not as a Settings tag, so it couldn't be deleted)."""
+    service = learning_reset
+    from app.ingestion import tagger
+    g = client.post("/api/tag-groups", json={"label": "Review group"}).json()
+    t = client.post("/api/tags", json={"name": "Retired tag", "category": g["key"], "keywords": ""}).json()
+    service._apply(None, _FakeTagModel([("Retired tag", g["key"], None)]))
+    try:
+        assert ("Retired tag", g["key"], None) in tagger.suggest_tags("Soup", ["water"], "")
+        assert client.delete(f"/api/tags/{t['id']}").status_code == 200
+        assert not any(n == "Retired tag" for n, _, _ in tagger.suggest_tags("Soup", ["water"], ""))
+        r = client.post("/api/tags/suggest", json={"title": "Soup", "ingredients": ["water"], "steps": [],
+                                                   "current_tags": []})
+        assert not any(x["name"] == "Retired tag" for x in r.json())
+        assert not any(x["name"] == "Retired tag" for x in client.get("/api/tags").json())
+    finally:
+        service._apply(None, None)
+        client.delete(f"/api/tag-groups/{g['key']}")
+
+
+def test_a_second_training_request_is_refused_while_one_runs(client, learning_reset):
+    service = learning_reset
+    assert service._lock.acquire(blocking=False)
+    try:
+        r = client.post("/api/learning/train")
+        assert r.status_code == 409 and "already running" in r.json()["detail"]
+        assert service.train_now() is None
+    finally:
+        service._lock.release()
+
+
+def test_each_training_switches_all_files_at_once(client, learning_reset):
+    import json
+    service = learning_reset
+    made = []
+    try:
+        for raw, title, ings, steps, layout in corpus(12, seed=41):
+            made.append(client.post("/api/recipes", json={
+                "title": title, "source_type": "screenshot", "raw_text": raw,
+                "ingredients": [{"raw_line": i, "name": i} for i in ings], "steps": steps,
+                "tags": []}).json()["id"])
+        for _ in range(2):
+            assert client.post("/api/learning/train").status_code == 200
+        with open(os.path.join(service.ML_DIR, "model.json")) as f:
+            files = json.load(f)["files"]
+        weights = sorted(n for n in os.listdir(service.ML_DIR) if n.endswith(".npz"))
+        assert weights == sorted(v for v in files.values() if v), "older trainings' files are removed"
+        assert files["segmenter"] and files["segmenter"].startswith("segmenter-")
+    finally:
+        for rid in made:
+            client.delete(f"/api/recipes/{rid}")
+
+
+def test_an_unreadable_settings_file_means_off(client, learning_reset):
+    service = learning_reset
+    assert service.enabled(), "no file: on (first run)"
+    os.makedirs(service.ML_DIR, exist_ok=True)
+    with open(os.path.join(service.ML_DIR, "settings.json"), "w") as f:
+        f.write("{not json")
+    assert not service.enabled()
+    assert client.put("/api/learning", json={"enabled": True}).json()["enabled"] is True
