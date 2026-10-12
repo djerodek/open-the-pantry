@@ -628,7 +628,10 @@ Garde-fous et remarques :
 - Portions, saisies à la main sur la recette (ou à l'ajout; pour une
   recette web, le rendement indiqué la remplit) : texte libre comme `4`,
   `4-6` ou `12 biscuits`, jusqu'à 100 caractères. Pour information
-  seulement — aucun filtre, tri ou recherche ne s'en sert.
+  seulement — aucun filtre, tri ou recherche ne s'en sert. Une fois les
+  portions ou le temps de cuisson réel saisis, les deux s'affichent en
+  texte simple sur la ligne sous la photo, avec un petit lien Modifier
+  qui rouvre les champs; les exports PDF et HTML incluent les deux.
 - Temps de cuisson réel facultatif (`dd:hh:mm`), inscrit séparément de tout
   temps de préparation, de cuisson ou total indiqué par la source — c'est
   lui qui alimente le filtre de temps. Jusqu'à 60 jours (salaisons et

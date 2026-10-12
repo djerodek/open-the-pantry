@@ -2686,6 +2686,16 @@
   // -------------------------------------------------------------------
   // Duration input helper (dd:hh:mm), used for the real-world cook time
   // -------------------------------------------------------------------
+  // "dd:hh:mm" -> "1 d 4 h 15 min" (French "1 j 4 h 15 min"), zero parts left out.
+  function cookTimeLabel(ddhhmm) {
+    const [d, h, m] = String(ddhhmm || "").split(":").map((p) => parseInt(p, 10) || 0);
+    const parts = [];
+    if (d) parts.push(`${d}\u00a0${tx("d")}`);
+    if (h) parts.push(`${h}\u00a0h`);
+    if (m) parts.push(`${m}\u00a0min`);
+    return parts.join(" ") || `0\u00a0min`;
+  }
+
   function makeDurationInput(prefix, initialDdHhMm) {
     let initD = "", initH = "", initM = "";
     if (initialDdHhMm) {
@@ -3124,44 +3134,83 @@
     // its listener so callbacks don't accumulate one per recipe opened.
     wakeLockListeners.clear();
 
-    const duration = makeDurationInput(`detail-time-${recipe.id}`, recipe.actual_cook_time);
-    const timeSaveBtn = el("button", {
-      class: "btn-secondary", type: "button", text: tx("Save time"),
-      onclick: async () => {
+    // Servings and the real-world cook time are typed in by hand. Once
+    // either is set they read like the rest of the recipe's facts (the
+    // line under the photo) with a small Edit button; the boxes only show
+    // while nothing is set, or after Edit. One Save sends both.
+    const meta = el("div", { class: "recipe-meta" });
+    const factsEditor = el("div", { class: "recipe-facts-editor" });
+    const hasFacts = () => !!(recipe.servings || recipe.actual_cook_time);
+
+    function renderMeta() {
+      const editing = !factsEditor.hidden;
+      meta.replaceChildren(...[
+        recipe.servings ? el("span", { text: tx("Servings: {1}", { 1: recipe.servings }) }) : null,
+        recipe.prep_time ? el("span", { text: tx("Prep: {1}", { 1: recipe.prep_time }) }) : null,
+        recipe.cook_time ? el("span", { text: tx("Cook: {1}", { 1: recipe.cook_time }) }) : null,
+        recipe.total_time ? el("span", { text: tx("Total: {1}", { 1: recipe.total_time }) }) : null,
+        recipe.actual_cook_time
+          ? el("span", { text: tx("Real-world cook time: {1}", { 1: cookTimeLabel(recipe.actual_cook_time) }) }) : null,
+        editing ? null : el("button", {
+          type: "button", class: "meta-edit",
+          "aria-label": tx("Edit servings and cook time"),
+          text: hasFacts() ? tx("Edit") : tx("Add servings or cook time"),
+          onclick: () => openFactsEditor(true),
+        }),
+      ].filter(Boolean));
+    }
+
+    function openFactsEditor(focus) {
+      const servingsInput = el("input", {
+        type: "text", id: `detail-servings-${recipe.id}`, class: "servings-input",
+        maxlength: "100", placeholder: tx("e.g. 4"), value: recipe.servings || "",
+      });
+      const duration = makeDurationInput(`detail-time-${recipe.id}`, recipe.actual_cook_time);
+      const save = async () => {
         const res = await fetch(`${API}/recipes/${recipe.id}/rating`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ actual_cook_time: duration.getValue() || "" }),
+          body: JSON.stringify({ servings: servingsInput.value.trim(), actual_cook_time: duration.getValue() || "" }),
         }).catch(() => null);
-        if (res && res.ok) { announce(tx("Cook time updated.")); await loadTimeBuckets(); return; }
-        // A refused time used to fail silently. The server's message (a
-        // 422's validation list, translated server-side) says what's wrong.
+        if (res && res.ok) {
+          const saved = await res.json();
+          recipe.servings = saved.servings;
+          recipe.actual_cook_time = saved.actual_cook_time;
+          announce(tx("Saved."));
+          closeFactsEditor();
+          await loadTimeBuckets();
+          return;
+        }
+        // The server's message (a 422's validation list, translated
+        // server-side) says what's wrong.
         const body = res ? await res.json().catch(() => ({})) : {};
         announceError(apiErrorText(body, res ? res.status : 0));
-      },
-    });
+      };
+      servingsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
+      factsEditor.replaceChildren(
+        el("div", { class: "field" }, [
+          el("label", { for: servingsInput.id, text: tx("Servings") }), servingsInput,
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { text: tx("Real-world cook time") }), duration.element,
+        ]),
+        el("div", { class: "recipe-facts-actions" }, [
+          el("button", { class: "btn-secondary", type: "button", text: tx("Save"), onclick: save }),
+          hasFacts() ? el("button", { class: "btn-secondary", type: "button", text: tx("Cancel"), onclick: closeFactsEditor }) : null,
+        ]),
+      );
+      factsEditor.hidden = false;
+      renderMeta();
+      if (focus) servingsInput.focus();
+    }
 
-    // Servings: typed in by hand, shown on the recipe, nothing filters or
-    // sorts by it. Enter saves, like the button.
-    const servingsInput = el("input", {
-      type: "text", id: `detail-servings-${recipe.id}`, class: "servings-input",
-      maxlength: "100", placeholder: tx("e.g. 4"), value: recipe.servings || "",
-    });
-    const saveServings = async () => {
-      const res = await fetch(`${API}/recipes/${recipe.id}/rating`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ servings: servingsInput.value.trim() }),
-      }).catch(() => null);
-      if (res && res.ok) {
-        recipe.servings = (await res.json()).servings;
-        servingsInput.value = recipe.servings || "";
-        announce(tx("Servings updated."));
-        return;
-      }
-      const body = res ? await res.json().catch(() => ({})) : {};
-      announceError(apiErrorText(body, res ? res.status : 0));
-    };
-    servingsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveServings(); } });
-    const servingsSaveBtn = el("button", { class: "btn-secondary", type: "button", text: tx("Save"), onclick: saveServings });
+    // Nothing set: the boxes stay open (there is nothing to read yet).
+    function closeFactsEditor() {
+      if (!hasFacts()) { openFactsEditor(false); return; }
+      factsEditor.hidden = true;
+      factsEditor.replaceChildren();
+      renderMeta();
+    }
+    closeFactsEditor();
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
       // Share lives at the top right of the recipe card; the source/OCR
@@ -3174,21 +3223,10 @@
         shareMenu(recipe),
       ]),
       showcaseImageSection(recipe),
-      el("div", { class: "recipe-meta" }, [
-        recipe.prep_time ? el("span", { text: tx("Prep: {1}", { 1: recipe.prep_time }) }) : null,
-        recipe.cook_time ? el("span", { text: tx("Cook: {1}", { 1: recipe.cook_time }) }) : null,
-        recipe.total_time ? el("span", { text: tx("Total: {1}", { 1: recipe.total_time }) }) : null,
-      ]),
+      meta,
       cardQuickControls(recipe, true),
       wakeLockToggle(),
-      el("div", { class: "field" }, [
-        el("label", { for: `detail-servings-${recipe.id}`, text: tx("Servings") }),
-        el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [servingsInput, servingsSaveBtn]),
-      ]),
-      el("div", { class: "field" }, [
-        el("label", { text: tx("Real-world cook time") }),
-        el("div", { style: "display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" }, [duration.element, timeSaveBtn]),
-      ]),
+      factsEditor,
       notesSection(recipe),
       // Side by side on a wide screen (ingredients stay in view while the
       // steps scroll), one after the other on a narrow one.

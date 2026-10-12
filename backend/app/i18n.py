@@ -33,6 +33,7 @@ _FR_PHRASES = {
     "Prep": "Préparation",
     "Cook": "Cuisson",
     "Total": "Total",
+    "Real-world cook time": "Temps de cuisson réel",
     "Ingredients": "Ingrédients",
     "Instructions": "Préparation",
     "Notes": "Notes",

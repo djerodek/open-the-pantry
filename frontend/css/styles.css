@@ -1385,6 +1385,21 @@ main {
 }
 .recipe-meta { color: var(--color-ink-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
 .recipe-meta span { margin-right: 1rem; }
+/* The Edit for servings and cook time: text-sized and quiet, so the line
+   reads as information, not a form. */
+.recipe-meta .meta-edit {
+  background: none;
+  border: none;
+  padding: 0.35rem 0.25rem;
+  margin: -0.35rem 0;
+  font: inherit;
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.recipe-facts-editor { margin-bottom: 0.75rem; }
+.recipe-facts-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 /* Share icon: sized in em so it tracks whatever button it sits in. */
 .icon-share {
@@ -1549,7 +1564,7 @@ main {
 --------------------------------------------------------------------- */
 @media print {
   .topbar, .sidebar, .fab, .toolbar-row, .filter-panel, .batch-bar, .share-menu-wrap, .skip-link,
-  .notes-section, .wakelock-row,
+  .notes-section, .wakelock-row, .recipe-facts-editor, .meta-edit,
   #add-recipe-overlay, .modal-close {
     display: none !important;
   }

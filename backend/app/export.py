@@ -6,6 +6,24 @@ from weasyprint import HTML
 
 from . import i18n
 
+
+def cook_time_label(total_minutes: int | None, lang: str) -> str | None:
+    """The logged real-world cook time as the recipe page shows it:
+    "1 d 4 h 15 min" ("1 j ..." in French), zero parts left out."""
+    if not total_minutes:
+        return None
+    days, rem = divmod(int(total_minutes), 24 * 60)
+    hours, minutes = divmod(rem, 60)
+    nbsp = "\u00a0"
+    parts = []
+    if days:
+        parts.append(f"{days}{nbsp}{'j' if lang == 'fr' else 'd'}")
+    if hours:
+        parts.append(f"{hours}{nbsp}h")
+    if minutes:
+        parts.append(f"{minutes}{nbsp}min")
+    return " ".join(parts)
+
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
 
@@ -41,6 +59,7 @@ def render_recipe_html(recipe, absolute_image_path: str | None = None, include_n
     # Labels in the language of the request that asked for the export.
     lang = i18n.current_lang.get()
     return template.render(recipe=recipe, image_data_uri=image_data_uri, show_notes=show_notes,
+                           cook_time_label=cook_time_label(getattr(recipe, "actual_cook_time_minutes", None), lang),
                            lang=lang, t=lambda text: i18n.t(text, lang),
                            colon="\u00a0:" if lang == "fr" else ":")
 

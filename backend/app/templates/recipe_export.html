@@ -63,6 +63,7 @@
     {% if recipe.prep_time %}<span>{{ t("Prep") }}{{ colon }} {{ recipe.prep_time }}</span>{% endif %}
     {% if recipe.cook_time %}<span>{{ t("Cook") }}{{ colon }} {{ recipe.cook_time }}</span>{% endif %}
     {% if recipe.total_time %}<span>{{ t("Total") }}{{ colon }} {{ recipe.total_time }}</span>{% endif %}
+    {% if cook_time_label %}<span>{{ t("Real-world cook time") }}{{ colon }} {{ cook_time_label }}</span>{% endif %}
   </div>
 
   {% if image_data_uri %}
