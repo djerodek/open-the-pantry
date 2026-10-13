@@ -469,3 +469,71 @@ def test_forget_certificate_needs_this_threads_reservation():
         t.join()
         assert https_setup._reserved_by == threading.get_ident()
     assert seen == [False] and https_setup._reserved_by is None
+
+
+# ---------------------------------------------------------------------------
+# Qwen review of 0073
+# ---------------------------------------------------------------------------
+
+def test_a_correct_password_clears_the_all_addresses_count_too(own_file):
+    own_file.create("first-password")
+    for i in range(3):
+        assert own_file.unlock("wrong", f"10.0.0.{i}") is None
+    assert own_file._failures[own_file._ALL][0] == 3
+    assert own_file.unlock("first-password", "10.0.0.9")
+    assert own_file._ALL not in own_file._failures
+
+
+def test_simultaneous_guesses_are_counted_one_by_one(own_file):
+    """Guesses sent all at once from many addresses can't all get past the
+    all-addresses limit before the first failures are counted."""
+    import threading
+    own_file.create("first-password")
+    results = []
+    lock = threading.Lock()
+
+    def guess(i):
+        try:
+            r = own_file.unlock("wrong", f"2001:db8::{i}")
+        except own_file.TooManyTries:
+            r = "wait"
+        with lock:
+            results.append(r)
+    threads = [threading.Thread(target=guess, args=(i,)) for i in range(own_file.FREE_TRIES_ALL + 6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results.count(None) == own_file.FREE_TRIES_ALL
+    assert results.count("wait") == 6
+
+
+def test_credentials_without_a_settings_password_are_logged_at_startup(monkeypatch):
+    import logging
+    from app import main
+    monkeypatch.setattr(main.admin_lock, "password_set", lambda: False)
+    monkeypatch.setattr(main.https_setup, "status", lambda: {"enabled": True})
+    msgs = []
+
+    class Grab(logging.Handler):
+        def emit(self, record):
+            msgs.append(record.getMessage())
+    h = Grab(level=logging.WARNING)
+    main.log.addHandler(h)
+    try:
+        assert main._warn_unprotected_credentials() is True
+    finally:
+        main.log.removeHandler(h)
+    assert any("No settings password yet" in m and "HTTPS is" in m for m in msgs), msgs
+    monkeypatch.setattr(main.admin_lock, "password_set", lambda: True)
+    assert main._warn_unprotected_credentials() is False
+
+
+def test_the_proxy_route_relies_on_forwarded_headers():
+    """The Traefik route only works if uvicorn trusts X-Forwarded-Proto
+    from Traefik (checked live with uvicorn; this keeps the settings)."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    assert '"--proxy-headers"' in (root / "backend" / "Dockerfile").read_text()
+    compose = (root / "docker-compose.https.yml").read_text()
+    assert "FORWARDED_ALLOW_IPS:" in compose and "RECIPE_APP_HTTPS_URL:" in compose

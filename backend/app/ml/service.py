@@ -194,7 +194,7 @@ def load():
                 tag = tag_ml.TagModel.from_arrays(a, report["tags"]["model_tags"])
             if tag.W.shape != (DIM, len(tag.tags)):
                 tag = None
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception:   # a truncated file is a BadZipFile, among others
         log.warning("Couldn't read the saved learning models; they'll be retrained", exc_info=True)
         seg = tag = None
     _apply(seg, tag)

@@ -34,7 +34,12 @@ MIN_GAIN = 0.02           # must beat the rules by this much (content-line accur
 PSEUDO_WEIGHT = 0.3       # weight of lines from recipes without an original text
 # An OCR'd empty checkbox in front of an ingredient: "LJ 2 eggs", "L Salt".
 _CHECKBOX = re.compile(r"^\s*(?:[LJIl|\[\]_]{1,3}|[☐□○])\s+(?=[\d¼½¾⅓⅔⅛⅜⅝⅞A-ZÀ-ÖØ-Þ])")
-MATCH = 0.75              # share of a line's words found in a saved item for it to count as that item
+# Share of a line's words found in a saved item for it to count as that
+# item. Below 1 so a line whose OCR typo was corrected on the review screen
+# still matches (one word in four may differ). A judgement call, not tuned
+# on data: a mislabelled line only adds noise to training, and the
+# cross-validation against the rules decides whether the model is used.
+MATCH = 0.75
 
 
 @dataclass

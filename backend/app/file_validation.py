@@ -42,7 +42,11 @@ def safe_join(base_dir: str, name: str) -> str | None:
     if not is_safe_stored_filename(name):
         return None
     candidate = os.path.realpath(os.path.join(base_dir, name))
-    if os.path.commonpath([os.path.realpath(base_dir), candidate]) != os.path.realpath(base_dir):
+    base = os.path.realpath(base_dir)
+    try:
+        if os.path.commonpath([base, candidate]) != base:
+            return None
+    except ValueError:      # paths that can't be compared (different drives): not inside
         return None
     return candidate
 

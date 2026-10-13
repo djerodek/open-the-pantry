@@ -196,6 +196,27 @@ async def _periodic_tmp_sweep():
         _sweep_orphaned_upload_files()
 
 
+def _warn_unprotected_credentials():
+    """An email password or HTTPS set up while no settings password exists
+    (an upgrade from before 0052, or a deleted password file): those
+    sections are open to the network until someone creates one."""
+    if admin_lock.password_set():
+        return False
+    db = SessionLocal()
+    try:
+        s = db.query(models.EmailIngestSettings).first()
+        email = bool(s and s.password_encrypted)
+    finally:
+        db.close()
+    https_on = bool(https_setup.status().get("enabled"))
+    if email or https_on:
+        log.warning("No settings password yet, but %s set up: open Settings and create one now -- until then "
+                    "anyone on the network can open those sections.",
+                    " and ".join(n for n, on in (("the email password is", email), ("HTTPS is", https_on)) if on))
+        return True
+    return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Sync ingestion endpoints (OCR/PDF work) and lightweight CRUD endpoints
@@ -224,6 +245,10 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("Learning: couldn't load the saved models")
     learning.schedule_retrain(delay=learning.STARTUP_DELAY)
+    try:
+        _warn_unprotected_credentials()
+    except Exception:
+        log.exception("Couldn't check whether the settings password is set")
     yield
     sweep_task.cancel()
     email_scan_task.cancel()
@@ -2760,7 +2785,7 @@ def export_pdf(recipe_id: int, include_notes: bool = False, db: Session = Depend
 MAX_EMAIL_RECIPIENTS = 5
 MAX_RECIPE_EMAILS_PER_HOUR = 10
 MAX_RECENT_RECIPIENTS = 20
-_recipe_email_times: deque = deque()
+_recipe_email_times: deque = deque()   # (monotonic time, token) per send in the last hour
 _recipe_email_lock = threading.Lock()
 # Deliberately plain: one @, no spaces, commas, angle brackets or control
 # characters, and a dot in the domain. The mail server is the real judge.
@@ -2821,14 +2846,17 @@ def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Se
 
     now = time.monotonic()
     with _recipe_email_lock:
-        while _recipe_email_times and now - _recipe_email_times[0] > 3600:
+        while _recipe_email_times and now - _recipe_email_times[0][0] > 3600:
             _recipe_email_times.popleft()
         if len(_recipe_email_times) >= MAX_RECIPE_EMAILS_PER_HOUR:
             raise HTTPException(status_code=429, detail=(
                 f"That's {len(_recipe_email_times)} recipe emails in the last hour; the limit is "
                 f"{MAX_RECIPE_EMAILS_PER_HOUR}. Try again later."))
         # Counted up front so two sends at once can't both slip under the cap.
-        _recipe_email_times.append(now)
+        # Each entry is unique (time, token), so _uncount() takes back this
+        # send's entry even if another one has the same time.
+        entry = (now, object())
+        _recipe_email_times.append(entry)
 
     def _uncount():
         # Only sends that went out count against the hour: a run of
@@ -2836,7 +2864,7 @@ def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Se
         # once it's back.
         with _recipe_email_lock:
             try:
-                _recipe_email_times.remove(now)
+                _recipe_email_times.remove(entry)
             except ValueError:
                 pass
 

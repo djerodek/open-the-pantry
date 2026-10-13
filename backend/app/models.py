@@ -142,11 +142,15 @@ class EmailIngestSettings(Base):
 
     imap_host = Column(String, nullable=True)
     imap_port = Column(Integer, nullable=False, default=993)
+    # WARNING: the two TLS flags mean different things (legacy column
+    # names; see email_client.py). imap_use_ssl=True is implicit TLS;
+    # smtp_use_tls=True is STARTTLS and False is implicit TLS. The port
+    # decides in practice (email_client.smtp_uses_implicit_tls).
     imap_use_ssl = Column(Boolean, nullable=False, default=True)
 
     smtp_host = Column(String, nullable=True)
     smtp_port = Column(Integer, nullable=False, default=587)
-    smtp_use_tls = Column(Boolean, nullable=False, default=True)
+    smtp_use_tls = Column(Boolean, nullable=False, default=True)   # inverted sense: see the warning above
 
     username = Column(String, nullable=True)
     # Fernet-encrypted (see crypto.py) -- never stored or returned as plaintext.

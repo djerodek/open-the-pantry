@@ -75,4 +75,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # ownership, then drops to the non-root appuser before running uvicorn --
 # the app process itself never runs as root.
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]
+# --proxy-headers is uvicorn's default; spelled out because the Traefik
+# route depends on it: X-Forwarded-Proto from the proxy (trusted through
+# FORWARDED_ALLOW_IPS, set by docker-compose.https.yml) is what tells the
+# app a request came in over https.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--proxy-headers"]

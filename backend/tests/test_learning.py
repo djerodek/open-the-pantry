@@ -550,3 +550,42 @@ def test_known_tag_refreshes_are_atomic():
     order.append("dropped")
     t.join()
     assert order == ["read", "dropped"] and ("A", "custom") not in service._known_tags
+
+
+# ---------------------------------------------------------------------------
+# Qwen review of 0073
+# ---------------------------------------------------------------------------
+
+def test_a_damaged_model_file_means_rules_only(client, learning_reset):
+    import json
+    service = learning_reset
+    from app.ingestion import pdf_ingest, tagger
+    made = []
+    try:
+        for raw, title, ings, steps, layout in corpus(12, seed=51):
+            made.append(client.post("/api/recipes", json={
+                "title": title, "source_type": "screenshot", "raw_text": raw,
+                "ingredients": [{"raw_line": i, "name": i} for i in ings], "steps": steps,
+                "tags": []}).json()["id"])
+        assert client.post("/api/learning/train").json()["segmenter"]["status"] == "active"
+        with open(os.path.join(service.ML_DIR, "model.json")) as f:
+            name = json.load(f)["files"]["segmenter"]
+        with open(os.path.join(service.ML_DIR, name), "wb") as f:
+            f.write(b"PK\x03\x04 truncated")
+        service.load()
+        assert pdf_ingest._learned_segmenter is None and tagger._learned_tagger is None
+        raw = corpus(1, seed=52)[0][0]
+        assert pdf_ingest.segment_raw_text(raw) == pdf_ingest.rule_segment_raw_text(raw)
+    finally:
+        for rid in made:
+            client.delete(f"/api/recipes/{rid}")
+
+
+def test_safe_join_treats_uncomparable_paths_as_outside(monkeypatch):
+    import os.path
+    from app.file_validation import safe_join
+
+    def boom(paths):
+        raise ValueError("Paths don't have the same drive")
+    monkeypatch.setattr(os.path, "commonpath", boom)
+    assert safe_join("/tmp", "abcdef0123456789abcdef0123456789.jpg") is None
