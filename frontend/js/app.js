@@ -155,7 +155,7 @@
       if (openOverlay === addOverlay) discardCurrentDraftFiles();
       // Escape is a third way out of the recipe detail -- release the
       // wake lock here too, or the screen stays on after dismissal.
-      if (openOverlay === detailOverlay) releaseWakeLock();
+      if (openOverlay === detailOverlay) { closeRecipeDetail(); return; }   // also releases the wake lock
       if (openOverlay) closeModal(openOverlay);
       return;
     }
@@ -1590,10 +1590,19 @@
     return (state.tagGroups && state.tagGroups.length ? state.tagGroups : BUILTIN_GROUPS).map((g) => [g.key, groupLabel(g.key, g.label)]);
   }
 
+  // A failure here (the NAS restarting, a dropped connection) leaves the
+  // tags as they were and lets the page carry on to the recipe list, which
+  // shows its own error with a retry. It used to stop the start-up there,
+  // with an empty page and no message.
   async function loadTags() {
-    const [res, gres] = await Promise.all([fetch(`${API}/tags`), fetch(`${API}/tag-groups`).catch(() => null)]);
-    state.allTags = await res.json();
-    if (gres && gres.ok) state.tagGroups = await gres.json();
+    try {
+      const [res, gres] = await Promise.all([fetch(`${API}/tags`), fetch(`${API}/tag-groups`).catch(() => null)]);
+      if (res.ok) {
+        const tags = await res.json();
+        if (Array.isArray(tags)) state.allTags = tags;
+      }
+      if (gres && gres.ok) state.tagGroups = await gres.json();
+    } catch { /* offline: keep what we have */ }
     renderGroupingToggle();
     renderSidebar();
   }
@@ -1612,8 +1621,13 @@
   }
 
   async function loadTimeBuckets() {
-    const res = await fetch(`${API}/time-buckets`);
-    state.timeBuckets = await res.json();
+    try {
+      const res = await fetch(`${API}/time-buckets`);
+      if (res.ok) {
+        const buckets = await res.json();
+        if (Array.isArray(buckets)) state.timeBuckets = buckets;
+      }
+    } catch { /* offline: keep what we have */ }
   }
 
   function renderSidebar() {
@@ -2442,20 +2456,41 @@
     return tx("That didn't work (status {1}).", { 1: status });
   }
 
+  // False when offline too (a rejected fetch used to escape as an
+  // unhandled error, with nothing on screen). A change made on the recipe
+  // page is copied to the list's entry, shown when the page closes: the
+  // page works on its own copy of the recipe, so the list kept the old
+  // rating until a refresh (DeepSeek review of 0073).
+  let listStale = false;
+  function syncListEntry(id, fields) {
+    const entry = currentRecipes.find((r) => r.id === id);
+    if (entry) { Object.assign(entry, fields); listStale = true; }
+  }
+
   async function patchRating(id, payload) {
-    const res = await fetch(`${API}/recipes/${id}/rating`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return res.ok;
+    try {
+      const res = await fetch(`${API}/recipes/${id}/rating`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) syncListEntry(id, payload);
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   async function patchNotes(id, notes) {
-    const res = await fetch(`${API}/recipes/${id}/notes`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    });
-    return res.ok;
+    try {
+      const res = await fetch(`${API}/recipes/${id}/notes`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      if (res.ok) syncListEntry(id, { notes: notes || null });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   function closeAllRatingPopovers() {
@@ -2629,6 +2664,8 @@
           recipe.favorite = newVal;
           favBtn.setAttribute("aria-pressed", String(newVal));
           favBtn.textContent = newVal ? "\u2665" : "\u2661";
+        } else {
+          announceError(tx("Could not save the favorite."));
         }
       },
     });
@@ -2721,7 +2758,6 @@
   function renderRecipeList(recipes) {
     const region = $("#recipe-list-region");
     region.innerHTML = "";
-    $$(".recipe-grid").forEach((g) => g.dataset && (g.dataset.selectMode = String(state.selectMode)));
 
     if (!recipes.length) {
       region.appendChild(el("div", { class: "empty-state", text: tx("No recipes match. Tap + to add one, or adjust your filters.") }));
@@ -2819,6 +2855,7 @@
     // indefinitely after you've walked away from the recipe.
     releaseWakeLock();
     closeModal(detailOverlay);
+    if (listStale) { listStale = false; renderRecipeList(currentRecipes); }
   }
 
   $("#recipe-detail-close").addEventListener("click", closeRecipeDetail);
@@ -4024,9 +4061,22 @@
     else renderSingle();
   }
 
+  // Disables the controls of the dialog that's in front while it works,
+  // and re-enables only those it disabled: it used to reach every dialog,
+  // stacked ones included, and re-enabled buttons that were meant to stay
+  // off (DeepSeek review of 0073).
+  const busyDisabled = new Set();
   function setBusy(isBusy, msg) {
-    if (isBusy) announce(msg || tx("Working..."));
-    $$(".modal button, .modal input").forEach((n) => { n.disabled = isBusy; });
+    if (isBusy) {
+      announce(msg || tx("Working..."));
+      const scope = topOverlay() || document;
+      $$(".modal button, .modal input", scope).forEach((n) => {
+        if (!n.disabled) { n.disabled = true; busyDisabled.add(n); }
+      });
+    } else {
+      busyDisabled.forEach((n) => { n.disabled = false; });
+      busyDisabled.clear();
+    }
   }
 
   // -------------------------------------------------------------------

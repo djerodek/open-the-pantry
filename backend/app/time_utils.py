@@ -19,7 +19,9 @@ def ddhhmm_to_minutes(value) -> int | None:
     # Range-checked: "00:99:99" and "20000:00:00" used to be accepted, and
     # the time filter then built one entry per 20 minutes up to that value
     # -- 1.4 million entries, ~90 MB, and a stalled UI at 20,000 days.
-    if minutes >= 60 or (match.group(1) is not None and hours >= 24):
+    # Hours under 24 in both forms: "24:00" was taken as a day while
+    # "00:24:00" was refused (DeepSeek review of 0073).
+    if minutes >= 60 or hours >= 24:
         return None
     total = days * 24 * 60 + hours * 60 + minutes
     return total if total <= MAX_COOK_MINUTES else None
@@ -86,7 +88,14 @@ def available_time_buckets(logged_minutes: list[int]) -> list[dict]:
     ceiling = min(ceiling, MAX_COOK_MINUTES)
     steps = list(range(20, min(ceiling, 24 * 60) + 1, 20))
     if ceiling > 24 * 60:
-        steps += list(range(2 * 24 * 60, ceiling + 24 * 60, 24 * 60))
+        # Daily up to a week, then weekly, then the longest one logged
+        # (whole days): a 60-day ferment was 59 day buttons in one row.
+        top = -(-ceiling // (24 * 60))           # days, rounded up
+        days = [d for d in range(2, min(top, 7) + 1)]
+        days += [d for d in range(14, top, 7)]
+        if days[-1:] != [top]:
+            days.append(top)
+        steps += [d * 24 * 60 for d in days]
     return [
         {"minutes": m, "label": minutes_to_label(m), "hour_group": (m - 1) // 60}
         for m in steps

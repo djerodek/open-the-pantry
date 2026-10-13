@@ -282,14 +282,16 @@ def _is_junk(line: str) -> bool:
     return bool(_JUNK_LINE.match(line))
 
 
+_SECTION_STARTS = ("for the ", "pour la ", "pour le ", "pour les ", "pour l'", "pour l\u2019")
+
+
 def _looks_like_section_label(line: str) -> bool:
     """"PEPPERED BACON CURE", "For the sauce:", "Topping" -- a sub-heading
     inside an ingredient list, not an ingredient."""
     if _QTY_START.match(line) or len(line.split()) > 6:
         return False
     low = line.lower()
-    return line.isupper() or line.rstrip().endswith(":") or low.startswith(("for the ", "pour la ", "pour le ",
-                                                                            "pour les ", "pour l'", "pour l\u2019"))
+    return line.isupper() or line.rstrip().endswith(":") or low.startswith(_SECTION_STARTS)
 
 
 def _clean_ingredients(lines):
@@ -305,7 +307,15 @@ def _clean_ingredients(lines):
     for line in lines:
         if _is_junk(line):
             continue
-        line = _LABELLED_QTY.sub("", line)
+        m = _LABELLED_QTY.match(line)
+        if m:
+            # "Noodles: 8 oz wheat noodles": the label repeats the
+            # ingredient and goes. "For the dough: 2 cups flour": the label
+            # is a section, kept on its own line (DeepSeek review of 0073:
+            # it was dropped with the other kind).
+            if m.group(1).lower().startswith(_SECTION_STARTS):
+                out.append(f"{m.group(1).strip()}:")
+            line = line[m.end():]
         if _looks_like_section_label(line):
             label = line.rstrip(":").strip()
             if label.isupper() or label.istitle():

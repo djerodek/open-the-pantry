@@ -566,9 +566,12 @@ async def interface_language(request: Request, call_next):
         body = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
     except ValueError:
         log.debug("interface_language: response wasn't JSON after all", exc_info=True)
-    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
-    return Response(content=body, status_code=response.status_code, headers=headers,
-                    background=response.background)
+    # Raw header pairs, not a dict: a dict keeps only one of several
+    # Set-Cookie headers (DeepSeek review of 0073).
+    out = Response(content=body, status_code=response.status_code, background=response.background)
+    out.raw_headers = [(k, v) for k, v in response.raw_headers if k.lower() != b"content-length"] + \
+        [(b"content-length", str(len(body)).encode())]
+    return out
 
 
 def _frontend_version() -> str:
@@ -1617,6 +1620,10 @@ def discard_draft_file(filename: str):
     saving, so an uploaded PDF/screenshot/photo doesn't linger on disk with
     nothing in the database referencing it."""
     safe_name = os.path.basename(filename)  # no path traversal
+    # Only names this app gives drafts, as everywhere else a name meets the
+    # disk (DeepSeek review of 0073).
+    if not is_safe_stored_filename(safe_name):
+        return {"ok": False}
     path = os.path.join(TMP_DIR, safe_name)
     if os.path.isfile(path):
         os.remove(path)
@@ -3032,6 +3039,11 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 # different trust boundary -- filenames are unguessable UUIDs either way.
 app.mount("/tmp-preview", StaticFiles(directory=TMP_DIR), name="tmp_preview")
 
+# The image copies frontend/ to /app/static (Dockerfile: COPY frontend
+# ./static), next to /app/app. Without it the API works but "/" is a 404,
+# so say so in the log rather than fail quietly.
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 if os.path.isdir(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+else:
+    log.warning("No web app files at %s: the API runs, but the app's pages won't load", os.path.realpath(STATIC_DIR))

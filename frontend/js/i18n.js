@@ -209,6 +209,7 @@
     "Could not remove photo.": "Impossible de retirer la photo.",
     "Servings: {1}": "Portions : {1}",
     "Real-world cook time: {1}": "Temps de cuisson réel : {1}",
+    "Could not save the favorite.": "Impossible d'enregistrer le favori.",
     "A short line ending in “:” starts a section, e.g. “Sauce:”.": "Une ligne courte qui se termine par « : » commence une section, p. ex. « Sauce : ».",
     "Learning": "Apprentissage",
     "Learn from my recipes": "Apprendre de mes recettes",

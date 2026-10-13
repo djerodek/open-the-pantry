@@ -670,7 +670,8 @@ Garde-fous et remarques :
   lui qui alimente le filtre de temps. Jusqu'à 60 jours (salaisons et
   fermentations longues); heures sous 24 et minutes sous 60. Le filtre
   propose des intervalles de 20 minutes jusqu'à une journée, puis des
-  journées entières.
+  journées jusqu'à une semaine, puis des semaines, jusqu'au plus long temps
+  inscrit.
 - Notes libres pour chaque recette (substitutions, ajustements de temps,
   résultat) avec un bouton sur la page de la recette — visuellement
   différent quand des notes existent. Gérées uniquement par `PATCH /notes`;

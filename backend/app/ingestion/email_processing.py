@@ -308,8 +308,12 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                     os.remove(pdf_path)
                 return _failure(f"Could not read PDF attachment: {e}")
 
-            segmented = segment_raw_text(pdf_result.raw_text)
             os.remove(pdf_path)  # attachment's job is done once text is extracted; not kept as the showcase image
+            try:
+                segmented = segment_raw_text(pdf_result.raw_text)
+            except Exception as e:
+                log.exception("PDF attachment %s: reading the text failed", label)
+                return _failure(f"Could not read PDF attachment: {e}")
             if pdf_result.avg_ocr_confidence is not None:
                 log.info("PDF %s: OCR confidence %.0f", label, pdf_result.avg_ocr_confidence)
             # Only a fully scanned PDF is judged on its OCR: a page with a
@@ -346,7 +350,12 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 os.remove(image_path)
                 return _failure(f"Could not read image attachment: {e}")
 
-            segmented = segment_raw_text(ocr_result.raw_text)
+            try:
+                segmented = segment_raw_text(ocr_result.raw_text)
+            except Exception as e:
+                log.exception("Image %s: reading the text failed", label)
+                os.remove(image_path)
+                return _failure(f"Could not read image attachment: {e}")
             if ocr_result.ocr_confidence is not None:
                 log.info("Image %s: OCR confidence %.0f", label, ocr_result.ocr_confidence)
             if _ocr_too_poor(ocr_result.ocr_confidence):

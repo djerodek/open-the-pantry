@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from .file_validation import is_safe_stored_filename
 
@@ -34,11 +34,13 @@ def _validate_cook_time(v):
         raise ValueError(err)
     return v
 
+# Caps on what a recipe save accepts (DeepSeek review of 0073): generous for
+# any real recipe, so a pasted book or a scripted 10 MB title stops here.
 class IngredientIn(BaseModel):
-    raw_line: str
-    quantity: Optional[str] = None
-    unit: Optional[str] = None
-    name: Optional[str] = None
+    raw_line: str = Field(..., max_length=2000)
+    quantity: Optional[str] = Field(default=None, max_length=100)
+    unit: Optional[str] = Field(default=None, max_length=100)
+    name: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TagIn(BaseModel):
@@ -51,17 +53,17 @@ class TagIn(BaseModel):
 
 
 class RecipeCreate(BaseModel):
-    title: str
-    source_type: str  # 'url' | 'pdf' | 'screenshot' | 'manual' | 'email'
-    source_url: Optional[str] = None
+    title: str = Field(..., max_length=500)
+    source_type: str = Field(..., max_length=20)  # 'url' | 'pdf' | 'screenshot' | 'manual' | 'email'
+    source_url: Optional[str] = Field(default=None, max_length=2000)
     # Same cap as the Servings field on the recipe page (RatingUpdate).
     servings: Optional[str] = Field(default=None, max_length=SERVINGS_MAX)
     _trim_servings = field_validator("servings", mode="before")(_strip_servings)
-    prep_time: Optional[str] = None
-    cook_time: Optional[str] = None
-    total_time: Optional[str] = None
+    prep_time: Optional[str] = Field(default=None, max_length=200)
+    cook_time: Optional[str] = Field(default=None, max_length=200)
+    total_time: Optional[str] = Field(default=None, max_length=200)
     image_path: Optional[str] = None
-    raw_text: Optional[str] = None
+    raw_text: Optional[str] = Field(default=None, max_length=1_000_000)   # a 60-page scan is ~250k
     # notes are deliberately NOT here: PUT is a full replace, so including
     # them would mean any client that omits the current value silently
     # wipes them. Notes are managed exclusively through PATCH /notes.
@@ -72,8 +74,8 @@ class RecipeCreate(BaseModel):
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
-    ingredients: list[IngredientIn] = []
-    steps: list[str] = []
+    ingredients: list[IngredientIn] = Field(default_factory=list, max_length=500)
+    steps: list[Annotated[str, Field(max_length=20_000)]] = Field(default_factory=list, max_length=500)
     tags: list[TagIn] = Field(default_factory=list, max_length=50)
 
     _check_image_path = field_validator("image_path")(_validate_stored_filename)

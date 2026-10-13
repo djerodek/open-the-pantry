@@ -560,7 +560,7 @@ Safeguards and notes:
   whatever prep/cook/total time a source states — this is what drives the
   time filter. Up to 60 days (long cures and ferments); hours under 24 and
   minutes under 60. The filter offers 20-minute steps up to a day, then
-  whole days.
+  days up to a week, then weeks, ending at the longest time logged.
 - Free-form notes per recipe (substitutions, timing tweaks, how it turned
   out) via a button on the recipe detail page — visually distinct once
   notes exist versus empty. Managed exclusively through `PATCH /notes`;
