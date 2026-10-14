@@ -262,6 +262,71 @@ Garde-fous et remarques :
     `tecnativa/docker-socket-proxy` avec `CONTAINERS=1`) règle ça, si ça
     compte sur votre réseau.
 
+### Facultatif : On mange quoi? (une recette au hasard)
+
+Désactivée par défaut. **On mange quoi?** est une deuxième page, volontairement
+minimale, pour la même bibliothèque, sur son propre port (8091). Choisissez un
+type de repas, un mode de cuisson, un ingrédient principal et/ou un rythme, ou
+rien du tout, appuyez sur **Choisis pour moi**, et elle affiche une recette au
+hasard qui correspond, sous forme de lien qui l'ouvre dans l'application
+principale. **Autre chose** en choisit une autre, sans en répéter aucune avant
+d'avoir montré toutes celles qui correspondent; **Effacer** remet tout à zéro.
+
+- Dans un groupe, les choix sont des alternatives (Dîner ou Souper); d'un
+  groupe à l'autre, tous doivent être respectés (un souper, cuit au four,
+  noté rapide). Un groupe où rien n'est choisi accepte toutes les recettes,
+  y compris celles sans étiquette dans ce groupe ou sans note de rythme.
+- Seuls les trois groupes d'étiquettes intégrés (avec les étiquettes que vous
+  y avez ajoutées) et le rythme sont proposés. La recherche, vos propres
+  groupes et les étiquettes personnalisées restent dans l'application
+  principale. Les cocktails ne sont jamais proposés ni choisis.
+- Les recettes jugées plus savoureuses sortent un peu plus souvent (5★ une
+  fois et demie plus souvent que 1★); aucune n'est jamais exclue. Les
+  favoris ne changent rien.
+- Elle retient vos derniers choix sur chaque appareil, a son propre
+  sélecteur EN/FR, suit le thème clair ou sombre de l'appareil et peut être
+  ajoutée à l'écran d'accueil d'un téléphone comme application à part.
+
+**Pour l'activer** : **Paramètres → On mange quoi?**. Elle démarre tout de
+suite, sans redémarrage, et le réglage est conservé dans la base de données
+(et dans les sauvegardes). Pendant qu'elle tourne, les Paramètres affichent
+son adresse, `http://<votre serveur>:8091`, et un lien On mange quoi?
+apparaît dans la barre du haut. Elle se désactive au même endroit. Elle ne
+demande pas le mot de passe des paramètres.
+
+**Un fichier compose antérieur à cette page** ne publie pas le port : ajoutez
+`- "8091:8091"` sous `ports:` (le `docker-compose.yml` actuel l'a), puis
+`docker compose up -d`. Les Paramètres vous avertissent quand la page est
+activée mais que l'appareil utilisé ne joint pas le port. (Depuis une adresse
+`https://`, la vérification est impossible; il n'y a donc pas
+d'avertissement.) « Le port 8091 est déjà utilisé dans le conteneur » veut
+dire qu'autre chose y écoute déjà dans le conteneur; `RECIPE_APP_PICKER_PORT`
+la déplace.
+
+**En lecture seule, et ouverte à quiconque peut la joindre.** Le port ne sert
+que la page, ses choix et ses tirages, les photos des recettes et une
+vérification de santé; toute autre adresse répond « introuvable », donc rien
+ne peut y être modifié ni supprimé. Elle n'a pas de connexion, et
+`RECIPE_APP_API_KEY` ne s'y applique pas : quiconque peut joindre le port
+voit les titres des recettes, leurs photos et le nombre de recettes par
+étiquette. Elle est en `http://` seulement. Si c'est plus que vous ne voulez
+sur votre réseau, laissez-la désactivée.
+
+**Autres numéros de port, ou un proxy** (variables d'environnement, toutes
+facultatives) :
+
+| Variable | Par défaut | Quand |
+|---|---|---|
+| `RECIPE_APP_PICKER_PORT` | 8091 | Le port dans le conteneur. Rarement utile. |
+| `RECIPE_APP_PICKER_PUBLIC_PORT` | celui ci-dessus | Le fichier compose publie la page sous un autre numéro (p. ex. `"9000:8091"`) : le lien de l'application principale l'utilise. |
+| `RECIPE_APP_PICKER_PUBLIC_URL` | | L'adresse complète de la page, p. ex. derrière un proxy, pour le lien de l'application principale. |
+| `RECIPE_APP_MAIN_PUBLIC_PORT` | 8090 | L'application principale est publiée sous un autre numéro : les liens de retour l'utilisent. |
+| `RECIPE_APP_PUBLIC_URL` | | L'adresse complète de l'application principale pour ces liens. |
+
+Sans elles, la page renvoie à l'adresse `https://` de l'application
+principale quand HTTPS est activé, sinon à `http://<le nom auquel vous avez
+ouvert la page>:8090`.
+
 ## Ce que fait l'application
 
 **Ajout de recettes**
@@ -870,7 +935,10 @@ courriel)**
   l'application l'indique dans le journal au démarrage. Une couche
   d'authentification au proxy inverse (authentification de base,
   Tailscale, etc.) reste l'option la plus complète pour exposer
-  l'application au-delà de votre réseau local.
+  l'application au-delà de votre réseau local. La clé ne s'applique pas au
+  port de la page On mange quoi? (8091, désactivée par défaut) : elle n'a
+  aucune route d'écriture ni d'administration, et montre les titres, les
+  photos et le nombre de recettes par étiquette à quiconque peut la joindre.
 - **D'autres sites Web ne peuvent pas utiliser l'application par votre
   navigateur.** « Seul mon réseau peut la joindre » ne couvre pas les pages
   Web que les gens de votre réseau visitent : une telle page peut envoyer

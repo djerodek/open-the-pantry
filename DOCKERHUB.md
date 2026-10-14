@@ -44,6 +44,7 @@ Save as `docker-compose.yml`:
         ports:
           - "8090:8090"
           - "8443:8443"   # HTTPS, once set up in Settings
+          - "8091:8091"   # What to eat?, once switched on in Settings
         env_file:         # optional; see the README's HTTPS section
           - path: .env
             required: false
@@ -105,6 +106,9 @@ updates apply.
   from Settings (cPanel-managed domains; see the README)
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
+- Optional "What to eat?" page (off by default): a second, read-only page on
+  port 8091 that picks a random recipe by meal type, cooking style, main
+  ingredient or pace; switched on in Settings
 - Full backup (restorable) or every recipe as PDFs, from Settings
 - Logs: Settings → Logs (view, download, clear), `docker logs
   open-the-pantry`, or `data/logs/app.log`

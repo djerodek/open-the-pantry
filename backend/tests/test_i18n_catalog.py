@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+# The What to eat? page uses the same catalog (it loads js/i18n.js).
+PICKER = Path(__file__).resolve().parents[2] / "frontend-picker"
 pytestmark = pytest.mark.skipif(not (FRONTEND / "js" / "i18n.js").exists(), reason="frontend not present")
 
 _STR = r'"((?:\\.|[^"\\])*)"'
@@ -30,6 +32,7 @@ def _catalog():
 
 def _js_keys():
     src = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
+    src += (PICKER / "picker.js").read_text(encoding="utf-8")
     keys = [_unescape(m) for m in re.findall(r"\btx\(" + _STR, src)]
     for one, many in re.findall(r"\btxn\([^,]+,\s*" + _STR + r",\s*" + _STR, src):
         keys += [_unescape(one), _unescape(many)]
@@ -69,9 +72,10 @@ class _Text(HTMLParser):
 def _html_keys():
     p = _Text()
     p.feed((FRONTEND / "index.html").read_text(encoding="utf-8"))
-    # The app's name and the text-size buttons' labels are the same in
-    # both languages.
-    return [k for k in p.found if k not in {"Open the Pantry", "A+", "A-", "A\u2212"}]
+    p.feed((PICKER / "index.html").read_text(encoding="utf-8"))
+    # The app's name, the text-size buttons' labels and the picker's EN/FR
+    # buttons are the same in both languages.
+    return [k for k in p.found if k not in {"Open the Pantry", "A+", "A-", "A\u2212", "EN", "FR"}]
 
 
 def test_every_interface_string_has_a_french_entry():
@@ -91,3 +95,17 @@ def test_language_buttons_are_not_translated():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert 'data-lang-choice="en" lang="en">English<' in html
     assert 'data-lang-choice="fr" lang="fr">Français<' in html
+
+
+def test_picker_page_strings_are_all_checked():
+    """The picker's strings are in the scan above: its title, button and
+    messages, and the page itself (not only app.js and index.html)."""
+    keys = set(_js_keys() + _html_keys())
+    for k in ("What to eat?", "Pick one", "Something else", "Clear", "{n} match", "{n} matches",
+              "Nothing matches these choices.", "That's all {1} — starting over.",
+              "That's the only one that matches.", "No recipes yet.", "Add some in Open the Pantry.",
+              "Turn on the What to eat? page", "Port {1} is in use inside the container."):
+        assert k in keys, k
+    catalog = _catalog()
+    assert catalog["What to eat?"] == "On mange quoi?" and catalog["Pick one"] == "Choisis pour moi"
+    assert catalog["{n} matches"] == "{n} recettes correspondent"

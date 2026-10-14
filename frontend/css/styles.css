@@ -240,6 +240,15 @@ a { color: var(--color-focus); }
 }
 .sidebar-toggle .icon { width: 1.25rem; height: 1.25rem; display: block; }
 
+/* What to eat? link, next to Settings, only while the picker runs: an icon
+   on a phone, icon and label from 48rem. */
+.topbar-link { text-decoration: none; gap: 0.4rem; }
+.topbar-link-label { display: none; font-size: 0.85rem; white-space: nowrap; }
+@media (min-width: 48rem) {
+  .topbar-link { width: auto; padding: 0 0.7rem; }
+  .topbar-link-label { display: inline; }
+}
+
 /* min-width:0 because a flex item defaults to min-width:auto, which refuses
    to shrink below the search input's intrinsic width. On a narrow phone that
    pushed the topbar ~3px wider than the viewport and gave the whole page a
@@ -1200,6 +1209,7 @@ main {
 }
 .setup-callout p { margin: 0.35rem 0 0.6rem; font-size: 0.88rem; }
 .field-hint { font-size: 0.78rem; color: var(--color-ink-muted); margin-top: 0.2rem; }
+.field-hint.field-warning { color: var(--color-alert); }
 
 /* Backup format chooser in Settings. */
 .backup-formats {

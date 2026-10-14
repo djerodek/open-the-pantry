@@ -43,6 +43,7 @@ from . import crypto
 from . import i18n
 from . import https_setup
 from . import admin_lock
+from . import picker
 from .ml import service as learning
 
 _lock_file_handle = None
@@ -238,6 +239,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("HTTPS listener couldn't start")
     https_renew_task = asyncio.create_task(https_setup.renewal_loop(app))
+    # Settings -> What to eat?: the read-only picker page on its own port,
+    # if it was switched on. A busy port is logged and shown in Settings;
+    # it never stops the app.
+    try:
+        await picker.startup()
+    except Exception:
+        log.exception("What to eat? listener couldn't start")
     # Settings -> Learning: use the saved models, then retrain from the
     # recipes as they are now (in the background).
     try:
@@ -254,6 +262,7 @@ async def lifespan(app: FastAPI):
     email_scan_task.cancel()
     https_renew_task.cancel()
     await https_setup.stop_server()
+    await picker.stop_server()
     engine.dispose()
 
 
@@ -2731,6 +2740,20 @@ async def turn_off_https():
     await https_setup.stop_server()
     https_setup.turn_off()
     return https_setup.status()
+
+
+# ---------------------------------------------------------------------------
+# What to eat? (picker.py): its API on this port too, for the top-bar link;
+# the on/off switch on this port only; and the read-only app the picker's
+# own port serves. That app gets this port's host check, rate limit, error
+# logging, cache headers and language middleware, added in the same order
+# as here, but not the API key or the settings password: it has no write
+# or admin route for them to protect.
+# ---------------------------------------------------------------------------
+app.include_router(picker.router)
+app.include_router(picker.settings_router)
+picker_app = picker.create_app([log_unhandled_errors, cross_site_guard, rate_limiter,
+                                app_files_revalidate, interface_language])
 
 
 @app.post("/api/email-settings/scan", response_model=schemas.EmailScanResult)

@@ -304,6 +304,22 @@
       <button type="button" id="learning-train" class="btn-secondary">Retrain now</button>
     </div>
 
+    <div class="filter-section" id="picker-section">
+      <div class="filter-section-title">What to eat?</div>
+      <label class="switch-row" for="picker-enabled">
+        <span>Turn on the What to eat? page</span>
+        <input type="checkbox" role="switch" id="picker-enabled" class="switch">
+      </label>
+      <div class="field-hint">
+        A second, simple page on its own port: choose a meal type, cooking style,
+        main ingredient or pace, and it picks a recipe at random. Nothing can be
+        changed from it. It has no login: anyone who can reach the port sees
+        recipe titles and photos.
+      </div>
+      <p class="field-hint" id="picker-status" role="status" hidden></p>
+      <p class="field-hint field-warning" id="picker-warning" hidden></p>
+    </div>
+
     <div class="filter-section" id="admin-lock-section">
       <div class="filter-section-title">Settings password</div>
       <div class="field-hint">

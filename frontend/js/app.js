@@ -143,6 +143,9 @@
   }
   function closeModal(overlay) {
     overlay.hidden = true;
+    // Every way out of the recipe (X, Escape, backdrop, delete) clears an
+    // #recipe-<id> it was opened from, so a reload doesn't reopen it.
+    if (overlay.id === "recipe-detail-overlay") clearRecipeHash();
     if (overlay._onClose) { const done = overlay._onClose; overlay._onClose = null; done(); }
     if (!topOverlay()) document.removeEventListener("keydown", trapFocus);
     const back = focusBeforeModal.get(overlay);
@@ -393,7 +396,7 @@
     });
   }
 
-  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); refreshLearning(); openModal(settingsOverlay); });
+  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); refreshLearning(); refreshPicker(); openModal(settingsOverlay); });
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 
@@ -2285,6 +2288,132 @@
     refreshLearning();
   });
 
+  // -------------------------------------------------------------------
+  // Settings -> What to eat? (backend: picker.py): the read-only picker
+  // page on its own port, and the link to it in the top bar. The link is
+  // there only while the picker is switched on AND running (a busy port
+  // counts as off); it is added and removed, never greyed out.
+  // -------------------------------------------------------------------
+  const pickerEnabled = $("#picker-enabled");
+  const pickerStatusLine = $("#picker-status");
+  const pickerWarning = $("#picker-warning");
+  // A die: "pick one for me". Fixed markup.
+  const PICKER_ICON_SVG = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>' +
+    '<circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="15" cy="15" r="1.5" fill="currentColor"/>' +
+    '<circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>';
+  let pickerProbeTicket = 0;
+  let pickerRetryTimer = null;
+
+  // Only an http(s) address the server gave becomes a link.
+  function pickerAddress(st) {
+    try {
+      const u = new URL(st && st.url);
+      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+    } catch { return null; }
+  }
+
+  function renderPickerLink(st) {
+    const url = st && st.enabled ? pickerAddress(st) : null;
+    let link = $("#picker-link");
+    if (!url) { if (link) link.remove(); return; }
+    if (!link) {
+      // Icon only on a phone (the label is hidden by CSS); the aria-label
+      // names it either way.
+      link = el("a", { id: "picker-link", class: "sidebar-toggle topbar-link", "aria-label": tx("What to eat?"),
+        trustedStaticHtml: PICKER_ICON_SVG }, [el("span", { class: "topbar-link-label", text: tx("What to eat?") })]);
+      $("#settings-toggle").before(link);
+    }
+    link.href = url;
+  }
+
+  async function refreshPickerLink() {
+    try {
+      const res = await fetch(`${API}/picker/status`, { cache: "no-store" });
+      const st = res.ok ? await res.json() : null;
+      renderPickerLink(st);
+      return st;
+    } catch {
+      renderPickerLink(null);   // a failed fetch hides the link
+      return null;
+    }
+  }
+
+  function renderPickerSettings(st) {
+    clearTimeout(pickerRetryTimer);
+    pickerProbeTicket += 1;
+    pickerEnabled.checked = !!st.on;
+    pickerStatusLine.replaceChildren();
+    pickerWarning.hidden = true;
+    pickerStatusLine.hidden = !st.on;
+    if (!st.on) return;
+    const url = pickerAddress(st);
+    if (st.enabled && url) {
+      pickerStatusLine.append(tx("Address:") + " ", el("a", { href: url, text: url }));
+      probePicker(st, url);
+    } else if (st.listen_error === "port_in_use") {
+      pickerStatusLine.textContent = tx("Port {1} is in use inside the container.", { 1: st.port });
+    } else if (st.listen_error) {
+      pickerStatusLine.textContent = tx("The page couldn't start. Settings → Logs has the details.");
+    } else {
+      pickerStatusLine.textContent = tx("Starting…");
+      pickerRetryTimer = setTimeout(() => { if (!settingsOverlay.hidden) refreshPicker(); }, 2000);
+    }
+  }
+
+  // The container can't tell whether the compose file publishes the port;
+  // this device can. Any answer at all counts (no-cors: the response itself
+  // can't be read); a network error means unreachable. Skipped on an
+  // https:// page, where the browser blocks any request to the plain
+  // http:// picker (mixed content), reachable or not.
+  async function probePicker(st, url) {
+    if (location.protocol === "https:" && url.startsWith("http:")) return;
+    const ticket = ++pickerProbeTicket;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    let reachable = true;
+    try {
+      await fetch(`${url.replace(/\/+$/, "")}/healthz`, { mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+    } catch { reachable = false; }
+    clearTimeout(timer);
+    if (reachable || ticket !== pickerProbeTicket) return;
+    pickerWarning.textContent = tx("On, but this device can't reach port {1}. Your compose file may be missing the {2} line under ports:.",
+      { 1: st.public_port, 2: `${st.public_port}:${st.port}` });
+    pickerWarning.hidden = false;
+  }
+
+  // A status fetched before the switch was last flipped is out of date:
+  // shown, it would flip the switch back under the user's finger.
+  let pickerSwitchTicket = 0;
+  async function refreshPicker() {
+    const ticket = pickerSwitchTicket;
+    const st = await refreshPickerLink();
+    if (st && ticket === pickerSwitchTicket) renderPickerSettings(st);
+  }
+
+  pickerEnabled.addEventListener("change", async () => {
+    const want = pickerEnabled.checked;
+    const ticket = ++pickerSwitchTicket;
+    pickerProbeTicket += 1;
+    pickerWarning.hidden = true;
+    pickerStatusLine.hidden = !want;
+    pickerStatusLine.textContent = want ? tx("Starting…") : "";
+    const res = await fetch(`${API}/picker/settings`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: want }),
+    }).catch(() => null);
+    if (ticket !== pickerSwitchTicket) return;     // flipped again since; that answer decides
+    if (res && res.ok) {
+      const st = await res.json();
+      renderPickerSettings(st);
+      renderPickerLink(st);
+      return;
+    }
+    const body = res ? await res.json().catch(() => ({})) : {};
+    announceError(apiErrorText(body, res ? res.status : 0));
+    refreshPicker();
+  });
+
   const thumbnailsSetting = $("#thumbnails-setting");
   thumbnailsSetting.checked = state.showThumbnails;
   thumbnailsSetting.addEventListener("change", () => {
@@ -2888,6 +3017,22 @@
     renderRecipeDetail(recipe);
     if (wakeLockSupported && getWakeLockDefault()) await setWakeLockWanted(true);
   }
+
+  // An address ending in #recipe-<id> opens that recipe, on load and when
+  // the hash changes: the What to eat? page links to recipes this way. The
+  // cards' own #recipe-<id> links don't set it (they open the dialog
+  // directly), so only an address from outside does.
+  const RECIPE_HASH = /^#recipe-(\d+)$/;
+  function openRecipeFromHash() {
+    const m = RECIPE_HASH.exec(location.hash);
+    if (m) openRecipeDetail(Number(m[1]));
+  }
+  function clearRecipeHash() {
+    // replaceState: no history entry and no hashchange, so Back still goes
+    // to the page that linked here.
+    if (RECIPE_HASH.test(location.hash)) history.replaceState(history.state, "", location.pathname + location.search);
+  }
+  window.addEventListener("hashchange", openRecipeFromHash);
 
   // -------------------------------------------------------------------
   // Notes: a toggle button (visually distinct once notes exist) that
@@ -4394,10 +4539,14 @@
   (async function init() {
     $("#filters-toggle").hidden = state.grouping !== "all";
     await loadTags();
+    // Opened from a link to one recipe (What to eat?): show it now, the
+    // list loads behind it.
+    openRecipeFromHash();
     await loadTimeBuckets();
     await loadRecipes();
     await loadMailState();
     refreshHttpsSummary();
+    refreshPickerLink();
   })();
 
   if ("serviceWorker" in navigator) {

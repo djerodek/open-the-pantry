@@ -745,6 +745,31 @@
     "New group name": "Nom du nouveau groupe",
     "Add group": "Ajouter le groupe",
     "Added the {1} group. Add tags to it below.": "Groupe {1} ajouté. Ajoutez-y des étiquettes ci-dessous.",
+
+    // What to eat? (the picker page, its link in the top bar, its Settings section)
+    "What to eat?": "On mange quoi?",
+    "Pick one": "Choisis pour moi",
+    "Something else": "Autre chose",
+    "Clear": "Effacer",
+    "Any": "Peu importe",
+    "Choices": "Choix",
+    "{n} match": "{n} recette correspond",
+    "{n} matches": "{n} recettes correspondent",
+    "Nothing matches these choices.": "Aucune recette ne correspond à ces choix.",
+    "That's all {1} — starting over.": "C'est tout ({1}) — on recommence.",
+    "That's the only one that matches.": "C'est la seule qui correspond.",
+    "No recipes yet.": "Aucune recette pour l'instant.",
+    "Add some in Open the Pantry.": "Ajoutez-en dans Open the Pantry.",
+    "The server returned an error ({1}).": "Le serveur a renvoyé une erreur ({1}).",
+    "Turn on the What to eat? page": "Activer la page On mange quoi?",
+    "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random. Nothing can be changed from it. It has no login: anyone who can reach the port sees recipe titles and photos.":
+      "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port voit les titres et les photos des recettes.",
+    "Address:": "Adresse :",
+    "Port {1} is in use inside the container.": "Le port {1} est déjà utilisé dans le conteneur.",
+    "The page couldn't start. Settings → Logs has the details.": "La page n'a pas pu démarrer. Les détails sont dans Paramètres → Journal.",
+    "Starting…": "Démarrage…",
+    "On, but this device can't reach port {1}. Your compose file may be missing the {2} line under ports:.":
+      "Activée, mais cet appareil ne joint pas le port {1}. Il manque peut-être la ligne {2} sous ports: dans votre fichier compose.",
   };
 
   // Built-in tags: the stored name stays English (the tagger, filters and

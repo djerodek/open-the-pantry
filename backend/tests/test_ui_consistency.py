@@ -147,3 +147,120 @@ def test_largest_text_size_fits_a_phone():
     css = CSS.read_text(encoding="utf-8")
     assert "repeat(auto-fill, minmax(min(15rem, 100%), 1fr))" in css
     assert ".recipe-detail-header { display: flex; flex-wrap: wrap;" in css
+
+
+# ---------------------------------------------------------------------------
+# What to eat? (frontend-picker/, app/picker.py)
+# ---------------------------------------------------------------------------
+
+PICKER_DIR = ROOT / "frontend-picker"
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.css").exists(), reason="frontend not present")
+def test_picker_tokens_match_the_main_app():
+    """The picker copies the main app's design tokens (light, and dark from
+    the system setting); a change to one copy must reach the other."""
+    def blocks(css):
+        root = re.search(r"(?m)^:root\s*\{(.*?)\n\}", css, re.S)
+        dark = re.search(r'@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{(.*?)\}', css, re.S)
+        assert root and dark, "token blocks not found; update this test's selectors"
+        return _declarations(root.group(1)), _declarations(dark.group(1))
+
+    main_root, main_dark = blocks(CSS.read_text(encoding="utf-8"))
+    pick_root, pick_dark = blocks((PICKER_DIR / "picker.css").read_text(encoding="utf-8"))
+    assert len(main_root) > 20 and pick_root == main_root
+    assert len(main_dark) > 20 and pick_dark == main_dark
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.js").exists(), reason="frontend not present")
+def test_picker_page_accessibility_and_motion():
+    html = (PICKER_DIR / "index.html").read_text(encoding="utf-8")
+    js = (PICKER_DIR / "picker.js").read_text(encoding="utf-8")
+    css = (PICKER_DIR / "picker.css").read_text(encoding="utf-8")
+    # Chips are buttons with aria-pressed, each group a labelled role=group.
+    assert 'class: "chip"' in js and '"aria-pressed": String(' in js
+    assert 'role: "group", "aria-labelledby": labelId' in js
+    # One polite live region, apart from the card the shuffle cycles through,
+    # which hears only the final pick.
+    assert 'id="pick-status" role="status" aria-live="polite"' in html
+    assert html.count("aria-live") == 1
+    assert '"aria-hidden": "true" }, [' in js[js.index("function shuffle("):js.index("function announce(")]
+    # Reduced motion skips the shuffle; the pick is decided before it runs.
+    shuffle = js[js.index("function shuffle("):js.index("function announce(")]
+    assert '"(prefers-reduced-motion: reduce)"' in shuffle and "if (reduce || !titles.length)" in shuffle
+    pick = js[js.index("async function pick("):js.index("function clearAll(")]
+    assert pick.index("await api(query(") < pick.index("await shuffle(")
+    # Busy without `disabled`, so focus stays on the button pressed.
+    busy = js[js.index("function setBusy("):js.index("function query(")]
+    assert "aria-disabled" in busy and ".disabled" not in busy
+    # Clear sends focus back to the first chip group.
+    clear = js[js.index("function clearAll("):js.index('pickButton.addEventListener("click"')]
+    assert 'querySelector("#choices .chip")' in clear and ".focus()" in clear
+    # The big button stays a comfortable target at every text size.
+    assert re.search(r"\.pick-button \{[^}]*min-height: 9\.5rem", css)
+    # Remembered choices: both localStorage calls sit in try/catch (storage
+    # can throw in private modes), and nothing else touches it.
+    assert js.count("localStorage.") == 2
+    for fn, nxt in (("function loadChoices(", "function saveChoices("), ("function saveChoices(", "function webAddress(")):
+        body = js[js.index(fn):js.index(nxt)]
+        assert "localStorage." in body and "try {" in body and "catch" in body
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.js").exists(), reason="frontend not present")
+def test_picker_links_only_to_web_addresses():
+    js = (PICKER_DIR / "picker.js").read_text(encoding="utf-8")
+    body = js[js.index("function webAddress("):js.index("async function api(")]
+    assert 'u.protocol === "http:" || u.protocol === "https:"' in body
+    assert "state.mainUrl = webAddress(options.main_url, state.mainUrl)" in js
+    assert "href: `${state.mainUrl}/#recipe-${recipe.id}`" in js
+
+
+def test_main_app_opens_a_linked_recipe_and_clears_the_link():
+    """/#recipe-<id> opens that recipe, at start-up and on hashchange; every
+    way of closing it clears the hash, so a reload doesn't reopen it."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    assert 'window.addEventListener("hashchange", openRecipeFromHash)' in js
+    init = js[js.index("(async function init() {"):]
+    assert init.index("await loadTags()") < init.index("openRecipeFromHash()") < init.index("await loadRecipes()")
+    close = js[js.index("function closeModal("):js.index("function trapFocus(")]
+    assert 'if (overlay.id === "recipe-detail-overlay") clearRecipeHash();' in close
+    clear = js[js.index("function clearRecipeHash("):js.index('window.addEventListener("hashchange"')]
+    assert "history.replaceState(" in clear
+
+
+def test_main_app_link_to_the_picker_follows_the_server():
+    """The top-bar link exists only while /api/picker/status says enabled
+    (switched on and running); otherwise it is removed, not greyed out, and a
+    failed fetch removes it too. Settings checks from the browser whether the
+    port answers, except from an https:// page, where that can't work."""
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    link = js[js.index("function renderPickerLink("):js.index("async function refreshPickerLink(")]
+    assert "st && st.enabled ? pickerAddress(st) : null" in link and "link.remove()" in link
+    assert '$("#settings-toggle").before(link)' in link and '"aria-label": tx("What to eat?")' in link
+    refresh = js[js.index("async function refreshPickerLink("):js.index("function renderPickerSettings(")]
+    assert "renderPickerLink(null)" in refresh
+    assert "refreshPickerLink();" in js[js.index("(async function init() {"):]
+    probe = js[js.index("async function probePicker("):js.index("async function refreshPicker(")]
+    assert 'mode: "no-cors"' in probe and 'location.protocol === "https:" && url.startsWith("http:")' in probe
+    html = (CSS.parents[1] / "index.html").read_text(encoding="utf-8")
+    assert 'id="picker-link"' not in html          # added by script, only while on
+    assert 'id="picker-enabled"' in html and 'id="picker-warning"' in html
+    sw = (CSS.parents[1] / "service-worker.js").read_text(encoding="utf-8")
+    assert r"/^\/api\/picker/" in sw
+    # The service worker leaves other origins alone: it used to answer a
+    # refused connection to the picker's port with its own "Offline" 503,
+    # which the check above took for an answer.
+    handler = sw[sw.index('self.addEventListener("fetch"'):]
+    assert handler.index("if (new URL(event.request.url).origin !== self.location.origin) return;") \
+        < handler.index("event.respondWith(")
+
+
+@pytest.mark.skipif(not (ROOT / "docker-compose.yml").exists(), reason="repo files not present")
+def test_picker_port_is_published_and_copied_into_the_image():
+    for name in ("docker-compose.yml", "docker-compose.build.yml", "DOCKERHUB.md"):
+        assert '"8091:8091"' in (ROOT / name).read_text(encoding="utf-8"), name
+    dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY frontend-picker ./picker-static" in dockerfile and "EXPOSE 8091" in dockerfile
+    assert "frontend-picker" not in (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    manifest = __import__("json").loads((PICKER_DIR / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["name"] == "What to eat?" and manifest["start_url"] == "/"

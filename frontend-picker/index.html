@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What to eat?</title>
+<meta name="description" content="Pick a recipe at random">
+<link rel="manifest" href="/picker-static/manifest.json">
+<link rel="icon" href="/picker-static/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/picker-static/icons/icon-192.png">
+<meta name="theme-color" content="#6B7A5E">
+<link rel="stylesheet" href="/picker-static/picker.css">
+</head>
+<body>
+<header class="picker-header">
+  <h1 class="picker-title">What to eat?</h1>
+  <div class="picker-header-actions">
+    <div class="lang-switch" role="group" aria-label="Language">
+      <button type="button" data-lang-choice="en" lang="en" aria-pressed="false">EN</button>
+      <button type="button" data-lang-choice="fr" lang="fr" aria-pressed="false">FR</button>
+    </div>
+    <a class="pantry-link" id="pantry-link" href="/">Open the Pantry</a>
+  </div>
+</header>
+
+<main class="picker-main" id="picker-main">
+  <section class="picker-choices" id="choices" aria-label="Choices">
+    <p class="picker-loading" id="choices-loading">Loading...</p>
+  </section>
+
+  <section class="picker-action" id="action" hidden>
+    <button type="button" class="pick-button" id="pick-button">Pick one</button>
+
+    <div class="result" id="result" hidden>
+      <p class="result-note" id="result-note" hidden></p>
+      <div id="result-card-slot"></div>
+      <p class="result-message" id="result-message" hidden></p>
+      <div class="result-actions">
+        <button type="button" class="btn-secondary" id="again-button" hidden>Something else</button>
+        <button type="button" class="btn-secondary" id="clear-button">Clear</button>
+      </div>
+      <p class="result-count" id="result-count" hidden></p>
+    </div>
+  </section>
+
+  <p class="picker-empty" id="empty-library" hidden>
+    No recipes yet. <a id="empty-library-link" href="/">Add some in Open the Pantry.</a>
+  </p>
+  <p class="picker-error" id="load-error" hidden>
+    <span id="load-error-text"></span>
+    <button type="button" class="btn-secondary" id="load-retry">Try again</button>
+  </p>
+</main>
+
+<!-- What a screen reader hears after a pick: the final recipe only, never
+     the titles the shuffle effect cycles through. -->
+<div class="visually-hidden" id="pick-status" role="status" aria-live="polite"></div>
+
+<script src="/js/i18n.js"></script>
+<script src="/picker-static/picker.js"></script>
+</body>
+</html>

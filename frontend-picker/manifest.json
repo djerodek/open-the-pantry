@@ -1,0 +1,14 @@
+{
+  "name": "What to eat?",
+  "short_name": "What to eat",
+  "description": "Pick a recipe at random",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FBF9F4",
+  "theme_color": "#6B7A5E",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -371,3 +371,7 @@ class HttpsLoginIn(BaseModel):
 
 class LearningSettingsIn(BaseModel):
     enabled: bool
+
+
+class PickerSettingsIn(BaseModel):
+    enabled: bool

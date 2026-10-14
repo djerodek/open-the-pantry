@@ -214,3 +214,13 @@ class HttpsSettings(Base):
     state = Column(String, nullable=False, default="off")   # off / ready / error
     last_error = Column(Text, nullable=True)
     cert_expires_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class PickerSettings(Base):
+    """Singleton row (id=1): Settings -> What to eat?, the switch for the
+    read-only picker page on its own port (picker.py). Off until turned on;
+    a database from before it has no table, and create_all() adds one."""
+    __tablename__ = "picker_settings"
+
+    id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)

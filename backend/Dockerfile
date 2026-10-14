@@ -45,6 +45,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
 COPY frontend ./static
+# The What to eat? page (Settings -> What to eat?, port 8091; app/picker.py).
+COPY frontend-picker ./picker-static
 
 # Persistent data lives under /app/data (sqlite db, uploaded images/pdfs)
 # Mount a volume here in docker-compose.yml to persist across container updates.
@@ -67,6 +69,8 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8090
 # HTTPS, only once it's set up in Settings -> HTTPS.
 EXPOSE 8443
+# What to eat?, only while it's switched on in Settings -> What to eat?.
+EXPOSE 8091
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8090/healthz || exit 1

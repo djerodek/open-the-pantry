@@ -225,6 +225,65 @@ Safeguards and notes:
     allows listing containers (e.g. `tecnativa/docker-socket-proxy` with
     `CONTAINERS=1`) closes that, if it matters on your network.
 
+### Optional: What to eat? (a random recipe)
+
+Off by default. **What to eat?** is a second, deliberately minimal page for
+the same library, on its own port (8091). Choose a meal type, cooking style,
+main ingredient and/or pace, or nothing at all, press **Pick one**, and it
+shows one random recipe that matches, as a link that opens it in the main
+app. **Something else** picks another, without repeating one until every
+match has been shown; **Clear** resets everything.
+
+- Within a group the choices are alternatives (Dinner or Lunch); across
+  groups all must hold (a dinner, made in the oven, rated quick). A group
+  with nothing chosen accepts every recipe, including ones with no tag in
+  that group or no pace rating.
+- Only the three built-in tag groups (including tags you added to them) and
+  pace are offered. Searching, your own groups and Custom tags stay in the
+  main app. Cocktails are never offered and never picked.
+- Recipes rated tastier come up slightly more often (5★ one and a half
+  times as often as 1★); nothing is ever ruled out. Favourites make no
+  difference.
+- It remembers your last choices on each device, has its own EN/FR switch,
+  follows the device's light or dark theme, and can be added to a phone's
+  Home Screen as its own app.
+
+**Turn it on** in **Settings → What to eat?**. It starts at once, with no
+restart, and the setting is kept in the database (and in backups). While it
+runs, Settings shows its address, `http://<your server>:8091`, and a What to
+eat? link appears in the top bar. Turn it off the same way. It doesn't need
+the settings password.
+
+**A compose file from before this page** doesn't publish the port: add
+`- "8091:8091"` under `ports:` (the current `docker-compose.yml` has it),
+then `docker compose up -d`. Settings warns when the page is on but the
+device you're using can't reach the port. (From an `https://` address it
+can't check, so it doesn't warn there.) "Port 8091 is in use inside the
+container" means something else in the container already listens there;
+`RECIPE_APP_PICKER_PORT` moves it.
+
+**Read-only, and open to anyone who can reach it.** The port serves only the
+page, its choices and picks, recipe photos and a health check; every other
+address is "not found", so nothing can be changed or deleted from it. It has
+no login, and `RECIPE_APP_API_KEY` doesn't apply there: anyone who can reach
+the port sees recipe titles, photos and how many recipes carry each tag. It
+is plain `http://` only. If that's more than you want on your network, leave
+it off.
+
+**Other port numbers, or a proxy** (environment variables, all optional):
+
+| Variable | Default | When |
+|---|---|---|
+| `RECIPE_APP_PICKER_PORT` | 8091 | The port inside the container. Rarely needed. |
+| `RECIPE_APP_PICKER_PUBLIC_PORT` | the one above | The compose file publishes the page under another number (e.g. `"9000:8091"`): the main app's link uses it. |
+| `RECIPE_APP_PICKER_PUBLIC_URL` | | The page's full address, e.g. behind a proxy, for the main app's link. |
+| `RECIPE_APP_MAIN_PUBLIC_PORT` | 8090 | The main app is published under another number: the picker's links back use it. |
+| `RECIPE_APP_PUBLIC_URL` | | The main app's full address for those links. |
+
+Without them, the picker links back to the main app's `https://` address
+while HTTPS is on, and otherwise to `http://<the name you opened the picker
+at>:8090`.
+
 ## What it does
 
 **Ingestion**
@@ -719,7 +778,9 @@ Safeguards and notes:
   version, so using it means either an API client that sends the header
   itself, or a reverse proxy configured to inject it. A reverse-proxy auth
   layer (basic auth, Tailscale, etc.) remains the more complete option for
-  exposing this beyond your LAN.
+  exposing this beyond your LAN. The key doesn't apply to the What to eat?
+  page's port (8091, off by default): it has no write or admin route, and
+  shows recipe titles, photos and tag counts to anyone who can reach it.
 - **Other websites can't use the app through your browser.** "Only my
   network can reach it" doesn't cover web pages that people on the network
   visit: such a page can send requests to the NAS from their browser. Two
@@ -1149,6 +1210,9 @@ backend/
     https_setup.py                          Settings -> HTTPS: cPanel DNS
                                              records, Let's Encrypt, the
                                              HTTPS listener and renewal
+    picker.py                               What to eat?: its API, the
+                                             Settings switch, and the
+                                             read-only app on port 8091
     ingestion/
       url_ingest.py                    recipe-scrapers -> JSON-LD ->
                                         heuristic HTML
@@ -1192,6 +1256,8 @@ frontend/
   js/i18n.js                      English/French: language choice and the
                                   French text for every interface string
   js/app.js                       all client logic (single file, no build step)
+frontend-picker/              the What to eat? page (served on port 8091)
+  index.html, picker.js, picker.css, manifest.json, icons/
 LICENSE                       MIT
 DOCKERHUB.md                   Docker Hub overview (synced by docker-publish.yml)
 docker-compose.yml            pulls published image

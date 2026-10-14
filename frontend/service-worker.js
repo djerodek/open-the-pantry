@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v53";
+const CACHE_NAME = "open-the-pantry-shell-v54";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -38,10 +38,10 @@ self.addEventListener("activate", (event) => {
 // hundreds of MB, exports, error responses, and one entry per search URL,
 // none of it ever pruned until CACHE_NAME changed.
 // Logs hold email subjects, senders and links, and a downloaded log would
-// otherwise sit in the Cache API; HTTPS status is live state with no use
-// offline.
+// otherwise sit in the Cache API; HTTPS and What to eat? status are live
+// state with no use offline (a stale "on" would show a dead link).
 const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/,
-  /^\/api\/logs/, /^\/api\/https/];
+  /^\/api\/logs/, /^\/api\/https/, /^\/api\/picker/];
 function shouldCache(request, response) {
   if (!response || !response.ok || response.type !== "basic") return false;
   const url = new URL(request.url);
@@ -65,6 +65,11 @@ function shouldCache(request, response) {
 }
 
 self.addEventListener("fetch", (event) => {
+  // Other origins are the browser's business. Settings -> What to eat?
+  // checks whether the picker's port answers with a request to it; caught
+  // here, a refused connection came back as the "Offline" 503 below, which
+  // reads as an answer.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   if (event.request.method !== "GET") {
     event.respondWith(fetch(event.request));
     return;

@@ -178,6 +178,8 @@ _FR_PATTERNS = [
 
     # Recipes, tags, groups, export
     _p(r"Recipe not found", "Recette introuvable"),
+    _p(r"^A chosen tag isn't in the category it was sent as\.$",
+       "Une étiquette choisie n'est pas dans la catégorie indiquée."),
     _p(r'There is already a group called "(.+?)"\.', r"Il existe déjà un groupe nommé « \1 »."),
     _p(r"Group not found", "Groupe introuvable"),
     _p(r"Built-in groups can't be deleted\.", "Les groupes intégrés ne peuvent pas être supprimés."),
