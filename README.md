@@ -75,19 +75,19 @@ set up email ingest from Settings, and `admin-password.json` (the settings
 password) once it has been created. Moving the app to another drive means
 moving that folder and pointing the compose file at it.
 
-**Moving to another drive or path** (e.g. from `./data` to a NAS pool):
+**Moving to another drive or path** (e.g. from `./data` to a larger disk):
 
 1. Stop the app: `docker compose down`. Do not copy while it is running --
    SQLite may be holding recent writes in `recipes.db-wal`, and a copy taken
    mid-write can be inconsistent.
 2. Copy the whole folder, keeping everything in it:
-   `cp -a ./data /path/on/nas/open-the-pantry-data`
+   `cp -a ./data /new/path/open-the-pantry-data`
 3. Edit the volume line in `docker-compose.yml`. Change only the left side;
    `/app/data` on the right is the path inside the container and must stay:
 
    ```yaml
    volumes:
-     - /path/on/nas/open-the-pantry-data:/app/data
+     - /new/path/open-the-pantry-data:/app/data
    ```
 
 4. Start it: `docker compose up -d`. The container fixes file ownership on
@@ -216,8 +216,9 @@ Safeguards and notes:
     they stay closed over `http://` on purpose; on the server, look at
     `docker compose logs open-the-pantry-https`, then
     `docker compose up -d`.
-  - **Upgrading this route from before 0056:** move the token lines from
-    `.env` to `traefik.env`, then `docker compose down` and
+  - **Upgrading this route from an older version** (the DNS host's token
+    still in `.env`): move the token lines from `.env` to `traefik.env`,
+    then `docker compose down` and
     `docker compose up -d` once (the network's address range changes).
   - Traefik reads the Docker socket to find the app. Mounting it `:ro`
     does not make the Docker API read-only: whoever takes over Traefik
@@ -386,7 +387,7 @@ at>:8090`.
   attempts to parse, or even fully read, untagged mail.
 - Scans run once daily at a configurable hour (default 3:00 AM in the
   container's time zone -- set `TZ` in `docker-compose.yml` to yours, e.g.
-  `America/Toronto`; the example ships with `UTC`; times shown in
+  `Europe/Paris`; the example ships with `UTC`; times shown in
   Settings, such as the last scan, are in your device's time zone either
   way), plus on demand: "Check email inbox" in the +
   menu (shown once email ingest is enabled), or "Scan inbox now" in
@@ -496,7 +497,7 @@ at>:8090`.
   the whole archive.
 - Both are built to a temp file and streamed by the server, never
   assembled in its memory — a library with a few hundred photos is larger
-  than it would be sensible to hold in RAM on a NAS. (The browser does hold
+  than it would be sensible to hold in RAM on a small server. (The browser does hold
   the finished file in memory before saving it; that's the price of not
   navigating away on iOS, and fine up to a few hundred MB.) Temp archives are deleted once sent, and swept if a
   download dies mid-flight.
@@ -750,7 +751,7 @@ at>:8090`.
     cPanel username and address, the HTTPS name and address, the recipes
     and everything else are kept. A token set in `.env` is out of the
     app's reach and stays. The first password
-    on an install upgraded from before 0052 clears nothing: the app keeps
+    on an install upgraded from a version without one clears nothing: the app keeps
     `admin-password.created` to tell a reset from a first setup.
   - Passwords are checked one at a time. After 5 wrong ones in a row from
     one address, or 20 from all addresses together, each further try has
@@ -765,7 +766,7 @@ at>:8090`.
     password could be read on the network, the app links to the secure
     address instead. Only requests from inside the container are exempt
     (e.g. `docker exec open-the-pantry curl http://localhost:8090/…`); a
-    browser on the NAS itself still counts as the network.
+    browser on the server itself still counts as the network.
   - The full backup (Settings → Backup) stays open, like the recipes. It
     holds the email server, username, notification address, allowed
     senders and recent recipients, but no password (only its encrypted
@@ -783,7 +784,7 @@ at>:8090`.
   shows recipe titles, photos and tag counts to anyone who can reach it.
 - **Other websites can't use the app through your browser.** "Only my
   network can reach it" doesn't cover web pages that people on the network
-  visit: such a page can send requests to the NAS from their browser. Two
+  visit: such a page can send requests to the server from their browser. Two
   checks close that:
   - **Host names.** Requests are accepted for IP addresses, `localhost`, and
     local-style names (no dot, or ending `.local`, `.lan`, `.home.arpa`,
@@ -791,7 +792,7 @@ at>:8090`.
     reverse proxy, or a Tailscale MagicDNS name like `nas.tail1234.ts.net`
     -- must be listed in `RECIPE_APP_ALLOWED_HOSTS` (comma-separated) in
     the compose file, or requests for it get a 400 that says so. This
-    blocks DNS rebinding, where a site points its own domain at your NAS's
+    blocks DNS rebinding, where a site points its own domain at your server's
     address.
   - **Writes need an `X-Requested-With` header.** Every request that
     changes data must carry it; the app's pages add it automatically. A
@@ -852,7 +853,7 @@ at>:8090`.
      nothing.
   2. **`RECIPE_APP_ENCRYPTION_KEY`** in the compose file, if you want the
      key kept out of the data folder. Generate one with the image's own
-     Python, since the NAS usually doesn't have the library installed:
+     Python, since the host usually doesn't have the library installed:
 
      ```bash
      docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -902,7 +903,7 @@ at>:8090`.
 - **No CSRF tokens; cross-site requests are blocked another way.** CSRF
   tokens stop a malicious site from riding a victim's logged-in session,
   and this app has no session or cookie to ride. The risk that does apply
-  -- a page on another site sending requests to the NAS from a browser on
+  -- a page on another site sending requests to the server from a browser on
   your network -- is handled by the host-name check and the required
   `X-Requested-With` header described above, not by tokens.
 - **Upload handling**: size-capped (20MB) and magic-byte validated before
@@ -1104,22 +1105,16 @@ idle is about 160 MB. The compose files have commented-out `mem_limit`,
   builds and is interchangeable. Either is convenient, but means whatever the
   tag currently points to is what you get on the next `docker compose pull`.
   For reproducible upgrades (and to control exactly when a new version
-  applies), pin a version tag instead, e.g.
-  `image: djerodek/open-the-pantry:1.2.0`, and bump it deliberately. Version
-  tags are published by pushing a `vX.Y.Z` git tag
-  (`git tag v1.0.0 && git push origin v1.0.0` gives `:1.0.0` and `:1.0`).
+  applies), pin the image by digest instead, e.g.
+  `image: djerodek/open-the-pantry@sha256:<digest>` (`docker image inspect
+  --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main` shows
+  the one you're running), and change it deliberately.
   The base image (`python:3.12-slim`) is deliberately not pinned: each
   build picks up Debian security updates, and the CI dependency audit fails
   the build on a known vulnerability.
 - A `HEALTHCHECK` is included (hitting a dedicated `/healthz` endpoint, not
   a real-data one), so `docker ps` / orchestration tooling can tell a
   hung-but-still-listening process apart from a genuinely healthy one.
-- **When releasing a new version**: bump `CACHE_NAME` in
-  `frontend/service-worker.js`. The fetch strategy is network-first (falling
-  back to cache only when offline), and the app's own files are fetched
-  with revalidation, so this mostly matters for pruning old cached entries
-  promptly rather than correctness — but it's still good practice to bump
-  on every release.
 
 ## Testing
 
@@ -1163,21 +1158,6 @@ against an actual provider is the one thing this can't verify — use the
 
 CI (`.github/workflows/ci.yml`) runs the suite plus a dependency audit and
 a Docker build check on every push/PR.
-
-## Publishing your own build to Docker Hub
-
-1. Create a Docker Hub repo, e.g. `djerodek/open-the-pantry`.
-2. Generate a Docker Hub access token (Account Settings → Security).
-3. In your GitHub repo, add secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
-4. Push to `main` (publishes `latest`) or push a tag like `v1.0.0` (publishes
-   that version tag too) — `.github/workflows/docker-publish.yml` handles the
-   rest.
-5. The same workflow copies `DOCKERHUB.md` into the Docker Hub repository's
-   Overview on each push to `main`. That needs a token with the **Read,
-   Write, Delete** scope (Docker Hub refuses description updates from a
-   Read & Write token). With a narrower token the step fails on its own and
-   the image is still published; paste `DOCKERHUB.md` into Repository →
-   Overview by hand instead.
 
 ## Project layout
 

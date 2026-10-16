@@ -89,21 +89,21 @@ fois celui-ci créé. Déplacer l'application vers un autre disque, c'est dépla
 dossier et y faire pointer le fichier compose.
 
 **Déplacer vers un autre disque ou chemin** (p. ex. de `./data` vers un
-volume du NAS) :
+disque plus grand) :
 
 1. Arrêtez l'application : `docker compose down`. Ne copiez pas pendant
    qu'elle fonctionne — SQLite peut garder des écritures récentes dans
    `recipes.db-wal`, et une copie faite au milieu d'une écriture peut être
    incohérente.
 2. Copiez le dossier au complet, en gardant tout ce qu'il contient :
-   `cp -a ./data /path/on/nas/open-the-pantry-data`
+   `cp -a ./data /new/path/open-the-pantry-data`
 3. Modifiez la ligne de volume dans `docker-compose.yml`. Changez seulement
    la partie de gauche; `/app/data` à droite est le chemin dans le
    conteneur et doit rester tel quel :
 
    ```yaml
    volumes:
-     - /path/on/nas/open-the-pantry-data:/app/data
+     - /new/path/open-the-pantry-data:/app/data
    ```
 
 4. Démarrez-la : `docker compose up -d`. Le conteneur corrige les
@@ -251,8 +251,9 @@ Garde-fous et remarques :
     sur `http://`, volontairement; sur le serveur, consultez
     `docker compose logs open-the-pantry-https`, puis faites
     `docker compose up -d`.
-  - **Mise à jour de cette méthode depuis une version antérieure à 0056 :**
-    déplacez les lignes du jeton de `.env` vers `traefik.env`, puis faites
+  - **Mise à jour de cette méthode depuis une version antérieure** (le
+    jeton de l'hébergeur DNS encore dans `.env`) : déplacez les lignes du
+    jeton de `.env` vers `traefik.env`, puis faites
     une fois `docker compose down` et `docker compose up -d` (la plage
     d'adresses du réseau change).
   - Traefik lit le socket Docker pour trouver l'application. Le monter en
@@ -444,7 +445,7 @@ ouvert la page>:8090`.
   complet, un courriel sans le mot-clé.
 - La vérification se fait une fois par jour à une heure configurable (par
   défaut 3 h, dans le fuseau horaire du conteneur — mettez le vôtre dans
-  `TZ` dans `docker-compose.yml`, p. ex. `America/Toronto`; l'exemple est
+  `TZ` dans `docker-compose.yml`, p. ex. `Europe/Paris`; l'exemple est
   livré avec `UTC`; les heures affichées dans les Paramètres, comme la
   dernière vérification, sont dans le fuseau de votre appareil dans tous
   les cas), plus sur demande : « Vérifier la boîte de courriel » dans le
@@ -586,7 +587,7 @@ ouvert la page>:8090`.
 - Les deux sont créées dans un fichier temporaire et transmises en continu
   par le serveur, jamais assemblées dans sa mémoire — une bibliothèque de
   quelques centaines de photos est trop grosse pour qu'il soit raisonnable
-  de la garder en mémoire vive sur un NAS. (Le navigateur, lui, garde le
+  de la garder en mémoire vive sur un petit serveur. (Le navigateur, lui, garde le
   fichier terminé en mémoire avant de l'enregistrer; c'est le prix pour ne
   pas quitter la page sur iOS, et ça va jusqu'à quelques centaines de Mo.)
   Les archives temporaires sont supprimées une fois envoyées, et nettoyées
@@ -897,8 +898,8 @@ courriel)**
     destinataires, le nom d'utilisateur et l'adresse cPanel, le nom et
     l'adresse HTTPS, les recettes et tout le reste sont conservés. Un jeton
     défini dans `.env` est hors de portée de l'application et reste. Le premier
-    mot de passe d'une installation mise à jour depuis une version
-    antérieure à 0052 n'efface rien : l'application garde
+    mot de passe d'une installation mise à jour depuis une version qui
+    n'en avait pas n'efface rien : l'application garde
     `admin-password.created` pour distinguer une réinitialisation d'une
     première configuration.
   - Les mots de passe sont vérifiés un à la fois. Après 5 mauvais de
@@ -917,7 +918,7 @@ courriel)**
     l'application donne plutôt un lien vers l'adresse sécurisée. Seules les
     requêtes venant de l'intérieur du conteneur sont exemptées (p. ex.
     `docker exec open-the-pantry curl http://localhost:8090/…`); un
-    navigateur sur le NAS lui-même compte comme le réseau.
+    navigateur sur le serveur lui-même compte comme le réseau.
   - La sauvegarde complète (Paramètres → Sauvegarde) reste ouverte, comme
     les recettes. Elle contient le serveur de courriel, le nom
     d'utilisateur, l'adresse des avis, les expéditeurs acceptés et les
@@ -942,7 +943,7 @@ courriel)**
 - **D'autres sites Web ne peuvent pas utiliser l'application par votre
   navigateur.** « Seul mon réseau peut la joindre » ne couvre pas les pages
   Web que les gens de votre réseau visitent : une telle page peut envoyer
-  des requêtes au NAS à partir de leur navigateur. Deux vérifications
+  des requêtes au serveur à partir de leur navigateur. Deux vérifications
   bloquent ça :
   - **Noms d'hôte.** Les requêtes sont acceptées pour les adresses IP,
     `localhost` et les noms de style local (sans point, ou se terminant par
@@ -952,7 +953,7 @@ courriel)**
     `RECIPE_APP_ALLOWED_HOSTS` (séparés par des virgules) dans le fichier
     compose, sinon ses requêtes reçoivent une erreur 400 qui le dit. Ça
     bloque le DNS rebinding, où un site fait pointer son propre domaine
-    vers l'adresse de votre NAS.
+    vers l'adresse de votre serveur.
   - **Les écritures exigent un en-tête `X-Requested-With`.** Chaque requête
     qui modifie des données doit le porter; les pages de l'application
     l'ajoutent automatiquement. Une page d'un autre site ne peut pas
@@ -1026,7 +1027,7 @@ courriel)**
      sauvegarde seule n'expose toujours rien.
   2. **`RECIPE_APP_ENCRYPTION_KEY`** dans le fichier compose, si vous voulez
      garder la clé hors du dossier de données. Générez-en une avec le
-     Python de l'image, puisque le NAS n'a habituellement pas la
+     Python de l'image, puisque l'hôte n'a habituellement pas la
      bibliothèque installée :
 
      ```bash
@@ -1085,7 +1086,7 @@ courriel)**
   Les jetons CSRF empêchent un site malveillant de profiter de la session
   ouverte d'une victime, et cette application n'a ni session ni témoin
   (cookie) dont profiter. Le risque qui s'applique — une page d'un autre
-  site qui envoie des requêtes au NAS à partir d'un navigateur de votre
+  site qui envoie des requêtes au serveur à partir d'un navigateur de votre
   réseau — est réglé par la vérification des noms d'hôte et l'en-tête
   `X-Requested-With` obligatoire décrits ci-dessus, pas par des jetons.
 - **Traitement des téléversements** : taille plafonnée (20 Mo) et signature
@@ -1332,11 +1333,11 @@ repos, environ 160 Mo. Les fichiers compose ont des lignes `mem_limit`,
   versions et est interchangeable. Les deux sont pratiques, mais vous
   obtenez ce vers quoi l'étiquette pointe au prochain `docker compose
   pull`. Pour des mises à jour reproductibles (et pour décider exactement
-  quand une nouvelle version s'applique), fixez plutôt une étiquette de
-  version, p. ex. `image: djerodek/open-the-pantry:1.2.0`, et changez-la
-  volontairement. Les étiquettes de version sont publiées en poussant une
-  étiquette git `vX.Y.Z` (`git tag v1.0.0 && git push origin v1.0.0` donne
-  `:1.0.0` et `:1.0`). L'image de base (`python:3.12-slim`) n'est
+  quand une nouvelle version s'applique), fixez plutôt l'image par son
+  empreinte (digest), p. ex. `image: djerodek/open-the-pantry@sha256:<empreinte>`
+  (`docker image inspect --format '{{index .RepoDigests 0}}'
+  djerodek/open-the-pantry:main` donne celle que vous utilisez), et
+  changez-la volontairement. L'image de base (`python:3.12-slim`) n'est
   volontairement pas fixée : chaque construction intègre les mises à jour
   de sécurité de Debian, et l'audit des dépendances de l'intégration
   continue fait échouer la construction en cas de vulnérabilité connue.
@@ -1344,12 +1345,6 @@ repos, environ 160 Mo. Les fichiers compose ont des lignes `mem_limit`,
   sur des données réelles), pour que `docker ps` et les outils
   d'orchestration distinguent un processus bloqué qui écoute encore d'un
   processus vraiment en bonne santé.
-- **À la publication d'une nouvelle version** : augmentez `CACHE_NAME` dans
-  `frontend/service-worker.js`. La stratégie de récupération passe d'abord
-  par le réseau (le cache ne sert qu'hors ligne), et les fichiers de
-  l'application sont revalidés, donc ça sert surtout à éliminer
-  rapidement les anciennes entrées du cache plutôt qu'à la justesse — mais
-  c'est une bonne habitude à chaque version.
 
 ## Tests
 
@@ -1402,22 +1397,6 @@ bouton « Envoyer un courriel de test » pour ça.
 L'intégration continue (`.github/workflows/ci.yml`) exécute la suite plus
 un audit des dépendances et une vérification de la construction Docker à
 chaque push ou pull request.
-
-## Publier votre propre version sur Docker Hub
-
-1. Créez un dépôt Docker Hub, p. ex. `djerodek/open-the-pantry`.
-2. Générez un jeton d'accès Docker Hub (Account Settings → Security).
-3. Dans votre dépôt GitHub, ajoutez les secrets `DOCKERHUB_USERNAME` et
-   `DOCKERHUB_TOKEN`.
-4. Poussez sur `main` (publie `latest`) ou poussez une étiquette comme
-   `v1.0.0` (publie aussi cette étiquette de version) —
-   `.github/workflows/docker-publish.yml` s'occupe du reste.
-5. Le même flux copie `DOCKERHUB.md` dans la présentation (Overview) du
-   dépôt Docker Hub à chaque push sur `main`. Ça demande un jeton avec la
-   portée **Read, Write, Delete** (Docker Hub refuse les mises à jour de
-   description d'un jeton Read & Write). Avec un jeton plus restreint,
-   l'étape échoue seule et l'image est quand même publiée; collez alors
-   `DOCKERHUB.md` à la main dans Repository → Overview.
 
 ## Organisation du projet
 

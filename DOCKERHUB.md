@@ -73,8 +73,8 @@ Updating:
 
     docker compose pull && docker compose up -d
 
-Pin a version tag instead of `main` if you want to control exactly when
-updates apply.
+Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
+`main` if you want to control exactly when updates apply.
 
 ## Features
 
