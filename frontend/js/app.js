@@ -3234,12 +3234,12 @@
     const cookInput = el("input", { type: "text", id: "edit-cook", value: recipe.cook_time || "" });
     const totalInput = el("input", { type: "text", id: "edit-total", value: recipe.total_time || "" });
 
-    const ingredientsArea = el("textarea", { id: "edit-ingredients", style: "min-height:9rem;" });
+    const ingredientsArea = el("textarea", { id: "edit-ingredients", class: "recipe-lines" });
     ingredientsArea.value = recipe.ingredients
       .map((i) => ingredientText(i))
       .join("\n");
 
-    const stepsArea = el("textarea", { id: "edit-steps", style: "min-height:9rem;" });
+    const stepsArea = el("textarea", { id: "edit-steps", class: "recipe-lines" });
     stepsArea.value = recipe.steps.map((s) => s.text).join("\n");
 
     const tagsInput = el("input", {
@@ -4246,11 +4246,11 @@
 
     const titleInput = el("input", { type: "text", id: "review-title", value: draft.title || "" });
     const servingsInput = el("input", { type: "text", id: "review-servings", maxlength: "100", placeholder: tx("e.g. 4"), value: draft.servings || "" });
-    const ingredientsArea = el("textarea", { id: "review-ingredients" });
+    const ingredientsArea = el("textarea", { id: "review-ingredients", class: "recipe-lines" });
     ingredientsArea.value = (draft.ingredients || [])
       .map((i) => ingredientText(i))
       .join("\n");
-    const stepsArea = el("textarea", { id: "review-steps" });
+    const stepsArea = el("textarea", { id: "review-steps", class: "recipe-lines" });
     stepsArea.value = (draft.steps || []).map((s) => (typeof s === "string" ? s : s.text)).join("\n");
 
     const tagsInput = el("input", {
@@ -4390,8 +4390,8 @@
 
     const titleInput = el("input", { type: "text", id: "manual-title", required: "" });
     const servingsInput = el("input", { type: "text", id: "manual-servings", maxlength: "100", placeholder: tx("e.g. 4") });
-    const ingredientsArea = el("textarea", { id: "manual-ingredients", placeholder: tx("One ingredient per line") });
-    const stepsArea = el("textarea", { id: "manual-steps", placeholder: tx("One step per line") });
+    const ingredientsArea = el("textarea", { id: "manual-ingredients", class: "recipe-lines", placeholder: tx("One ingredient per line") });
+    const stepsArea = el("textarea", { id: "manual-steps", class: "recipe-lines", placeholder: tx("One step per line") });
     const tagsInput = el("input", { type: "text", id: "manual-tags", placeholder: tx("e.g. dinner, stovetop, beef") });
     const imageInput = el("input", { type: "file", id: "manual-image", accept: "image/*" });
     const duration = makeDurationInput("manual-time");

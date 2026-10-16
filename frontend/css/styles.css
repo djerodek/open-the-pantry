@@ -1198,6 +1198,10 @@ main {
   font-size: 0.9rem;
 }
 .field textarea { min-height: 6rem; resize: vertical; }
+/* Ingredients and Steps (Add manually, the review screen, Edit recipe):
+   twice the other boxes' height, so a recipe can be checked without
+   scrolling inside a four-line box. */
+.field textarea.recipe-lines { min-height: 12rem; }
 .field input:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Setup steps that have to happen before a form can be used. */

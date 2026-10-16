@@ -301,3 +301,15 @@ def test_picker_port_is_published_and_copied_into_the_image():
     assert "frontend-picker" not in (ROOT / ".dockerignore").read_text(encoding="utf-8")
     manifest = __import__("json").loads((PICKER_DIR / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "What to eat?" and manifest["start_url"] == "/"
+
+
+def test_ingredient_and_step_boxes_are_tall():
+    """Ingredients and Steps on Add manually, the review screen and Edit
+    recipe: one class, twice the height of the other text boxes."""
+    css = CSS.read_text(encoding="utf-8")
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    assert ".field textarea.recipe-lines { min-height: 12rem; }" in css
+    for box in ("edit", "review", "manual"):
+        for part in ("ingredients", "steps"):
+            assert re.search(r'el\("textarea", \{ id: "%s-%s", class: "recipe-lines"' % (box, part), js), (box, part)
+    assert "min-height:9rem" not in js
