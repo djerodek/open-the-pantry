@@ -807,8 +807,16 @@ def _make_server(app):
         def capture_signals(self):
             yield
 
+    # log_config and log_level None: uvicorn's loggers ("uvicorn.error",
+    # "uvicorn.access") are shared by every server in the process, and a
+    # Config with its defaults (or log_level="warning", as here until 0078)
+    # re-applies uvicorn's logging setup and levels for all of them, which
+    # silenced the main port's request log from the first time this
+    # listener started. access_log is left alone for the same reason: False
+    # empties the shared access logger. This listener's requests therefore
+    # go to the same request log as the main port's.
     config = uvicorn.Config(app, host="0.0.0.0", port=LISTEN_PORT, ssl_certfile=CERT_PATH,
-                            ssl_keyfile=KEY_PATH, lifespan="off", log_level="warning",
+                            ssl_keyfile=KEY_PATH, lifespan="off", log_config=None, log_level=None,
                             server_header=False)
     return Server(config)
 

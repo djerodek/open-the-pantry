@@ -233,9 +233,11 @@ def _make_server(app: FastAPI):
             yield
 
     # Proxy headers and FORWARDED_ALLOW_IPS as on the main port, so the rate
-    # limit counts the real visitor behind a proxy.
+    # limit counts the real visitor behind a proxy. log_config and log_level
+    # None: uvicorn's loggers are process-wide, and any other value
+    # reconfigures them for the main port too (https_setup._make_server).
     config = uvicorn.Config(app, host="0.0.0.0", port=LISTEN_PORT, lifespan="off",
-                            log_level="warning", server_header=False, proxy_headers=True)
+                            log_config=None, log_level=None, server_header=False, proxy_headers=True)
     return Server(config)
 
 
