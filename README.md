@@ -231,8 +231,9 @@ Safeguards and notes:
 Off by default. **What to eat?** is a second, deliberately minimal page for
 the same library, on its own port (8091). Choose a meal type, cooking style,
 main ingredient and/or pace, or nothing at all, press **Pick one**, and it
-shows one random recipe that matches, as a link that opens it in the main
-app. **Something else** picks another, without repeating one until every
+shows one random recipe that matches. Tap it to read the whole recipe right
+there: ingredients, steps, notes, times and ratings, read-only (a link at the
+end opens it in the main app for editing). **Something else** picks another, without repeating one until every
 match has been shown (up to 500: with more matches than that, the page
 remembers the latest 500 it showed, so an older one can come back before
 every match has had its turn); **Clear** resets everything.
@@ -273,7 +274,8 @@ container" means something else in the container already listens there;
 page, its choices and picks, recipe photos and a health check; every other
 address is "not found", so nothing can be changed or deleted from it. It has
 no login, and `RECIPE_APP_API_KEY` doesn't apply there: anyone who can reach
-the port sees recipe titles, photos and how many recipes carry each tag. It
+the port can read every recipe it can pick (everything but cocktails),
+including your notes, and how many recipes carry each tag. It
 is plain `http://` only. If that's more than you want on your network, leave
 it off.
 
@@ -787,7 +789,8 @@ at>:8090`.
   layer (basic auth, Tailscale, etc.) remains the more complete option for
   exposing this beyond your LAN. The key doesn't apply to the What to eat?
   page's port (8091, off by default): it has no write or admin route, and
-  shows recipe titles, photos and tag counts to anyone who can reach it.
+  lets anyone who can reach it read your recipes (cocktails aside), notes
+  included. With the key set, leave that page off unless that's fine.
 - **Other websites can't use the app through your browser.** "Only my
   network can reach it" doesn't cover web pages that people on the network
   visit: such a page can send requests to the server from their browser. Two

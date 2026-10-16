@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>What to eat?</title>
 <meta name="description" content="Pick a recipe at random">
 <link rel="manifest" href="/picker-static/manifest.json">
@@ -24,25 +24,25 @@
 </header>
 
 <main class="picker-main" id="picker-main">
-  <section class="picker-choices" id="choices" aria-label="Choices">
-    <p class="picker-loading" id="choices-loading">Loading...</p>
-  </section>
-
-  <section class="picker-action" id="action" hidden>
+  <!-- The stage: the shuffle and the picked recipe, first on the page. -->
+  <section class="stage" id="action" aria-label="What to eat?" hidden>
+    <p class="stage-note" id="result-note" hidden></p>
+    <div class="stage-card-slot" id="result-card-slot"></div>
+    <p class="stage-message" id="result-message" hidden></p>
     <button type="button" class="pick-button" id="pick-button">Pick one</button>
-
-    <div class="result" id="result" hidden>
-      <p class="result-note" id="result-note" hidden></p>
-      <div id="result-card-slot"></div>
-      <p class="result-message" id="result-message" hidden></p>
-      <div class="result-actions">
-        <button type="button" class="btn-secondary" id="again-button" hidden>Something else</button>
-        <button type="button" class="btn-secondary" id="clear-button">Clear</button>
-      </div>
-      <p class="result-count" id="result-count" hidden></p>
-    </div>
+    <p class="stage-count" id="result-count" hidden></p>
   </section>
 
+  <!-- The choices: all visible, quieter than the stage. -->
+  <section class="choices" id="choices-panel" aria-labelledby="choices-heading" hidden>
+    <div class="choices-head">
+      <h2 class="choices-heading" id="choices-heading">Choices</h2>
+      <button type="button" class="text-button" id="clear-button">Clear</button>
+    </div>
+    <div id="choices"></div>
+  </section>
+
+  <p class="picker-loading" id="choices-loading">Loading...</p>
   <p class="picker-empty" id="empty-library" hidden>
     No recipes yet. <a id="empty-library-link" href="/">Add some in Open the Pantry.</a>
   </p>
@@ -52,8 +52,20 @@
   </p>
 </main>
 
+<!-- The recipe, read-only, over the page. -->
+<div class="reader-overlay" id="reader-overlay" hidden>
+  <div class="reader" id="reader" role="dialog" aria-modal="true" aria-labelledby="reader-title" tabindex="-1">
+    <div class="reader-bar">
+      <button type="button" class="reader-close" id="reader-close" aria-label="Close recipe">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="reader-body" id="reader-body"></div>
+  </div>
+</div>
+
 <!-- What a screen reader hears after a pick: the final recipe only, never
-     the titles the shuffle effect cycles through. -->
+     the titles the shuffle rolls through. -->
 <div class="visually-hidden" id="pick-status" role="status" aria-live="polite"></div>
 
 <script src="/js/i18n.js"></script>

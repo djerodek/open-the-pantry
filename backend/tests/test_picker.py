@@ -555,3 +555,77 @@ def test_settings_switch_is_not_behind_the_password():
     from app import admin_lock
     assert not admin_lock.is_locked_path("/api/picker/settings")
     assert not admin_lock.is_locked_path("/api/picker/status")
+
+
+# ---------------------------------------------------------------------------
+# Reading a recipe in the picker (0080)
+# ---------------------------------------------------------------------------
+
+def test_recipe_to_read_in_the_picker(client, picker_client, pk):
+    """GET /api/picker/recipes/{id}: what the main app's recipe page shows,
+    read-only, on both ports."""
+    rid = pk["ids"]["r1"]
+    r = client.put(f"/api/recipes/{rid}", json={
+        "title": f"Pk one {pk['sfx']}", "source_type": "manual",
+        "servings": "4", "prep_time": "10 min", "cook_time": "20 min", "total_time": "30 min",
+        "ingredients": [{"raw_line": "Sauce:"}, {"raw_line": "2 cups flour"}, {"raw_line": "  1 tsp salt "}],
+        "steps": ["Mix.", "Bake."],
+        "tags": [_tag(pk["names"]["PkMeal1"], "meal_type"), _tag(pk["names"]["PkA"], "main_ingredient"),
+                 _tag("Weeknight", "custom")],
+    })
+    assert r.status_code == 200, r.text
+    from app import models
+    from app.database import SessionLocal
+    db = SessionLocal()
+    db.get(models.Recipe, rid).source_url = "https://example.com/pk-one"   # set at import; edits keep it
+    db.commit()
+    db.close()
+    assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": "  Less salt next time.  "}).status_code == 200
+    assert client.patch(f"/api/recipes/{rid}/rating", json={
+        "tastiness_rating": 4, "cook_time_rating": "quick", "difficulty_rating": "easy", "favorite": True,
+        "actual_cook_time": "00:01:30"}).status_code == 200
+    for c in (client, picker_client):
+        body = c.get(f"/api/picker/recipes/{rid}").json()
+        assert body["title"] == f"Pk one {pk['sfx']}"
+        assert body["ingredients"] == ["Sauce:", "2 cups flour", "1 tsp salt"]
+        assert body["steps"] == ["Mix.", "Bake."]
+        assert body["notes"] == "Less salt next time."
+        assert (body["servings"], body["prep_time"], body["cook_time"], body["total_time"]) == ("4", "10 min", "20 min", "30 min")
+        assert body["actual_cook_time"] == "00:01:30"
+        assert (body["tastiness_rating"], body["cook_time_rating"], body["difficulty_rating"], body["favorite"]) == (4, "quick", "easy", True)
+        assert body["source_url"] == "https://example.com/pk-one"
+        # Only the three picker categories, as on the card; no custom tags.
+        assert {t["category"] for t in body["tags"]} == {"meal_type", "main_ingredient"}
+        assert "raw_text" not in body and "ocr_confidence" not in body
+
+
+def test_recipe_to_read_drops_unsafe_links_and_photos(client, pk):
+    from app import models
+    from app.database import SessionLocal
+    rid = pk["ids"]["r6"]
+    db = SessionLocal()
+    try:
+        r = db.get(models.Recipe, rid)
+        r.source_url, r.image_path = "javascript:alert(1)", "../recipes.db"
+        db.commit()
+        body = client.get(f"/api/picker/recipes/{rid}").json()
+        assert body["source_url"] is None and body["image_path"] is None
+    finally:
+        r = db.get(models.Recipe, rid)
+        r.source_url, r.image_path = None, None
+        db.commit()
+        db.close()
+
+
+def test_recipe_to_read_never_a_drink_or_unknown(client, picker_client, pk):
+    for c in (client, picker_client):
+        for rid in (pk["ids"]["r4"], pk["ids"]["r5"], 999999999):
+            r = c.get(f"/api/picker/recipes/{rid}")
+            assert r.status_code == 404, rid
+        assert c.get("/api/picker/recipes/x").status_code == 422
+    # Read-only: nothing but GET on the picker port.
+    for method in ("PUT", "PATCH", "DELETE", "POST"):
+        r = picker_client.request(method, f"/api/picker/recipes/{pk['ids']['r1']}",
+                                  headers={"X-Requested-With": "OpenThePantry"}, json={})
+        assert r.status_code == 404, method
+    assert client.get(f"/api/picker/recipes/{pk['ids']['r4']}", headers={"X-App-Lang": "fr"}).json()["detail"] == "Recette introuvable"

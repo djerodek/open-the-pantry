@@ -185,9 +185,13 @@ def test_picker_page_accessibility_and_motion():
     assert 'id="pick-status" role="status" aria-live="polite"' in html
     assert html.count("aria-live") == 1
     assert '"aria-hidden": "true" }, [' in js[js.index("function shuffle("):js.index("function announce(")]
-    # Reduced motion skips the shuffle; the pick is decided before it runs.
+    # Reduced motion skips the shuffle and the landing; the pick is decided
+    # before the shuffle runs.
+    assert '"(prefers-reduced-motion: reduce)"' in js[js.index("const reduceMotion"):js.index("function el(")]
     shuffle = js[js.index("function shuffle("):js.index("function announce(")]
-    assert '"(prefers-reduced-motion: reduce)"' in shuffle and "if (reduce || !titles.length)" in shuffle
+    assert "if (reduceMotion() || !titles.length)" in shuffle
+    assert 'if (!reduceMotion()) card.classList.add("stage-card--landed")' in js
+    assert re.search(r"@media \(prefers-reduced-motion: reduce\) \{[^}]*stage-card--landed[^}]*animation: none", css)
     pick = js[js.index("async function pick("):js.index("function clearAll(")]
     assert pick.index("await api(query(") < pick.index("await shuffle(")
     # Busy without `disabled`, so focus stays on the button pressed.
@@ -197,7 +201,11 @@ def test_picker_page_accessibility_and_motion():
     clear = js[js.index("function clearAll("):js.index('pickButton.addEventListener("click"')]
     assert 'querySelector("#choices .chip")' in clear and ".focus()" in clear
     # The big button stays a comfortable target at every text size.
-    assert re.search(r"\.pick-button \{[^}]*min-height: 9\.5rem", css)
+    assert re.search(r"\.pick-button \{[^}]*min-height: 3\.4rem", css)
+    # The stage's photo frame is the same size in every state (waiting,
+    # rolling, the pick, no match), so nothing jumps when a pick lands.
+    assert re.search(r"\.stage-photo \{[^}]*aspect-ratio: 3 / 2", css)
+    assert js.count("photoArea(") >= 4
     # Remembered choices: both localStorage calls sit in try/catch (storage
     # can throw in private modes), and nothing else touches it.
     assert js.count("localStorage.") == 2
@@ -212,7 +220,36 @@ def test_picker_links_only_to_web_addresses():
     body = js[js.index("function webAddress("):js.index("async function api(")]
     assert 'u.protocol === "http:" || u.protocol === "https:"' in body
     assert "state.mainUrl = webAddress(options.main_url, state.mainUrl)" in js
-    assert "href: `${state.mainUrl}/#recipe-${recipe.id}`" in js
+    # The recipe opens in the picker; the main app is only for editing.
+    assert "href: `${state.mainUrl}/#recipe-${recipe.id}`" in js[js.index("function renderReader("):]
+    assert "onclick: () => openReader(recipe.id)" in js[js.index("function resultCard("):js.index("// Picking")]
+    # "View original": http(s) only, new tab, no opener.
+    src = js[js.index("function sourceLink("):js.index("function ratingsList(")]
+    assert 'url.protocol !== "http:" && url.protocol !== "https:"' in src
+    assert 'rel: "noopener noreferrer"' in src
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.js").exists(), reason="frontend not present")
+def test_picker_reader_is_read_only_and_closes_every_way():
+    """The recipe sheet in the picker: no field, no form, no request that
+    changes anything; Escape, the close button, the backdrop and phone Back
+    close it; focus stays inside it while open and goes back after."""
+    html = (PICKER_DIR / "index.html").read_text(encoding="utf-8")
+    js = (PICKER_DIR / "picker.js").read_text(encoding="utf-8")
+    reader = js[js.index("const readerOverlay"):js.index("// Start")]
+    for tag in ('el("input"', 'el("textarea"', 'el("select"', 'el("form"', "method:"):
+        assert tag not in reader, tag
+    assert "method:" not in js            # the page sends nothing but GETs
+    assert 'role="dialog" aria-modal="true" aria-labelledby="reader-title"' in html
+    assert 'if (e.key === "Escape") { e.preventDefault(); closeReader(); return; }' in reader
+    assert 'window.addEventListener("popstate"' in reader and "history.pushState(" in reader
+    assert 'readerOverlay.addEventListener("click", (e) => { if (e.target === readerOverlay) closeReader(); });' in reader
+    assert "if (e.key !== \"Tab\") return;" in reader
+    assert "back.focus()" in reader
+    # Only a recipe read through the picker's own route.
+    assert "api(`/api/picker/recipes/${id}`)" in reader
+    # An out-of-date answer (closed, or another recipe opened) is dropped.
+    assert "if (ticket !== readerTicket || readerOverlay.hidden) return;" in reader
 
 
 def test_main_app_opens_a_linked_recipe_and_clears_the_link():

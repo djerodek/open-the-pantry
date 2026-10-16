@@ -762,14 +762,23 @@
     "Add some in Open the Pantry.": "Ajoutez-en dans Open the Pantry.",
     "The server returned an error ({1}).": "Le serveur a renvoyé une erreur ({1}).",
     "Turn on the What to eat? page": "Activer la page On mange quoi?",
-    "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random. Nothing can be changed from it. It has no login: anyone who can reach the port sees recipe titles and photos.":
-      "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port voit les titres et les photos des recettes.",
+    "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random to read there. Nothing can be changed from it. It has no login: anyone who can reach the port can read your recipes, notes included (cocktails aside).":
+      "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard, à lire sur place. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port peut lire vos recettes, notes comprises (sauf les cocktails).",
     "Address:": "Adresse :",
     "RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.":
       "RECIPE_APP_API_KEY est défini, mais ne couvre pas cette page : quiconque peut joindre son port peut l'utiliser sans la clé.",
     "Port {1} is in use inside the container.": "Le port {1} est déjà utilisé dans le conteneur.",
     "The page couldn't start. Settings → Logs has the details.": "La page n'a pas pu démarrer. Les détails sont dans Paramètres → Journal.",
     "Starting…": "Démarrage…",
+    // What to eat?: the stage and the recipe read in the picker
+    "Hungry?": "Une petite faim?",
+    "Press the button, or narrow it down with the choices first.": "Appuyez sur le bouton, ou précisez d'abord avec les choix.",
+    "Read the recipe": "Lire la recette",
+    "Try fewer choices.": "Essayez avec moins de choix.",
+    "Close recipe": "Fermer la recette",
+    "Favorite": "Favori",
+    "Edit in Open the Pantry": "Modifier dans Open the Pantry",
+    "Yes": "Oui",
     "On, but this device can't reach port {1}. Your compose file may be missing the {2} line under ports:.":
       "Activée, mais cet appareil ne joint pas le port {1}. Il manque peut-être la ligne {2} sous ports: dans votre fichier compose.",
   };

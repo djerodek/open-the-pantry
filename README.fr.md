@@ -269,8 +269,10 @@ Désactivée par défaut. **On mange quoi?** est une deuxième page, volontairem
 minimale, pour la même bibliothèque, sur son propre port (8091). Choisissez un
 type de repas, un mode de cuisson, un ingrédient principal et/ou un rythme, ou
 rien du tout, appuyez sur **Choisis pour moi**, et elle affiche une recette au
-hasard qui correspond, sous forme de lien qui l'ouvre dans l'application
-principale. **Autre chose** en choisit une autre, sans en répéter aucune avant
+hasard qui correspond. Touchez-la pour lire toute la recette sur place :
+ingrédients, étapes, notes, temps et notes d'appréciation, en lecture seule
+(un lien à la fin l'ouvre dans l'application principale pour la modifier).
+**Autre chose** en choisit une autre, sans en répéter aucune avant
 d'avoir montré toutes celles qui correspondent (jusqu'à 500 : au-delà, la page
 retient les 500 dernières montrées, donc une plus ancienne peut revenir avant
 que toutes aient eu leur tour); **Effacer** remet tout à zéro.
@@ -315,8 +317,8 @@ que la page, ses choix et ses tirages, les photos des recettes et une
 vérification de santé; toute autre adresse répond « introuvable », donc rien
 ne peut y être modifié ni supprimé. Elle n'a pas de connexion, et
 `RECIPE_APP_API_KEY` ne s'y applique pas : quiconque peut joindre le port
-voit les titres des recettes, leurs photos et le nombre de recettes par
-étiquette. Elle est en `http://` seulement. Si c'est plus que vous ne voulez
+peut lire toutes les recettes qu'elle peut tirer (tout sauf les cocktails),
+vos notes comprises, et le nombre de recettes par étiquette. Elle est en `http://` seulement. Si c'est plus que vous ne voulez
 sur votre réseau, laissez-la désactivée.
 
 **Autres numéros de port, ou un proxy** (variables d'environnement, toutes
@@ -944,8 +946,9 @@ courriel)**
   Tailscale, etc.) reste l'option la plus complète pour exposer
   l'application au-delà de votre réseau local. La clé ne s'applique pas au
   port de la page On mange quoi? (8091, désactivée par défaut) : elle n'a
-  aucune route d'écriture ni d'administration, et montre les titres, les
-  photos et le nombre de recettes par étiquette à quiconque peut la joindre.
+  aucune route d'écriture ni d'administration, mais quiconque peut la joindre
+  peut y lire vos recettes (sauf les cocktails), notes comprises. Avec la
+  clé, laissez cette page désactivée à moins que ça vous convienne.
 - **D'autres sites Web ne peuvent pas utiliser l'application par votre
   navigateur.** « Seul mon réseau peut la joindre » ne couvre pas les pages
   Web que les gens de votre réseau visitent : une telle page peut envoyer

@@ -1,13 +1,14 @@
 """What to eat? / On mange quoi?: a second, read-only page on its own port.
 
 Choose a meal type, cooking style, main ingredient and/or pace (or none),
-press one button, get one random recipe that matches, as a link into the
-main app. specs/dinner-picker-spec.md has the full design.
+press one button, get one random recipe that matches, and read it right
+there (read-only; editing stays in the main app). specs/dinner-picker-spec.md has the full design.
 
 What lives here:
 
-* The picker's API: GET /api/picker/options, /random and /status. Mounted
-  on both ports (the main app uses /status for its top-bar link).
+* The picker's API: GET /api/picker/options, /random, /recipes/{id} (one
+  recipe to read in the picker, read-only) and /status. Mounted on both
+  ports (the main app uses /status for its top-bar link).
 * The switch, PUT /api/picker/settings, on the main port only. Saved in the
   database (PickerSettings), so a restored backup brings it back; read at
   start-up. Not behind the settings password: the page shows nothing the
@@ -441,6 +442,53 @@ def picker_random(
         "remaining": len(left) - 1,
         "exhausted": False,
     }
+
+
+DIFFICULTIES = ("easy", "medium", "hard")
+
+
+def _web_link(value: Optional[str]) -> Optional[str]:
+    # "View original": the database can come from a restored backup, so only
+    # an http(s) address is passed on.
+    try:
+        parts = urlsplit(value or "")
+    except ValueError:
+        return None
+    return value if parts.scheme.lower() in ("http", "https") and parts.netloc else None
+
+
+@router.get("/api/picker/recipes/{recipe_id}")
+def picker_recipe(recipe_id: int, db: Session = Depends(get_db)):
+    """One pickable recipe, to read in the picker: what the main app's
+    recipe page shows, read-only. Cocktails are a 404 here as everywhere on
+    the picker, so this port shows nothing it couldn't pick."""
+    is_drink = db.query(models.recipe_tags.c.recipe_id).filter(
+        models.recipe_tags.c.recipe_id == recipe_id,
+        models.recipe_tags.c.recipe_id.in_(_drink_recipe_ids())).first()
+    recipe = None if is_drink else (
+        db.query(models.Recipe)
+        .options(selectinload(models.Recipe.tags), selectinload(models.Recipe.ingredients),
+                 selectinload(models.Recipe.steps))
+        .filter(models.Recipe.id == recipe_id).first())
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    out = _recipe_out(recipe)
+    out.update({
+        "source_url": _web_link(recipe.source_url),
+        "servings": recipe.servings,
+        "prep_time": recipe.prep_time,
+        "cook_time": recipe.cook_time,
+        "total_time": recipe.total_time,
+        "actual_cook_time": recipe.actual_cook_time,
+        "tastiness_rating": recipe.tastiness_rating if recipe.tastiness_rating in (1, 2, 3, 4, 5) else None,
+        "difficulty_rating": recipe.difficulty_rating if recipe.difficulty_rating in DIFFICULTIES else None,
+        "favorite": bool(recipe.favorite),
+        "notes": (recipe.notes or "").strip() or None,
+        "ingredients": [(i.raw_line or " ".join(p for p in (i.quantity, i.unit, i.name) if p)).strip()
+                        for i in recipe.ingredients],
+        "steps": [s.text for s in recipe.steps],
+    })
+    return out
 
 
 @router.get("/api/picker/status")

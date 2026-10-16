@@ -1,10 +1,12 @@
 // What to eat? / On mange quoi?: the picker page (backend: app/picker.py,
 // design: specs/dinner-picker-spec.md). No build step, like app.js.
 //
-// Choose meal types, cooking styles, main ingredients and paces (or none),
-// press the big button, get one recipe that matches, as a link into the
-// main app. Something else picks another without repeating any recipe
-// shown since the round started; Clear resets everything.
+// The stage comes first: one big card, the shuffle rolling through titles
+// in it, and the picked recipe landing there. The choices (meal types,
+// cooking styles, main ingredients, paces) sit below it, all visible but
+// quieter. Tapping the card opens the recipe right here, read-only;
+// editing stays in the main app. Something else picks another without
+// repeating any recipe shown since the round started; Clear resets.
 (() => {
   "use strict";
 
@@ -15,7 +17,8 @@
   const $ = (sel) => document.querySelector(sel);
   const STORAGE_KEY = "otp-picker-choices";
   const MAX_SHOWN = 500;            // the server ignores more exclusions than this
-  const SHUFFLE_STEPS = 8, SHUFFLE_STEP_MS = 50;   // about 400 ms in all
+  // The reel slows down as it stops: about 0.8 s in all.
+  const REEL_STEPS_MS = [45, 50, 55, 60, 70, 80, 95, 115, 140];
 
   // The four chip groups. Tag names stay as stored (English) and are shown
   // through tagLabel(); pace values through the main app's pace strings.
@@ -40,6 +43,8 @@
     // Until /api/picker/options says where the main app is.
     mainUrl: `http://${location.hostname}:8090`,
   };
+
+  const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
@@ -91,6 +96,10 @@
     if (err && err.status === 429) return tx("Too many requests just now. Wait a moment and try again.");
     if (err && err.status) return tx("The server returned an error ({1}).", { 1: err.status });
     return tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+  }
+
+  function photoUrl(name) {
+    return `/uploads/${encodeURIComponent(name)}`;
   }
 
   // ---------------------------------------------------------------------
@@ -153,20 +162,77 @@
   }
 
   // ---------------------------------------------------------------------
+  // The stage card. One frame for every state (waiting, shuffling, the
+  // pick, no match), with the photo area always the same size, so nothing
+  // on the page jumps when the pick lands.
+  // ---------------------------------------------------------------------
+  function photoArea(recipe) {
+    const area = el("span", { class: "stage-photo" });
+    if (recipe && recipe.image_path) {
+      area.appendChild(el("img", { src: photoUrl(recipe.image_path), alt: "", decoding: "async" }));
+    } else {
+      area.classList.add("stage-photo--plate");
+      area.appendChild(el("span", { class: "plate", "aria-hidden": "true" }));
+    }
+    return area;
+  }
+
+  function tagLine(recipe) {
+    const parts = (recipe.tags || []).map((t) => tagLabel(t));
+    if (recipe.cook_time_rating) parts.push(valueLabel(recipe.cook_time_rating));
+    return parts.join(" · ");
+  }
+
+  // Before any pick, after Clear, and when nothing matches.
+  function idleCard(title, hint) {
+    return el("div", { class: "stage-card stage-card--idle" }, [
+      photoArea(null),
+      el("span", { class: "stage-body" }, [
+        el("span", { class: "stage-title", text: title }),
+        hint ? el("span", { class: "stage-sub", text: hint }) : null,
+      ]),
+    ]);
+  }
+
+  function showIdle() {
+    $("#result-card-slot").replaceChildren(idleCard(tx("Hungry?"), tx("Press the button, or narrow it down with the choices first.")));
+  }
+
+  // The pick: the whole card is the way into the recipe.
+  function resultCard(recipe) {
+    const line = tagLine(recipe);
+    return el("button", {
+      type: "button", class: "stage-card stage-card--result",
+      onclick: () => openReader(recipe.id),
+    }, [
+      photoArea(recipe),
+      el("span", { class: "stage-body" }, [
+        el("span", { class: "stage-title", text: recipe.title }),
+        line ? el("span", { class: "stage-sub", text: line }) : null,
+        el("span", { class: "stage-read" }, [
+          el("span", { text: tx("Read the recipe") }), el("span", { "aria-hidden": "true", text: " →" }),
+        ]),
+      ]),
+    ]);
+  }
+
+  // ---------------------------------------------------------------------
   // Picking
   // ---------------------------------------------------------------------
   const pickButton = $("#pick-button");
-  const againButton = $("#again-button");
   const clearButton = $("#clear-button");
 
   function setBusy(on) {
     state.busy = on;
     // aria-disabled, not disabled: a disabled button drops the focus, and
     // focus stays on the button pressed (spec section 6).
-    for (const b of [pickButton, againButton]) {
-      if (on) { b.setAttribute("aria-busy", "true"); b.setAttribute("aria-disabled", "true"); }
-      else { b.removeAttribute("aria-busy"); b.removeAttribute("aria-disabled"); }
-    }
+    if (on) { pickButton.setAttribute("aria-busy", "true"); pickButton.setAttribute("aria-disabled", "true"); }
+    else { pickButton.removeAttribute("aria-busy"); pickButton.removeAttribute("aria-disabled"); }
+  }
+
+  // "Pick one" until something is on the stage, then "Something else".
+  function setButtonLabel() {
+    pickButton.textContent = state.current ? tx("Something else") : tx("Pick one");
   }
 
   function query(exclude) {
@@ -180,59 +246,37 @@
     return txn(n, "{n} match", "{n} matches");
   }
 
-  function showArea({ note = "", message = "", card = null, count = null, again = false }) {
-    $("#result").hidden = false;
+  function showArea({ note = "", message = "", card = null, count = null }) {
     $("#result-note").textContent = note;
     $("#result-note").hidden = !note;
     $("#result-message").textContent = message;
     $("#result-message").hidden = !message;
-    $("#result-card-slot").replaceChildren(...(card ? [card] : []));
+    if (card) $("#result-card-slot").replaceChildren(card);
     $("#result-count").textContent = count === null ? "" : matchText(count);
     $("#result-count").hidden = count === null;
-    againButton.hidden = !again;
+    setButtonLabel();
   }
 
-  function tagLine(recipe) {
-    const parts = (recipe.tags || []).map((t) => tagLabel(t));
-    if (recipe.cook_time_rating) parts.push(valueLabel(recipe.cook_time_rating));
-    return parts.join(" · ");
-  }
-
-  function resultCard(recipe) {
-    const card = el("a", { class: "result-card", href: `${state.mainUrl}/#recipe-${recipe.id}` });
-    if (recipe.image_path) {
-      card.appendChild(el("img", { class: "result-photo", src: `/uploads/${encodeURIComponent(recipe.image_path)}`, alt: "" }));
-    }
-    const line = tagLine(recipe);
-    card.appendChild(el("span", { class: "result-body" }, [
-      el("span", { class: "result-title-row" }, [
-        el("span", { class: "result-title", text: recipe.title }),
-        el("span", { class: "result-arrow", "aria-hidden": "true", text: "→" }),
-      ]),
-      line ? el("span", { class: "result-tags", text: line }) : null,
-    ]));
-    return card;
-  }
-
-  // Slot-machine titles for about 400 ms before the pick lands. The pick
-  // is already decided; this only delays showing it. Skipped with reduced
-  // motion, or when there's nothing else to cycle through.
+  // The reel: titles roll up through the card, slowing to a stop, before
+  // the pick lands. The pick is already decided; this only delays showing
+  // it. Skipped with reduced motion, or when there's nothing to roll.
   function shuffle(titles) {
-    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce || !titles.length) return Promise.resolve();
-    const title = el("span", { class: "result-title" });
-    const card = el("div", { class: "result-card result-card--shuffling", "aria-hidden": "true" }, [
-      el("span", { class: "result-body" }, [el("span", { class: "result-title-row" }, [title])]),
+    if (reduceMotion() || !titles.length) return Promise.resolve();
+    const reel = el("span", { class: "stage-reel" });
+    const card = el("div", { class: "stage-card stage-card--shuffling", "aria-hidden": "true" }, [
+      photoArea(null),
+      el("span", { class: "stage-body" }, [reel]),
     ]);
-    $("#result").hidden = false;
     $("#result-card-slot").replaceChildren(card);
     return new Promise((resolve) => {
       let i = 0;
       const step = () => {
-        title.textContent = titles[i % titles.length];
+        const ms = REEL_STEPS_MS[i];
+        const item = el("span", { class: "reel-item", text: titles[i % titles.length] });
+        item.style.animationDuration = `${ms}ms`;
+        reel.replaceChildren(item);
         i += 1;
-        if (i < SHUFFLE_STEPS) setTimeout(step, SHUFFLE_STEP_MS);
-        else setTimeout(resolve, SHUFFLE_STEP_MS);
+        setTimeout(i < REEL_STEPS_MS.length ? step : resolve, ms);
       };
       step();
     });
@@ -245,17 +289,16 @@
     setTimeout(() => { region.textContent = text; }, 50);
   }
 
-  // What the result area showed before a pick's shuffle replaced it, put
-  // back if that pick turns out to be out of date.
+  // What the stage showed before a pick's shuffle replaced it, put back if
+  // that pick turns out to be out of date.
   function snapshotArea() {
-    const ids = ["#result", "#result-note", "#result-message", "#result-count"];
+    const ids = ["#result-note", "#result-message", "#result-count"];
     const shown = ids.map((id) => [id, $(id).hidden]);
     const card = [...$("#result-card-slot").childNodes];
-    const again = againButton.hidden;
     return () => {
       for (const [id, hidden] of shown) $(id).hidden = hidden;
       $("#result-card-slot").replaceChildren(...card);
-      againButton.hidden = again;
+      setButtonLabel();
     };
   }
 
@@ -286,30 +329,32 @@
       if (!data.recipe) {
         state.current = null;
         state.shown = [];
-        showArea({ message: tx("Nothing matches these choices.") });
+        showArea({ card: idleCard(tx("Nothing matches these choices."), tx("Try fewer choices.")) });
         announce(tx("Nothing matches these choices."));
         return;
       }
       const recipe = data.recipe;
-      if (recipe.image_path) new Image().src = `/uploads/${encodeURIComponent(recipe.image_path)}`;   // load during the shuffle
+      if (recipe.image_path) new Image().src = photoUrl(recipe.image_path);   // load during the shuffle
       restore = snapshotArea();
       $("#result-note").hidden = true;
       $("#result-message").hidden = true;
       await shuffle(data.shuffle_titles || []);
       if (stale()) {
         // A chip change puts back what was on screen; Clear has already
-        // emptied the area and it stays empty.
+        // reset the stage and it stays that way.
         if (!state.cleared) restore();
         return;
       }
       state.current = recipe;
       state.shown = shown.filter((id) => id !== recipe.id).concat(recipe.id).slice(-MAX_SHOWN);
-      showArea({ note, card: resultCard(recipe), count: data.match_count, again: true });
+      const card = resultCard(recipe);
+      if (!reduceMotion()) card.classList.add("stage-card--landed");
+      showArea({ note, card, count: data.match_count });
       announce([note, `${recipe.title}, ${matchText(data.match_count)}`].filter(Boolean).join(" "));
     } catch (err) {
       if (stale()) return;
-      // The recipe on screen, if any, stays; the message goes above the buttons.
-      $("#result").hidden = false;
+      // The recipe on screen, if any, stays; the message goes above the button.
+      if (restore) restore();
       $("#result-message").textContent = errorText(err);
       $("#result-message").hidden = false;
       announce(errorText(err));
@@ -325,16 +370,185 @@
     state.current = null;
     state.generation += 1;      // a pick still running is dropped
     state.cleared = true;
-    $("#result").hidden = true;
-    $("#result-card-slot").replaceChildren();
+    showArea({});
+    showIdle();
     renderChoices();
     const first = document.querySelector("#choices .chip");
     (first || pickButton).focus();
   }
 
   pickButton.addEventListener("click", pick);
-  againButton.addEventListener("click", pick);
   clearButton.addEventListener("click", clearAll);
+
+  // ---------------------------------------------------------------------
+  // The recipe, read-only. Opens over the page; phone Back, Escape and the
+  // close button all close it. Editing stays in the main app (a small link
+  // at the end).
+  // ---------------------------------------------------------------------
+  const readerOverlay = $("#reader-overlay");
+  const reader = $("#reader");
+  const readerBody = $("#reader-body");
+  const RECIPE_HASH = /^#recipe-(\d+)$/;
+  let readerTicket = 0;
+  let readerOpener = null;
+  let readerPushed = false;   // opened with a history entry of its own (Back closes it)
+
+  function ddhhmmLabel(v) {
+    const [d, h, m] = String(v || "").split(":").map((p) => parseInt(p, 10) || 0);
+    const parts = [];
+    if (d) parts.push(`${d} ${tx("d")}`);
+    if (h) parts.push(`${h} h`);
+    if (m) parts.push(`${m} min`);
+    return parts.join(" ") || "0 min";
+  }
+
+  // "Sauce tartare:" names a part of the recipe (as in the main app).
+  function isPartName(text) {
+    const t = (text || "").trim();
+    return t.endsWith(":") && t.split(/\s+/).length <= 6;
+  }
+
+  function sourceLink(recipe) {
+    let url;
+    try { url = new URL(recipe.source_url); } catch { return null; }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return el("a", { class: "reader-link", href: url.href, target: "_blank", rel: "noopener noreferrer" },
+      [el("span", { text: tx("View original") }), el("span", { "aria-hidden": "true", text: " ↗" })]);
+  }
+
+  // Ratings as text: nothing here can be changed.
+  function ratingsList(recipe) {
+    const rows = [];
+    if (recipe.tastiness_rating) {
+      const n = recipe.tastiness_rating;
+      rows.push([tx("Rating"), el("span", { "aria-label": `${n}/5` }, [
+        el("span", { class: "stars", "aria-hidden": "true", text: "★".repeat(n) + "☆".repeat(5 - n) }),
+      ])]);
+    }
+    if (recipe.cook_time_rating) rows.push([tx("Pace"), valueLabel(recipe.cook_time_rating)]);
+    if (recipe.difficulty_rating) rows.push([tx("Difficulty"), valueLabel(recipe.difficulty_rating)]);
+    if (recipe.favorite) rows.push([tx("Favorite"), el("span", {}, [
+      el("span", { class: "heart", "aria-hidden": "true", text: "♥ " }), document.createTextNode(tx("Yes")),
+    ])]);
+    if (!rows.length) return null;
+    return el("dl", { class: "reader-ratings" }, rows.map(([label, value]) => el("div", {}, [
+      el("dt", { text: label }), el("dd", {}, [typeof value === "string" ? document.createTextNode(value) : value]),
+    ])));
+  }
+
+  function renderReader(recipe) {
+    const facts = [
+      recipe.servings ? tx("Servings: {1}", { 1: recipe.servings }) : null,
+      recipe.prep_time ? tx("Prep: {1}", { 1: recipe.prep_time }) : null,
+      recipe.cook_time ? tx("Cook: {1}", { 1: recipe.cook_time }) : null,
+      recipe.total_time ? tx("Total: {1}", { 1: recipe.total_time }) : null,
+      recipe.actual_cook_time ? tx("Real-world cook time: {1}", { 1: ddhhmmLabel(recipe.actual_cook_time) }) : null,
+    ].filter(Boolean);
+    const line = tagLine({ tags: recipe.tags });
+    let n = 0;
+    readerBody.replaceChildren(
+      recipe.image_path ? el("img", { class: "reader-photo", src: photoUrl(recipe.image_path), alt: "" }) : null,
+      el("div", { class: "reader-content" }, [
+        el("h2", { id: "reader-title", class: "reader-title", text: recipe.title }),
+        line ? el("p", { class: "reader-tags", text: line }) : null,
+        facts.length ? el("p", { class: "reader-facts" }, facts.map((f) => el("span", { text: f }))) : null,
+        ratingsList(recipe),
+        recipe.notes ? el("section", { class: "reader-notes" }, [
+          el("h3", { text: tx("Notes") }), el("p", { text: recipe.notes }),
+        ]) : null,
+        el("div", { class: "reader-columns" }, [
+          el("section", { class: "reader-ingredients" }, [
+            el("h3", { text: tx("Ingredients") }),
+            el("ul", {}, (recipe.ingredients || []).map((t) => el("li", { class: isPartName(t) ? "list-part" : null, text: t }))),
+          ]),
+          el("section", { class: "reader-steps" }, [
+            el("h3", { text: tx("Instructions") }),
+            // Part names aren't numbered; the steps after them carry on.
+            el("ol", {}, (recipe.steps || []).map((t) => isPartName(t)
+              ? el("li", { class: "list-part", text: t })
+              : el("li", { value: String(++n), text: t }))),
+          ]),
+        ]),
+        el("div", { class: "reader-footer" }, [
+          sourceLink(recipe),
+          el("a", { class: "reader-link reader-edit", href: `${state.mainUrl}/#recipe-${recipe.id}` },
+            [el("span", { text: tx("Edit in Open the Pantry") })]),
+        ]),
+      ]),
+    );
+  }
+
+  function readerFocusables() {
+    return [...reader.querySelectorAll("button, a[href]")].filter((n) => n.offsetParent !== null);
+  }
+
+  function onReaderKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); closeReader(); return; }
+    if (e.key !== "Tab") return;
+    const f = readerFocusables();
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
+  async function openReader(id, { fromHash = false } = {}) {
+    const ticket = ++readerTicket;
+    if (readerOverlay.hidden) {
+      readerOpener = document.activeElement;
+      readerOverlay.hidden = false;
+      document.documentElement.classList.add("reader-open");
+      document.addEventListener("keydown", onReaderKey);
+      if (!fromHash) {
+        history.pushState({ pickerReader: id }, "", `#recipe-${id}`);
+        readerPushed = true;
+      }
+    }
+    readerBody.replaceChildren(el("p", { class: "reader-loading", role: "status", text: tx("Loading...") }));
+    $("#reader-close").focus();
+    let recipe = null, failure = null;
+    try {
+      recipe = await api(`/api/picker/recipes/${id}`);
+    } catch (err) { failure = err; }
+    if (ticket !== readerTicket || readerOverlay.hidden) return;   // superseded or closed
+    if (!recipe) {
+      readerBody.replaceChildren(el("p", { class: "reader-loading", role: "alert",
+        text: failure && failure.status === 404 ? tx("Could not load recipe.") : errorText(failure) }));
+      return;
+    }
+    renderReader(recipe);
+    reader.scrollTop = 0;
+  }
+
+  // Closes the sheet. With its own history entry, going back closes it
+  // (popstate below), so Back and the close button do the same thing.
+  function closeReader() {
+    if (readerOverlay.hidden) return;
+    if (readerPushed && history.state && history.state.pickerReader) { history.back(); return; }
+    hideReader();
+    if (RECIPE_HASH.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  function hideReader() {
+    readerTicket += 1;
+    readerPushed = false;
+    readerOverlay.hidden = true;
+    document.documentElement.classList.remove("reader-open");
+    document.removeEventListener("keydown", onReaderKey);
+    readerBody.replaceChildren();
+    const back = readerOpener;
+    readerOpener = null;
+    if (back && document.contains(back)) back.focus();
+    else pickButton.focus();
+  }
+
+  window.addEventListener("popstate", () => {
+    const m = RECIPE_HASH.exec(location.hash);
+    if (m) openReader(Number(m[1]), { fromHash: true });
+    else if (!readerOverlay.hidden) hideReader();
+  });
+  $("#reader-close").addEventListener("click", closeReader);
+  readerOverlay.addEventListener("click", (e) => { if (e.target === readerOverlay) closeReader(); });
 
   // ---------------------------------------------------------------------
   // Start
@@ -356,11 +570,12 @@
       $("#load-error").hidden = false;
       return;
     }
+    $("#choices-loading").hidden = true;
     state.options = options;
     state.mainUrl = webAddress(options.main_url, state.mainUrl);
     setMainLinks();
     if (!options.total) {
-      $("#choices").hidden = true;
+      $("#choices-panel").hidden = true;
       $("#action").hidden = true;
       $("#empty-library").hidden = false;
       return;
@@ -372,12 +587,17 @@
       state.chosen[g.key] = new Set((Array.isArray(saved[g.key]) ? saved[g.key] : []).filter((v) => valid.has(v)));
     }
     renderChoices();
+    if (!state.current) showIdle();
+    setButtonLabel();
     $("#empty-library").hidden = true;
-    $("#choices").hidden = false;
+    $("#choices-panel").hidden = false;
     $("#action").hidden = false;
   }
 
   $("#load-retry").addEventListener("click", start);
   setMainLinks();
   start();
+  // Opened at /#recipe-<id> (a shared or reloaded link): that recipe.
+  const linked = RECIPE_HASH.exec(location.hash);
+  if (linked) openReader(Number(linked[1]), { fromHash: true });
 })();
