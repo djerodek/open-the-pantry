@@ -7,7 +7,10 @@ services:
     ports:
       - "8090:8090"
       - "8443:8443"   # HTTPS, once set up in Settings -> HTTPS
-      - "8091:8091"   # What to eat?, once switched on in Settings
+      # What to eat?, once switched on in Settings. If 8091 is taken on this
+      # machine, change the left side (e.g. "9000:8091") and set
+      # RECIPE_APP_PICKER_PUBLIC_PORT to that number under environment:.
+      - "8091:8091"
     env_file:         # optional DNS host login for Settings -> HTTPS
       - path: .env
         required: false

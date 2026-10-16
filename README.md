@@ -233,7 +233,9 @@ the same library, on its own port (8091). Choose a meal type, cooking style,
 main ingredient and/or pace, or nothing at all, press **Pick one**, and it
 shows one random recipe that matches, as a link that opens it in the main
 app. **Something else** picks another, without repeating one until every
-match has been shown; **Clear** resets everything.
+match has been shown (up to 500: with more matches than that, the page
+remembers the latest 500 it showed, so an older one can come back before
+every match has had its turn); **Clear** resets everything.
 
 - Within a group the choices are alternatives (Dinner or Lunch); across
   groups all must hold (a dinner, made in the oven, rated quick). A group
@@ -257,7 +259,11 @@ the settings password.
 
 **A compose file from before this page** doesn't publish the port: add
 `- "8091:8091"` under `ports:` (the current `docker-compose.yml` has it),
-then `docker compose up -d`. Settings warns when the page is on but the
+then `docker compose up -d`. If something else on the machine already
+uses port 8091, the container won't start even with the page off: publish
+another number instead, e.g. `"9000:8091"`, and set
+`RECIPE_APP_PICKER_PUBLIC_PORT: "9000"` (the comments in
+`docker-compose.yml` show where). Settings warns when the page is on but the
 device you're using can't reach the port. (From an `https://` address it
 can't check, so it doesn't warn there.) "Port 8091 is in use inside the
 container" means something else in the container already listens there;

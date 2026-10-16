@@ -271,7 +271,9 @@ type de repas, un mode de cuisson, un ingrédient principal et/ou un rythme, ou
 rien du tout, appuyez sur **Choisis pour moi**, et elle affiche une recette au
 hasard qui correspond, sous forme de lien qui l'ouvre dans l'application
 principale. **Autre chose** en choisit une autre, sans en répéter aucune avant
-d'avoir montré toutes celles qui correspondent; **Effacer** remet tout à zéro.
+d'avoir montré toutes celles qui correspondent (jusqu'à 500 : au-delà, la page
+retient les 500 dernières montrées, donc une plus ancienne peut revenir avant
+que toutes aient eu leur tour); **Effacer** remet tout à zéro.
 
 - Dans un groupe, les choix sont des alternatives (Dîner ou Souper); d'un
   groupe à l'autre, tous doivent être respectés (un souper, cuit au four,
@@ -297,7 +299,11 @@ demande pas le mot de passe des paramètres.
 
 **Un fichier compose antérieur à cette page** ne publie pas le port : ajoutez
 `- "8091:8091"` sous `ports:` (le `docker-compose.yml` actuel l'a), puis
-`docker compose up -d`. Les Paramètres vous avertissent quand la page est
+`docker compose up -d`. Si autre chose sur la machine utilise déjà le port
+8091, le conteneur ne démarre pas, même la page désactivée : publiez un autre
+numéro, p. ex. `"9000:8091"`, et définissez
+`RECIPE_APP_PICKER_PUBLIC_PORT: "9000"` (les commentaires du
+`docker-compose.yml` montrent où). Les Paramètres vous avertissent quand la page est
 activée mais que l'appareil utilisé ne joint pas le port. (Depuis une adresse
 `https://`, la vérification est impossible; il n'y a donc pas
 d'avertissement.) « Le port 8091 est déjà utilisé dans le conteneur » veut

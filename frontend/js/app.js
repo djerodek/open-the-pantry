@@ -2343,6 +2343,9 @@
     clearTimeout(pickerRetryTimer);
     pickerProbeTicket += 1;
     pickerEnabled.checked = !!st.on;
+    // With an API key set, say plainly that the key doesn't protect this
+    // page (on or off: it matters most before switching it on).
+    $("#picker-key-note").hidden = !st.api_key_set;
     pickerStatusLine.replaceChildren();
     pickerWarning.hidden = true;
     pickerStatusLine.hidden = !st.on;

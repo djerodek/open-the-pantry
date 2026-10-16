@@ -765,6 +765,8 @@
     "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random. Nothing can be changed from it. It has no login: anyone who can reach the port sees recipe titles and photos.":
       "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port voit les titres et les photos des recettes.",
     "Address:": "Adresse :",
+    "RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.":
+      "RECIPE_APP_API_KEY est défini, mais ne couvre pas cette page : quiconque peut joindre son port peut l'utiliser sans la clé.",
     "Port {1} is in use inside the container.": "Le port {1} est déjà utilisé dans le conteneur.",
     "The page couldn't start. Settings → Logs has the details.": "La page n'a pas pu démarrer. Les détails sont dans Paramètres → Journal.",
     "Starting…": "Démarrage…",

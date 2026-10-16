@@ -1,7 +1,7 @@
 services:
   open-the-pantry:
-    # :main follows every change. To stay on a build you've tested, use a
-    # release tag instead, e.g. djerodek/open-the-pantry:1.0.0 (README,
+    # :main follows every change. To stay on a build you've tested, pin its
+    # digest instead, e.g. djerodek/open-the-pantry@sha256:<digest> (README,
     # "Deployment notes").
     image: djerodek/open-the-pantry:main
     container_name: open-the-pantry
@@ -12,7 +12,12 @@ services:
       # 443 if nothing else on this machine uses it.
       - "8443:8443"
       # The read-only What to eat? page, once switched on in Settings ->
-      # What to eat? (nothing listens here until then).
+      # What to eat? (nothing listens here until then). Docker reserves the
+      # left-hand port even while the page is off, so if something else on
+      # this machine already uses 8091 the container won't start: change the
+      # left side, e.g. "9000:8091", and set RECIPE_APP_PICKER_PUBLIC_PORT
+      # to the same number under environment: below so the app's link to
+      # the page uses it. The right side stays 8091.
       - "8091:8091"
     # Optional: a .env file next to this one. Settings -> HTTPS can take the
     # cPanel login itself; values put in .env instead win (see README,
@@ -51,3 +56,7 @@ services:
     #   # security notes. Requires a client or reverse proxy that sends the
     #   # X-API-Key header.
     #   RECIPE_APP_API_KEY: "choose-a-long-random-string"
+    #
+    #   # Only if the What to eat? line under ports: publishes another
+    #   # number than 8091 (e.g. "9000:8091"): that number.
+    #   RECIPE_APP_PICKER_PUBLIC_PORT: "9000"

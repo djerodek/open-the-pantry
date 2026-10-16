@@ -208,12 +208,29 @@ def running() -> bool:
     return _server is not None and bool(_server.started)
 
 
+# main.py sets this: whether RECIPE_APP_API_KEY is set (read at call time).
+_api_key_set = lambda: False
+
+
+def set_api_key_check(check):
+    global _api_key_set
+    _api_key_set = check
+
+
+def _on_picker_port(request: Optional[Request]) -> bool:
+    return request is not None and _app is not None and request.scope.get("app") is _app
+
+
 def status(request: Optional[Request] = None) -> dict:
     """enabled: switched on AND the listener is running (what the main
     app's top-bar link goes by). on: the saved switch. listen_error: why it
-    isn't running while switched on."""
+    isn't running while switched on. api_key_set, on the main port only (where
+    the key is needed to read it): Settings then says the key doesn't cover
+    this page."""
     on, up = saved_enabled(), running()
+    extra = {} if _on_picker_port(request) else {"api_key_set": bool(_api_key_set())}
     return {
+        **extra,
         "enabled": on and up,
         "url": picker_url(request) if on and up else None,
         "on": on,

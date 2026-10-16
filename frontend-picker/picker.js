@@ -32,6 +32,11 @@
     shown: [],          // recipe ids shown since the round started
     current: null,      // the recipe on screen
     busy: false,
+    // Bumped by a chip change or Clear: a pick started before it is out of
+    // date and never reaches the screen (its request or shuffle may still
+    // be running). cleared: Clear was pressed since the pick started.
+    generation: 0,
+    cleared: false,
     // Until /api/picker/options says where the main app is.
     mainUrl: `http://${location.hostname}:8090`,
   };
@@ -141,8 +146,10 @@
     button.setAttribute("aria-pressed", String(set.has(value)));
     anyHint.hidden = set.size > 0;
     saveChoices();
-    // New choices, new round. The recipe on screen stays until the next pick.
+    // New choices, new round. The recipe on screen stays until the next pick;
+    // a pick still running was for the old choices and is dropped.
     state.shown = [];
+    state.generation += 1;
   }
 
   // ---------------------------------------------------------------------
@@ -238,11 +245,32 @@
     setTimeout(() => { region.textContent = text; }, 50);
   }
 
+  // What the result area showed before a pick's shuffle replaced it, put
+  // back if that pick turns out to be out of date.
+  function snapshotArea() {
+    const ids = ["#result", "#result-note", "#result-message", "#result-count"];
+    const shown = ids.map((id) => [id, $(id).hidden]);
+    const card = [...$("#result-card-slot").childNodes];
+    const again = againButton.hidden;
+    return () => {
+      for (const [id, hidden] of shown) $(id).hidden = hidden;
+      $("#result-card-slot").replaceChildren(...card);
+      againButton.hidden = again;
+    };
+  }
+
   async function pick() {
     if (state.busy) return;
     setBusy(true);
+    const generation = state.generation;
+    state.cleared = false;
+    // A chip change or Clear since the pick started: drop it.
+    const stale = () => generation !== state.generation;
+    let restore = null;
     try {
-      let data = await api(query(state.shown));
+      let shown = state.shown;
+      let data = await api(query(shown));
+      if (stale()) return;
       let note = "";
       if (data.exhausted) {
         // Every match has been shown: say so and start a new round. The
@@ -251,8 +279,9 @@
         note = data.match_count === 1
           ? tx("That's the only one that matches.")
           : tx("That's all {1} — starting over.", { 1: data.match_count });
-        state.shown = state.current && data.match_count > 1 ? [state.current.id] : [];
-        data = await api(query(state.shown));
+        shown = state.current && data.match_count > 1 ? [state.current.id] : [];
+        data = await api(query(shown));
+        if (stale()) return;
       }
       if (!data.recipe) {
         state.current = null;
@@ -262,15 +291,23 @@
         return;
       }
       const recipe = data.recipe;
-      state.current = recipe;
-      state.shown = state.shown.filter((id) => id !== recipe.id).concat(recipe.id).slice(-MAX_SHOWN);
       if (recipe.image_path) new Image().src = `/uploads/${encodeURIComponent(recipe.image_path)}`;   // load during the shuffle
+      restore = snapshotArea();
       $("#result-note").hidden = true;
       $("#result-message").hidden = true;
       await shuffle(data.shuffle_titles || []);
+      if (stale()) {
+        // A chip change puts back what was on screen; Clear has already
+        // emptied the area and it stays empty.
+        if (!state.cleared) restore();
+        return;
+      }
+      state.current = recipe;
+      state.shown = shown.filter((id) => id !== recipe.id).concat(recipe.id).slice(-MAX_SHOWN);
       showArea({ note, card: resultCard(recipe), count: data.match_count, again: true });
       announce([note, `${recipe.title}, ${matchText(data.match_count)}`].filter(Boolean).join(" "));
     } catch (err) {
+      if (stale()) return;
       // The recipe on screen, if any, stays; the message goes above the buttons.
       $("#result").hidden = false;
       $("#result-message").textContent = errorText(err);
@@ -286,6 +323,8 @@
     saveChoices();
     state.shown = [];
     state.current = null;
+    state.generation += 1;      // a pick still running is dropped
+    state.cleared = true;
     $("#result").hidden = true;
     $("#result-card-slot").replaceChildren();
     renderChoices();

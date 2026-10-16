@@ -2754,6 +2754,7 @@ app.include_router(picker.router)
 app.include_router(picker.settings_router)
 picker_app = picker.create_app([log_unhandled_errors, cross_site_guard, rate_limiter,
                                 app_files_revalidate, interface_language])
+picker.set_api_key_check(lambda: bool(API_KEY))
 
 
 @app.post("/api/email-settings/scan", response_model=schemas.EmailScanResult)
