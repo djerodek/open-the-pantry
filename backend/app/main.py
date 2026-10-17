@@ -48,6 +48,7 @@ from . import admin_lock
 from . import picker
 from . import duplicates
 from . import interchange
+from . import restore as restore_mod
 from .ml import service as learning
 
 _lock_file_handle = None
@@ -302,6 +303,30 @@ API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
 if API_KEY:
     log.warning("RECIPE_APP_API_KEY is set: every request needs an X-API-Key header, and the app's own "
                 "pages don't send one. The web app in a browser won't work unless a reverse proxy adds it.")
+
+
+# Settings -> Backup & export -> Restore: while a backup is put back, every
+# other request on either port gets a 503 (the database and photos are
+# being replaced under them), and the restore waits for requests already
+# running to finish before it starts. (restore_backup)
+_restoring = threading.Event()
+_inflight = 0
+_inflight_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def restore_guard(request: Request, call_next):
+    global _inflight
+    if _restoring.is_set() and request.url.path != "/healthz":
+        return JSONResponse(status_code=503, content={"detail": "A backup is being restored. Try again in a minute."},
+                            headers={"Retry-After": "30"})
+    with _inflight_lock:
+        _inflight += 1
+    try:
+        return await call_next(request)
+    finally:
+        with _inflight_lock:
+            _inflight -= 1
 
 
 # Changes the learned models train on: recipes saved, edited or deleted,
@@ -2862,7 +2887,7 @@ async def turn_off_https():
 # ---------------------------------------------------------------------------
 app.include_router(picker.router)
 app.include_router(picker.settings_router)
-picker_app = picker.create_app([log_unhandled_errors, cross_site_guard, rate_limiter,
+picker_app = picker.create_app([log_unhandled_errors, restore_guard, cross_site_guard, rate_limiter,
                                 app_files_revalidate, interface_language])
 picker.set_api_key_check(lambda: bool(API_KEY))
 
@@ -3319,6 +3344,185 @@ def import_recipes(file: UploadFile = File(...), db: Session = Depends(get_db)):
             failed.append({"origin": r.origin, "title": r.title[:500], "error": _validation_text(e)})
     log.info("Import from %s: %d added, %d skipped, %d failed", name, len(succeeded), len(skipped), len(failed))
     return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
+# Restore from backup (restore.py), behind the settings password
+# ---------------------------------------------------------------------------
+
+_restore_lock = threading.Lock()
+_RESTORE_TOKEN = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _pending_restore_paths(token: str) -> tuple[str, str]:
+    return (os.path.join(BACKUP_TMP_DIR, f"restore-{token}.zip"),
+            os.path.join(BACKUP_TMP_DIR, f"restore-{token}.db"))
+
+
+def _clear_pending_restores(keep: str | None = None):
+    for name in os.listdir(BACKUP_TMP_DIR):
+        if name.startswith("restore-") and (keep is None or keep not in name):
+            try:
+                os.remove(os.path.join(BACKUP_TMP_DIR, name))
+            except OSError:
+                log.debug("_clear_pending_restores: couldn't remove %s", name, exc_info=True)
+
+
+@app.post("/api/backup/restore/check")
+def restore_check(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """First step: what's in the file. A full backup is kept (unpacked
+    database checked) until it's confirmed; anything else is for the import
+    path ("kind": "import"), which adds instead of replacing."""
+    token = uuid.uuid4().hex
+    zip_path, db_path = _pending_restore_paths(token)
+    _clear_pending_restores()
+    written = 0
+    with open(zip_path, "wb") as out:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > restore_mod.MAX_TOTAL_BYTES:
+                out.close()
+                os.remove(zip_path)
+                raise HTTPException(status_code=413, detail="File too large.")
+            out.write(chunk)
+    try:
+        with open(zip_path, "rb") as f:
+            head = f.read(4)
+        if not head.startswith(b"PK"):
+            os.remove(zip_path)
+            return {"kind": "import"}     # a .json: the import path says what it makes of it
+        kind = restore_mod.kind_of(zip_path)
+        if kind != "backup":
+            os.remove(zip_path)
+            return {"kind": kind}
+        info = _run_heavy(restore_mod.inspect, zip_path, db_path)
+    except restore_mod.RestoreError as e:
+        _clear_pending_restores()
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        log.warning("Restore check failed on %s", file.filename, exc_info=True)
+        _clear_pending_restores()
+        raise
+    info.update(token=token, current_recipes=db.query(models.Recipe).count())
+    return info
+
+
+def _keep_https_rows() -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT * FROM https_settings")).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _put_back_https_rows(rows: list[dict]):
+    with engine.begin() as conn:
+        cols = {r[1] for r in conn.execute(text("PRAGMA table_info(https_settings)")).all()}
+        conn.execute(text("DELETE FROM https_settings"))
+        for row in rows:
+            row = {k: v for k, v in row.items() if k in cols}
+            names = ", ".join(row)
+            conn.execute(text(f"INSERT INTO https_settings ({names}) VALUES ({', '.join(':' + k for k in row)})"), row)
+
+
+def _clear_unusable_email_password() -> bool:
+    db = SessionLocal()
+    try:
+        s = db.query(models.EmailIngestSettings).first()
+        if not s or not s.password_encrypted:
+            return False
+        try:
+            crypto.decrypt_secret(s.password_encrypted)
+            return False
+        except Exception:
+            log.warning("Restore: the backup's email password can't be decrypted with this server's key; cleared")
+            s.password_encrypted = None
+            s.enabled = False
+            s.last_problem = "Restored from a backup: enter the email password again (this server's encryption key can't read the one in the backup)."
+            db.commit()
+            return True
+    finally:
+        db.close()
+
+
+@app.post("/api/backup/restore")
+def restore_backup(payload: schemas.RestoreRequest):
+    """Replaces the library with the checked backup. See restore.py."""
+    if not _RESTORE_TOKEN.match(payload.token):
+        raise HTTPException(status_code=422, detail="Unknown restore.")
+    zip_path, db_path = _pending_restore_paths(payload.token)
+    if not (os.path.isfile(zip_path) and os.path.isfile(db_path)):
+        raise HTTPException(status_code=404, detail="That backup isn't waiting any more. Choose the file again.")
+    if not _restore_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A restore is already running.")
+    held = []
+    try:
+        _restoring.set()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            with _inflight_lock:
+                if _inflight <= 1:
+                    break
+            time.sleep(0.1)
+        else:
+            raise HTTPException(status_code=409, detail="The app is busy (an import or a scan is running). Try again in a minute.")
+        for lock in (learning._lock, _email_scan_lock, UPLOADS_LOCK):
+            if not lock.acquire(timeout=120):
+                raise HTTPException(status_code=409, detail="The app is busy (an import or a scan is running). Try again in a minute.")
+            held.append(lock)
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safety_name = f"restore-safety-{stamp}.zip"
+        build_database_backup(os.path.join(DATA_DIR, safety_name))
+        log.info("Restore: current data saved to %s", safety_name)
+        https_rows = _keep_https_rows()
+
+        new_uploads = UPLOADS_DIR.rstrip("/") + ".restore-new"
+        shutil.rmtree(new_uploads, ignore_errors=True)
+        kept, left_out = restore_mod.unpack_uploads(zip_path, new_uploads)
+
+        engine.dispose()
+        restore_mod.copy_into_live(db_path, DB_PATH)
+        engine.dispose()
+        init_db()                                     # an older backup's schema brought up to date
+        _put_back_https_rows(https_rows)
+        old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
+        shutil.rmtree(old_uploads, ignore_errors=True)
+        email_cleared = _clear_unusable_email_password()
+
+        db = SessionLocal()
+        try:
+            recipes = db.query(models.Recipe).count()
+            refresh_user_keywords(db)
+        finally:
+            db.close()
+        restore_mod.prune_safety_backups(DATA_DIR)
+        log.info("Restore: %d recipes and %d files restored (%d files left out)", recipes, kept, left_out)
+    except HTTPException:
+        raise
+    except restore_mod.RestoreError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        log.exception("Restore failed")
+        raise HTTPException(status_code=500, detail="The restore failed; Settings -> Logs has the details. "
+                                                    "The data from before it is in the safety backup in the data folder.")
+    finally:
+        for lock in reversed(held):
+            lock.release()
+        _restoring.clear()
+        _restore_lock.release()
+        _clear_pending_restores()
+    # After the app is open again: the learned models and the What to eat?
+    # switch follow the restored data.
+    try:
+        learning.load()
+        learning.schedule_retrain(delay=5)
+        anyio.from_thread.run(picker.startup if picker.saved_enabled() else picker.stop_server)
+    except Exception:
+        log.exception("Restore: couldn't reapply learning or the What to eat? switch")
+    return {"recipes": recipes, "files": kept, "files_left_out": left_out,
+            "safety_backup": safety_name, "email_password_cleared": email_cleared}
 
 
 # ---------------------------------------------------------------------------

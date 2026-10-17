@@ -75,6 +75,7 @@ _LOCKED = [
     re.compile(r"^/api/https(/.*)?$"),
     re.compile(r"^/api/logs(/.*)?$"),
     re.compile(r"^/api/recipes/[^/]+/email$"),
+    re.compile(r"^/api/backup/restore$"),   # replaces the whole library (/check only reads the file)
 ]
 _OPEN = {
     "/api/email-settings/scan",   # reads only the recipe inbox; left open on purpose

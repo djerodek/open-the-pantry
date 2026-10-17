@@ -387,3 +387,7 @@ class LearningSettingsIn(BaseModel):
 
 class PickerSettingsIn(BaseModel):
     enabled: bool
+
+
+class RestoreRequest(BaseModel):
+    token: str = Field(..., max_length=64)

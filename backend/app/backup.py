@@ -112,6 +112,13 @@ This archive contains a complete copy of your recipe library:
 To restore
 ----------
 
+The easy way, while the app is running: Settings -> Backup & export ->
+Restore or import, choose this file, then Replace my library. A safety copy
+of the current library is written to the data folder first
+(restore-safety-<date>.zip).
+
+By hand (when the app won't start, or onto a new install):
+
 1. Stop the app:
 
        docker compose down
@@ -171,6 +178,15 @@ Cette archive contient une copie complète de votre bibliothèque de recettes :
 
 Pour restaurer
 --------------
+
+La façon simple, pendant que l'application fonctionne : Paramètres ->
+Sauvegarde et exportation -> Restaurer ou importer, choisissez ce fichier,
+puis Remplacer ma bibliothèque. Une copie de sécurité de la bibliothèque
+actuelle est d'abord écrite dans le dossier de données
+(restore-safety-<date>.zip).
+
+À la main (quand l'application ne démarre pas, ou sur une nouvelle
+installation) :
 
 1. Arrêtez l'application :
 

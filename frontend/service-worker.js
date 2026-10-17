@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v60";
+const CACHE_NAME = "open-the-pantry-shell-v61";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -40,7 +40,7 @@ self.addEventListener("activate", (event) => {
 // Logs hold email subjects, senders and links, and a downloaded log would
 // otherwise sit in the Cache API; HTTPS and What to eat? status are live
 // state with no use offline (a stale "on" would show a dead link).
-const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/,
+const NEVER_CACHE = [/^\/api\/backup\//, /\/export\.(pdf|html|json)$/, /^\/api\/email-settings/, /^\/api\/client-error/, /^\/api\/version$/,
   /^\/api\/logs/, /^\/api\/https/, /^\/api\/picker/];
 function shouldCache(request, response) {
   if (!response || !response.ok || response.type !== "basic") return false;

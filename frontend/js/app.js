@@ -400,19 +400,87 @@
     });
   }
 
-  // Settings -> Backup & export -> Import recipes (backend: interchange.py,
-  // POST /api/import/recipes). Adds; reports per recipe like the batches.
+  // Settings -> Backup & export -> Restore or import. A full backup
+  // (backend: restore.py) is checked first and replaces the library only
+  // after "Replace my library" (behind the settings password); anything else
+  // goes to the import (interchange.py, POST /api/import/recipes), which
+  // adds and reports per recipe like the batches.
   const importBtn = $("#import-btn");
+  const restoreConfirm = $("#restore-confirm");
+  let pendingRestore = null;
   if (importBtn) {
+    $("#restore-cancel").addEventListener("click", () => {
+      pendingRestore = null;
+      restoreConfirm.hidden = true;
+      $("#import-status").textContent = tx("Nothing was changed.");
+      importBtn.focus();
+    });
+    $("#restore-go").addEventListener("click", async () => {
+      if (!pendingRestore) return;
+      const status = $("#import-status");
+      const go = $("#restore-go");
+      go.disabled = true;
+      status.textContent = tx("Restoring… The app pauses until it's done.");
+      try {
+        const res = await adminFetch(`${API}/backup/restore`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: pendingRestore.token }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { status.textContent = apiErrorText(data, res.status); return; }
+        restoreConfirm.hidden = true;
+        pendingRestore = null;
+        let msg = tx("Restored. Recipes: {1}; photos and PDFs: {2}. What was here before is saved as {3} in the data folder.",
+          { 1: data.recipes, 2: data.files, 3: data.safety_backup });
+        if (data.email_password_cleared) msg += " " + tx("Enter the email password again in Settings → Email ingest: the one in the backup can't be read on this server.");
+        status.textContent = msg;
+        announce(msg);
+        await loadTags(); await loadTimeBuckets(); loadRecipes(); refreshBackupStats(); refreshPickerLink();
+      } catch {
+        status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+      } finally {
+        go.disabled = false;
+      }
+    });
+
     importBtn.addEventListener("click", async () => {
       const input = $("#import-file");
       const status = $("#import-status");
       const results = $("#import-results");
       const file = input.files && input.files[0];
       results.replaceChildren();
+      restoreConfirm.hidden = true;
+      pendingRestore = null;
       if (!file) { status.textContent = tx("Choose a file first."); input.focus(); return; }
-      if (file.size > 1024 * 1024 * 1024) { status.textContent = tx("That file is larger than 1 GB."); return; }
       importBtn.disabled = true;
+      // A .zip may be a full backup: ask the server what it is first.
+      if (/\.zip$/i.test(file.name)) {
+        status.textContent = tx("Checking {1}…", { 1: file.name });
+        try {
+          const body = new FormData();
+          body.append("file", file);
+          const res = await fetch(`${API}/backup/restore/check`, { method: "POST", body });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { status.textContent = apiErrorText(data, res.status); importBtn.disabled = false; return; }
+          if (data.kind === "backup") {
+            pendingRestore = data;
+            const when = data.created_at ? fmtDateTime(data.created_at) : tx("an unknown date");
+            $("#restore-summary").textContent = tx(
+              "This is a full backup from {1}. Recipes: {2}; photos and PDFs: {3}. Restoring replaces your whole library (recipes here now: {4}) with it. A safety copy of your current library is saved first.",
+              { 1: when, 2: data.recipes, 3: data.files, 4: data.current_recipes });
+            restoreConfirm.hidden = false;
+            status.textContent = "";
+            $("#restore-cancel").focus();
+            importBtn.disabled = false;
+            return;
+          }
+        } catch {
+          status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+          importBtn.disabled = false;
+          return;
+        }
+      }
+      if (file.size > 1024 * 1024 * 1024) { status.textContent = tx("That file is larger than 1 GB."); importBtn.disabled = false; return; }
       status.textContent = tx("Importing {1}…", { 1: file.name });
       try {
         const body = new FormData();

@@ -96,6 +96,13 @@ moving that folder and pointing the compose file at it.
 
 **Restoring from a backup zip** (Settings → Backup & export → Full backup):
 
+From the app: Settings → Backup & export → **Restore or import**, choose
+the zip, check what it says is in it, then **Replace my library**. The
+settings password is asked for, a safety copy of the current library is
+written to the data folder first, and nothing needs restarting (details
+under *Backup & export* below). The steps here are for when the app won't
+start, or for setting up a new install from a backup by hand:
+
 1. `docker compose down`
 2. Unzip into the folder the volume line points at, so that `recipes.db` and
    `uploads/` sit directly inside it (not in a subfolder):
@@ -512,10 +519,11 @@ at>:8090`.
 - **Full backup (`.zip`)** — the restorable one. Contains a consistent
   snapshot of the SQLite database plus every uploaded photo and PDF, with
   a `manifest.json` and a `RESTORE.txt` explaining how to put it back.
-  Restoring is: stop the app, unzip into the data folder, start it again
-  (see *Moving or restoring your data* above; the same steps are in the
-  app under the Download button). The app is stopped for that on purpose — replacing a SQLite file underneath a
-  running process is how you corrupt it.
+  Restore it from Settings (below), or by hand when the app won't start:
+  stop the app, unzip into the data folder, start it again (see *Moving or
+  restoring your data* above; the same steps are in the app under the
+  Restore box). The app is stopped for the manual way on purpose — replacing
+  a SQLite file underneath a running process is how you corrupt it.
 - The snapshot is taken through SQLite's **online backup API**, not by
   copying `recipes.db`. This matters more than it sounds: the app runs in
   WAL mode, so at any moment an unknown amount of committed data is sitting
@@ -566,10 +574,29 @@ at>:8090`.
   the finished file in memory before saving it; that's the price of not
   navigating away on iOS, and fine up to a few hundred MB.) Temp archives are deleted once sent, and swept if a
   download dies mid-flight.
-- There is deliberately **no in-app restore button**. The app has no
-  authentication, and an unauthenticated endpoint that overwrites the entire
-  database is a materially worse thing to expose than one that reads it.
-  Restoring is a documented two-command manual step instead.
+- **Restore a full backup** (the same box as the import: a `.zip` with a
+  `recipes.db` inside is taken as a backup, anything else is imported). The
+  file is checked first and nothing changes until you confirm: the zip is
+  read only by name and with limits, `recipes.db` must pass SQLite's
+  integrity check and have this app's tables, and the screen shows how many
+  recipes are in it against how many are here now. **Replace my library**
+  then asks for the settings password (overwriting the whole library is
+  the most destructive thing the app can do, so it sits behind the same
+  password as Email ingest and HTTPS) and:
+  - writes a **safety backup** of the current library to the data folder
+    (`restore-safety-<date>.zip`, a normal full backup; the newest three are
+    kept), so restoring the wrong file can be undone by restoring that one;
+  - pauses the rest of the app (other requests get "try again in a
+    moment"), then copies the backup into the live database through
+    SQLite's backup API, under SQLite's own locking, and replaces `uploads/`
+    with the backup's photos and PDFs (each checked like an upload; anything
+    else is left out and counted);
+  - brings an older backup's database up to date the same way an update
+    does, and reloads the learned models and What to eat?;
+  - keeps what belongs to this server rather than to the backup: the HTTPS
+    settings, and the email password when this server's `encryption.key`
+    can read it. One it can't read (a backup from another install) is
+    cleared and email ingest switched off, with a note saying so.
 
 **Organizing & finding**
 - Three structured tag categories (meal type, cooking style, main

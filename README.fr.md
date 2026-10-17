@@ -113,6 +113,15 @@ disque plus grand) :
 **Restaurer à partir d'une sauvegarde .zip** (Paramètres → Sauvegarde et
 exportation → Sauvegarde complète) :
 
+Depuis l'application : Paramètres → Sauvegarde et exportation →
+**Restaurer ou importer**, choisissez le .zip, vérifiez ce qu'il dit
+contenir, puis **Remplacer ma bibliothèque**. Le mot de passe des
+paramètres est demandé, une copie de sécurité de la bibliothèque actuelle
+est d'abord écrite dans le dossier de données, et rien n'a besoin d'être
+redémarré (détails sous *Sauvegarde et exportation* plus bas). Les étapes
+ci-dessous servent quand l'application ne démarre pas, ou pour monter à la
+main une nouvelle installation à partir d'une sauvegarde :
+
 1. `docker compose down`
 2. Décompressez dans le dossier visé par la ligne de volume, de façon que
    `recipes.db` et `uploads/` soient directement dedans (pas dans un
@@ -596,12 +605,13 @@ ouvert la page>:8090`.
   instantané cohérent de la base SQLite plus chaque photo et PDF
   téléversé, avec un `manifest.json` et un `RESTORE.txt` (ou
   `RESTAURER.txt` en français) qui explique comment la remettre en place.
-  Pour restaurer : arrêter l'application, décompresser dans le dossier de
-  données, la redémarrer (voir *Déplacer ou restaurer vos données*
-  ci-dessus; les mêmes étapes sont dans l'application, sous le bouton
-  Télécharger). L'application est arrêtée pour ça volontairement —
-  remplacer un fichier SQLite sous un processus en marche, c'est la
-  meilleure façon de le corrompre.
+  Restaurez-la depuis les Paramètres (plus bas), ou à la main quand
+  l'application ne démarre pas : arrêter l'application, décompresser dans
+  le dossier de données, la redémarrer (voir *Déplacer ou restaurer vos
+  données* ci-dessus; les mêmes étapes sont dans l'application, sous la
+  boîte Restaurer). L'application est arrêtée pour la méthode manuelle
+  volontairement — remplacer un fichier SQLite sous un processus en marche,
+  c'est la meilleure façon de le corrompre.
 - L'instantané est pris avec l'**API de sauvegarde en ligne** de SQLite,
   pas en copiant `recipes.db`. C'est plus important qu'il n'y paraît :
   l'application fonctionne en mode WAL, donc à tout moment une quantité
@@ -666,11 +676,35 @@ ouvert la page>:8090`.
   pas quitter la page sur iOS, et ça va jusqu'à quelques centaines de Mo.)
   Les archives temporaires sont supprimées une fois envoyées, et nettoyées
   si un téléchargement meurt en cours de route.
-- Il n'y a volontairement **pas de bouton de restauration** dans
-  l'application. L'application n'a pas d'authentification, et un point
-  d'accès non authentifié qui écrase toute la base de données est bien
-  plus dangereux à exposer qu'un point d'accès qui la lit. La restauration
-  est plutôt une étape manuelle documentée, en deux commandes.
+- **Restaurer une sauvegarde complète** (la même boîte que l'importation :
+  un `.zip` qui contient un `recipes.db` est pris pour une sauvegarde, tout
+  le reste est importé). Le fichier est vérifié d'abord et rien ne change
+  avant votre confirmation : le zip est lu seulement par nom et avec des
+  limites, `recipes.db` doit passer la vérification d'intégrité de SQLite
+  et avoir les tables de cette application, et l'écran indique combien de
+  recettes il contient par rapport à combien il y en a ici. **Remplacer ma
+  bibliothèque** demande ensuite le mot de passe des paramètres (écraser
+  toute la bibliothèque est ce que l'application peut faire de plus
+  destructeur, donc c'est derrière le même mot de passe que la réception
+  par courriel et HTTPS) et :
+  - écrit une **sauvegarde de sécurité** de la bibliothèque actuelle dans
+    le dossier de données (`restore-safety-<date>.zip`, une sauvegarde
+    complète normale; les trois plus récentes sont gardées), pour qu'une
+    restauration du mauvais fichier puisse être annulée en restaurant
+    celle-là;
+  - met le reste de l'application en pause (les autres requêtes reçoivent
+    « réessayez dans un instant »), puis copie la sauvegarde dans la base
+    en service avec l'API de sauvegarde de SQLite, sous le verrouillage de
+    SQLite, et remplace `uploads/` par les photos et PDF de la sauvegarde
+    (chacun vérifié comme un téléversement; le reste est laissé de côté et
+    compté);
+  - met à jour la base d'une sauvegarde plus ancienne de la même façon
+    qu'une mise à jour, et recharge les modèles appris et Quoi manger?;
+  - garde ce qui appartient à ce serveur plutôt qu'à la sauvegarde : les
+    paramètres HTTPS, et le mot de passe du courriel quand
+    l'`encryption.key` de ce serveur peut le lire. Un mot de passe qu'elle
+    ne peut pas lire (une sauvegarde d'une autre installation) est effacé
+    et la réception par courriel désactivée, avec une note qui le dit.
 
 **Organiser et trouver**
 - Trois catégories d'étiquettes structurées (type de repas, mode de

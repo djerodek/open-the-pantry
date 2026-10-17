@@ -450,10 +450,21 @@
     "Recipes as JSON": "Recettes en JSON",
     "Every recipe as a schema.org Recipe file, the format recipe websites use, with its photo, in a .zip. Other recipe apps can import it, and so can this one (it adds; the full backup is what restores).":
       "Chaque recette en fichier Recipe schema.org, le format des sites de recettes, avec sa photo, dans un .zip. D'autres applications de recettes peuvent l'importer, et celle-ci aussi (elle ajoute; c'est la sauvegarde complète qui restaure).",
-    "Import recipes": "Importer des recettes",
-    "A schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). The recipes are added; nothing is replaced, and ones already here from the same link are skipped.":
-      "Un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Les recettes sont ajoutées; rien n'est remplacé, et celles déjà présentes depuis le même lien sont ignorées.",
-    "Import": "Importer",
+    "Restore or import": "Restaurer ou importer",
+    "A full backup (.zip) replaces your library with the one in the backup, after a confirmation and a safety copy of what's here now. Any other file adds its recipes and replaces nothing: a schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). Ones already here from the same link are skipped.":
+      "Une sauvegarde complète (.zip) remplace votre bibliothèque par celle de la sauvegarde, après une confirmation et une copie de sécurité de ce qui est ici maintenant. Tout autre fichier ajoute ses recettes et ne remplace rien : un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Celles déjà présentes depuis le même lien sont ignorées.",
+    "Continue": "Continuer",
+    "Replace my library": "Remplacer ma bibliothèque",
+    "Nothing was changed.": "Rien n'a été modifié.",
+    "Restoring… The app pauses until it's done.": "Restauration… L'application est en pause jusqu'à la fin.",
+    "Restored. Recipes: {1}; photos and PDFs: {2}. What was here before is saved as {3} in the data folder.":
+      "Restauré. Recettes : {1}; photos et PDF : {2}. Ce qui était ici avant est enregistré sous {3} dans le dossier de données.",
+    "Enter the email password again in Settings → Email ingest: the one in the backup can't be read on this server.":
+      "Entrez de nouveau le mot de passe du courriel dans Paramètres → Réception par courriel : celui de la sauvegarde ne peut pas être lu sur ce serveur.",
+    "Checking {1}…": "Vérification de {1}…",
+    "an unknown date": "une date inconnue",
+    "This is a full backup from {1}. Recipes: {2}; photos and PDFs: {3}. Restoring replaces your whole library (recipes here now: {4}) with it. A safety copy of your current library is saved first.":
+      "C'est une sauvegarde complète du {1}. Recettes : {2}; photos et PDF : {3}. La restaurer remplace toute votre bibliothèque (recettes ici maintenant : {4}). Une copie de sécurité de votre bibliothèque actuelle est d'abord enregistrée.",
     "Download JSON (schema.org)": "Télécharger en JSON (schema.org)",
     "Preparing your recipes as JSON…": "Préparation de vos recettes en JSON…",
     "Imported": "Importée",
@@ -479,7 +490,7 @@
     "{1} recipe(s), {2} uploaded file(s) ({3} total).": "{1} recette(s), {2} fichier(s) envoyé(s) ({3} au total).",
 
     // Restore instructions (static page text, split around <code> elements)
-    "How to restore a backup or move to another drive": "Restaurer une sauvegarde ou déplacer vers un autre disque",
+    "Restore by hand or move to another drive": "Restaurer à la main ou déplacer vers un autre disque",
     "Your library lives in one folder on the server: the": "Votre bibliothèque se trouve dans un seul dossier sur le serveur : le",
     "left side": "côté gauche",
     "of the": "de la ligne",
@@ -493,7 +504,8 @@
     "Start it:": "Démarrez-la :",
     ", and check your recipes are there before deleting the old folder.":
       ", et vérifiez que vos recettes y sont avant de supprimer l'ancien dossier.",
-    "Restore a full backup": "Restaurer une sauvegarde complète",
+    "Restore a full backup by hand": "Restaurer une sauvegarde complète à la main",
+    "For when the app won't start. Otherwise use the box above.": "Pour quand l'application ne démarre pas. Sinon, utilisez la boîte ci-dessus.",
     "Unzip the backup into the data folder so": "Décompressez la sauvegarde dans le dossier de données pour que",
     "and": "et",
     "are directly inside it:": "s'y trouvent directement :",

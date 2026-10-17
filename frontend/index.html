@@ -415,19 +415,28 @@
       <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
 
       <div class="import-box" id="import-box">
-        <div class="restore-help-title" id="import-label">Import recipes</div>
-        <div class="field-hint">A schema.org recipe file (.json) or a .zip of them, from this
-        app's Recipes as JSON or another recipe app, or a Paprika export
-        (.paprikarecipes). The recipes are added; nothing is replaced, and
-        ones already here from the same link are skipped.</div>
+        <div class="restore-help-title" id="import-label">Restore or import</div>
+        <div class="field-hint">A full backup (.zip) replaces your library with
+        the one in the backup, after a confirmation and a safety copy of what's
+        here now. Any other file adds its recipes and replaces nothing: a
+        schema.org recipe file (.json) or a .zip of them, from this app's
+        Recipes as JSON or another recipe app, or a Paprika export
+        (.paprikarecipes). Ones already here from the same link are skipped.</div>
         <input type="file" id="import-file" accept=".json,.zip,.paprikarecipes,application/json,application/zip" aria-labelledby="import-label">
-        <button type="button" id="import-btn" class="btn-secondary">Import</button>
+        <button type="button" id="import-btn" class="btn-secondary">Continue</button>
+        <div class="restore-confirm" id="restore-confirm" hidden>
+          <p id="restore-summary"></p>
+          <div class="restore-confirm-actions">
+            <button type="button" id="restore-go" class="btn-danger">Replace my library</button>
+            <button type="button" id="restore-cancel" class="btn-secondary">Cancel</button>
+          </div>
+        </div>
         <p class="field-hint" id="import-status" role="status" aria-live="polite"></p>
         <div id="import-results"></div>
       </div>
 
       <details class="restore-help">
-        <summary>How to restore a backup or move to another drive</summary>
+        <summary>Restore by hand or move to another drive</summary>
         <p>Your library lives in one folder on the server: the <strong>left side</strong>
         of the <code>volumes:</code> line in <code>docker-compose.yml</code>
         (<code>./data</code> unless you changed it).</p>
@@ -443,7 +452,8 @@
             there before deleting the old folder.</li>
         </ol>
 
-        <p class="restore-help-title">Restore a full backup</p>
+        <p class="restore-help-title">Restore a full backup by hand</p>
+        <p>For when the app won't start. Otherwise use the box above.</p>
         <ol>
           <li>Stop the app: <code>docker compose down</code></li>
           <li>Unzip the backup into the data folder so <code>recipes.db</code> and
