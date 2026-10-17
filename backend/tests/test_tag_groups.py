@@ -62,7 +62,10 @@ def test_new_group_with_a_keyword_tag_is_suggested_and_scanned(client):
     assert t["keywords"] == "lemongrass, fish sauce, galangal" and t["user_defined"] is True
 
     got = client.post("/api/tags/suggest", json={"title": "Green curry", "ingredients": ["2 stalks lemongrass"]}).json()
-    assert {"name": "Thai", "category": g["key"], "subgroup": None} in got
+    assert {"name": "Thai", "category": g["key"], "subgroup": None} in \
+        [{k: t[k] for k in ("name", "category", "subgroup")} for t in got]
+    # ...and says which keyword brought it (backlog item 5).
+    assert {"source": "keyword", "keyword": "lemongrass"}.items() <= next(t for t in got if t["name"] == "Thai").items()
 
     rid = _recipe(client, "TG Tom Yum", ["1 stalk lemongrass", "shrimp"])
     ch = client.post("/api/tags/auto-apply?dry_run=true").json()["changes"]

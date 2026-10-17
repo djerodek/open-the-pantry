@@ -178,6 +178,12 @@ class AutoTagIgnore(BaseModel):
     ignored: bool
 
 
+class TagSuggestionOut(TagIn):
+    """A suggested tag and where it came from (tagger.explain_tags)."""
+    source: Literal["keyword", "learned", "no_meat"]
+    keyword: Optional[str] = None
+
+
 class TagSuggestRequest(BaseModel):
     """What's in the edit form right now, saved or not."""
     title: str = Field("", max_length=500)

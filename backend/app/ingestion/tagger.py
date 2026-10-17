@@ -146,7 +146,33 @@ def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -
     meat or fish tag also withdraws the keywords' Vegetarian (that one only
     means "no meat word found"); a learned Vegetarian is dropped when meat
     or fish was found."""
-    suggestions = keyword_suggestions(title, ingredient_names, step_text)
+    return [(n, c, s) for n, c, s, _ in _suggest(title, ingredient_names, step_text)]
+
+
+def explain_tags(title: str, ingredient_names: list[str], step_text: str = "") -> list[dict]:
+    """suggest_tags(), each with where it came from, for the review screen:
+    {"name", "category", "subgroup", "source": "keyword" | "learned" |
+    "no_meat", "keyword": the word that matched (source "keyword" only)}.
+    "no_meat" is the keywords' Vegetarian: no meat or fish word found."""
+    out = []
+    for name, category, subgroup, why in _suggest(title, ingredient_names, step_text):
+        if why == _LEARNED:
+            source, keyword = "learned", None
+        elif why is None:
+            source, keyword = "no_meat", None
+        else:
+            source, keyword = "keyword", why
+        out.append({"name": name, "category": category, "subgroup": subgroup, "source": source, "keyword": keyword})
+    return out
+
+
+_LEARNED = object()
+
+
+def _suggest(title, ingredient_names, step_text):
+    """(name, category, subgroup, why): why is the matched keyword, None for
+    the keywords' Vegetarian, or _LEARNED."""
+    suggestions = _keyword_matches(title, ingredient_names, step_text)
     learned = _learned_tagger
     if learned is None:
         return suggestions
@@ -158,16 +184,16 @@ def suggest_tags(title: str, ingredient_names: list[str], step_text: str = "") -
         _log.exception("Learned tagger failed; keyword suggestions only")
         return suggestions
     meat = meat_tag_names()
-    have = {(n, c) for n, c, _ in suggestions}
-    keyword_meat = any(n in meat for n, _, _ in suggestions) or ("Vegetarian", "main_ingredient") not in have
+    have = {(n, c) for n, c, _, _ in suggestions}
+    keyword_meat = any(n in meat for n, _, _, _ in suggestions) or ("Vegetarian", "main_ingredient") not in have
     for name, category, subgroup in extra:
         if (name, category) in have:
             continue
         if name == "Vegetarian" and keyword_meat:
             continue
-        suggestions.append((name, category, subgroup))
+        suggestions.append((name, category, subgroup, _LEARNED))
         have.add((name, category))
-    if any(n in meat for n, _, _ in suggestions):
+    if any(n in meat for n, _, _, _ in suggestions):
         suggestions = [t for t in suggestions if t[0] != "Vegetarian"]
     return suggestions
 
@@ -178,9 +204,15 @@ def keyword_suggestions(title: str, ingredient_names: list[str], step_text: str 
     keyword matching. No LLM. Intended as a starting point the user can accept,
     remove, or add to via the manual-review step -- not treated as authoritative.
     """
+    return [(n, c, s) for n, c, s, _ in _keyword_matches(title, ingredient_names, step_text)]
+
+
+def _keyword_matches(title, ingredient_names, step_text):
+    """keyword_suggestions() with the keyword that matched each one (None
+    for Vegetarian, which is the absence of a match)."""
     haystack = _fold(" ".join([title or "", " ".join(ingredient_names), step_text or ""]))
 
-    suggestions: list[tuple[str, str, str | None]] = []
+    suggestions: list[tuple] = []
     matched_meat_or_fish = False
     animal_flavouring = _FLAVOURING.search(haystack) is not None
     main_haystack = _BAKING_TIN.sub(" ", _FLAVOURING.sub(" ", haystack))
@@ -193,20 +225,21 @@ def keyword_suggestions(title: str, ingredient_names: list[str], step_text: str 
             for kw in keywords:
                 if _text_contains(text, kw):
                     subgroup = "cocktail" if tag_name in {"Shaken", "Stirred", "Built", "Blended"} else None
-                    suggestions.append((tag_name, category, subgroup))
+                    suggestions.append((tag_name, category, subgroup, kw))
                     if tag_name in MEAT_FISH_TAGS:
                         matched_meat_or_fish = True
                     break
 
     # Keywords added in Settings. A built-in tag can get extra words too, so
     # skip any tag already suggested above.
-    have = {(n, c) for n, c, _ in suggestions}
+    have = {(n, c) for n, c, _, _ in suggestions}
     for name, category, subgroup, keywords, rules_out_veg in _user_keywords:
         if (name, category) in have:
             continue
         text = main_haystack if category == "main_ingredient" else haystack
-        if any(_text_contains(text, kw) for kw in keywords):
-            suggestions.append((name, category, subgroup))
+        hit = next((kw for kw in keywords if _text_contains(text, kw)), None)
+        if hit is not None:
+            suggestions.append((name, category, subgroup, hit))
             have.add((name, category))
             if rules_out_veg or name in MEAT_FISH_TAGS:
                 matched_meat_or_fish = True
@@ -219,6 +252,6 @@ def keyword_suggestions(title: str, ingredient_names: list[str], step_text: str 
         # Vegetarian as a starting point. Still user-editable; not authoritative
         # (doesn't know about e.g. fish sauce, gelatin, lard as an ingredient name
         # unless those specific words appear).
-        suggestions.append(("Vegetarian", "main_ingredient", None))
+        suggestions.append(("Vegetarian", "main_ingredient", None, None))
 
     return suggestions

@@ -663,6 +663,16 @@ at>:8090`.
     cross-validation, the extra suggestions it would make were right at
     least 85% of the time -- batch and email imports save tags without
     review.
+  - **Where a suggestion came from.** On the review screen and after Edit's
+    *Suggest tags*, each suggested tag says why: *keyword: bake* (the word
+    that matched, built-in or added in Settings), *learned*, or, for
+    Vegetarian, *no meat or fish word found*, so a tag that keeps coming
+    back wrongly can be traced to its keyword. Settings → Learning shows
+    each model's scores against what it needs (for reading imports, both
+    accuracies and the margin it must beat the rules by), how many tagged
+    recipes the tag models learned from, the tags that got no model with
+    how often their extra suggestions were right, and how many recipes
+    were left out as still *To review*.
 
   Both retrain by themselves a couple of minutes after recipes or tags
   change, and at startup; "Retrain now" does it at once. A training takes

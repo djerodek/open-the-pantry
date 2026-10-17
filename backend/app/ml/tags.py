@@ -74,6 +74,21 @@ def _threshold(probs: np.ndarray, truth: np.ndarray) -> float | None:
     return best
 
 
+def _best_precision(probs: np.ndarray, truth: np.ndarray) -> float | None:
+    """For Settings: the best share of right extra suggestions any cut
+    reached (with at least MIN_HITS right), None if none got that far."""
+    order = np.argsort(-probs)
+    best = None
+    hits = 0
+    for rank, i in enumerate(order, 1):
+        if probs[i] < FLOOR:
+            break
+        hits += truth[i]
+        if hits >= MIN_HITS:
+            best = max(best or 0.0, hits / rank)
+    return best
+
+
 def train(examples: list[TagExample], subgroups: dict, folds: int = 5) -> tuple[TagModel | None, dict]:
     """subgroups: {(name, category): subgroup} for the tags that exist."""
     # Every recipe counts, tagged or not: leaving out the untagged ones
@@ -113,13 +128,21 @@ def train(examples: list[TagExample], subgroups: dict, folds: int = 5) -> tuple[
             w = linear.train_sigmoid(X_train, Y[train_rows][:, [j]])
             oof[rows, j] = linear.predict_sigmoid(X_held, w)[:, 0]
 
-    keep, thresholds = [], []
+    keep, thresholds, not_used = [], [], []
     for j, t in enumerate(candidates):
         extra = ~KW[:, j]            # only what the keywords didn't already suggest
         th = _threshold(oof[extra, j], Y[extra, j])
         if th is not None:
             keep.append(j)
             thresholds.append(th)
+        else:
+            best = _best_precision(oof[extra, j], Y[extra, j])
+            not_used.append({"name": t[0], "category": t[1], "precision": None if best is None else round(best, 4)})
+    # Why the others have no model (Settings): the closest first.
+    not_used.sort(key=lambda d: (-(d["precision"] or 0), d["name"]))
+    report["not_used"] = not_used[:12]
+    report["not_used_count"] = len(not_used)
+    report["precision_needed"] = PRECISION
     if not keep:
         report["status"] = "nothing_learned"
         return None, report

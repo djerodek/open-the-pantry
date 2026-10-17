@@ -2366,24 +2366,47 @@
       imports = {
         active: () => tx("Reading imports: learned model in use. On your {1} imported recipes it put {2}% of lines in the right place, against {3}% for the built-in rules.",
           { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy) }),
-        rules_better: () => tx("Reading imports: built-in rules. On your {1} imported recipes the learned model did no better ({2}% of lines in the right place, against {3}% for the rules).",
-          { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy) }),
+        rules_better: () => tx("Reading imports: built-in rules. On your {1} imported recipes the learned model put {2}% of lines in the right place, against {3}% for the rules; it's used once it does at least {4} points better.",
+          { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy), 4: pct(seg.min_gain != null ? seg.min_gain : 0.02) }),
         not_enough_data: () => tx("Reading imports: built-in rules. Learning starts after {1} recipes imported from a photo, PDF or email ({2} so far).",
           { 1: seg.needed, 2: seg.imported_recipes || 0 }),
       }[seg.status];
       imports = imports ? imports() : tx("Reading imports: not trained yet.");
       tagText = {
-        active: () => tx("Tag suggestions: keywords, plus learned suggestions for {1}.", { 1: (tags.learned || []).map((n) => tagLabel(n)).join(", ") }),
+        active: () => tx("Tag suggestions: keywords, plus learned suggestions for {1}.", { 1: (tags.learned || []).map((n) => tagLabel(n)).join(", ") })
+          + " " + txn(tags.tagged_recipes || 0, "Learned from {n} tagged recipe.", "Learned from {n} tagged recipes."),
         not_enough_data: () => tx("Tag suggestions: keywords only. Learning starts after {1} tagged recipes ({2} so far).",
           { 1: tags.needed, 2: tags.tagged_recipes || 0 }),
-        no_tags: () => tx("Tag suggestions: keywords only. No tag is on enough recipes yet to learn from."),
-        nothing_learned: () => tx("Tag suggestions: keywords only. No tag could yet be predicted reliably enough to add suggestions."),
+        no_tags: () => tx("Tag suggestions: keywords only. No tag is on enough recipes yet to learn from.")
+          + " " + txn(tags.tagged_recipes || 0, "{n} tagged recipe so far.", "{n} tagged recipes so far."),
+        nothing_learned: () => tx("Tag suggestions: keywords only. No tag could yet be predicted reliably enough to add suggestions.")
+          + " " + txn(tags.tagged_recipes || 0, "Tried on {n} tagged recipe.", "Tried on {n} tagged recipes."),
       }[tags.status];
       tagText = tagText ? tagText() : tx("Tag suggestions: not trained yet.");
     }
     $("#learning-imports").textContent = imports;
     $("#learning-tags").textContent = tagText;
     $("#learning-tags").hidden = !tagText;
+    // Why the other tags have no model: how often their extra suggestions
+    // were right in cross-validation, against what's needed.
+    let details = "";
+    const notUsed = (s.enabled && (tags.status === "active" || tags.status === "nothing_learned") && tags.not_used) || [];
+    if (notUsed.length) {
+      const items = notUsed.map((t) => t.precision != null
+        ? tx("{1} {2}%", { 1: tagLabel(t), 2: pct(t.precision) })
+        : tx("{1} (too few right)", { 1: tagLabel(t) }));
+      details = tx("Not learned yet, as their extra suggestions weren't right often enough ({1}% needed): {2}.",
+        { 1: pct(tags.precision_needed || 0.85), 2: items.join(", ") });
+      const more = (tags.not_used_count || 0) - notUsed.length;
+      if (more > 0) details += " " + txn(more, "and {n} more tag.", "and {n} more tags.");
+    }
+    $("#learning-tag-details").textContent = details;
+    $("#learning-tag-details").hidden = !details;
+    const left = s.enabled ? (s.left_out_to_review || 0) : 0;
+    $("#learning-review").textContent = left
+      ? txn(left, "{n} recipe still to review isn't learned from until it's checked.", "{n} recipes still to review aren't learned from until they're checked.")
+      : "";
+    $("#learning-review").hidden = !left;
     let trained = "";
     if (s.training) trained = tx("Training…");
     else if (s.error) trained = tx("The last training failed: {1}", { 1: s.error });
@@ -2722,6 +2745,29 @@
           onclick: (e) => deleteRecipe(recipe.id, e.currentTarget, tx("Delete this import")) }),
       ]),
     ]);
+  }
+
+  // Where a suggested tag came from (tagger.explain_tags): the keyword that
+  // matched, the learned model, or Vegetarian's "no meat word found", so a
+  // tag that keeps coming back wrongly can be traced.
+  function tagSourceParts(t) {
+    if (t.source === "keyword" && t.keyword) return [document.createTextNode(tx("keyword:") + " "), el("em", { text: t.keyword })];
+    if (t.source === "learned") return [document.createTextNode(tx("learned"))];
+    if (t.source === "no_meat") return [document.createTextNode(tx("no meat or fish word found"))];
+    return [];
+  }
+
+  function tagSourcesNote(tags) {
+    const shown = (tags || []).filter((t) => t.source);
+    if (!shown.length) return null;
+    const parts = [document.createTextNode(tx("Suggested because:") + " ")];
+    shown.forEach((t, i) => {
+      if (i) parts.push(document.createTextNode("; "));
+      parts.push(el("span", { class: "tag-source" }, [
+        el("strong", { text: tagLabel(t) }), document.createTextNode(" ("), ...tagSourceParts(t), document.createTextNode(")"),
+      ]));
+    });
+    return el("div", { class: "field-hint tag-sources" }, parts);
   }
 
   // The review view's "Check these": what the server thinks most likely
@@ -3621,9 +3667,12 @@
           const found = await res.json();
           found.forEach((t) => suggestedCats.set(tagLabel(t).toLowerCase(), t));
           if (found.length) tagsInput.value = [...currentTagNames(), ...found.map((t) => tagLabel(t))].join(", ");
-          suggestHint.textContent = found.length
-            ? tx("Added {1}. Remove any that don't fit, then save.", { 1: found.map((t) => tagLabel(t)).join(", ") })
-            : tx("No new suggestions.");
+          if (found.length) {
+            suggestHint.replaceChildren(document.createTextNode(tx("Added. Remove any that don't fit, then save.") + " "),
+              tagSourcesNote(found));
+          } else {
+            suggestHint.textContent = tx("No new suggestions.");
+          }
         } catch (e) {
           suggestHint.textContent = tx("Couldn't get suggestions ({1}).", { 1: e.message });
         }
@@ -4839,6 +4888,7 @@
         el("div", { class: "field" }, [
           el("label", { for: "review-tags", text: tx("Tags (comma or semicolon separated)") }),
           tagsInput,
+          tagSourcesNote(draft.suggested_tags),
           el("div", { class: "field-hint", text: tx("Auto-suggested from keywords \u2014 edit freely.") }),
         ]),
         el("div", { class: "field" }, [

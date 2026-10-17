@@ -278,9 +278,11 @@ def _train_locked() -> dict:
     _state["error"] = None
     started = time.monotonic()
     try:
+        from .. import models
         db = SessionLocal()
         try:
             seg_ex, tag_ex, subgroups = _examples(db)
+            to_review = db.query(models.Recipe).filter(models.Recipe.needs_review.is_(True)).count()
         finally:
             db.close()
         seg_model, seg_report = segmenter.train(seg_ex)
@@ -296,6 +298,7 @@ def _train_locked() -> dict:
             tag_report["model_tags"] = [list(t) for t in tag_model.tags]
         report = {"format": FORMAT, "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                   "seconds": round(time.monotonic() - started, 1), "files": files,
+                  "left_out_to_review": to_review,
                   "segmenter": seg_report, "tags": tag_report}
         os.makedirs(ML_DIR, exist_ok=True)
         _write_json("model.json", report)          # the switch to this training
@@ -364,6 +367,7 @@ def status() -> dict:
         "training": _state["training"],
         "error": _state["error"],
         "trained_at": _report.get("trained_at"),
+        "left_out_to_review": _report.get("left_out_to_review", 0),
         "segmenter": seg or {"status": "untrained", "needed": segmenter.MIN_IMPORTED},
         "tags": tg or {"status": "untrained", "needed": tag_ml.MIN_RECIPES},
     }

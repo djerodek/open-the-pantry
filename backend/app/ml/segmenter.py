@@ -256,7 +256,7 @@ def train(examples: list[Example], folds: int = 5) -> tuple[SegmenterModel | Non
     usable = [ex for ex in examples if prepare(ex)]
     imported = [ex for ex in usable if ex.imported]
     report = {"imported_recipes": len(imported), "other_recipes": len(usable) - len(imported),
-              "needed": MIN_IMPORTED, "lines": sum(len(ex.lines) for ex in imported)}
+              "needed": MIN_IMPORTED, "lines": sum(len(ex.lines) for ex in imported), "min_gain": MIN_GAIN}
     if len(imported) < MIN_IMPORTED:
         report["status"] = "not_enough_data"
         return None, report

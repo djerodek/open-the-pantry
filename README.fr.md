@@ -787,6 +787,18 @@ ouvert la page>:8090`.
     validation croisée, les suggestions de plus qu'il ferait étaient justes
     au moins 85 % du temps — l'ajout par lot et par courriel enregistre les
     étiquettes sans révision.
+  - **D'où vient une suggestion.** Sur l'écran de révision et après
+    *Suggérer des étiquettes* dans la modification, chaque étiquette
+    suggérée dit pourquoi : *mot-clé : bake* (le mot trouvé, intégré ou
+    ajouté dans les Paramètres), *appris*, ou, pour Végétarien, *aucun mot
+    de viande ou de poisson trouvé*; une étiquette qui revient à tort peut
+    ainsi être ramenée à son mot-clé. Paramètres → Apprentissage affiche les
+    résultats de chaque modèle par rapport à ce qu'il lui faut (pour la
+    lecture des importations, les deux taux et l'écart à battre), combien
+    de recettes étiquetées ont servi aux modèles d'étiquettes, les
+    étiquettes restées sans modèle avec la fréquence à laquelle leurs
+    suggestions en plus étaient justes, et combien de recettes ont été
+    laissées de côté parce qu'encore *À vérifier*.
 
   Les deux se réentraînent seuls quelques minutes après un changement de
   recettes ou d'étiquettes, et au démarrage; « Réentraîner maintenant » le

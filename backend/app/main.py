@@ -35,7 +35,7 @@ from .ingestion.url_ingest import (ingest_url, safe_get, UrlValidationError, Inc
 from .ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError, extract_largest_embedded_image
 from .ingestion.image_ingest import ingest_and_segment, ingest_image
 from .ingestion.ingredient_parser import parse_ingredient_block
-from .ingestion.tagger import suggest_tags, set_user_keywords, meat_tag_names
+from .ingestion.tagger import suggest_tags, explain_tags, set_user_keywords, meat_tag_names
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
 from .backup import build_database_backup, build_pdf_bundle, remove_upload_file, UPLOADS_LOCK
@@ -1378,7 +1378,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
         incomplete = {"missing": missing_parts(result), "message": str(e)}
 
     parsed_ingredients = parse_ingredient_block(result.ingredients)
-    tag_suggestions = suggest_tags(
+    tag_suggestions = explain_tags(
         result.title, [i["name"] or i["raw_line"] for i in parsed_ingredients], result.raw_text
     )
 
@@ -1402,7 +1402,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
         "raw_text": result.raw_text,
         "ingredients": parsed_ingredients,
         "steps": result.steps,
-        "suggested_tags": [{"name": n, "category": c, "subgroup": s} for n, c, s in tag_suggestions],
+        "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
         "extraction_method": result.method,
         "ocr_confidence": None,
         "incomplete": incomplete,
@@ -1508,7 +1508,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
 
     segmented = segment_raw_text(pdf_result.raw_text)
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
-    tag_suggestions = suggest_tags(
+    tag_suggestions = explain_tags(
         segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients],
         pdf_result.raw_text,
     )
@@ -1533,7 +1533,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         "image_path": image_path,  # draft reference; promoted on save
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
-        "suggested_tags": [{"name": n, "category": c, "subgroup": s} for n, c, s in tag_suggestions],
+        "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
         "ocr_used_on_pages": pdf_result.ocr_used_on_pages,
         "ocr_confidence": pdf_result.avg_ocr_confidence,
         "stored_file": temp_name,  # a draft reference; promoted to UPLOADS_DIR only on save
@@ -1634,7 +1634,7 @@ def ingest_from_image(file: UploadFile = File(...)):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not read text from this image.")
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
-    tag_suggestions = suggest_tags(
+    tag_suggestions = explain_tags(
         segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients],
         segmented["raw_text"],
     )
@@ -1651,7 +1651,7 @@ def ingest_from_image(file: UploadFile = File(...)):
         "raw_text": segmented["raw_text"],
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
-        "suggested_tags": [{"name": n, "category": c, "subgroup": s} for n, c, s in tag_suggestions],
+        "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
         "ocr_confidence": segmented["ocr_confidence"],
         "stored_file": temp_name,
         "image_path": temp_name,  # draft reference; promoted on save
@@ -1711,7 +1711,7 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
     combined_raw_text = "\n\n".join(raw_texts)
     segmented = segment_raw_text(combined_raw_text)
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
-    tag_suggestions = suggest_tags(
+    tag_suggestions = explain_tags(
         segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients], combined_raw_text
     )
     avg_confidence = sum(confidences) / len(confidences) if confidences else None
@@ -1736,7 +1736,7 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
         "raw_text": combined_raw_text,
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
-        "suggested_tags": [{"name": n, "category": c, "subgroup": s} for n, c, s in tag_suggestions],
+        "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
         "ocr_confidence": avg_confidence,
         "stored_file": showcase_image,
         "image_path": showcase_image,
@@ -2279,17 +2279,18 @@ def set_autotag_ignored(recipe_id: schemas.DbId, payload: schemas.AutoTagIgnore,
     return recipe
 
 
-@app.post("/api/tags/suggest", response_model=list[schemas.TagIn])
+@app.post("/api/tags/suggest", response_model=list[schemas.TagSuggestionOut])
 def suggest_tags_for_form(payload: schemas.TagSuggestRequest):
     """The edit form's Suggest tags button: suggestions for what's typed in
-    the form (saved or not), minus tags it already lists. Saves nothing.
-    Works for recipes skipped by the Settings scan too."""
+    the form (saved or not), minus tags it already lists, each with where
+    it came from. Saves nothing. Works for recipes skipped by the Settings
+    scan too."""
     current = {t.strip().lower() for t in payload.current_tags}
-    suggested = suggest_tags(payload.title, payload.ingredients, " ".join(payload.steps))
+    suggested = explain_tags(payload.title, payload.ingredients, " ".join(payload.steps))
     meat = meat_tag_names()
-    has_meat = any(t in {m.lower() for m in meat} for t in current) or any(n in meat for n, _, _ in suggested)
-    return [schemas.TagIn(name=n, category=c, subgroup=sg) for n, c, sg in suggested
-            if n.lower() not in current and not (n == "Vegetarian" and has_meat)]
+    has_meat = any(t in {m.lower() for m in meat} for t in current) or any(t["name"] in meat for t in suggested)
+    return [t for t in suggested
+            if t["name"].lower() not in current and not (t["name"] == "Vegetarian" and has_meat)]
 
 
 # ---------------------------------------------------------------------------
