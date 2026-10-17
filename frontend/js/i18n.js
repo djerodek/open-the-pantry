@@ -765,6 +765,21 @@
     "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random to read there. Nothing can be changed from it. It has no login: anyone who can reach the port can read your recipes, notes included (cocktails aside).":
       "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard, à lire sur place. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port peut lire vos recettes, notes comprises (sauf les cocktails).",
     "Address:": "Adresse :",
+    "That share had no web link in it. Paste the recipe's address here.": "Ce partage ne contenait aucun lien Web. Collez ici l'adresse de la recette.",
+    // Recipe view: scaling
+    "Quantities": "Quantités",
+    "Half the quantities": "Moitié des quantités",
+    "Quantities as written": "Quantités telles qu'écrites",
+    "Double the quantities": "Quantités doublées",
+    "Amounts in the steps stay as written.": "Les quantités dans les étapes restent telles qu'écrites.",
+    // Already in your library? (review screen, Add manually, batch links)
+    "This may already be in your library:": "Cette recette est peut-être déjà dans votre bibliothèque :",
+    "(same link)": "(même lien)",
+    "(same title)": "(même titre)",
+    "Open it": "L'ouvrir",
+    "Press Save again to add it anyway.": "Appuyez de nouveau sur Enregistrer pour l'ajouter quand même.",
+    "a recipe with this title was already in your library": "une recette de ce titre était déjà dans votre bibliothèque",
+    "already in your library from this link; not added again": "déjà dans votre bibliothèque depuis ce lien; pas ajoutée de nouveau",
     "RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.":
       "RECIPE_APP_API_KEY est défini, mais ne couvre pas cette page : quiconque peut joindre son port peut l'utiliser sans la clé.",
     "Port {1} is in use inside the container.": "Le port {1} est déjà utilisé dans le conteneur.",

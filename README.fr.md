@@ -455,6 +455,29 @@ ouvert la page>:8090`.
 - Les fichiers téléversés (PDF, image) sont limités à 20 Mo et validés par
   leur signature (magic bytes), pas seulement par leur extension, avant
   toute analyse ou OCR.
+- **Déjà dans votre bibliothèque?** L'écran de révision et la saisie
+  manuelle le signalent quand une recette enregistrée a le même lien (sans
+  tenir compte de `www.`, de `http`/`https`, d'une barre oblique finale ni
+  des paramètres de suivi comme `utm_source`) ou le même titre (sans tenir
+  compte des majuscules, des accents ni de la ponctuation), avec un lien
+  pour l'ouvrir; appuyer une deuxième fois sur Enregistrer l'ajoute quand
+  même. Les liens par lot et les liens envoyés par courriel déjà
+  enregistrés sont ignorés et indiqués comme tels; une recette par lot ou
+  par courriel dont le titre existe déjà est quand même enregistrée (deux
+  recettes peuvent porter le même nom), avec une note dans les résultats.
+- **Partager depuis une autre application** — Android : une fois Open the
+  Pantry installée depuis le navigateur (ce qui demande l'adresse HTTPS;
+  voir *Facultatif : HTTPS sur votre réseau*), elle apparaît dans la
+  feuille de partage, et partager le lien d'une page ouvre Ajouter à partir
+  d'une URL avec ce lien déjà en cours de lecture. L'iPhone et l'iPad ne
+  laissent pas une application Web de l'écran d'accueil recevoir des
+  partages; un raccourci fait le même travail : dans l'app Raccourcis,
+  créez un raccourci qui reçoit des **URL** de la **feuille de partage**,
+  avec deux actions : **Encoder l'URL** (l'**Entrée du raccourci**), puis
+  **Ouvrir les URL** réglée sur `http://<votre serveur>:8090/?share_url=`
+  suivi de la variable **Texte encodé en URL** (ou votre adresse
+  `https://`). Il apparaît alors dans la feuille de partage de Safari et
+  ouvre l'ajout dans Safari.
 
 **Réception par courriel (facultative, désactivée par défaut)**
 - Envoyez une recette par courriel à une boîte configurée avec un mot-clé
@@ -781,6 +804,17 @@ ouvert la page>:8090`.
   fermeture de la boîte de dialogue, avec un nettoyage au démarrage et
   toutes les 6 heures en filet de sécurité (il tourne en arrière-plan et ne
   bloque jamais l'application, même pendant une sauvegarde).
+
+**Quantités**
+- La page d'une recette a des boutons **½**, **1×** et **2×** à côté
+  d'Ingrédients. Ils réécrivent la quantité au début de chaque ligne
+  d'ingrédient (« 1 1/2 c. à soupe » → « 3 c. à soupe »; « 250 g » → « 125 g »;
+  « 2 à 3 œufs » → « 4 à 6 œufs »), dans le même style que l'original (les
+  fractions restent des fractions, « 1,5 l » garde sa virgule), et les
+  portions avec. Les quantités dans les étapes, et les lignes sans quantité
+  au début (« Sel au goût »), restent telles qu'écrites. Rien n'est
+  enregistré : chaque recette s'ouvre à 1×. L'impression depuis la page
+  imprime les quantités ajustées.
 
 **Partager / imprimer**
 - Un seul gabarit HTML sert à la vue d'impression de l'application, à un

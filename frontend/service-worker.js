@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v57";
+const CACHE_NAME = "open-the-pantry-shell-v58";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -47,6 +47,9 @@ function shouldCache(request, response) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
   if (NEVER_CACHE.some((re) => re.test(url.pathname))) return false;
+  // A page address with a query is a shared link arriving
+  // (/?share_url=...): never kept.
+  if (!url.pathname.startsWith("/api/") && url.search) return false;
   if (url.pathname.startsWith("/api/") && url.search) {
     // loadRecipes() always sends ?sort=&direction=, even with no search or
     // filter active -- excluding every querystring meant the plain

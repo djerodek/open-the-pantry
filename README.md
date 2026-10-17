@@ -399,6 +399,25 @@ at>:8090`.
   ingredients rather than becoming step 1.
 - Uploads (PDF/image) are capped at 20MB and are validated by magic bytes,
   not just file extension, before any parsing/OCR is attempted.
+- **Already in your library?** The review screen and Add manually say so
+  when a saved recipe has the same link (ignoring `www.`, `http`/`https`,
+  a trailing slash and tracking parameters such as `utm_source`) or the
+  same title (ignoring case, accents and punctuation), with a link to open
+  it; pressing Save a second time adds it anyway. Batch links and emailed
+  links that are already saved are skipped and listed as such; a batch or
+  emailed recipe whose title is already used is still saved (two recipes
+  can share a name), with a note in the results.
+- **Share from another app** — Android: once Open the Pantry is installed
+  from the browser (which needs the HTTPS address; see *Optional: HTTPS on
+  your network*), it appears in the share sheet, and sharing a page's link
+  opens Add from URL with that link already fetching. iPhone and iPad don't
+  let a home-screen web app receive shares; a Shortcut does the same job:
+  in the Shortcuts app, create a shortcut that receives **URLs** from the
+  **Share Sheet**, with two actions: **URL Encode** (the **Shortcut
+  Input**), then **Open URLs** set to `http://<your server>:8090/?share_url=`
+  followed by the **URL Encoded Text** variable (or your `https://`
+  address). It then appears in Safari's share sheet and opens the import
+  in Safari.
 
 **Email ingest (optional, off by default)**
 - Email a recipe to a configured inbox with a keyword in the subject
@@ -660,6 +679,16 @@ at>:8090`.
   never saved) are discarded when the dialog closes, with a sweep at
   start-up and every 6 hours as a backstop for anything missed (it runs in
   the background, so it never holds up the app, even during a backup).
+
+**Scaling**
+- The recipe page has **½**, **1×** and **2×** buttons beside Ingredients.
+  They rewrite the amount at the start of each ingredient line ("1 1/2
+  cups" → "3 cups"; "250 g" → "125 g"; "2-3 eggs" → "4-6 eggs"), in the
+  same style as written (fractions stay fractions, "1,5 l" keeps its
+  comma), and the servings with them. Amounts inside the steps, and lines
+  without a leading amount ("Salt to taste"), stay as written. Nothing is
+  saved: each recipe opens at 1×. Printing from the page prints the
+  scaled amounts.
 
 **Share/print**
 - One shared HTML template renders as the in-app print view, a downloadable

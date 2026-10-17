@@ -2534,6 +2534,79 @@
     return (i.raw_line || [i.quantity, i.unit, i.name].filter(Boolean).join(" ")).trim();
   }
 
+  // -------------------------------------------------------------------
+  // Scaling (the recipe view's ½ / 1x / 2x buttons). Only the amount at
+  // the start of each ingredient line changes ("1 1/2 cups flour" ->
+  // "3 cups flour" at 2x; "250 g beurre" -> "125 g beurre" at ½); a line
+  // without one ("Salt to taste"), a part name ("Sauce:") and amounts in
+  // the steps stay as written. Nothing is saved: it's the view only.
+  // -------------------------------------------------------------------
+  const UNICODE_FRACTIONS = { "¼": 1 / 4, "½": 1 / 2, "¾": 3 / 4, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 1 / 8,
+    "⅜": 3 / 8, "⅝": 5 / 8, "⅞": 7 / 8, "⅕": 1 / 5, "⅖": 2 / 5, "⅗": 3 / 5, "⅘": 4 / 5, "⅙": 1 / 6, "⅚": 5 / 6 };
+  const UF = Object.keys(UNICODE_FRACTIONS).join("");
+  const AMOUNT = `(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[${UF}]|\\d+\\s*/\\s*\\d+|[${UF}]|\\d+(?:[.,]\\d+)?)`;
+  const LEADING_AMOUNT = new RegExp(
+    `^(\\s*)(${AMOUNT})(?:(\\s*(?:-|–|—|to|à|a|or|ou)\\s*)(${AMOUNT}))?(?=[\\s(]|[^\\d\\s/.,]|$)`, "i");
+
+  function parseAmount(text) {
+    const t = text.trim();
+    let m;
+    if ((m = /^(\d+)\s+(\d+)\s*\/\s*(\d+)$/.exec(t))) return +m[1] + (+m[3] ? +m[2] / +m[3] : 0);
+    if ((m = new RegExp(`^(\\d+)\\s*([${UF}])$`).exec(t))) return +m[1] + UNICODE_FRACTIONS[m[2]];
+    if ((m = /^(\d+)\s*\/\s*(\d+)$/.exec(t))) return +m[2] ? +m[1] / +m[2] : NaN;
+    if (UNICODE_FRACTIONS[t] !== undefined) return UNICODE_FRACTIONS[t];
+    return parseFloat(t.replace(",", "."));
+  }
+
+  // Written the way the original was: decimals stay decimals (with its
+  // comma or point), counts and fractions become fractions, big whole
+  // numbers (grams, ml) stay whole.
+  const NICE_FRACTIONS = [[1 / 8, "1/8", "⅛"], [1 / 6, "1/6", "⅙"], [1 / 4, "1/4", "¼"], [1 / 3, "1/3", "⅓"],
+    [3 / 8, "3/8", "⅜"], [1 / 2, "1/2", "½"], [5 / 8, "5/8", "⅝"], [2 / 3, "2/3", "⅔"], [3 / 4, "3/4", "¾"],
+    [5 / 6, "5/6", "⅚"], [7 / 8, "7/8", "⅞"]];
+  function formatAmount(value, original) {
+    const src = original.trim();
+    const decimal = /^\d+[.,]\d+$/.test(src);
+    const trimmed = (v) => String(Math.round(v * 100) / 100);
+    if (decimal) return src.includes(",") ? trimmed(value).replace(".", ",") : trimmed(value);
+    if (/^\d+$/.test(src) && +src >= 10) return String(Math.round(value));
+    let whole = Math.floor(value + 1e-9);
+    const rest = value - whole;
+    if (rest < 0.04) return String(whole);
+    if (rest > 0.96) return String(whole + 1);
+    const near = NICE_FRACTIONS.reduce((best, n) => (Math.abs(rest - n[0]) < Math.abs(rest - best[0]) ? n : best));
+    if (Math.abs(rest - near[0]) >= 0.03) return trimmed(value);
+    const unicode = new RegExp(`[${UF}]`).test(src);
+    const frac = unicode ? near[2] : near[1];
+    if (!whole) return frac;
+    return unicode ? `${whole}${frac}` : `${whole} ${frac}`;
+  }
+
+  function scaleLine(text, factor) {
+    if (factor === 1 || !text || isPartName(text)) return text;
+    const m = LEADING_AMOUNT.exec(text);
+    if (!m) return text;
+    const one = (a) => { const v = parseAmount(a); return Number.isFinite(v) ? formatAmount(v * factor, a) : a; };
+    const scaled = m[1] + one(m[2]) + (m[4] ? m[3] + one(m[4]) : "");
+    return scaled + text.slice(m[0].length);
+  }
+
+  // The three buttons; onChange(factor) runs now (at 1x) and on each press.
+  function scaleButtons(onChange) {
+    const choices = [[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]];
+    const note = el("p", { class: "scale-note", role: "status", hidden: "" });
+    const buttons = choices.map(([factor, label, name]) => el("button", {
+      type: "button", class: "scale-button", "aria-pressed": String(factor === 1), "aria-label": name, title: name, text: label,
+      onclick: () => {
+        buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(choices[i][0] === factor)));
+        onChange(factor);
+      },
+    }));
+    const control = { element: el("div", { class: "scale-buttons", role: "group", "aria-label": tx("Quantities") }, buttons), note };
+    queueMicrotask(() => onChange(1));
+    return control;
+  }
+
   function showListError(message) {
     const region = $("#recipe-list-region");
     region.innerHTML = "";
@@ -3501,6 +3574,21 @@
     }
     closeFactsEditor();
 
+    // ½ / 1x / 2x: rewrites the amounts at the start of the ingredient
+    // lines (scaleLine). Back to 1x each time a recipe opens.
+    const ingredientsList = el("ul", { class: "ingredients-list" });
+    const scaleControl = scaleButtons((factor) => {
+      ingredientsList.replaceChildren(...recipe.ingredients.map((i) => {
+        const text = ingredientText(i);
+        return el("li", { class: isPartName(text) ? "list-part" : null, text: scaleLine(text, factor) });
+      }));
+      const parts = [];
+      if (factor !== 1 && recipe.servings) parts.push(tx("Servings: {1}", { 1: scaleLine(recipe.servings, factor) }));
+      if (factor !== 1) parts.push(tx("Amounts in the steps stay as written."));
+      scaleControl.note.textContent = parts.join(" · ");
+      scaleControl.note.hidden = !parts.length;
+    });
+
     body.appendChild(el("div", { class: "recipe-detail" }, [
       // Share lives at the top right of the recipe card; the source/OCR
       // badges move under the title so the corner stays a single action.
@@ -3521,11 +3609,9 @@
       // steps scroll), one after the other on a narrow one.
       el("div", { class: "recipe-body" }, [
         el("section", { class: "recipe-ingredients" }, [
-          el("h2", { text: tx("Ingredients") }),
-          el("ul", { class: "ingredients-list" }, recipe.ingredients.map((i) => {
-            const text = ingredientText(i);
-            return el("li", { class: isPartName(text) ? "list-part" : null, text });
-          })),
+          el("div", { class: "ingredients-head" }, [el("h2", { text: tx("Ingredients") }), scaleControl.element]),
+          scaleControl.note,
+          ingredientsList,
         ]),
         el("section", { class: "recipe-steps" }, [
           el("h2", { text: tx("Instructions") }),
@@ -3869,9 +3955,69 @@
   function renderBatchResults(container, result) {
     container.innerHTML = "";
     const list = el("ul", { class: "batch-results-list" });
-    for (const s of result.succeeded) list.appendChild(el("li", { class: "ok", text: `\u2713 ${s.title}` }));
+    for (const s of result.succeeded) {
+      const note = s.duplicate_of ? ` \u2014 ${tx("a recipe with this title was already in your library")}` : "";
+      list.appendChild(el("li", { class: "ok", text: `\u2713 ${s.title}${note}` }));
+    }
+    for (const k of result.skipped || []) {
+      list.appendChild(el("li", { class: "skipped", text: `\u21b7 ${k.title} \u2014 ${tx("already in your library from this link; not added again")}` }));
+    }
     for (const f of result.failed) list.appendChild(el("li", { class: "fail", text: `\u2717 ${f.url || f.filename}: ${f.error}` }));
     container.appendChild(list);
+  }
+
+  // -------------------------------------------------------------------
+  // "Already in your library?" for the review screen and Add manually
+  // (backend: duplicates.py). Shown as soon as the screen opens (or the
+  // title is typed) and checked again on Save: a match stops the first Save,
+  // and a second Save with the same title and link goes ahead. Opening the saved one
+  // closes this dialog.
+  // -------------------------------------------------------------------
+  function duplicateGuard(getTitle, getUrl) {
+    const box = el("div", { class: "dup-warning", role: "status", hidden: "" });
+    let blockedFor = null;   // the title|link a Save was stopped for
+    async function lookup() {
+      const title = (getTitle() || "").trim(), url = (getUrl() || "").trim();
+      if (!title && !url) return [];
+      const q = new URLSearchParams();
+      if (title) q.set("title", title);
+      if (url) q.set("url", url);
+      try {
+        const res = await fetch(`${API}/recipes/duplicates?${q}`, { cache: "no-store" });
+        return res.ok ? await res.json() : [];
+      } catch { return []; }   // offline or failed: never blocks saving
+    }
+    function show(found) {
+      box.replaceChildren();
+      box.hidden = !found.length;
+      if (!found.length) return;
+      box.appendChild(el("p", { class: "dup-warning-title", text: tx("This may already be in your library:") }));
+      box.appendChild(el("ul", {}, found.map((d) => el("li", {}, [
+        el("span", { text: `${d.title} ` }),
+        el("span", { class: "dup-reason", text: d.reason === "link" ? tx("(same link)") : tx("(same title)") }),
+        document.createTextNode(" "),
+        el("button", { type: "button", class: "link-button", text: tx("Open it"),
+          onclick: () => { closeModal(addOverlay); openRecipeDetail(d.id); } }),
+      ]))));
+      box.appendChild(el("p", { class: "dup-warning-hint", text: tx("Press Save again to add it anyway.") }));
+    }
+    const key = () => `${(getTitle() || "").trim()}|${(getUrl() || "").trim()}`;
+    return {
+      box,
+      // On opening: show any match, without stopping anything.
+      async preview() { show(await lookup()); },
+      // On Save: true to go ahead.
+      async allowSave() {
+        if (blockedFor === key()) return true;
+        const found = await lookup();
+        show(found);
+        if (!found.length) return true;
+        blockedFor = key();
+        box.scrollIntoView({ block: "nearest" });
+        announce(tx("This may already be in your library:") + " " + found.map((d) => d.title).join(", "));
+        return false;
+      },
+    };
   }
 
   function modeSwitchControl(onSingle, onBatch, labels = [tx("Single"), tx("Batch")]) {
@@ -3976,7 +4122,9 @@
     return typeof err.detail === "string" ? err.detail : fallback;
   }
 
-  function showUrlForm() {
+  // prefill: a link to fetch at once (shared from another app; see
+  // sharedLinkFromAddress).
+  function showUrlForm(prefill) {
     addBody.innerHTML = "";
     addBody.appendChild(el("h3", { text: tx("Add from URL") }));
     const formArea = el("div");
@@ -4054,6 +4202,46 @@
     addBody.appendChild(modeSwitchControl(renderSingle, renderBatch));
     addBody.appendChild(formArea);
     renderSingle();
+    if (typeof prefill === "string" && prefill) {
+      $("#url-input").value = prefill;
+      formArea.querySelector("form").requestSubmit();
+    }
+  }
+
+  // Share to Open the Pantry. Android's share sheet (manifest.json
+  // share_target) and an iPhone Shortcut both open
+  // /?share_url=...&share_text=...&share_title=...; the first http(s) link
+  // in them is fetched as with Add from URL, ending on the review screen.
+  // The parameters are removed from the address straight away, so a reload
+  // or Back doesn't import it again.
+  function sharedLinkFromAddress() {
+    const params = new URLSearchParams(location.search);
+    if (!["share_url", "share_text", "share_title"].some((k) => params.has(k))) return null;
+    const candidates = [params.get("share_url"), params.get("share_text"), params.get("share_title")]
+      .filter(Boolean).join(" ").match(/https?:\/\/[^\s<>"]+/gi) || [];
+    for (const k of ["share_url", "share_text", "share_title"]) params.delete(k);
+    const rest = params.toString();
+    history.replaceState(history.state, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
+    for (const c of candidates) {
+      try {
+        const u = new URL(c.replace(/[).,;!?'"]+$/, ""));
+        if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+      } catch { /* not a link */ }
+    }
+    return "";      // shared, but nothing to fetch
+  }
+
+  function openSharedLink() {
+    const link = sharedLinkFromAddress();
+    if (link === null) return;
+    state.currentDraftFiles.clear();
+    if (link) {
+      showUrlForm(link);
+    } else {
+      showUrlForm();
+      announceError(tx("That share had no web link in it. Paste the recipe's address here."));
+    }
+    openModal(addOverlay);
   }
 
   function showPdfForm() {
@@ -4310,10 +4498,15 @@
     ]);
     addBody.appendChild(columns);
 
+    const dupGuard = duplicateGuard(() => titleInput.value, () => draft.source_url);
+    addBody.appendChild(dupGuard.box);
+    dupGuard.preview();
+
     const saveBtn = el("button", {
       class: "btn-primary", type: "button", text: tx("Save recipe"),
       style: "margin-top:1rem;",
       onclick: async () => {
+        if (!(await dupGuard.allowSave())) return;
         setBusy(true, tx("Saving recipe..."));
         try {
           const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
@@ -4396,9 +4589,13 @@
     const imageInput = el("input", { type: "file", id: "manual-image", accept: "image/*" });
     const duration = makeDurationInput("manual-time");
 
+    // Checked once the title is typed (on leaving the box) and on Save.
+    const dupGuard = duplicateGuard(() => titleInput.value, () => "");
+    titleInput.addEventListener("change", () => dupGuard.preview());
     const form = el("form", {
       onsubmit: async (e) => {
         e.preventDefault();
+        if (!(await dupGuard.allowSave())) return;
         setBusy(true, tx("Saving recipe..."));
         let storedFile = null;
         try {
@@ -4462,6 +4659,7 @@
         el("label", { for: "manual-image", text: tx("Attach a photo of the card (optional)") }),
         imageInput,
       ]),
+      dupGuard.box,
       el("button", { class: "btn-primary", type: "submit", text: tx("Save recipe") }),
     ]);
     addBody.appendChild(form);
@@ -4545,6 +4743,7 @@
     // Opened from a link to one recipe (What to eat?): show it now, the
     // list loads behind it.
     openRecipeFromHash();
+    openSharedLink();
     await loadTimeBuckets();
     await loadRecipes();
     await loadMailState();

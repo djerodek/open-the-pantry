@@ -44,6 +44,7 @@ from . import i18n
 from . import https_setup
 from . import admin_lock
 from . import picker
+from . import duplicates
 from .ml import service as learning
 
 _lock_file_handle = None
@@ -815,6 +816,19 @@ def _promote_temp_file(temp_filename: str | None, current: str | None = None) ->
     raise HTTPException(status_code=400, detail="That photo isn't a pending upload; upload it again.")
 
 
+def _discard_temp_file(filename: str | None):
+    """Deletes a draft in TMP_DIR that won't be saved (an emailed recipe
+    already in the library). The tmp sweep would get it eventually."""
+    if not filename or not is_safe_stored_filename(filename):
+        return
+    path = safe_join(TMP_DIR, filename)
+    if path and os.path.isfile(path):
+        try:
+            os.remove(path)
+        except OSError:
+            log.debug("_discard_temp_file: couldn't remove %s", filename, exc_info=True)
+
+
 def _demote_to_tmp(filename: str | None):
     """Compensating action for _promote_temp_file: if the DB transaction
     that was supposed to reference a just-promoted file fails to commit,
@@ -1141,12 +1155,23 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     continue
                 scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
                 result = _run_heavy(process_tagged_email, msg, TMP_DIR)
-                if result["success"]:
+                existing = duplicates.same_link(db, result.get("source_url")) if result["success"] else None
+                if existing:
+                    # Already saved from this link: reported, not saved again.
+                    _discard_temp_file(result.get("image_path"))
+                    line = f"{existing['title']} (from \"{subject}\", via {result['source_detail']}) -- already in your library; not saved again"
+                    scan_log.info("Scan: %s", line)
+                    messages.append(f"OK: {line}")
+                    _queue_notification(db, True, line)
+                elif result["success"]:
+                    same_title = duplicates.find(db, title=result["title"], limit=1)
                     recipe_id = _save_email_recipe(db, result, subject)
                     succeeded += 1
                     line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
                     if not result["steps"]:
                         line += " -- no steps were found; check the recipe"
+                    if same_title:
+                        line += " -- a recipe with this title was already in your library"
                     scan_log.info("Scan: saved recipe %s: %s", recipe_id, line)
                     messages.append(f"OK: {line}")
                     _queue_notification(db, True, line)
@@ -1326,14 +1351,20 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
     they can be retried individually through the reviewed single-URL flow."""
     if len([u for u in payload.urls if u.strip()]) > MAX_BATCH_URLS:
         raise HTTPException(status_code=400, detail=f"Too many links in one batch (max {MAX_BATCH_URLS}). Split the list and send the rest separately.")
-    succeeded, failed = [], []
+    succeeded, failed, skipped = [], [], []
     for url in payload.urls:
         url = url.strip()
         if not url:
             continue
+        # Already saved from this link: not fetched or saved again.
+        existing = duplicates.same_link(db, url)
+        if existing:
+            skipped.append({"url": url, "recipe_id": existing["id"], "title": existing["title"]})
+            continue
         image_path = None
         try:
             result = require_complete(ingest_url(url))
+            same_title = duplicates.find(db, title=result.title, limit=1)
             parsed_ingredients = parse_ingredient_block(result.ingredients)
             tag_suggestions = suggest_tags(
                 result.title, [i["name"] or i["raw_line"] for i in parsed_ingredients], result.raw_text
@@ -1360,7 +1391,8 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)
             db.commit()
-            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title})
+            succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title,
+                              "duplicate_of": same_title[0] if same_title else None})
         except Exception as e:
             log.warning("Batch URL %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
             db.rollback()
@@ -1369,7 +1401,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
                 if stray_path and os.path.isfile(stray_path):
                     remove_upload_file(stray_path)
             failed.append({"url": url, "error": str(e)})
-    return {"succeeded": succeeded, "failed": failed}
+    return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
 
 
 @app.post("/api/ingest/pdf")
@@ -1470,6 +1502,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
                 segmented["title_guess"], [i["name"] or i["raw_line"] for i in parsed_ingredients],
                 pdf_result.raw_text,
             )
+            same_title = duplicates.find(db, title=segmented["title_guess"], limit=1)
             recipe = models.Recipe(
                 title=segmented["title_guess"],
                 source_type="pdf",
@@ -1486,7 +1519,8 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)
             db.commit()
-            succeeded.append({"filename": file.filename, "recipe_id": recipe.id, "title": recipe.title})
+            succeeded.append({"filename": file.filename, "recipe_id": recipe.id, "title": recipe.title,
+                              "duplicate_of": same_title[0] if same_title else None})
         except HTTPException as e:
             db.rollback()
             failed.append({"filename": file.filename, "error": e.detail})
@@ -1827,6 +1861,17 @@ def _sort_clauses(sort: str, direction: str):
 
     # (col IS NULL) sorts 0 before 1, i.e. real values first, always.
     return (asc(col.is_(None)), order(col), models.Recipe.id.asc())
+
+
+@app.get("/api/recipes/duplicates")
+def recipe_duplicates(title: str | None = Query(default=None, max_length=500),
+                      url: str | None = Query(default=None, max_length=4000),
+                      exclude: Optional[schemas.DbInt] = None,
+                      db: Session = Depends(get_db)):
+    """Saved recipes with the same link or title (duplicates.py), for the
+    warning on the review screen and Add manually. Declared before
+    /api/recipes/{recipe_id}, which would otherwise take "duplicates"."""
+    return duplicates.find(db, title=title, url=url, exclude_id=exclude)
 
 
 @app.get("/api/time-buckets")

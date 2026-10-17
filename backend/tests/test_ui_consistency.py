@@ -349,3 +349,64 @@ def test_picker_recipe_view_prints_the_recipe_only():
         assert f"html.reader-open {hidden}" in printing, hidden
     assert ".reader-source::after { content: attr(href)" in printing
     assert "--color-bg: #FFFFFF;" in printing and "--color-ink: #000000;" in printing
+
+
+def _scale_line():
+    """scaleLine() from app.js, run in Node (skipped without it)."""
+    import json
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    block = js[js.index("  const UNICODE_FRACTIONS"):js.index("  // The three buttons; onChange(factor)")]
+    part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
+
+    def run(cases):
+        src = part + block + f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f]) => scaleLine(t, f))));"
+        out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+    return run
+
+
+def test_scaling_rewrites_the_leading_amount_only():
+    run = _scale_line()
+    cases = [
+        ("1 1/2 cups flour", 2, "3 cups flour"), ("1 1/2 cups flour", 0.5, "3/4 cups flour"),
+        ("250 g beurre", 0.5, "125 g beurre"), ("251 g sugar", 0.5, "126 g sugar"),
+        ("½ tsp salt", 2, "1 tsp salt"), ("½ tsp salt", 0.5, "¼ tsp salt"), ("1½ tbsp oil", 0.5, "¾ tbsp oil"),
+        ("1,5 l de lait", 0.5, "0,75 l de lait"), ("0.5 cup milk", 2, "1 cup milk"),
+        ("2-3 eggs", 2, "4-6 eggs"), ("2 à 3 œufs", 2, "4 à 6 œufs"), ("3 apples", 0.5, "1 1/2 apples"),
+        ("1/3 cup sugar", 0.5, "1/6 cup sugar"), ("1/3 cup sugar", 2, "2/3 cup sugar"),
+        ("2 (14 oz) cans tomatoes", 2, "4 (14 oz) cans tomatoes"), ("1.5kg potatoes", 2, "3kg potatoes"),
+        ("Salt to taste", 2, "Salt to taste"), ("Sauce:", 2, "Sauce:"), ("1 egg", 1, "1 egg"),
+        ("7 cloves garlic", 0.5, "3 1/2 cloves garlic"), ("4-6", 2, "8-12"), ("", 2, ""),
+    ]
+    got = run([[t, f] for t, f, _ in cases])
+    for (text, factor, want), out in zip(cases, got):
+        assert out == want, (text, factor, out)
+
+
+def test_scale_buttons_in_the_recipe_view():
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    assert '[[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]]' in js
+    start = js.index("    const ingredientsList = el(\"ul\"")
+    detail = js[start:js.index("    body.appendChild(el(\"div\", { class: \"recipe-detail\" }", start)]
+    assert "scaleLine(text, factor)" in detail and "scaleLine(recipe.servings, factor)" in detail
+    assert "@media print { .scale-buttons { display: none !important; } }" in css
+
+
+def test_shared_link_opens_add_from_url():
+    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    manifest = __import__("json").loads((CSS.parents[1] / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["share_target"] == {"action": "/", "method": "GET",
+                                        "params": {"title": "share_title", "text": "share_text", "url": "share_url"}}
+    shared = js[js.index("  function sharedLinkFromAddress("):js.index("  function showPdfForm(")]
+    assert "history.replaceState(" in shared          # a reload doesn't import it again
+    assert 'u.protocol === "http:" || u.protocol === "https:"' in shared
+    assert "openSharedLink();" in js[js.index("(async function init() {"):]
+    sw = (CSS.parents[1] / "service-worker.js").read_text(encoding="utf-8")
+    assert 'if (!url.pathname.startsWith("/api/") && url.search) return false;' in sw
