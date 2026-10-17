@@ -450,6 +450,38 @@
     "Recipes as JSON": "Recettes en JSON",
     "Every recipe as a schema.org Recipe file, the format recipe websites use, with its photo, in a .zip. Other recipe apps can import it, and so can this one (it adds; the full backup is what restores).":
       "Chaque recette en fichier Recipe schema.org, le format des sites de recettes, avec sa photo, dans un .zip. D'autres applications de recettes peuvent l'importer, et celle-ci aussi (elle ajoute; c'est la sauvegarde complète qui restaure).",
+    "To review ({1})": "À vérifier ({1})",
+    "To review": "À vérifier",
+    "Marked as checked.": "Marquée comme vérifiée.",
+    "Saved from a batch of links without being checked.": "Enregistrée à partir d'un lot de liens sans avoir été vérifiée.",
+    "Saved from a batch of PDFs without being checked.": "Enregistrée à partir d'un lot de PDF sans avoir été vérifiée.",
+    "Saved from an email without being checked.": "Enregistrée à partir d'un courriel sans avoir été vérifiée.",
+    "Saved without being checked.": "Enregistrée sans avoir été vérifiée.",
+    "Compare it with the original, then mark it as right or correct it.":
+      "Comparez-la avec l'original, puis indiquez qu'elle est correcte ou corrigez-la.",
+    "Review": "Vérifier",
+    "Looks right": "C'est correct",
+    "Delete this import": "Supprimer cet ajout",
+    "Review import": "Vérifier l'ajout",
+    "Title: read from the text (usually its first line).": "Titre : lu dans le texte (en général sa première ligne).",
+    "Servings: none found.": "Portions : aucune trouvée.",
+    "Text recognition was unsure ({1}%): look for misread words and numbers.":
+      "La reconnaissance du texte était incertaine ({1} %) : cherchez les mots et les nombres mal lus.",
+    "No ingredients were found.": "Aucun ingrédient n'a été trouvé.",
+    "No steps were found.": "Aucune étape n'a été trouvée.",
+    "Ingredients, line {1}: {2} has no amount.": "Ingrédients, ligne {1} : {2} n'a pas de quantité.",
+    "Ingredients, line {1}: {2} \u2014 the learned model wasn't sure this is an ingredient.":
+      "Ingrédients, ligne {1} : {2} \u2014 le modèle appris n'était pas sûr que ce soit un ingrédient.",
+    "Steps, line {1}: {2} is very short. Part of the next step, or not a step?":
+      "Étapes, ligne {1} : {2} est très courte. Une partie de l'étape suivante, ou pas une étape?",
+    "Steps, line {1} is very long. Several steps run together?": "Étapes, ligne {1} : très longue. Plusieurs étapes collées ensemble?",
+    "Steps, line {1}: {2} \u2014 the learned model wasn't sure this is a step.":
+      "Étapes, ligne {1} : {2} \u2014 le modèle appris n'était pas sûr que ce soit une étape.",
+    "Check these": "À vérifier",
+    "Nothing in particular stood out. Compare it with the original text, then save or mark it as right.":
+      "Rien de particulier n'est ressorti. Comparez-la avec le texte original, puis enregistrez ou indiquez qu'elle est correcte.",
+    "Delete {1}": "Supprimer {1}",
+    "Deleted: {1}": "Supprimée : {1}",
     "Restore or import": "Restaurer ou importer",
     "A full backup (.zip) replaces your library with the one in the backup, after a confirmation and a safety copy of what's here now. Any other file adds its recipes and replaces nothing: a schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). Ones already here from the same link are skipped.":
       "Une sauvegarde complète (.zip) remplace votre bibliothèque par celle de la sauvegarde, après une confirmation et une copie de sécurité de ce qui est ici maintenant. Tout autre fichier ajoute ses recettes et ne remplace rien : un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Celles déjà présentes depuis le même lien sont ignorées.",

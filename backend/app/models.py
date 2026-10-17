@@ -44,6 +44,10 @@ class Recipe(Base):
     # Left out of Settings -> Tags -> "Add suggested tags" (the per-recipe
     # Suggest tags button in the edit form still works).
     autotag_ignored = Column(Boolean, nullable=False, default=False)
+    # Saved without anyone checking it (batch links, batch PDFs, email):
+    # shown as "To review" and left out of learning until it is saved from
+    # Edit or marked "Looks right" (review.py).
+    needs_review = Column(Boolean, nullable=False, default=False)
     tastiness_rating = Column(Integer, nullable=True)  # 1-5
     cook_time_rating = Column(String, nullable=True)  # 'quick' | 'moderate' | 'long'
     difficulty_rating = Column(String, nullable=True)  # 'easy' | 'medium' | 'hard'

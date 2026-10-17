@@ -430,6 +430,20 @@ ouvert la page>:8090`.
   cette image » — avant l'enregistrement. L'ajout par lot enregistre
   directement et indique le succès ou l'échec de chaque élément, puisque
   réviser plusieurs éléments un par un n'est pas vraiment un lot.
+- **À vérifier.** Ce qui est enregistré sans cet écran (lots de liens, lots
+  de PDF, courriel) est marqué *À vérifier* : une pastille sur la carte, et
+  *À vérifier (n)* en haut du panneau latéral pour les lister. Une telle
+  recette s'ouvre avec une note et trois boutons : **Vérifier** l'ouvre
+  dans la modification avec une liste *À vérifier* des problèmes probables
+  (un titre lu sur la première ligne du texte, pas de portions, un OCR peu
+  fiable, une ligne d'ingrédient sans quantité, une étape très courte ou
+  très longue et, une fois le lecteur appris en service, les lignes dont
+  il n'était pas sûr) et ces champs encadrés; **C'est correct** retire la
+  marque; **Supprimer cet ajout** la supprime. Enregistrer depuis la
+  modification retire aussi la marque. Les résultats des lots, de
+  l'importation et de *Vérifier la boîte de courriel* ont aussi un bouton
+  Supprimer par recette. Les recettes enregistrées avant cette fonction ne
+  sont pas marquées.
 - **Les ingrédients sont conservés tels qu'écrits.** Chaque ligne est
   gardée exactement comme saisie ou extraite, et aussi décomposée en
   quantité, unité et nom (« 1½ cups flour » → 1½ / cup / flour), y compris
@@ -644,7 +658,8 @@ ouvert la page>:8090`.
   importent), avec sa photo dans `images/`. Les noms de parties deviennent
   des `HowToSection`, les temps sont en ISO 8601 quand ils peuvent être
   lus, et les champs propres à l'application (étiquettes et leurs groupes,
-  notes d'appréciation, favori, rythme, difficulté, temps réel, notes) vont
+  notes d'appréciation, favori, rythme, difficulté, temps réel, notes,
+  *À vérifier*) vont
   sous `"x-open-the-pantry"`, donc réimporter le fichier ici ne perd rien.
   Une recette peut aussi être téléchargée ainsi : Partager → Télécharger en
   JSON (sans sa photo).
@@ -761,6 +776,10 @@ ouvert la page>:8090`.
     règles en validation croisée sur vos recettes; les Paramètres
     affichent les deux résultats. Les règles restent la solution de repli
     pour toute importation où il ne trouve ni ingrédients ni étapes.
+  - Les recettes encore *À vérifier* sont exclues des deux modèles : c'est
+    la sortie de l'analyseur, non vérifiée, et en apprendre enseignerait
+    aux modèles leurs propres erreurs. Une fois vérifiées ou enregistrées
+    depuis la modification, elles comptent.
   - **Suggestions d'étiquettes.** Un modèle par étiquette, à partir des
     mots du titre, des ingrédients et des étapes de vos recettes
     étiquetées (15 nécessaires, 5 par étiquette). Il s'ajoute aux
@@ -1378,7 +1397,7 @@ courriel)**
   attendez-vous à corriger des champs sur des
   mises en page désordonnées ou inhabituelles, avec l'écran de révision
   affiché après l'ajout d'un seul élément. L'ajout par lot saute cette
-  révision, donc vérifiez les résultats ensuite.
+  révision; ces recettes attendent sous *À vérifier*.
 - La fiabilité de l'OCR des captures est affichée par une pastille
   (« Qualité de la reconnaissance : faible », etc.) d'après la fiabilité mot par mot de
   Tesseract; traitez une extraction peu fiable comme un brouillon de

@@ -211,6 +211,7 @@ class RecipeOut(BaseModel):
     actual_cook_time: Optional[str] = None
     favorite: bool = False
     autotag_ignored: bool = False
+    needs_review: bool = False
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
@@ -235,6 +236,7 @@ class RecipeSummaryOut(BaseModel):
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
     tags: list[TagOut] = []
+    needs_review: bool = False
     matched_via: list[str] = []  # 'text' and/or 'tag', only populated on search
     has_notes: bool = False      # for the card's notes icon; the notes themselves aren't in the list
 
@@ -355,6 +357,7 @@ class EmailScanResult(BaseModel):
     succeeded: int
     failed: int
     messages: list[str]
+    saved: list[dict] = []     # [{"recipe_id", "title"}]: what this scan added
 
 
 class HttpsSetupIn(BaseModel):

@@ -152,6 +152,7 @@ def recipe_to_jsonld(recipe, image: str | None = None) -> dict:
         "tags": [{"name": t.name, "category": t.category, "subgroup": t.subgroup} for t in tags],
         "notes": recipe.notes,
         "favorite": bool(recipe.favorite),
+        "to_review": bool(getattr(recipe, "needs_review", False)),
         "tastiness_rating": recipe.tastiness_rating,
         "cook_time_rating": recipe.cook_time_rating,
         "difficulty_rating": recipe.difficulty_rating,
@@ -227,6 +228,7 @@ class ImportedRecipe:
     source_type: str = "import"
     notes: str | None = None
     favorite: bool = False
+    to_review: bool = False
     tastiness_rating: int | None = None
     cook_time_rating: str | None = None
     difficulty_rating: str | None = None
@@ -320,6 +322,7 @@ def from_jsonld(item: dict, origin: str, read_member=None) -> ImportedRecipe:
         r.source_type = _text(ext.get("source_type"), 20) or "import"
         r.notes = _text(ext.get("notes"), 20_000)
         r.favorite = bool(ext.get("favorite"))
+        r.to_review = ext.get("to_review") is True
         r.tastiness_rating = _rating(ext.get("tastiness_rating"))
         r.cook_time_rating = ext.get("cook_time_rating") if ext.get("cook_time_rating") in ("quick", "moderate", "long") else None
         r.difficulty_rating = ext.get("difficulty_rating") if ext.get("difficulty_rating") in ("easy", "medium", "hard") else None

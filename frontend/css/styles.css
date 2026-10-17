@@ -1871,3 +1871,46 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 .restore-confirm { width: 100%; padding: 0.7rem 0.9rem; border: 1px solid var(--color-alert); border-radius: var(--radius); }
 .restore-confirm p { margin: 0 0 0.6rem; font-size: 0.9rem; }
 .restore-confirm-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* ---------------------------------------------------------------------
+   Review queue: recipes saved without review (batch links, batch PDFs,
+   email). Uses the OCR "fair" badge colours, which already pass contrast
+   in both themes.
+   --------------------------------------------------------------------- */
+.badge-review { background: var(--badge-conf-med-bg); color: var(--badge-conf-med-fg); }
+.card-matched-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.sidebar-review-region {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.sidebar-review-region .review-filter { width: 100%; text-align: left; }
+.review-banner {
+  margin: 0.75rem 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--badge-conf-med-fg);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+.review-banner-text { margin: 0 0 0.6rem; }
+.review-banner-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.review-checklist {
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--badge-conf-med-fg);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+.review-checklist-title { font-size: 1rem; margin: 0 0 0.4rem; }
+.review-checklist ul { margin: 0; padding-left: 1.2rem; }
+.review-checklist li { margin: 0.2rem 0; overflow-wrap: anywhere; }
+.review-checklist p { margin: 0; }
+input.needs-check, textarea.needs-check {
+  border-color: var(--badge-conf-med-fg);
+  box-shadow: 0 0 0 1px var(--badge-conf-med-fg);
+}
+.batch-results-list li.ok, .batch-results-list li.deleted {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
+.batch-results-list .deleted { color: var(--color-ink-muted); }
+.result-delete { flex: none; }

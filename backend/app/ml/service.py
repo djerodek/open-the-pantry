@@ -159,8 +159,14 @@ def _learned_tagger(model):
     return suggest
 
 
+_seg_model = None     # the segmenter in use, for uncertain_lines()
+UNSURE_BELOW = 0.6    # the model's probability for a line's label below this: "check this line"
+
+
 def _apply(seg_model, tag_model):
     """Hands the models to the importers (or takes them away)."""
+    global _seg_model
+    _seg_model = seg_model
     pdf_ingest.set_learned_segmenter(seg_model.segment if seg_model else None)
     tagger.set_learned_tagger(_learned_tagger(tag_model) if tag_model else None)
 
@@ -200,10 +206,34 @@ def load():
     _apply(seg, tag)
 
 
+def uncertain_lines(raw_text: str) -> set[str] | None:
+    """Lines of an original text that the learned segmenter puts in the
+    ingredients or steps without being sure of it, for the review view.
+    None when no learned segmenter is in use: the rules give no score."""
+    model = _seg_model
+    if model is None or not raw_text:
+        return None
+    try:
+        lines = pdf_ingest.prepare_lines(raw_text)
+        if len(lines) < 2:
+            return set()
+        rules = segmenter.rule_labels(lines, pdf_ingest.rule_segment_raw_text(raw_text))
+        path, probs = model.label(lines, rules)
+        return {l for i, (l, y) in enumerate(zip(lines, path))
+                if y in (segmenter.ING, segmenter.STEP) and probs[i, y] < UNSURE_BELOW}
+    except Exception:
+        log.warning("Learning: couldn't score the lines for the review view", exc_info=True)
+        return None
+
+
 def _examples(db):
     from .. import models
     from sqlalchemy.orm import selectinload
+    # Recipes still to review are the parser's own output, unchecked:
+    # training on them would teach the models their own mistakes (and
+    # flatter the cross-validated score). They count once reviewed.
     recipes = (db.query(models.Recipe)
+               .filter(models.Recipe.needs_review.is_(False))
                .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
                         selectinload(models.Recipe.tags))
                .order_by(models.Recipe.id).all())

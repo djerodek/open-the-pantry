@@ -1026,6 +1026,8 @@
   // email, which can't arrive when sending is what's broken.
   async function runInboxScan(statusEl, button) {
     statusEl.textContent = tx("Checking the inbox\u2026");
+    const old = statusEl.nextElementSibling;
+    if (old && old.classList.contains("scan-saved")) old.remove();
     if (button) button.disabled = true;
     try {
       const res = await fetch(`${API}/email-settings/scan`, { method: "POST" });
@@ -1039,6 +1041,11 @@
       } else {
         const summary = tx("Scanned {1}: {2} ingested, {3} failed.", { 1: body.scanned, 2: body.succeeded, 3: body.failed });
         statusEl.textContent = [summary, ...(body.messages || [])].join("\n");
+        if (body.saved && body.saved.length) {
+          // What it added, each with Delete; they're also in "To review".
+          const list = el("ul", { class: "batch-results-list scan-saved" }, body.saved.map((r) => savedResultRow(r.recipe_id, r.title)));
+          statusEl.after(list);
+        }
         if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
       }
       announce(statusEl.textContent.split("\n")[0]);
@@ -1559,6 +1566,8 @@
     filterTags: new Set(),   // stacked AND tag filters -- shared by sidebar and filter panel
     maxMinutes: null,        // time filter ceiling (minutes), null = no limit
     pace: new Set(),         // pace-rating filter: 'quick' | 'moderate' | 'long', OR logic
+    toReview: false,         // only recipes saved without review (batch, email)
+    reviewCount: 0,          // how many there are (sidebar)
     grouping: "all",         // 'all' | 'meal_type' | 'cooking_style' | 'main_ingredient'
     allTags: [],
     timeBuckets: [],
@@ -1595,6 +1604,7 @@
     return state.filterTags.size
       + (state.maxMinutes != null ? 1 : 0)
       + (state.pace.size ? 1 : 0)
+      + (state.toReview ? 1 : 0)
       + (state.query ? 1 : 0);
   }
 
@@ -1603,6 +1613,7 @@
     state.maxMinutes = null;
     uiTimeLevel1 = null;
     state.pace.clear();
+    state.toReview = false;
     state.query = "";
     const searchInput = $("#search-input");
     if (searchInput) searchInput.value = "";
@@ -1763,6 +1774,23 @@
           type: "button", class: "btn-secondary btn-clear-filters",
           text: tx("Clear filters ({1})", { 1: activeFilterCount() }),
           onclick: clearAllFilters,
+        }),
+      ]));
+    }
+
+    // Recipes saved without review (batch links, batch PDFs, email). Shown
+    // only while there are some, or while the filter is on.
+    if (state.reviewCount || state.toReview) {
+      container.appendChild(el("div", { class: "sidebar-review-region" }, [
+        el("button", {
+          type: "button", class: "tag-node review-filter", "aria-pressed": String(state.toReview),
+          text: tx("To review ({1})", { 1: state.reviewCount }),
+          onclick: () => {
+            state.toReview = !state.toReview;
+            renderSidebar();
+            syncClearFiltersButton();
+            loadRecipes();
+          },
         }),
       ]));
     }
@@ -2610,6 +2638,7 @@
     for (const t of state.filterTags) params.append("tags", t);
     if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
     for (const p of state.pace) params.append("pace", p);
+    if (state.toReview) params.set("to_review", "true");
     params.set("sort", state.sort);
     params.set("direction", state.direction);
     // An error used to be parsed as the recipe list, which came out empty
@@ -2631,6 +2660,108 @@
     currentRecipes = await res.json();
     renderRecipeList(currentRecipes);
     announce(txn(currentRecipes.length, "{n} recipe found", "{n} recipes found"));
+    refreshReviewCount();
+  }
+
+  // The sidebar's "To review (n)". The last recipe reviewed turns the
+  // filter off, so the list doesn't stay empty behind a hidden button.
+  async function refreshReviewCount() {
+    let count;
+    try {
+      const res = await fetch(`${API}/review-queue`);
+      if (!res.ok) return;
+      count = (await res.json()).count;
+    } catch { return; }
+    if (count === state.reviewCount && (count || !state.toReview)) return;
+    state.reviewCount = count;
+    if (!count && state.toReview) {
+      state.toReview = false;
+      syncClearFiltersButton();
+      renderSidebar();
+      loadRecipes();
+      return;
+    }
+    renderSidebar();
+  }
+
+  // "Looks right": off the review list without changing anything.
+  async function markReviewed(recipe) {
+    let res;
+    try {
+      res = await fetch(`${API}/recipes/${recipe.id}/reviewed`, { method: "POST" });
+    } catch { res = null; }
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => ({})) : {};
+      announceError(res ? apiErrorText(body, res.status) : tx("Couldn't reach Open the Pantry. Check your connection and try again."));
+      return;
+    }
+    announce(tx("Marked as checked."));
+    renderRecipeDetail(await res.json());
+    loadRecipes();
+  }
+
+  // Top of a recipe saved without review: where it came from, and the
+  // three ways out (correct it, accept it, or delete it).
+  function reviewBanner(recipe) {
+    if (!recipe.needs_review) return null;
+    const where = { url: tx("Saved from a batch of links without being checked."),
+      pdf: tx("Saved from a batch of PDFs without being checked."),
+      email: tx("Saved from an email without being checked.") }[recipe.source_type]
+      || tx("Saved without being checked.");
+    return el("div", { class: "review-banner", role: "note" }, [
+      el("p", { class: "review-banner-text" }, [
+        el("strong", { text: tx("To review") }), document.createTextNode(` — ${where} `),
+        document.createTextNode(tx("Compare it with the original, then mark it as right or correct it.")),
+      ]),
+      el("div", { class: "review-banner-actions" }, [
+        el("button", { class: "btn-primary btn-small", type: "button", text: tx("Review"),
+          onclick: () => renderRecipeEditForm(recipe) }),
+        el("button", { class: "btn-secondary btn-small", type: "button", text: tx("Looks right"),
+          onclick: () => markReviewed(recipe) }),
+        el("button", { class: "btn-secondary btn-small btn-danger", type: "button", text: tx("Delete this import"),
+          onclick: (e) => deleteRecipe(recipe.id, e.currentTarget, tx("Delete this import")) }),
+      ]),
+    ]);
+  }
+
+  // The review view's "Check these": what the server thinks most likely
+  // went wrong (review.py). Line numbers are the line in the box below.
+  function reviewChecklist(hints, fields) {
+    const items = [];
+    const quote = (t) => `“${t.length > 80 ? t.slice(0, 80) + "…" : t}”`;
+    if (hints.title_guessed) {
+      items.push(tx("Title: read from the text (usually its first line)."));
+      fields.title.classList.add("needs-check");
+    }
+    if (hints.servings_missing) {
+      items.push(tx("Servings: none found."));
+      fields.servings.classList.add("needs-check");
+    }
+    if (hints.ocr_confidence != null) items.push(tx("Text recognition was unsure ({1}%): look for misread words and numbers.", { 1: hints.ocr_confidence }));
+    if (hints.no_ingredients) items.push(tx("No ingredients were found."));
+    if (hints.no_steps) items.push(tx("No steps were found."));
+    for (const i of hints.ingredients) {
+      const n = i.index + 1;
+      items.push(i.reason === "no_amount"
+        ? tx("Ingredients, line {1}: {2} has no amount.", { 1: n, 2: quote(i.text) })
+        : tx("Ingredients, line {1}: {2} — the learned model wasn't sure this is an ingredient.", { 1: n, 2: quote(i.text) }));
+    }
+    for (const st of hints.steps) {
+      const n = st.index + 1;
+      items.push(st.reason === "short"
+        ? tx("Steps, line {1}: {2} is very short. Part of the next step, or not a step?", { 1: n, 2: quote(st.text) })
+        : st.reason === "long"
+          ? tx("Steps, line {1} is very long. Several steps run together?", { 1: n })
+          : tx("Steps, line {1}: {2} — the learned model wasn't sure this is a step.", { 1: n, 2: quote(st.text) }));
+    }
+    if (hints.ingredients.length) fields.ingredients.classList.add("needs-check");
+    if (hints.steps.length || hints.no_steps) fields.steps.classList.add("needs-check");
+    return el("div", { class: "review-checklist" }, [
+      el("h2", { class: "review-checklist-title", text: tx("Check these") }),
+      items.length
+        ? el("ul", {}, items.map((t) => el("li", { text: t })))
+        : el("p", { text: tx("Nothing in particular stood out. Compare it with the original text, then save or mark it as right.") }),
+    ]);
   }
 
   // An ingredient as it was written ("3 Tablespoons plus 1 teaspoon maple
@@ -3095,7 +3226,10 @@
         recipe.has_notes ? el("span", { class: "card-notes-icon", role: "img", "aria-label": tx("Has notes"),
           title: tx("Has notes"), trustedStaticHtml: NOTE_ICON_SVG }) : null,
       ]),
-      matched ? el("div", { class: "card-matched-row" }, [matched]) : null,
+      matched || recipe.needs_review ? el("div", { class: "card-matched-row" }, [
+        recipe.needs_review ? el("span", { class: "badge badge-review", text: tx("To review") }) : null,
+        matched,
+      ]) : null,
       state.selectMode ? null : cardQuickControls(recipe),
     ]));
     return card;
@@ -3569,6 +3703,22 @@
       onclick: () => renderRecipeDetail(recipe),
     });
 
+    // A recipe saved without review opens as a review: what to check, and
+    // "Looks right" / "Delete this import" beside Save.
+    const reviewing = !!recipe.needs_review;
+    const checklist = el("div", { class: "review-checklist-slot" });
+    if (reviewing) {
+      fetch(`${API}/recipes/${recipe.id}/review-hints`).then((r) => (r.ok ? r.json() : null)).then((hints) => {
+        if (hints && checklist.isConnected) checklist.replaceChildren(reviewChecklist(hints,
+          { title: titleInput, servings: servingsInput, ingredients: ingredientsArea, steps: stepsArea }));
+      }).catch(() => {});
+    }
+    const reviewButtons = reviewing ? [
+      el("button", { class: "btn-secondary", type: "button", text: tx("Looks right"), onclick: () => markReviewed(recipe) }),
+      el("button", { class: "btn-secondary btn-danger", type: "button", text: tx("Delete this import"),
+        onclick: (e) => deleteRecipe(recipe.id, e.currentTarget, tx("Delete this import")) }),
+    ] : [];
+
     const fields = el("div", {}, [
       el("div", { class: "field" }, [el("label", { for: "edit-title", text: tx("Title") }), titleInput]),
       el("div", { class: "field" }, [
@@ -3607,10 +3757,11 @@
       : el("div", { class: "field-hint", text: tx("No original extracted text stored for this recipe.") });
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
-      el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: tx("Edit recipe") }),
+      el("h1", { id: "recipe-detail-heading", class: "recipe-title", text: reviewing ? tx("Review import") : tx("Edit recipe") }),
       confidenceBadge(recipe),
+      checklist,
       el("div", { class: "review-columns", style: "margin-top:0.75rem;" }, [referencePane, fields]),
-      el("div", { style: "display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;" }, [saveBtn, cancelBtn]),
+      el("div", { style: "display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;" }, [saveBtn, ...reviewButtons, cancelBtn]),
       statusLine,
     ]));
   }
@@ -3752,6 +3903,7 @@
         ]),
         shareMenu(recipe),
       ]),
+      reviewBanner(recipe),
       showcaseImageSection(recipe),
       meta,
       cardQuickControls(recipe, true),
@@ -4026,14 +4178,14 @@
     }
   }
 
-  async function deleteRecipe(id, btn) {
+  async function deleteRecipe(id, btn, label) {
     if (!confirm(tx("Delete this recipe? This cannot be undone."))) return;
 
     // Guard against a double-fire, but deliberately do NOT touch the modal's
     // close button or the Escape handler: the modal now stays open until the
     // request resolves, so those are the only way out if this hangs.
     if (btn) { btn.disabled = true; btn.textContent = tx("Deleting…"); }
-    const restore = () => { if (btn) { btn.disabled = false; btn.textContent = tx("Delete recipe"); } };
+    const restore = () => { if (btn) { btn.disabled = false; btn.textContent = label || tx("Delete recipe"); } };
 
     const result = await fetchWithTimeout(`${API}/recipes/${id}`, { method: "DELETE" });
 
@@ -4112,12 +4264,41 @@
     }).catch(() => {});
   }
 
+  // One saved recipe in a batch, import or inbox-scan result, with Delete
+  // to undo a bad import right there.
+  function savedResultRow(recipeId, title, note) {
+    const li = el("li", { class: "ok" });
+    const text = el("span", { text: `\u2713 ${title}${note || ""}` });
+    const del = el("button", {
+      type: "button", class: "btn-secondary btn-small btn-danger result-delete", text: tx("Delete"),
+      "aria-label": tx("Delete {1}", { 1: title }),
+      onclick: async () => {
+        if (!confirm(tx("Delete this recipe? This cannot be undone."))) return;
+        del.disabled = true;
+        const res = await fetchWithTimeout(`${API}/recipes/${recipeId}`, { method: "DELETE" });
+        if (res.ok || res.status === 404) {
+          li.className = "deleted";
+          text.textContent = `\u2715 ${tx("Deleted: {1}", { 1: title })}`;
+          del.remove();
+          announce(tx("Recipe deleted."));
+          await loadTimeBuckets();
+          loadRecipes();
+          return;
+        }
+        del.disabled = false;
+        announceError(writeFailureMessage(res, tx("The recipe")));
+      },
+    });
+    li.append(text, del);
+    return li;
+  }
+
   function renderBatchResults(container, result) {
     container.innerHTML = "";
     const list = el("ul", { class: "batch-results-list" });
     for (const s of result.succeeded) {
       const note = s.duplicate_of ? ` \u2014 ${tx("a recipe with this title was already in your library")}` : "";
-      list.appendChild(el("li", { class: "ok", text: `\u2713 ${s.title}${note}` }));
+      list.appendChild(savedResultRow(s.recipe_id, s.title, note));
     }
     for (const k of result.skipped || []) {
       list.appendChild(el("li", { class: "skipped", text: `\u21b7 ${k.title} \u2014 ${tx("already in your library from this link; not added again")}` }));

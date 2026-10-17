@@ -41,6 +41,7 @@ from .export import render_recipe_html, render_recipe_pdf
 from .backup import build_database_backup, build_pdf_bundle, remove_upload_file, UPLOADS_LOCK
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
+from . import review
 from . import crypto
 from . import i18n
 from . import https_setup
@@ -1090,6 +1091,7 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
             raw_text=result.get("raw_text"),
             ocr_confidence=result.get("ocr_confidence"),
             image_path=image_path,
+            needs_review=True,
         )
         db.add(recipe)
         db.flush()
@@ -1181,6 +1183,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
 
     messages = []
     succeeded = failed = 0
+    saved = []          # what this scan added, for its results in Settings (with Delete)
 
     try:
         password = crypto.decrypt_secret(settings.password_encrypted)
@@ -1241,6 +1244,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                 elif result["success"]:
                     same_title = duplicates.find(db, title=result["title"], limit=1)
                     recipe_id = _save_email_recipe(db, result, subject)
+                    saved.append({"recipe_id": recipe_id, "title": result["title"]})
                     succeeded += 1
                     line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
                     if not result["steps"]:
@@ -1300,7 +1304,8 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
         settings.last_problem_at = None
         db.commit()
 
-    return {"scanned": succeeded + failed, "succeeded": succeeded, "failed": failed, "messages": messages}
+    return {"scanned": succeeded + failed, "succeeded": succeeded, "failed": failed, "messages": messages,
+            "saved": saved}
 
 
 async def _daily_email_scan_loop():
@@ -1458,6 +1463,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
                 total_time=result.total_time,
                 raw_text=result.raw_text,
                 image_path=image_path,
+                needs_review=True,
             )
             db.add(recipe)
             db.flush()
@@ -1586,6 +1592,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
                 servings=segmented.get("servings"),
                 raw_text=pdf_result.raw_text,
                 ocr_confidence=pdf_result.avg_ocr_confidence,
+                needs_review=True,
             )
             db.add(recipe)
             db.flush()
@@ -1823,6 +1830,7 @@ def list_recipes(
     # one pace, so AND across values could never match).
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
     favorite: bool | None = None,
+    to_review: bool | None = None,
     sort: Literal["created", "title", "rating", "cook_time", "difficulty"] = "created",
     direction: Literal["asc", "desc"] = "desc",
     db: Session = Depends(get_db),
@@ -1860,6 +1868,9 @@ def list_recipes(
 
     if favorite:
         query = query.filter(models.Recipe.favorite.is_(True))
+
+    if to_review:
+        query = query.filter(models.Recipe.needs_review.is_(True))
 
     if pace:
         query = query.filter(models.Recipe.cook_time_rating.in_(pace))
@@ -1962,6 +1973,35 @@ def get_time_buckets(db: Session = Depends(get_db)):
     return available_time_buckets(logged)
 
 
+@app.get("/api/review-queue")
+def review_queue(db: Session = Depends(get_db)):
+    """How many recipes are still to review (the sidebar's "To review")."""
+    return {"count": db.query(models.Recipe).filter(models.Recipe.needs_review.is_(True)).count()}
+
+
+@app.get("/api/recipes/{recipe_id}/review-hints")
+def recipe_review_hints(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    """What to check in a recipe saved without review (review.py)."""
+    recipe = db.get(models.Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    uncertain = learning.uncertain_lines(recipe.raw_text) if recipe.raw_text else None
+    return review.hints(recipe, uncertain)
+
+
+@app.post("/api/recipes/{recipe_id}/reviewed", response_model=schemas.RecipeOut)
+def mark_reviewed(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    """"Looks right": off the review list, and a training example from the
+    next retrain (scheduled by retrain_after_changes)."""
+    recipe = db.get(models.Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe.needs_review = False
+    db.commit()
+    db.refresh(recipe)
+    return recipe
+
+
 @app.get("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
 def get_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
@@ -2031,6 +2071,8 @@ def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Se
         recipe.cook_time_rating = payload.cook_time_rating
         recipe.difficulty_rating = payload.difficulty_rating
         recipe.actual_cook_time_minutes = _logged_minutes(payload.actual_cook_time)
+        # Saved from Edit: someone has looked at it.
+        recipe.needs_review = False
 
         db.query(models.Ingredient).filter_by(recipe_id=recipe.id).delete()
         db.query(models.Step).filter_by(recipe_id=recipe.id).delete()
@@ -3281,8 +3323,10 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, O
         log.debug("_save_imported: %r not saved; its photo draft is discarded", r.title, exc_info=True)
         _discard_temp_file(image)
         raise
-    if r.notes:
-        recipe.notes = r.notes[:50_000]
+    if r.notes or r.to_review:
+        recipe.notes = r.notes[:50_000] if r.notes else None
+        # Still to review in the library it came from: still to review here.
+        recipe.needs_review = r.to_review
         db.commit()
     return recipe.id, (same_title[0] if same_title else None)
 

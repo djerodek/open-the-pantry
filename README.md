@@ -378,6 +378,18 @@ at>:8090`.
   image" option — before saving. Batch ingestion saves directly and reports
   per-item success/failure, since reviewing many items one at a time isn't
   really a batch operation.
+- **To review.** What's saved without that screen (batch links, batch PDFs,
+  email) is marked *To review*: a badge on the card, and *To review (n)* at
+  the top of the sidebar to list them. Such a recipe opens with a note and
+  three buttons: **Review** opens it in Edit with a *Check these* list of
+  the likely problems (a title read from the first line of the text, no
+  servings, low OCR confidence, an ingredient line with no amount, a very
+  short or very long step, and, once the learned reader is in use, lines
+  it wasn't sure of) and those fields outlined; **Looks right** clears the
+  mark; **Delete this import** removes it. Saving from Edit also clears
+  it. The batch, import and *Check email inbox* results have a Delete
+  button per recipe as well. Recipes saved before this existed aren't
+  marked.
 - **Ingredients are kept as written.** Each line is stored exactly as
   entered or extracted, and also parsed into quantity, unit and name
   ("1½ cups flour" -> 1½ / cup / flour), including lines typed on the
@@ -549,7 +561,8 @@ at>:8090`.
   recipe websites publish, which most recipe managers can import), with its
   photo in `images/`. Part names become `HowToSection`s, times are ISO 8601
   where they can be read, and the app's own fields (tags with their groups,
-  ratings, favourite, pace, difficulty, real-world cook time, notes) go
+  ratings, favourite, pace, difficulty, real-world cook time, notes, *To
+  review*) go
   under `"x-open-the-pantry"`, so importing the file back here loses
   nothing. One recipe can also be downloaded this way: Share → Download JSON
   (without its photo).
@@ -641,6 +654,9 @@ at>:8090`.
     more lines in the right place than the rules in cross-validation on
     your recipes; Settings shows both scores. The rules stay as the
     fallback for any import where it finds no ingredients or steps.
+  - Recipes still *To review* are left out of both models: they're the
+    parser's own output, unchecked, and learning from them would teach the
+    models their own mistakes. Once reviewed or saved from Edit, they count.
   - **Tag suggestions.** One model per tag, from the words of the title,
     ingredients and steps of your tagged recipes (15 needed, 5 per tag). It
     adds to the keyword suggestions: a tag gets a model only if, in
@@ -1148,7 +1164,7 @@ at>:8090`.
   do better, and even then it learns only from what you've saved — expect
   to correct fields on messy or non-standard layouts via the review screen
   shown after single-item ingestion. Batch
-  ingestion skips that review, so check results afterward.
+  ingestion skips that review; those recipes wait under *To review*.
 - Screenshot OCR confidence is surfaced as a badge (`OCR quality: low` etc.)
   based on Tesseract's per-word confidence; treat low-confidence extractions
   as a starting draft, not a finished entry.
