@@ -2582,13 +2582,45 @@
     return unicode ? `${whole}${frac}` : `${whole} ${frac}`;
   }
 
-  function scaleLine(text, factor) {
-    if (factor === 1 || !text || isPartName(text)) return text;
+  // Left as written rather than scaled wrong (Claude review round 9):
+  // "1,000 g" / "1.000 g" could be a thousand or one, so an amount with
+  // exactly three digits after its comma or point is ambiguous; and a
+  // second amount after the first one's unit ("1 lb 8 oz", "2 tbsp + 1
+  // tsp") would stay unscaled while the first changed.
+  const AMBIGUOUS_THOUSANDS = /^\d{1,3}[.,]\d{3}$/;
+  const SECOND_AMOUNT = /^\s*[a-zA-ZÀ-ÿ.]+\.?\s*(?:\+|plus\b|and\b|et\b)?\s*\d+(?:[.,/]\d+)?\s*(?!%)[a-zA-ZÀ-ÿ]/i;
+
+  // { text, kept }: kept is true when the line starts with an amount that
+  // was left as written (shown with a note), false when it was scaled or
+  // has no amount to scale.
+  function scaleLineInfo(text, factor) {
+    if (factor === 1 || !text || isPartName(text)) return { text, kept: false };
     const m = LEADING_AMOUNT.exec(text);
-    if (!m) return text;
+    if (!m) return { text, kept: false };
+    const rest = text.slice(m[0].length);
+    const amounts = [m[2], m[4]].filter(Boolean);
+    const firstWord = (/^\s*([a-zA-ZÀ-ÿ×]+)/.exec(rest) || [])[1] || "";
+    const multiplier = /^(x|×)$/i.test(firstWord);       // "2 x 400 g": the 2 scales
+    if (amounts.some((a) => AMBIGUOUS_THOUSANDS.test(a.trim())) || (!multiplier && SECOND_AMOUNT.test(rest))) {
+      return { text, kept: true };
+    }
     const one = (a) => { const v = parseAmount(a); return Number.isFinite(v) ? formatAmount(v * factor, a) : a; };
-    const scaled = m[1] + one(m[2]) + (m[4] ? m[3] + one(m[4]) : "");
-    return scaled + text.slice(m[0].length);
+    return { text: m[1] + one(m[2]) + (m[4] ? m[3] + one(m[4]) : "") + rest, kept: false };
+  }
+
+  function scaleLine(text, factor) {
+    return scaleLineInfo(text, factor).text;
+  }
+
+  // Servings: the leading amount as for an ingredient, else the only number
+  // in the text ("environ 10 croquettes"); null when it can't be scaled.
+  function scaleServings(text, factor) {
+    if (factor === 1 || !text) return text;
+    const info = scaleLineInfo(text, factor);
+    if (LEADING_AMOUNT.test(text) && !info.kept) return info.text;
+    const numbers = text.match(/\d+(?:[.,]\d+)?/g) || [];
+    if (numbers.length !== 1 || AMBIGUOUS_THOUSANDS.test(numbers[0])) return null;
+    return text.replace(numbers[0], formatAmount(parseAmount(numbers[0]) * factor, numbers[0]));
   }
 
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
@@ -3578,12 +3610,24 @@
     // lines (scaleLine). Back to 1x each time a recipe opens.
     const ingredientsList = el("ul", { class: "ingredients-list" });
     const scaleControl = scaleButtons((factor) => {
+      let kept = 0;
       ingredientsList.replaceChildren(...recipe.ingredients.map((i) => {
         const text = ingredientText(i);
-        return el("li", { class: isPartName(text) ? "list-part" : null, text: scaleLine(text, factor) });
+        const info = scaleLineInfo(text, factor);
+        if (info.kept) kept += 1;
+        return el("li", { class: isPartName(text) ? "list-part" : (info.kept ? "unscaled" : null) }, [
+          document.createTextNode(info.text),
+          info.kept ? el("span", { class: "unscaled-mark", text: ` (${tx("as written")})` }) : null,
+        ]);
       }));
       const parts = [];
-      if (factor !== 1 && recipe.servings) parts.push(tx("Servings: {1}", { 1: scaleLine(recipe.servings, factor) }));
+      if (factor !== 1 && recipe.servings) {
+        const servings = scaleServings(recipe.servings, factor);
+        parts.push(servings === null
+          ? tx("Servings: {1}", { 1: `${recipe.servings} (${tx("as written")})` })
+          : tx("Servings: {1}", { 1: servings }));
+      }
+      if (factor !== 1 && kept) parts.push(txn(kept, "{n} line left as written: check it by hand.", "{n} lines left as written: check them by hand."));
       if (factor !== 1) parts.push(tx("Amounts in the steps stay as written."));
       scaleControl.note.textContent = parts.join(" · ");
       scaleControl.note.hidden = !parts.length;
@@ -4122,8 +4166,8 @@
     return typeof err.detail === "string" ? err.detail : fallback;
   }
 
-  // prefill: a link to fetch at once (shared from another app; see
-  // sharedLinkFromAddress).
+  // prefill: a link shared from another app (sharedLinkFromAddress), put in
+  // the box for the person to fetch.
   function showUrlForm(prefill) {
     addBody.innerHTML = "";
     addBody.appendChild(el("h3", { text: tx("Add from URL") }));
@@ -4203,15 +4247,20 @@
     addBody.appendChild(formArea);
     renderSingle();
     if (typeof prefill === "string" && prefill) {
-      $("#url-input").value = prefill;
-      formArea.querySelector("form").requestSubmit();
+      // Filled in, not fetched: a share and a link made by another site look
+      // the same, and only a tap here shows the person meant it (Claude
+      // review round 9: a hidden frame elsewhere could start an import).
+      const input = $("#url-input");
+      input.value = prefill;
+      const form = formArea.querySelector("form");
+      form.insertBefore(el("p", { class: "field-hint", role: "status", text: tx("Shared link: press Fetch recipe to import it.") }), form.firstChild);
     }
   }
 
   // Share to Open the Pantry. Android's share sheet (manifest.json
   // share_target) and an iPhone Shortcut both open
   // /?share_url=...&share_text=...&share_title=...; the first http(s) link
-  // in them is fetched as with Add from URL, ending on the review screen.
+  // in them goes into Add from URL, ready to fetch with one tap.
   // The parameters are removed from the address straight away, so a reload
   // or Back doesn't import it again.
   function sharedLinkFromAddress() {
@@ -4242,6 +4291,9 @@
       announceError(tx("That share had no web link in it. Paste the recipe's address here."));
     }
     openModal(addOverlay);
+    // The next step is the button (or the empty box).
+    const next = link ? addBody.querySelector("form button[type=submit]") : $("#url-input");
+    if (next) next.focus();
   }
 
   function showPdfForm() {

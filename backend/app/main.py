@@ -552,9 +552,16 @@ def report_client_error(report: schemas.ClientErrorReport):
 # server each time (a 304 when nothing changed). Without it iOS kept old
 # copies for hours after an update. Photos (unique file names) and API
 # responses are left alone.
+# Every response, on both ports (picker.create_app gets this middleware
+# too), also says it may not be shown inside another site's page: a hidden
+# frame could otherwise start an import (/?share_url=) or trick taps on
+# the app's buttons. Neither app frames its own pages (Claude review
+# round 9).
 @app.middleware("http")
 async def app_files_revalidate(request: Request, call_next):
     response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
     path = request.url.path
     if request.method == "GET" and not path.startswith(("/api/", "/uploads/", "/tmp-preview/")) and path != "/healthz":
         response.headers["Cache-Control"] = "no-cache"
@@ -1356,13 +1363,15 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
         url = url.strip()
         if not url:
             continue
-        # Already saved from this link: not fetched or saved again.
-        existing = duplicates.same_link(db, url)
-        if existing:
-            skipped.append({"url": url, "recipe_id": existing["id"], "title": existing["title"]})
-            continue
         image_path = None
         try:
+            # Already saved from this link: not fetched or saved again.
+            # Inside the try, so a failure here is this link's failure, not
+            # the batch's.
+            existing = duplicates.same_link(db, url)
+            if existing:
+                skipped.append({"url": url, "recipe_id": existing["id"], "title": existing["title"]})
+                continue
             result = require_complete(ingest_url(url))
             same_title = duplicates.find(db, title=result.title, limit=1)
             parsed_ingredients = parse_ingredient_block(result.ingredients)

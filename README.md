@@ -410,7 +410,9 @@ at>:8090`.
 - **Share from another app** — Android: once Open the Pantry is installed
   from the browser (which needs the HTTPS address; see *Optional: HTTPS on
   your network*), it appears in the share sheet, and sharing a page's link
-  opens Add from URL with that link already fetching. iPhone and iPad don't
+  opens Add from URL with that link filled in; tap **Fetch recipe** to
+  import it (it never starts by itself, so a link on another website can't
+  start an import). iPhone and iPad don't
   let a home-screen web app receive shares; a Shortcut does the same job:
   in the Shortcuts app, create a shortcut that receives **URLs** from the
   **Share Sheet**, with two actions: **URL Encode** (the **Shortcut
@@ -686,7 +688,11 @@ at>:8090`.
   cups" → "3 cups"; "250 g" → "125 g"; "2-3 eggs" → "4-6 eggs"), in the
   same style as written (fractions stay fractions, "1,5 l" keeps its
   comma), and the servings with them. Amounts inside the steps, and lines
-  without a leading amount ("Salt to taste"), stay as written. Nothing is
+  without a leading amount ("Salt to taste"), stay as written. So do lines
+  the app can't scale safely, marked "(as written)" with a count above the
+  list: "1,000 g" (a thousand, or one?) and two amounts in one line ("1 lb
+  8 oz", "2 tbsp + 1 tsp"). Servings such as "environ 10 croquettes" scale
+  their only number. Nothing is
   saved: each recipe opens at 1×. Printing from the page prints the
   scaled amounts.
 
@@ -850,6 +856,9 @@ at>:8090`.
     page on another site can't add a custom header without the browser
     asking the app first, and the app never agrees. Scripts that call the
     API directly need to send it too (any value).
+  - **No framing.** Both ports send `X-Frame-Options: DENY` and
+    `Content-Security-Policy: frame-ancestors 'none'`, so another site
+    can't show the app inside its own page to trick taps on it.
 - **Share → Email PDF sends from your email account**, so it needs the
   settings password. It's also capped: at most five recipients per email
   and 10 emails per hour. It's only offered once the email-ingest account

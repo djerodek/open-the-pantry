@@ -765,12 +765,16 @@
     "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random to read there. Nothing can be changed from it. It has no login: anyone who can reach the port can read your recipes, notes included (cocktails aside).":
       "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard, à lire sur place. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port peut lire vos recettes, notes comprises (sauf les cocktails).",
     "Address:": "Adresse :",
+    "Shared link: press Fetch recipe to import it.": "Lien partagé : appuyez sur Récupérer la recette pour l'importer.",
     "That share had no web link in it. Paste the recipe's address here.": "Ce partage ne contenait aucun lien Web. Collez ici l'adresse de la recette.",
     // Recipe view: scaling
     "Quantities": "Quantités",
     "Half the quantities": "Moitié des quantités",
     "Quantities as written": "Quantités telles qu'écrites",
     "Double the quantities": "Quantités doublées",
+    "as written": "tel qu'écrit",
+    "{n} line left as written: check it by hand.": "{n} ligne laissée telle qu'écrite : vérifiez-la à la main.",
+    "{n} lines left as written: check them by hand.": "{n} lignes laissées telles qu'écrites : vérifiez-les à la main.",
     "Amounts in the steps stay as written.": "Les quantités dans les étapes restent telles qu'écrites.",
     // Already in your library? (review screen, Add manually, batch links)
     "This may already be in your library:": "Cette recette est peut-être déjà dans votre bibliothèque :",

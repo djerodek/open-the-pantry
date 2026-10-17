@@ -1860,5 +1860,6 @@ a.btn-primary { display: inline-block; text-decoration: none; }
   font-size: 0.9rem; cursor: pointer;
 }
 .scale-button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-bg-raised); border-color: var(--color-ink); }
+.unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }
 .scale-note { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-ink-muted); }
 @media print { .scale-buttons { display: none !important; } }

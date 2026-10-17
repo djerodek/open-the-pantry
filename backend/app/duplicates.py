@@ -31,14 +31,18 @@ def normalize_url(url: str | None) -> str | None:
         return None
     try:
         parts = urlsplit(url.strip())
+        port_number = parts.port      # ValueError for "example.com:443443" or ":abc"
     except ValueError:
+        # Not a usable address. Raising here took down a whole batch, the
+        # duplicate check and every emailed link once one saved recipe had
+        # such a link (Claude review round 9).
         return None
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
         return None
     host = parts.hostname.lower()
     if host.startswith("www."):
         host = host[4:]
-    port = f":{parts.port}" if parts.port and parts.port not in (80, 443) else ""
+    port = f":{port_number}" if port_number and port_number not in (80, 443) else ""
     path = re.sub(r"/+$", "", parts.path) or ""
     query = urlencode(sorted((k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
                              if not _TRACKING.match(k)))

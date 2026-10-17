@@ -469,7 +469,9 @@ ouvert la page>:8090`.
   Pantry installée depuis le navigateur (ce qui demande l'adresse HTTPS;
   voir *Facultatif : HTTPS sur votre réseau*), elle apparaît dans la
   feuille de partage, et partager le lien d'une page ouvre Ajouter à partir
-  d'une URL avec ce lien déjà en cours de lecture. L'iPhone et l'iPad ne
+  d'une URL avec ce lien déjà inscrit; appuyez sur **Récupérer la recette**
+  pour l'importer (rien ne démarre seul, donc un lien sur un autre site Web
+  ne peut pas lancer un ajout). L'iPhone et l'iPad ne
   laissent pas une application Web de l'écran d'accueil recevoir des
   partages; un raccourci fait le même travail : dans l'app Raccourcis,
   créez un raccourci qui reçoit des **URL** de la **feuille de partage**,
@@ -812,7 +814,12 @@ ouvert la page>:8090`.
   « 2 à 3 œufs » → « 4 à 6 œufs »), dans le même style que l'original (les
   fractions restent des fractions, « 1,5 l » garde sa virgule), et les
   portions avec. Les quantités dans les étapes, et les lignes sans quantité
-  au début (« Sel au goût »), restent telles qu'écrites. Rien n'est
+  au début (« Sel au goût »), restent telles qu'écrites. Les lignes que
+  l'application ne peut pas ajuster sans risque aussi, marquées « (tel
+  qu'écrit) » avec un compte au-dessus de la liste : « 1.000 g » (mille, ou
+  un?) et deux quantités sur une ligne (« 1 lb 8 oz », « 2 c. à soupe + 1
+  c. à thé »). Des portions comme « environ 10 croquettes » ajustent leur
+  seul nombre. Rien n'est
   enregistré : chaque recette s'ouvre à 1×. L'impression depuis la page
   imprime les quantités ajustées.
 
@@ -1016,6 +1023,10 @@ courriel)**
     à l'application, et l'application ne l'accepte jamais. Les scripts qui
     appellent l'API directement doivent l'envoyer aussi (n'importe quelle
     valeur).
+  - **Pas d'encadrement.** Les deux ports envoient `X-Frame-Options: DENY`
+    et `Content-Security-Policy: frame-ancestors 'none'`, donc un autre site
+    ne peut pas afficher l'application dans sa propre page pour piéger les
+    touchers.
 - **Partager → Envoyer le PDF par courriel envoie à partir de votre compte
   de courriel**; il demande donc le mot de passe des paramètres. C'est
   aussi plafonné : au plus cinq destinataires par courriel et 10 courriels

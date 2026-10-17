@@ -364,7 +364,7 @@ def _scale_line():
     part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
 
     def run(cases):
-        src = part + block + f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f]) => scaleLine(t, f))));"
+        src = part + block + f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f, fn]) => fn === 'servings' ? scaleServings(t, f) : fn === 'kept' ? scaleLineInfo(t, f).kept : scaleLine(t, f))));"
         out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
@@ -389,13 +389,35 @@ def test_scaling_rewrites_the_leading_amount_only():
         assert out == want, (text, factor, out)
 
 
+def test_scaling_leaves_ambiguous_lines_as_written():
+    """Claude review round 9: "1,000 g" at ½ became "0,5 g" (off by a
+    thousand); "1 lb 8 oz" became "1/2 lb 8 oz". Such lines are now left
+    as written and flagged; servings scale their only number."""
+    run = _scale_line()
+    cases = [
+        (["1,000 g flour", 0.5, None], "1,000 g flour"), (["1.000 g farine", 2, None], "1.000 g farine"),
+        (["1,000 g flour", 0.5, "kept"], True), (["1 lb 8 oz beef", 0.5, "kept"], True),
+        (["2 tbsp + 1 tsp sugar", 2, "kept"], True), (["2 tbsp plus 1 tsp sugar", 2, "kept"], True),
+        (["1 cup 2% milk", 2, None], "2 cup 2% milk"), (["2 x 400 g tomatoes", 2, None], "4 x 400 g tomatoes"),
+        (["1,25 kg pommes", 2, None], "2,5 kg pommes"), (["Salt to taste", 2, "kept"], False),
+        (["3 apples", 2, "kept"], False),
+        (["environ 10 croquettes", 2, "servings"], "environ 20 croquettes"),
+        (["4-6", 0.5, "servings"], "2-3"), (["Makes 2 loaves, 12 slices", 2, "servings"], None),
+        (["a crowd", 2, "servings"], None),
+    ]
+    got = run([c for c, _ in cases])
+    for (case, want), out in zip(cases, got):
+        assert out == want, (case, out)
+
+
 def test_scale_buttons_in_the_recipe_view():
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
     assert '[[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]]' in js
     start = js.index("    const ingredientsList = el(\"ul\"")
     detail = js[start:js.index("    body.appendChild(el(\"div\", { class: \"recipe-detail\" }", start)]
-    assert "scaleLine(text, factor)" in detail and "scaleLine(recipe.servings, factor)" in detail
+    assert "scaleLineInfo(text, factor)" in detail and "scaleServings(recipe.servings, factor)" in detail
+    assert 'tx("as written")' in detail
     assert "@media print { .scale-buttons { display: none !important; } }" in css
 
 
