@@ -446,7 +446,10 @@
     ].filter(Boolean);
     const line = tagLine({ tags: recipe.tags });
     let n = 0;
-    readerBody.replaceChildren(
+    // replaceChildren() writes a null argument out as the text "null" (a
+    // recipe without a photo showed it above the title), unlike el(), which
+    // skips nulls: hence the filter.
+    readerBody.replaceChildren(...[
       recipe.image_path ? el("img", { class: "reader-photo", src: photoUrl(recipe.image_path), alt: "" }) : null,
       el("div", { class: "reader-content" }, [
         el("h2", { id: "reader-title", class: "reader-title", text: recipe.title }),
@@ -475,7 +478,7 @@
             [el("span", { text: tx("Edit in Open the Pantry") })]),
         ]),
       ]),
-    );
+    ].filter(Boolean));
   }
 
   function readerFocusables() {

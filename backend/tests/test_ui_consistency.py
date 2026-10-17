@@ -313,3 +313,20 @@ def test_ingredient_and_step_boxes_are_tall():
         for part in ("ingredients", "steps"):
             assert re.search(r'el\("textarea", \{ id: "%s-%s", class: "recipe-lines"' % (box, part), js), (box, part)
     assert "min-height:9rem" not in js
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.js").exists(), reason="frontend not present")
+def test_picker_never_hands_null_to_replace_children():
+    """replaceChildren() and append() write a null argument out as the text
+    "null": a recipe without a photo showed "null" above its title in the
+    picker's recipe view (0082). A call that can get a "cond ? node : null"
+    must filter it first."""
+    js = (PICKER_DIR / "picker.js").read_text(encoding="utf-8")
+    for m in re.finditer(r"\.(?:replaceChildren|append|prepend)\(", js):
+        depth, i = 1, m.end()
+        while depth:
+            depth += {"(": 1, ")": -1}.get(js[i], 0)
+            i += 1
+        call = js[m.end():i - 1]
+        if ": null" in call:
+            assert call.rstrip().endswith(".filter(Boolean)"), call[:120]
