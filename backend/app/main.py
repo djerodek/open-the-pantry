@@ -190,11 +190,25 @@ def _sweep_orphaned_upload_files():
             pass
 
 
+async def _run_sweeps():
+    """Both sweeps, in a worker thread. They're blocking work (a database
+    query, folder listings, deletes), and a delete in uploads/ waits on
+    backup.UPLOADS_LOCK, which a full backup holds for its whole archive
+    build: run on the event loop, a sweep that met a backup froze every
+    request on both ports until the backup ended (DeepSeek review of
+    0083)."""
+    await asyncio.to_thread(_sweep_stale_tmp_files)
+    await asyncio.to_thread(_sweep_orphaned_upload_files)
+
+
 async def _periodic_tmp_sweep():
     while True:
         await asyncio.sleep(TMP_SWEEP_INTERVAL_SECONDS)
-        _sweep_stale_tmp_files()
-        _sweep_orphaned_upload_files()
+        try:
+            await _run_sweeps()
+        except Exception:
+            # One failed sweep mustn't end the loop (it used to, silently).
+            log.exception("Periodic tmp/uploads sweep failed")
 
 
 def _warn_unprotected_credentials():
@@ -228,8 +242,7 @@ async def lifespan(app: FastAPI):
     # above is the actual CPU-thrashing guard; this is just pool headroom.
     anyio.to_thread.current_default_thread_limiter().total_tokens = 100
 
-    _sweep_stale_tmp_files()
-    _sweep_orphaned_upload_files()
+    await _run_sweeps()
     sweep_task = asyncio.create_task(_periodic_tmp_sweep())
     email_scan_task = asyncio.create_task(_daily_email_scan_loop())
     # Optional HTTPS (Settings -> HTTPS): serve it if it was set up, and

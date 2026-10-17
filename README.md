@@ -899,7 +899,9 @@ at>:8090`.
 - **Rate limiting** is on by default (120 API requests/minute per IP,
   configurable via `RECIPE_APP_RATE_LIMIT`) as basic abuse protection.
   Photos and the app's own files aren't counted -- they used to be, and
-  scrolling a large library hit the limit. Behind a reverse proxy every
+  scrolling a large library hit the limit. The What to eat? page's port
+  counts toward the same per-address request limit as the main port (one
+  budget per address for both, not one each). Behind a reverse proxy every
   client shares the proxy's address. It's
   in-memory and per-process — meaningful for this app's single-instance
   design, not a substitute for real infrastructure-level rate limiting if

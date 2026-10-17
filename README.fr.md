@@ -1080,7 +1080,10 @@ courriel)**
   minute par adresse IP, réglable avec `RECIPE_APP_RATE_LIMIT`) comme
   protection de base contre les abus. Les photos et les fichiers de
   l'application ne sont pas comptés — ils l'étaient, et faire défiler une
-  grosse bibliothèque atteignait la limite. Derrière un proxy inverse, tous
+  grosse bibliothèque atteignait la limite. Le port de la page On mange
+  quoi? compte dans la même limite de requêtes par adresse que le port
+  principal (un seul budget par adresse pour les deux, pas un chacun).
+  Derrière un proxy inverse, tous
   les clients partagent l'adresse du proxy. Elle est en mémoire et propre à
   chaque processus — utile pour la conception à instance unique de cette
   application, mais pas un substitut à une vraie limitation au niveau de
