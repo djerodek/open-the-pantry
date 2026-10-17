@@ -330,3 +330,22 @@ def test_picker_never_hands_null_to_replace_children():
         call = js[m.end():i - 1]
         if ": null" in call:
             assert call.rstrip().endswith(".filter(Boolean)"), call[:120]
+
+
+@pytest.mark.skipif(not (PICKER_DIR / "picker.js").exists(), reason="frontend not present")
+def test_picker_recipe_view_prints_the_recipe_only():
+    """A Print button in the picker's recipe view (and nowhere else): the
+    recipe alone, on white, notes and the edit link left off, the "View
+    original" address written out; only while a recipe is open."""
+    html = (PICKER_DIR / "index.html").read_text(encoding="utf-8")
+    js = (PICKER_DIR / "picker.js").read_text(encoding="utf-8")
+    css = (PICKER_DIR / "picker.css").read_text(encoding="utf-8")
+    bar = html[html.index('class="reader-bar"'):html.index('id="reader-body"')]
+    assert 'id="reader-print"' in bar and html.count("reader-print") == 2   # id and class, once
+    assert 'printButton.addEventListener("click", () => window.print());' in js
+    assert js.count("window.print(") == 1
+    printing = css[css.index("@media print {"):]
+    for hidden in (".picker-header", ".picker-main", ".reader-bar", ".reader-edit", ".reader-notes"):
+        assert f"html.reader-open {hidden}" in printing, hidden
+    assert ".reader-source::after { content: attr(href)" in printing
+    assert "--color-bg: #FFFFFF;" in printing and "--color-ink: #000000;" in printing

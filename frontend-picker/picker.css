@@ -442,6 +442,21 @@ button.stage-card:hover .stage-title { color: var(--color-accent-text); }
   cursor: pointer;
 }
 .reader-close svg { width: 1.3rem; height: 1.3rem; }
+.reader-print {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  min-height: 2.6rem;
+  padding: 0 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-raised);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.reader-print svg { width: 1.15rem; height: 1.15rem; }
+.reader-print:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
 .reader-photo {
   display: block;
   width: 100%;
@@ -564,4 +579,50 @@ button.stage-card:hover .stage-title { color: var(--color-accent-text); }
 @media (prefers-reduced-motion: reduce) {
   .pick-button, .reader, .stage-card--landed { transition: none; animation: none; }
   .pick-button:active { transform: none; }
+}
+
+/* ---------------------------------------------------------------------
+   Print (the recipe view's Print button): the recipe alone, on white,
+   whatever the screen's theme. Only while a recipe is open; printing the
+   picker page itself is left as it is.
+--------------------------------------------------------------------- */
+@page { margin: 1.5cm; }
+
+@media print {
+  html:root.reader-open {   /* outranks the dark block's :root:not([data-theme]) */
+    --color-bg: #FFFFFF;
+    --color-bg-raised: #FFFFFF;
+    --color-ink: #000000;
+    --color-ink-muted: #444444;
+    --color-border: #BBBBBB;
+    --color-accent-text: #8F6218;
+    --color-alert: #A8443A;
+    --color-sage: #6B7A5E;
+  }
+  html.reader-open, html.reader-open body { overflow: visible; background: #fff; color: #000; }
+  html.reader-open .picker-header,
+  html.reader-open .picker-main,
+  html.reader-open .reader-bar,
+  html.reader-open .reader-edit,
+  html.reader-open .reader-notes { display: none !important; }
+  .reader-overlay { position: static; background: none; }
+  .reader {
+    position: static;
+    inset: auto;
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    animation: none;
+  }
+  .reader-photo { max-height: 8cm; }
+  .reader-content { padding: 0.5rem 0 0; }
+  .reader-footer { border-top: 0; margin-top: 1rem; padding-top: 0; }
+  /* A link can't be followed on paper: the address instead. */
+  .reader-source > span { display: none; }
+  .reader-source::after { content: attr(href); color: #000; overflow-wrap: anywhere; }
+  .reader-ingredients li, .reader-steps li, .reader-ratings { break-inside: avoid; }
+  .reader-content h3 { break-after: avoid; }
 }

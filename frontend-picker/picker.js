@@ -388,6 +388,11 @@
   const readerOverlay = $("#reader-overlay");
   const reader = $("#reader");
   const readerBody = $("#reader-body");
+  // Print: the recipe only, on white (picker.css, @media print), like the
+  // main app's printout: photo, facts, ratings, ingredients, steps, and the
+  // "View original" address written out; notes and links to the app left off.
+  const printButton = $("#reader-print");
+  printButton.addEventListener("click", () => window.print());
   const RECIPE_HASH = /^#recipe-(\d+)$/;
   let readerTicket = 0;
   let readerOpener = null;
@@ -412,7 +417,7 @@
     let url;
     try { url = new URL(recipe.source_url); } catch { return null; }
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return el("a", { class: "reader-link", href: url.href, target: "_blank", rel: "noopener noreferrer" },
+    return el("a", { class: "reader-link reader-source", href: url.href, target: "_blank", rel: "noopener noreferrer" },
       [el("span", { text: tx("View original") }), el("span", { "aria-hidden": "true", text: " ↗" })]);
   }
 
@@ -479,6 +484,7 @@
         ]),
       ]),
     ].filter(Boolean));
+    printButton.hidden = false;   // only once there is a recipe to print
   }
 
   function readerFocusables() {
@@ -507,6 +513,7 @@
         readerPushed = true;
       }
     }
+    printButton.hidden = true;
     readerBody.replaceChildren(el("p", { class: "reader-loading", role: "status", text: tx("Loading...") }));
     $("#reader-close").focus();
     let recipe = null, failure = null;
@@ -536,6 +543,7 @@
     readerTicket += 1;
     readerPushed = false;
     readerOverlay.hidden = true;
+    printButton.hidden = true;
     document.documentElement.classList.remove("reader-open");
     document.removeEventListener("keydown", onReaderKey);
     readerBody.replaceChildren();
