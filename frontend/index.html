@@ -395,6 +395,16 @@
             from. Large libraries take a while to build.</span>
           </span>
         </label>
+        <label class="backup-format">
+          <input type="radio" name="backup-format" value="json">
+          <span>
+            <strong>Recipes as JSON</strong>
+            <span class="field-hint">Every recipe as a schema.org Recipe file, the
+            format recipe websites use, with its photo, in a .zip. Other recipe
+            apps can import it, and so can this one (it adds; the full backup
+            is what restores).</span>
+          </span>
+        </label>
         <label class="backup-notes-option" for="backup-pdf-notes" hidden>
           <input type="checkbox" id="backup-pdf-notes" checked>
           <span>Include my notes in the PDFs</span>
@@ -403,6 +413,18 @@
 
       <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
       <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
+
+      <div class="import-box" id="import-box">
+        <div class="restore-help-title" id="import-label">Import recipes</div>
+        <div class="field-hint">A schema.org recipe file (.json) or a .zip of them, from this
+        app's Recipes as JSON or another recipe app, or a Paprika export
+        (.paprikarecipes). The recipes are added; nothing is replaced, and
+        ones already here from the same link are skipped.</div>
+        <input type="file" id="import-file" accept=".json,.zip,.paprikarecipes,application/json,application/zip" aria-labelledby="import-label">
+        <button type="button" id="import-btn" class="btn-secondary">Import</button>
+        <p class="field-hint" id="import-status" role="status" aria-live="polite"></p>
+        <div id="import-results"></div>
+      </div>
 
       <details class="restore-help">
         <summary>How to restore a backup or move to another drive</summary>

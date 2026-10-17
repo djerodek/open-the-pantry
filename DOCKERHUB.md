@@ -116,7 +116,8 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   ingredient or pace, shuffles through titles and stops on one to read and
   print right there (read-only; edit in the main app); no login, so anyone
   who can reach the port can read your recipes; switched on in Settings
-- Full backup (restorable) or every recipe as PDFs, from Settings
+- Full backup (restorable), every recipe as PDFs, or every recipe as schema.org
+  JSON for other recipe apps; import schema.org JSON or a Paprika export
 - Logs: Settings → Logs (view, download, clear), `docker logs
   open-the-pantry`, or `data/logs/app.log`
 

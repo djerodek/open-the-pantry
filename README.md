@@ -536,6 +536,30 @@ at>:8090`.
   share export) and there's a checkbox to leave them out. A recipe that
   fails to render is recorded in the index and skipped rather than killing
   the whole archive.
+- **Recipes as JSON (`.zip`)** — every recipe as a
+  [schema.org Recipe](https://schema.org/Recipe) `.json` file (the format
+  recipe websites publish, which most recipe managers can import), with its
+  photo in `images/`. Part names become `HowToSection`s, times are ISO 8601
+  where they can be read, and the app's own fields (tags with their groups,
+  ratings, favourite, pace, difficulty, real-world cook time, notes) go
+  under `"x-open-the-pantry"`, so importing the file back here loses
+  nothing. One recipe can also be downloaded this way: Share → Download JSON
+  (without its photo).
+- **Import recipes** (under the Download button) — a schema.org `.json`
+  (one recipe, a list or an `@graph`), a `.zip` of them (the export above or
+  another app's), or a Paprika export (`.paprikarecipes`). The recipes are
+  **added**; nothing is replaced. A recipe already in the library from the
+  same link is skipped; one whose title is already used is added with a
+  note. Photos inside the file are kept (checked like any upload); photos
+  that are only web links aren't downloaded. Tags: this app's own export
+  keeps its tags exactly; another app's keywords are matched to tags you
+  already have, and Paprika's categories (your own) become Custom tags
+  when there's no match; suggested tags are added as for any import. The
+  results list each recipe added, skipped or refused (e.g. a line over the
+  usual length limits). Archives are read with limits (20,000 files, 25 MB
+  per file, 2 GB unpacked, 5,000 recipes, 1 GB upload) and only by name,
+  so a damaged or hostile zip can't write anywhere. Paprika's format isn't
+  published; the fields read are the ones its exports are known to contain.
 - Both are built to a temp file and streamed by the server, never
   assembled in its memory — a library with a few hundred photos is larger
   than it would be sensible to hold in RAM on a small server. (The browser does hold

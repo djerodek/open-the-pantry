@@ -447,6 +447,20 @@
       "Facultatif. Permet d'envoyer des recettes par courriel à une boîte dédiée, qu'Open the Pantry vérifie une fois par jour.",
     "Backup & export": "Sauvegarde et exportation",
     "Full backup": "Sauvegarde complète",
+    "Recipes as JSON": "Recettes en JSON",
+    "Every recipe as a schema.org Recipe file, the format recipe websites use, with its photo, in a .zip. Other recipe apps can import it, and so can this one (it adds; the full backup is what restores).":
+      "Chaque recette en fichier Recipe schema.org, le format des sites de recettes, avec sa photo, dans un .zip. D'autres applications de recettes peuvent l'importer, et celle-ci aussi (elle ajoute; c'est la sauvegarde complète qui restaure).",
+    "Import recipes": "Importer des recettes",
+    "A schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). The recipes are added; nothing is replaced, and ones already here from the same link are skipped.":
+      "Un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Les recettes sont ajoutées; rien n'est remplacé, et celles déjà présentes depuis le même lien sont ignorées.",
+    "Import": "Importer",
+    "Download JSON (schema.org)": "Télécharger en JSON (schema.org)",
+    "Preparing your recipes as JSON…": "Préparation de vos recettes en JSON…",
+    "Imported": "Importée",
+    "Choose a file first.": "Choisissez d'abord un fichier.",
+    "That file is larger than 1 GB.": "Ce fichier dépasse 1 Go.",
+    "Importing {1}…": "Importation de {1}…",
+    "{1} added, {2} skipped, {3} failed.": "{1} ajoutée(s), {2} ignorée(s), {3} en échec.",
     "The database plus every photo and uploaded PDF, as a .zip. This is the one you restore from — it puts the app back exactly as it is now. Instructions are inside.":
       "La base de données, toutes les photos et tous les PDF envoyés, dans un fichier .zip. C'est celle qui sert à restaurer : l'application revient exactement à son état actuel. Les instructions sont incluses.",
     "Recipes as PDFs": "Recettes en PDF",

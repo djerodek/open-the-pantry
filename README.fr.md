@@ -628,6 +628,36 @@ ouvert la page>:8090`.
   partagée) et une case permet de les exclure. Une recette dont le rendu
   échoue est inscrite dans l'index et sautée plutôt que de faire échouer
   toute l'archive.
+- **Recettes en JSON (`.zip`)** — chaque recette en fichier `.json`
+  [Recipe schema.org](https://schema.org/Recipe) (le format que publient
+  les sites de recettes, et que la plupart des gestionnaires de recettes
+  importent), avec sa photo dans `images/`. Les noms de parties deviennent
+  des `HowToSection`, les temps sont en ISO 8601 quand ils peuvent être
+  lus, et les champs propres à l'application (étiquettes et leurs groupes,
+  notes d'appréciation, favori, rythme, difficulté, temps réel, notes) vont
+  sous `"x-open-the-pantry"`, donc réimporter le fichier ici ne perd rien.
+  Une recette peut aussi être téléchargée ainsi : Partager → Télécharger en
+  JSON (sans sa photo).
+- **Importer des recettes** (sous le bouton Télécharger) — un `.json`
+  schema.org (une recette, une liste ou un `@graph`), un `.zip` de ces
+  fichiers (l'exportation ci-dessus ou celle d'une autre application), ou
+  une exportation Paprika (`.paprikarecipes`). Les recettes sont
+  **ajoutées**; rien n'est remplacé. Une recette déjà présente depuis le
+  même lien est ignorée; une dont le titre existe déjà est ajoutée avec une
+  note. Les photos contenues dans le fichier sont gardées (vérifiées comme
+  tout téléversement); les photos qui ne sont que des liens Web ne sont pas
+  téléchargées. Étiquettes : l'exportation de cette application garde ses
+  étiquettes telles quelles; les mots-clés d'une autre application sont
+  associés aux étiquettes que vous avez déjà, et les catégories de Paprika
+  (les vôtres) deviennent des étiquettes personnalisées s'il n'y a pas de
+  correspondance; les étiquettes suggérées s'ajoutent comme pour tout
+  ajout. Les résultats listent chaque recette ajoutée, ignorée ou refusée
+  (p. ex. une ligne au-delà des limites habituelles). Les archives sont
+  lues avec des limites (20 000 fichiers, 25 Mo par fichier, 2 Go
+  décompressés, 5 000 recettes, 1 Go téléversé) et seulement par nom, donc
+  un zip endommagé ou malveillant ne peut rien écrire nulle part. Le format
+  de Paprika n'est pas publié; les champs lus sont ceux que ses
+  exportations contiennent d'après ce qui en est connu.
 - Les deux sont créées dans un fichier temporaire et transmises en continu
   par le serveur, jamais assemblées dans sa mémoire — une bibliothèque de
   quelques centaines de photos est trop grosse pour qu'il soit raisonnable

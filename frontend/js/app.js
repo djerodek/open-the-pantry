@@ -370,6 +370,10 @@
         url = `${API}/backup/pdfs.zip?include_notes=${includeNotes}`;
         fallbackName = "open-the-pantry-pdfs.zip";
         status.textContent = tx("Building a PDF of every recipe. This can take a while.");
+      } else if (format === "json") {
+        url = `${API}/backup/recipes-json.zip`;
+        fallbackName = "open-the-pantry-recipes-json.zip";
+        status.textContent = tx("Preparing your recipes as JSON…");
       } else {
         url = `${API}/backup/database.zip`;
         fallbackName = "open-the-pantry-backup.zip";
@@ -392,6 +396,42 @@
       } finally {
         backupDownloadBtn.disabled = false;
         backupDownloadBtn.textContent = original;
+      }
+    });
+  }
+
+  // Settings -> Backup & export -> Import recipes (backend: interchange.py,
+  // POST /api/import/recipes). Adds; reports per recipe like the batches.
+  const importBtn = $("#import-btn");
+  if (importBtn) {
+    importBtn.addEventListener("click", async () => {
+      const input = $("#import-file");
+      const status = $("#import-status");
+      const results = $("#import-results");
+      const file = input.files && input.files[0];
+      results.replaceChildren();
+      if (!file) { status.textContent = tx("Choose a file first."); input.focus(); return; }
+      if (file.size > 1024 * 1024 * 1024) { status.textContent = tx("That file is larger than 1 GB."); return; }
+      importBtn.disabled = true;
+      status.textContent = tx("Importing {1}…", { 1: file.name });
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        const res = await fetch(`${API}/import/recipes`, { method: "POST", body });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          status.textContent = apiErrorText(data, res.status);
+          return;
+        }
+        status.textContent = tx("{1} added, {2} skipped, {3} failed.",
+          { 1: data.succeeded.length, 2: data.skipped.length, 3: data.failed.length });
+        renderBatchResults(results, data);
+        announce(status.textContent);
+        if (data.succeeded.length) { await loadTags(); await loadTimeBuckets(); loadRecipes(); refreshBackupStats(); }
+      } catch {
+        status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
+      } finally {
+        importBtn.disabled = false;
       }
     });
   }
@@ -2650,7 +2690,8 @@
   }
 
   function sourceBadge(recipe) {
-    const label = { url: tx("Web"), pdf: "PDF", screenshot: tx("Screenshot"), manual: tx("Handwritten/Manual"), email: tx("Email") }[recipe.source_type] || recipe.source_type;
+    const label = { url: tx("Web"), pdf: "PDF", screenshot: tx("Screenshot"), manual: tx("Handwritten/Manual"), email: tx("Email"),
+      import: tx("Imported") }[recipe.source_type] || recipe.source_type;
     return el("span", { class: `badge badge-source-${recipe.source_type}`, text: label });
   }
 
@@ -3828,6 +3869,13 @@
         },
       }),
       el("button", {
+        type: "button", text: tx("Download JSON (schema.org)"),
+        onclick: () => {
+          onDone();
+          downloadExport(`${API}/recipes/${recipe.id}/export.json`, safeFilename(recipe.title, "json"));
+        },
+      }),
+      el("button", {
         type: "button", text: tx("Copy as text"),
         onclick: async () => {
           onDone();
@@ -4006,7 +4054,10 @@
     for (const k of result.skipped || []) {
       list.appendChild(el("li", { class: "skipped", text: `\u21b7 ${k.title} \u2014 ${tx("already in your library from this link; not added again")}` }));
     }
-    for (const f of result.failed) list.appendChild(el("li", { class: "fail", text: `\u2717 ${f.url || f.filename}: ${f.error}` }));
+    for (const f of result.failed) {
+      const where = f.url || f.filename || [f.title, f.origin].filter(Boolean).join(" \u2014 ");
+      list.appendChild(el("li", { class: "fail", text: `\u2717 ${where}: ${f.error}` }));
+    }
     container.appendChild(list);
   }
 

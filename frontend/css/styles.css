@@ -1059,6 +1059,7 @@ main {
 .badge-source-screenshot { background: var(--badge-screenshot-bg); color: var(--badge-screenshot-fg); }
 .badge-source-manual { background: var(--badge-manual-bg); color: var(--badge-manual-fg); }
 .badge-source-email { background: var(--badge-email-bg); color: var(--badge-email-fg); }
+.badge-source-import { background: var(--badge-manual-bg); color: var(--badge-manual-fg); }
 
 .badge-confidence-high { background: var(--badge-conf-high-bg); color: var(--badge-conf-high-fg); }
 .badge-confidence-med { background: var(--badge-conf-med-bg); color: var(--badge-conf-med-fg); }
@@ -1863,3 +1864,7 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 .unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }
 .scale-note { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-ink-muted); }
 @media print { .scale-buttons { display: none !important; } }
+
+/* Settings -> Backup & export -> Import recipes */
+.import-box { margin-top: 1.25rem; padding-top: 0.9rem; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.import-box input[type="file"] { max-width: 100%; font-size: 0.85rem; }

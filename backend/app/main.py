@@ -1,6 +1,7 @@
 import asyncio
 import fcntl
 import hmac
+import json
 import re
 import os
 import shutil
@@ -37,7 +38,7 @@ from .ingestion.ingredient_parser import parse_ingredient_block
 from .ingestion.tagger import suggest_tags, set_user_keywords, meat_tag_names
 from .ingestion.email_processing import process_tagged_email
 from .export import render_recipe_html, render_recipe_pdf
-from .backup import build_database_backup, build_pdf_bundle, remove_upload_file
+from .backup import build_database_backup, build_pdf_bundle, remove_upload_file, UPLOADS_LOCK
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import crypto
@@ -46,6 +47,7 @@ from . import https_setup
 from . import admin_lock
 from . import picker
 from . import duplicates
+from . import interchange
 from .ml import service as learning
 
 _lock_file_handle = None
@@ -304,7 +306,7 @@ if API_KEY:
 
 # Changes the learned models train on: recipes saved, edited or deleted,
 # tags changed, batch and email imports.
-_RETRAIN_AFTER = re.compile(r"^/api/(recipes|tags|tag-groups|ingest/(url|pdf)/batch|email-settings/scan)(/|$)")
+_RETRAIN_AFTER = re.compile(r"^/api/(recipes|tags|tag-groups|ingest/(url|pdf)/batch|email-settings/scan|import)(/|$)")
 
 
 @app.middleware("http")
@@ -3157,6 +3159,166 @@ def backup_pdfs(include_notes: bool = True, db: Session = Depends(get_db)):
             os.remove(path)
         raise HTTPException(status_code=500, detail="Could not build the PDF archive.")
     return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-pdfs"))
+
+
+@app.get("/api/backup/recipes-json.zip")
+def backup_recipes_json(db: Session = Depends(get_db)):
+    """Every recipe as a schema.org Recipe .json, photos alongside
+    (interchange.py): readable by other recipe apps, and importable here
+    (adds; the full backup is what restores)."""
+    recipes = (
+        db.query(models.Recipe)
+        .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
+                 selectinload(models.Recipe.tags))
+        .order_by(models.Recipe.id).all()
+    )
+    if not recipes:
+        raise HTTPException(status_code=404, detail="There are no recipes to export.")
+    path = os.path.join(BACKUP_TMP_DIR, f"json-{uuid.uuid4().hex}.zip")
+    try:
+        _run_heavy(interchange.build_jsonld_zip, recipes, UPLOADS_DIR, path, UPLOADS_LOCK)
+    except Exception:
+        log.warning("backup_recipes_json: request failed", exc_info=True)
+        if os.path.isfile(path):
+            os.remove(path)
+        raise HTTPException(status_code=500, detail="Could not build the JSON archive.")
+    return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-recipes-json"))
+
+
+@app.get("/api/recipes/{recipe_id}/export.json")
+def export_json(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    """One recipe as a schema.org Recipe .json (Share -> Download JSON).
+    Without its photo: a single .json file has nowhere to put it."""
+    recipe = db.get(models.Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    body = json.dumps(interchange.recipe_to_jsonld(recipe), ensure_ascii=False, indent=1)
+    return Response(content=body, media_type="application/ld+json",
+                    headers={"Content-Disposition": _attachment_disposition(recipe.title, "json")})
+
+
+# ---------------------------------------------------------------------------
+# Import (interchange.py): schema.org JSON, zips of it, Paprika
+# ---------------------------------------------------------------------------
+
+MAX_IMPORT_BYTES = 1024 ** 3   # a library export with every photo
+
+
+def _match_tags(db: Session, names: list[str], keep_unknown: bool) -> list[schemas.TagIn]:
+    """Labels from another app, matched to existing tags by name (any
+    case). Unknown ones become Custom tags only when they're the person's
+    own categories (Paprika), not a website's keywords."""
+    if not names:
+        return []
+    by_name = {}
+    for t in db.query(models.Tag).all():
+        by_name.setdefault(t.name.casefold(), t)
+    out = []
+    for n in names:
+        t = by_name.get(n.casefold())
+        if t:
+            out.append(schemas.TagIn(name=t.name, category=t.category, subgroup=t.subgroup))
+        elif keep_unknown:
+            out.append(schemas.TagIn(name=n, category="custom"))
+    return out
+
+
+def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, Optional[dict]]:
+    """Saves one imported recipe through create_recipe (the same checks and
+    caps as any save). Returns (recipe id, duplicate_of or None)."""
+    same_title = duplicates.find(db, title=r.title, limit=1)
+    parsed = parse_ingredient_block(r.ingredients)
+    if r.tags:
+        tag_ins = [schemas.TagIn(**t) for t in r.tags]
+    else:
+        tag_ins = _match_tags(db, r.tag_names, keep_unknown=False) + _match_tags(db, r.custom_tag_names, keep_unknown=True)
+        for n, c, sg in suggest_tags(r.title, [i["name"] or i["raw_line"] for i in parsed], " ".join(r.steps)):
+            tag_ins.append(schemas.TagIn(name=n, category=c, subgroup=sg))
+    seen, unique_tags = set(), []
+    for t in tag_ins:
+        if (t.name, t.category) not in seen:
+            seen.add((t.name, t.category))
+            unique_tags.append(t)
+    image = None
+    if r.image_bytes:
+        image = validate_and_save_image_bytes(r.image_bytes, TMP_DIR, f"imp-{uuid.uuid4().hex}")
+    try:
+        payload = schemas.RecipeCreate(
+            title=r.title[:500], source_type=(r.source_type or "import")[:20], source_url=r.source_url,
+            servings=r.servings, prep_time=r.prep_time, cook_time=r.cook_time, total_time=r.total_time,
+            image_path=image, ingredients=[schemas.IngredientIn(**i) for i in parsed], steps=r.steps,
+            tags=unique_tags[:50], favorite=r.favorite, tastiness_rating=r.tastiness_rating,
+            cook_time_rating=r.cook_time_rating, difficulty_rating=r.difficulty_rating,
+            actual_cook_time=r.actual_cook_time,
+        )
+        recipe = create_recipe(payload, db)
+    except Exception:
+        log.debug("_save_imported: %r not saved; its photo draft is discarded", r.title, exc_info=True)
+        _discard_temp_file(image)
+        raise
+    if r.notes:
+        recipe.notes = r.notes[:50_000]
+        db.commit()
+    return recipe.id, (same_title[0] if same_title else None)
+
+
+def _validation_text(e: Exception) -> str:
+    if hasattr(e, "errors"):
+        try:
+            first = e.errors()[0]
+            return f"{'.'.join(str(x) for x in first.get('loc', ()))}: {first.get('msg')}"
+        except Exception:
+            log.debug("_validation_text: unexpected error shape", exc_info=True)
+    return str(getattr(e, "detail", None) or e) or e.__class__.__name__
+
+
+@app.post("/api/import/recipes")
+def import_recipes(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Adds the recipes in a schema.org .json, a zip of them (this app's
+    "Recipes as JSON" or another app's) or a Paprika .paprikarecipes file.
+    Nothing is replaced. A recipe already saved from the same link is
+    skipped; one whose title is already used is saved with a note. Photos
+    inside the file are kept (validated like any upload); photos only
+    linked from the web aren't fetched, so a big import never means
+    hundreds of downloads."""
+    name = os.path.basename(file.filename or "import")
+    path = os.path.join(TMP_DIR, f"import-{uuid.uuid4().hex}.upload")
+    written = 0
+    try:
+        with open(path, "wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > MAX_IMPORT_BYTES:
+                    raise HTTPException(status_code=413, detail="File too large (max 1024 MB).")
+                out.write(chunk)
+        if not written:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        try:
+            recipes, problems = _run_heavy(interchange.read_file, path, name)
+        except interchange.ImportFileError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    finally:
+        if os.path.isfile(path):
+            os.remove(path)
+
+    succeeded, failed, skipped = [], [dict(p) for p in problems], []
+    for r in recipes:
+        try:
+            existing = duplicates.same_link(db, r.source_url)
+            if existing:
+                skipped.append({"origin": r.origin, "recipe_id": existing["id"], "title": existing["title"]})
+                continue
+            rid, dup = _save_imported(db, r)
+            succeeded.append({"origin": r.origin, "recipe_id": rid, "title": r.title[:500], "duplicate_of": dup})
+        except Exception as e:
+            db.rollback()
+            log.warning("Import of %r from %s failed: %s", r.title, name, _validation_text(e))
+            failed.append({"origin": r.origin, "title": r.title[:500], "error": _validation_text(e)})
+    log.info("Import from %s: %d added, %d skipped, %d failed", name, len(succeeded), len(skipped), len(failed))
+    return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
 
 
 # ---------------------------------------------------------------------------
