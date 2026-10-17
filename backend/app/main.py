@@ -2004,6 +2004,53 @@ def mark_reviewed(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     return recipe
 
 
+@app.post("/api/recipes/{recipe_id}/duplicate", response_model=schemas.RecipeOut)
+def duplicate_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    """A copy to make a variant from: everything the recipe has (title with
+    " (copy)", ingredients, steps, tags, times, servings, notes, ratings,
+    source and original text), with its own copy of the photo so deleting
+    one leaves the other's. Not copied: favourite and the "To review" mark.
+    The page opens the copy in Edit."""
+    src = db.get(models.Recipe, recipe_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    suffix = " (copie)" if i18n.current_lang.get() == "fr" else " (copy)"
+    image = None
+    if src.image_path:
+        old_path = safe_join(UPLOADS_DIR, src.image_path)
+        if old_path and os.path.isfile(old_path):
+            image = f"copy-{uuid.uuid4().hex}{os.path.splitext(src.image_path)[1]}"
+            shutil.copyfile(old_path, os.path.join(UPLOADS_DIR, image))
+    try:
+        copy = models.Recipe(
+            title=(src.title or "")[:500 - len(suffix)] + suffix,
+            source_type=src.source_type, source_url=src.source_url, servings=src.servings,
+            prep_time=src.prep_time, cook_time=src.cook_time, total_time=src.total_time,
+            image_path=image, raw_text=src.raw_text, notes=src.notes, ocr_confidence=src.ocr_confidence,
+            autotag_ignored=src.autotag_ignored, tastiness_rating=src.tastiness_rating,
+            cook_time_rating=src.cook_time_rating, difficulty_rating=src.difficulty_rating,
+            actual_cook_time_minutes=src.actual_cook_time_minutes,
+        )
+        db.add(copy)
+        db.flush()
+        for ing in src.ingredients:
+            db.add(models.Ingredient(recipe_id=copy.id, position=ing.position, raw_line=ing.raw_line,
+                                     quantity=ing.quantity, unit=ing.unit, name=ing.name))
+        for step in src.steps:
+            db.add(models.Step(recipe_id=copy.id, position=step.position, text=step.text))
+        _apply_tags(db, copy, [schemas.TagIn(name=t.name, category=t.category, subgroup=t.subgroup) for t in src.tags])
+        db.commit()
+    except Exception:
+        log.warning("duplicate_recipe: copy of %s not saved", recipe_id, exc_info=True)
+        db.rollback()
+        if image:
+            remove_upload_file(os.path.join(UPLOADS_DIR, image))
+        raise
+    db.refresh(copy)
+    log.info("Recipe %s duplicated as %s", recipe_id, copy.id)
+    return copy
+
+
 @app.get("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
 def get_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)

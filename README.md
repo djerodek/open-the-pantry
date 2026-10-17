@@ -372,6 +372,11 @@ at>:8090`.
   memory. This matters most for the paths that auto-save without review
   (batch URL, batch PDF, email) and for low-confidence OCR you only notice
   was wrong later.
+- **Duplicate** (beside Edit and Delete at the foot of a recipe) makes a
+  copy to turn into a variant: everything the recipe has, titled
+  "… (copy)", with its own copy of the photo (deleting one leaves the
+  other's), opened straight in Edit. The favourite and *To review* marks
+  aren't copied.
 - Single-item ingestion (URL/PDF/screenshot) always routes through a
   manual-review screen — raw extracted text alongside editable fields, plus
   a preview of any auto-captured showcase image with a "Don't use this

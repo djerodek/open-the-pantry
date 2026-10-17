@@ -424,6 +424,11 @@ ouvert la page>:8090`.
   la source plutôt que de mémoire. C'est surtout utile pour les méthodes
   qui enregistrent sans révision (URL par lot, PDF par lot, courriel) et
   pour un OCR peu fiable dont on ne remarque l'erreur que plus tard.
+- **Dupliquer** (à côté de Modifier et Supprimer, au bas d'une recette)
+  en fait une copie pour en tirer une variante : tout ce que la recette a,
+  intitulé « … (copie) », avec sa propre copie de la photo (supprimer
+  l'une laisse celle de l'autre), ouverte directement dans la
+  modification. Les marques Favori et *À vérifier* ne sont pas copiées.
 - L'ajout d'un seul élément (URL, PDF, capture) passe toujours par un écran
   de révision — le texte extrait à côté des champs modifiables, plus un
   aperçu de l'image vedette capturée, avec l'option « Ne pas utiliser

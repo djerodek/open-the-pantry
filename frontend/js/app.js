@@ -3990,6 +3990,10 @@
           onclick: () => renderRecipeEditForm(recipe),
         }),
         el("button", {
+          class: "btn-secondary", type: "button", text: tx("⧉ Duplicate"),
+          onclick: (e) => duplicateRecipe(recipe, e.currentTarget),
+        }),
+        el("button", {
           class: "btn-secondary btn-danger", type: "button", text: tx("Delete recipe"),
           onclick: (e) => deleteRecipe(recipe.id, e.currentTarget),
         }),
@@ -4225,6 +4229,25 @@
           ? tx("The server returned an error ({1}). Nothing was changed.", { 1: result.status })
           : tx("That didn't work (status {1}).", { 1: result.status });
     }
+  }
+
+  // A copy to make a variant from (backend: duplicate_recipe). Opens in
+  // Edit, titled "… (copy)", so it can be renamed and changed right away.
+  async function duplicateRecipe(recipe, btn) {
+    btn.disabled = true;
+    const result = await fetchWithTimeout(`${API}/recipes/${recipe.id}/duplicate`, { method: "POST" });
+    btn.disabled = false;
+    if (!result.ok) {
+      if (result.timedOut) loadRecipes();
+      announceError(writeFailureMessage(result, tx("The copy")));
+      return;
+    }
+    const copy = await result.res.json();
+    announce(tx("Copy made: {1}. Change it here, then save.", { 1: copy.title }));
+    renderRecipeEditForm(copy);
+    $("#recipe-detail-modal").scrollTop = 0;
+    await loadTags();
+    loadRecipes();
   }
 
   async function deleteRecipe(id, btn, label) {
