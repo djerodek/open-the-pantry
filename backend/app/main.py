@@ -1707,7 +1707,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
 def list_recipes(
     q: str | None = None,
     tags: list[str] | None = Query(default=None),        # repeated ?tags=A&tags=B, AND logic
-    max_minutes: int | None = None,        # actual_cook_time_minutes <= max_minutes
+    max_minutes: Optional[schemas.DbInt] = None,   # actual_cook_time_minutes <= max_minutes
     # Pace rating: repeated ?pace=quick&pace=moderate, OR logic (a recipe has
     # one pace, so AND across values could never match).
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
@@ -1841,7 +1841,7 @@ def get_time_buckets(db: Session = Depends(get_db)):
 
 
 @app.get("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
-def get_recipe(recipe_id: int, db: Session = Depends(get_db)):
+def get_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -1849,7 +1849,7 @@ def get_recipe(recipe_id: int, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/recipes/{recipe_id}")
-def delete_recipe(recipe_id: int, db: Session = Depends(get_db)):
+def delete_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -1889,7 +1889,7 @@ def batch_delete_recipes(payload: schemas.BatchDeleteRequest, db: Session = Depe
 
 
 @app.put("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
-def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
+def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -1942,7 +1942,7 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeCreate, db: Session = D
 
 
 @app.patch("/api/recipes/{recipe_id}/rating", response_model=schemas.RecipeOut)
-def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = Depends(get_db)):
+def update_rating(recipe_id: schemas.DbId, payload: schemas.RatingUpdate, db: Session = Depends(get_db)):
     """Lightweight endpoint for the card-level quick controls (favorite
     toggle, tastiness/pace/difficulty popovers) -- avoids resending the
     full recipe payload just to change one rating."""
@@ -1978,7 +1978,7 @@ def update_rating(recipe_id: int, payload: schemas.RatingUpdate, db: Session = D
 
 
 @app.patch("/api/recipes/{recipe_id}/notes", response_model=schemas.RecipeOut)
-def update_notes(recipe_id: int, payload: schemas.NotesUpdate, db: Session = Depends(get_db)):
+def update_notes(recipe_id: schemas.DbId, payload: schemas.NotesUpdate, db: Session = Depends(get_db)):
     """Lightweight endpoint for the recipe-detail notes button -- avoids
     resending the full recipe payload just to add/edit/clear notes."""
     recipe = db.get(models.Recipe, recipe_id)
@@ -1993,7 +1993,7 @@ def update_notes(recipe_id: int, payload: schemas.NotesUpdate, db: Session = Dep
 
 
 @app.patch("/api/recipes/{recipe_id}/image", response_model=schemas.RecipeOut)
-def update_image(recipe_id: int, payload: schemas.ImageUpdate, db: Session = Depends(get_db)):
+def update_image(recipe_id: schemas.DbId, payload: schemas.ImageUpdate, db: Session = Depends(get_db)):
     """Lightweight endpoint for manually uploading, replacing, or removing
     a recipe's showcase image without resending the full recipe payload.
     payload.image_path is either a TMP_DIR draft filename from a prior
@@ -2103,7 +2103,7 @@ def auto_apply_tags(dry_run: bool = False, payload: Optional[schemas.AutoTagAppl
 
 
 @app.patch("/api/recipes/{recipe_id}/autotag-ignore", response_model=schemas.RecipeOut)
-def set_autotag_ignored(recipe_id: int, payload: schemas.AutoTagIgnore, db: Session = Depends(get_db)):
+def set_autotag_ignored(recipe_id: schemas.DbId, payload: schemas.AutoTagIgnore, db: Session = Depends(get_db)):
     """Leave a recipe out of (or put it back into) the Settings tag scan, so
     the list doesn't fill up with suggestions already turned down."""
     recipe = db.get(models.Recipe, recipe_id)
@@ -2230,7 +2230,7 @@ def create_tag(payload: schemas.TagDefIn, db: Session = Depends(get_db)):
 
 
 @app.put("/api/tags/{tag_id}", response_model=schemas.TagOut)
-def update_tag(tag_id: int, payload: schemas.TagDefUpdate, db: Session = Depends(get_db)):
+def update_tag(tag_id: schemas.DbId, payload: schemas.TagDefUpdate, db: Session = Depends(get_db)):
     """Change the extra keywords of any tag, built-in ones included."""
     tag = db.get(models.Tag, tag_id)
     if not tag:
@@ -2244,7 +2244,7 @@ def update_tag(tag_id: int, payload: schemas.TagDefUpdate, db: Session = Depends
 
 
 @app.delete("/api/tags/{tag_id}")
-def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+def delete_tag(tag_id: schemas.DbId, db: Session = Depends(get_db)):
     """Delete a tag added in Settings, removing it from any recipes."""
     tag = db.get(models.Tag, tag_id)
     if not tag:
@@ -2803,7 +2803,7 @@ def _attachment_disposition(title: str, ext: str) -> str:
 
 
 @app.get("/api/recipes/{recipe_id}/export.pdf")
-def export_pdf(recipe_id: int, include_notes: bool = False, db: Session = Depends(get_db)):
+def export_pdf(recipe_id: schemas.DbId, include_notes: bool = False, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -2872,7 +2872,7 @@ def update_recent_recipients(payload: schemas.RecentRecipients, db: Session = De
 
 
 @app.post("/api/recipes/{recipe_id}/email")
-def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Session = Depends(get_db)):
+def email_recipe_pdf(recipe_id: schemas.DbId, payload: schemas.RecipeEmailRequest, db: Session = Depends(get_db)):
     """The same PDF as Share -> Download PDF, sent as an attachment."""
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
@@ -2956,7 +2956,7 @@ def email_recipe_pdf(recipe_id: int, payload: schemas.RecipeEmailRequest, db: Se
 
 
 @app.get("/api/recipes/{recipe_id}/export.html")
-def export_html(recipe_id: int, include_notes: bool = False, db: Session = Depends(get_db)):
+def export_html(recipe_id: schemas.DbId, include_notes: bool = False, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")

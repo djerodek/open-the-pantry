@@ -1,6 +1,18 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Annotated, Literal, Optional
 
+from fastapi import Path
+
+# SQLite stores integers in 64 bits. A larger number in a URL or body
+# (?meal_type=99999999999999999999) passed validation as a Python int and
+# then raised OverflowError inside the query: a 500 and a long traceback in
+# the log, twice (Claude review round 8). Ids and other integers that reach
+# the database are held to that range, so they get a 422 instead. The full
+# range keeps 0 and negative ids a plain 404.
+SQL_INT_MIN, SQL_INT_MAX = -2**63, 2**63 - 1
+DbInt = Annotated[int, Field(ge=SQL_INT_MIN, le=SQL_INT_MAX)]        # body fields, list items
+DbId = Annotated[int, Path(ge=SQL_INT_MIN, le=SQL_INT_MAX)]          # path parameters
+
 from .file_validation import is_safe_stored_filename
 
 
@@ -255,7 +267,7 @@ class ImageUpdate(BaseModel):
 
 
 class BatchDeleteRequest(BaseModel):
-    ids: list[int]
+    ids: list[DbInt]
 
 
 class BatchUrlIngestRequest(BaseModel):

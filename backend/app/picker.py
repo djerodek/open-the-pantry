@@ -398,11 +398,11 @@ def _recipe_out(recipe: models.Recipe) -> dict:
 
 @router.get("/api/picker/random")
 def picker_random(
-    meal_type: list[int] | None = Query(default=None),
-    cooking_style: list[int] | None = Query(default=None),
-    main_ingredient: list[int] | None = Query(default=None),
+    meal_type: list[schemas.DbInt] | None = Query(default=None),
+    cooking_style: list[schemas.DbInt] | None = Query(default=None),
+    main_ingredient: list[schemas.DbInt] | None = Query(default=None),
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
-    exclude: list[int] | None = Query(default=None),
+    exclude: list[schemas.DbInt] | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """One random pickable recipe matching the choices: OR within a
@@ -458,7 +458,7 @@ def _web_link(value: Optional[str]) -> Optional[str]:
 
 
 @router.get("/api/picker/recipes/{recipe_id}")
-def picker_recipe(recipe_id: int, db: Session = Depends(get_db)):
+def picker_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     """One pickable recipe, to read in the picker: what the main app's
     recipe page shows, read-only. Cocktails are a 404 here as everywhere on
     the picker, so this port shows nothing it couldn't pick."""
