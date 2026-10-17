@@ -42,7 +42,10 @@ def normalize_url(url: str | None) -> str | None:
     host = parts.hostname.lower()
     if host.startswith("www."):
         host = host[4:]
-    port = f":{port_number}" if port_number and port_number not in (80, 443) else ""
+    # Only the scheme's own default port is dropped: http://x:443 and
+    # https://x:80 are other addresses (GPT review of 0093).
+    default = 80 if parts.scheme.lower() == "http" else 443
+    port = f":{port_number}" if port_number and port_number != default else ""
     path = re.sub(r"/+$", "", parts.path) or ""
     query = urlencode(sorted((k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
                              if not _TRACKING.match(k)))

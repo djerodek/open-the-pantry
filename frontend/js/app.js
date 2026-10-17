@@ -4395,17 +4395,34 @@
       box.appendChild(el("p", { class: "dup-warning-hint", text: tx("Press Save again to add it anyway.") }));
     }
     const key = () => `${(getTitle() || "").trim()}|${(getUrl() || "").trim()}`;
+    // Only the latest lookup may change the warning: an older answer
+    // arriving late would show matches for text no longer in the form.
+    let ticket = 0;
     return {
       box,
       // On opening: show any match, without stopping anything.
-      async preview() { show(await lookup()); },
+      async preview() {
+        const mine = ++ticket;
+        const found = await lookup();
+        if (mine === ticket) show(found);
+      },
       // On Save: true to go ahead.
       async allowSave() {
-        if (blockedFor === key()) return true;
-        const found = await lookup();
-        show(found);
+        // The title and link as checked are read before the lookup; if
+        // they were edited while it ran, the new ones are checked before
+        // anything is decided (GPT review of 0093: the edited text was
+        // marked as already warned about without being checked).
+        let checked, found;
+        for (;;) {
+          checked = key();
+          if (blockedFor === checked) return true;
+          const mine = ++ticket;
+          found = await lookup();
+          if (mine === ticket) show(found);
+          if (checked === key()) break;   // changed meanwhile: check what's there now
+        }
         if (!found.length) return true;
-        blockedFor = key();
+        blockedFor = checked;
         box.scrollIntoView({ block: "nearest" });
         announce(tx("This may already be in your library:") + " " + found.map((d) => d.title).join(", "));
         return false;

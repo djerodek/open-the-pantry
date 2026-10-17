@@ -16,8 +16,8 @@ Steps (main.restore_backup drives them, with the app quiet):
 3. The database is replaced in place through SQLite's backup API (the
    same API the backups are made with): page by page into the live file,
    under SQLite's own locking, while nothing else in the app is running.
-4. uploads/ is replaced by the backup's photos and PDFs, each checked by
-   its magic bytes like any upload.
+4. uploads/ is replaced by the backup's photos and PDFs, checked to the
+   upload standard (_content_ok).
 5. What belongs to this server, not to the backup, is kept: the HTTPS
    settings row (its certificate lives in data/https/ here), and an email
    password this server's key can't decrypt is cleared (ingest switched
@@ -32,7 +32,7 @@ import zipfile
 import zlib
 from datetime import datetime
 
-from .file_validation import PDF_MAGIC, detect_image_ext, is_safe_stored_filename
+from .file_validation import PDF_MAGIC, detect_image_ext, is_safe_stored_filename, reencode_image
 from .logging_setup import get_logger
 
 log = get_logger("restore")
@@ -41,6 +41,7 @@ MAX_ENTRIES = 50_000
 MAX_DB_BYTES = 4 * 1024 ** 3
 MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 ** 3
+MAX_MANIFEST_BYTES = 1024 * 1024   # the app's own lists missing photos; a few KB in practice
 REQUIRED_TABLES = {"recipes", "ingredients", "steps", "tags", "recipe_tags"}
 SAFETY_KEEP = 3
 
@@ -94,8 +95,14 @@ def inspect(zip_path: str, db_path: str) -> dict:
         created = None
         try:
             import json
-            manifest = json.loads(zf.read("manifest.json").decode("utf-8")) if "manifest.json" in zf.namelist() else {}
-            created = manifest.get("created_at") if isinstance(manifest, dict) else None
+            info = zf.getinfo("manifest.json") if "manifest.json" in zf.namelist() else None
+            # Only read for its date: one that's larger than any the app
+            # writes is ignored, not read into memory (GPT review of 0093).
+            if info is not None and info.file_size <= MAX_MANIFEST_BYTES:
+                manifest = json.loads(zf.read(info).decode("utf-8"))
+                created = manifest.get("created_at") if isinstance(manifest, dict) else None
+            elif info is not None:
+                log.info("inspect: manifest.json is %d bytes; ignored", info.file_size)
         except Exception:
             log.debug("inspect: unreadable manifest.json, ignored", exc_info=True)
     try:
@@ -117,10 +124,49 @@ def inspect(zip_path: str, db_path: str) -> dict:
             "files_left_out": len(uploads) - len(good_uploads), "created_at": created}
 
 
-def _content_ok(path: str) -> bool:
+# What a whole image file ends with, by format. A file the app stored was
+# re-encoded on the way in, so it ends exactly there.
+_IMAGE_END = {".jpg": b"\xff\xd9", ".png": b"IEND\xaeB`\x82", ".gif": b";"}
+
+
+def _ends_clean(path: str, ext: str) -> bool:
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        if ext == ".webp":
+            head = f.read(8)
+            return int.from_bytes(head[4:8], "little") + 8 == size
+        tail = _IMAGE_END[ext]
+        f.seek(max(0, size - len(tail)))
+        return f.read() == tail
+
+
+def _content_ok(path: str, name: str) -> bool:
+    """The same standard as an upload (GPT review of 0093: only the first
+    bytes were checked). The type read from the content must match the
+    name's extension, and a PDF must be named .pdf. An image must decode
+    in full; one with anything after its image data (trailing bytes, a
+    polyglot) goes through the upload re-encoding, which drops it. A file
+    the app stored was already re-encoded, so it's kept byte for byte:
+    re-saving every JPEG on each restore would lose a little each time."""
+    ext = os.path.splitext(name)[1].lower()
     with open(path, "rb") as f:
         head = f.read(16)
-    return bool(detect_image_ext(head)) or head.startswith(PDF_MAGIC)
+    if head.startswith(PDF_MAGIC):
+        return ext == ".pdf"
+    kind = detect_image_ext(head)
+    if kind is None or kind != ext:
+        return False
+    try:
+        from PIL import Image
+        with Image.open(path, formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
+            img.load()
+        if not _ends_clean(path, kind):
+            log.info("Restore: %s has data after the image; re-encoded", name)
+            reencode_image(path)
+    except Exception:
+        log.info("Restore: %s isn't a readable image; left out", name, exc_info=True)
+        return False
+    return True
 
 
 def unpack_uploads(zip_path: str, dest_dir: str) -> tuple[int, int]:
@@ -147,7 +193,7 @@ def unpack_uploads(zip_path: str, dest_dir: str) -> tuple[int, int]:
                     os.remove(target)
                 skipped += 1
                 continue
-            if not _content_ok(target):
+            if not _content_ok(target, name):
                 os.remove(target)
                 skipped += 1
                 continue

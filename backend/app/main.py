@@ -578,9 +578,11 @@ def report_client_error(report: schemas.ClientErrorReport):
 
 # Browser features the app never uses, switched off for its pages. Keeping
 # the screen awake is the one it does use (Settings -> Keep screen awake).
+# Only features Chromium recognises: an unknown name ("bluetooth") is
+# logged as an error in the browser console on every page load.
 PERMISSIONS_POLICY = ", ".join([
     "camera=()", "microphone=()", "geolocation=()", "payment=()", "usb=()", "serial=()", "hid=()",
-    "bluetooth=()", "midi=()", "accelerometer=()", "gyroscope=()", "magnetometer=()",
+    "midi=()", "accelerometer=()", "gyroscope=()", "magnetometer=()",
     "display-capture=()", "browsing-topics=()", "screen-wake-lock=(self)",
 ])
 

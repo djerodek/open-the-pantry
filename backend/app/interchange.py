@@ -38,6 +38,9 @@ import zipfile
 from dataclasses import dataclass, field
 
 from .ingestion.url_ingest import _flatten_instructions
+from .logging_setup import get_logger
+
+log = get_logger("import")
 
 EXT_KEY = "x-open-the-pantry"
 EXT_VERSION = 1
@@ -279,15 +282,20 @@ def _image_from(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _recipe_items(data) -> list[dict]:
-    """Every schema.org Recipe object in a decoded JSON document."""
+def _recipe_items(data, limit: int = MAX_RECIPES + 1) -> list[dict]:
+    """The schema.org Recipe objects in a decoded JSON document, at most
+    `limit` of them: the walk stops there, so a file with far more recipes
+    than an import takes costs no more than the import does (GPT review of
+    0093: all were converted, then cut to 5,000)."""
     found = []
 
     def walk(node, depth=0):
-        if depth > 6:
+        if depth > 6 or len(found) >= limit:
             return
         if isinstance(node, list):
             for n in node:
+                if len(found) >= limit:
+                    return
                 walk(n, depth + 1)
         elif isinstance(node, dict):
             kinds = node.get("@type")
@@ -364,7 +372,7 @@ def from_paprika(obj: dict, origin: str) -> ImportedRecipe:
         notes=_text(obj.get("notes"), 20_000),
         favorite=bool(obj.get("on_favorites")),
         tastiness_rating=_rating(obj.get("rating")),
-        difficulty_rating=_DIFFICULTY.get((obj.get("difficulty") or "").strip().lower()),
+        difficulty_rating=_DIFFICULTY.get((_text(obj.get("difficulty"), 40) or "").lower()),
         custom_tag_names=[c[:100] for c in _lines(obj.get("categories"))][:50],
     )
     if isinstance(obj.get("photo_data"), str) and obj["photo_data"].strip():
@@ -411,6 +419,10 @@ def _json(data: bytes):
         return json.loads(data.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
+    except RecursionError:
+        # Nested thousands of levels deep: not a recipe file (was a 500).
+        log.info("Import: JSON nested too deeply to read")
+        return None
 
 
 def read_file(path: str, filename: str) -> tuple[list[ImportedRecipe], list[dict]]:
@@ -436,7 +448,22 @@ def read_file(path: str, filename: str) -> tuple[list[ImportedRecipe], list[dict
     items = _recipe_items(data)
     if not items:
         raise ImportFileError("There is no schema.org Recipe in this file.")
-    return [from_jsonld(it, filename) for it in items[:MAX_RECIPES]], []
+    recipes, problems = [], []
+    for it in items[:MAX_RECIPES]:
+        _convert(lambda: from_jsonld(it, filename), filename, recipes, problems)
+    if len(items) > MAX_RECIPES:
+        problems.append({"origin": filename, "error": f"More than {MAX_RECIPES} recipes in one file; the rest were left out."})
+    return recipes, problems
+
+
+def _convert(make, origin: str, recipes: list, problems: list):
+    """One record: a recipe, or a problem for that record alone. A field of
+    an unexpected type is the file's fault, not a server error."""
+    try:
+        recipes.append(make())
+    except Exception as e:
+        log.info("Import: a record in %s couldn't be read: %r", origin, e)
+        problems.append({"origin": origin, "error": "Couldn't read this recipe (a field isn't in the expected form)."})
 
 
 def _read_zip(zf: zipfile.ZipFile) -> tuple[list[ImportedRecipe], list[dict]]:
@@ -470,20 +497,25 @@ def _read_zip(zf: zipfile.ZipFile) -> tuple[list[ImportedRecipe], list[dict]]:
             if not isinstance(obj, dict):
                 problems.append({"origin": base, "error": "Couldn't read this Paprika recipe."})
                 continue
-            recipes.append(from_paprika(obj, base))
+            _convert(lambda: from_paprika(obj, base), base, recipes, problems)
         elif low.endswith(".json"):
             raw = _read(zf, name)
             data = _json(raw) if raw else None
             if data is None:
                 problems.append({"origin": base, "error": "Couldn't read this JSON file."})
                 continue
-            items = _recipe_items(data)
+            room = MAX_RECIPES - len(recipes)
+            items = _recipe_items(data, room + 1)
             if not items and low.endswith("manifest.json"):
                 continue
             if not items:
                 problems.append({"origin": base, "error": "No schema.org Recipe in this file."})
                 continue
-            recipes.extend(from_jsonld(it, base, reader_for(name)) for it in items)
+            for it in items[:room]:
+                _convert(lambda: from_jsonld(it, base, reader_for(name)), base, recipes, problems)
+            if len(items) > room:
+                problems.append({"origin": base, "error": f"More than {MAX_RECIPES} recipes in one file; the rest were left out."})
+                break
     if not recipes and not problems:
         raise ImportFileError("No recipes found in this zip (schema.org .json files or a Paprika export).")
     return recipes[:MAX_RECIPES], problems
