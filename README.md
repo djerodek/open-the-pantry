@@ -229,14 +229,23 @@ Safeguards and notes:
 ### Optional: What to eat? (a random recipe)
 
 Off by default. **What to eat?** is a second, deliberately minimal page for
-the same library, on its own port (8091). Choose a meal type, cooking style,
-main ingredient and/or pace, or nothing at all, press **Pick one**, and it
-shows one random recipe that matches. Tap it to read the whole recipe right
-there: ingredients, steps, notes, times and ratings, read-only (a link at the
-end opens it in the main app for editing). **Something else** picks another, without repeating one until every
+the same library, on its own port (8091). The recipe card and a big button
+come first; the choices (meal type, cooking style, main ingredient, pace)
+sit below it on a phone and beside it on a wider screen. Choose any of
+them, or nothing at all, and press **Pick one**: titles roll through the
+card and it stops on one random recipe that matches. The button then reads
+**Something else**, which picks another without repeating one until every
 match has been shown (up to 500: with more matches than that, the page
 remembers the latest 500 it showed, so an older one can come back before
-every match has had its turn); **Clear** resets everything.
+every match has had its turn). **Clear**, beside the choices, resets
+everything.
+
+Tap the card to read the whole recipe right there: photo, servings and
+times, ratings, notes, ingredients and steps. Nothing can be changed from
+it; **Edit in Open the Pantry** at the end opens it in the main app for
+that. **Print**, at the top of the recipe, prints just the recipe on white
+(notes left off, the source's web address written out), whatever the
+phone's theme. Your phone's Back gesture closes it.
 
 - Within a group the choices are alternatives (Dinner or Lunch); across
   groups all must hold (a dinner, made in the oven, rated quick). A group
@@ -344,7 +353,10 @@ at>:8090`.
   (changeable afterward); a bad file anywhere in the set aborts the whole
   combine rather than silently producing a partial recipe.
 - **Manual entry** — free-text fields plus optional photo attachment, for
-  handwritten cards or anything OCR won't parse reliably.
+  handwritten cards or anything OCR won't parse reliably. The Ingredients
+  and Steps boxes (here, on the review screen and in Edit recipe) are twice
+  the height of the other text boxes, so a recipe can be checked without
+  scrolling inside them.
 - **Any saved recipe can be edited afterward** via "Edit recipe" on the
   detail page — title, ingredients, steps, tags, servings, and times. The
   original extracted text (whatever the scraper or OCR actually produced)
@@ -645,8 +657,9 @@ at>:8090`.
   deleted, missing or failed, and keeps the failures selected for a retry.
 - Deletion is total: the DB row and any file on disk (image/PDF) are both
   removed. Draft files from an abandoned add-recipe session (uploaded but
-  never saved) are discarded when the dialog closes, with a startup sweep
-  as a backstop for anything missed.
+  never saved) are discarded when the dialog closes, with a sweep at
+  start-up and every 6 hours as a backstop for anything missed (it runs in
+  the background, so it never holds up the app, even during a backup).
 
 **Share/print**
 - One shared HTML template renders as the in-app print view, a downloadable

@@ -266,16 +266,24 @@ Garde-fous et remarques :
 ### Facultatif : On mange quoi? (une recette au hasard)
 
 Désactivée par défaut. **On mange quoi?** est une deuxième page, volontairement
-minimale, pour la même bibliothèque, sur son propre port (8091). Choisissez un
-type de repas, un mode de cuisson, un ingrédient principal et/ou un rythme, ou
-rien du tout, appuyez sur **Choisis pour moi**, et elle affiche une recette au
-hasard qui correspond. Touchez-la pour lire toute la recette sur place :
-ingrédients, étapes, notes, temps et notes d'appréciation, en lecture seule
-(un lien à la fin l'ouvre dans l'application principale pour la modifier).
-**Autre chose** en choisit une autre, sans en répéter aucune avant
-d'avoir montré toutes celles qui correspondent (jusqu'à 500 : au-delà, la page
-retient les 500 dernières montrées, donc une plus ancienne peut revenir avant
-que toutes aient eu leur tour); **Effacer** remet tout à zéro.
+minimale, pour la même bibliothèque, sur son propre port (8091). La fiche de
+recette et un grand bouton viennent en premier; les choix (type de repas, mode
+de cuisson, ingrédient principal, rythme) sont en dessous sur un téléphone et
+à côté sur un écran plus large. Choisissez-en, ou rien du tout, et appuyez sur
+**Choisis pour moi** : des titres défilent dans la fiche, qui s'arrête sur une
+recette au hasard qui correspond. Le bouton devient alors **Autre chose**, qui
+en choisit une autre sans en répéter aucune avant d'avoir montré toutes celles
+qui correspondent (jusqu'à 500 : au-delà, la page retient les 500 dernières
+montrées, donc une plus ancienne peut revenir avant que toutes aient eu leur
+tour). **Effacer**, à côté des choix, remet tout à zéro.
+
+Touchez la fiche pour lire toute la recette sur place : photo, portions et
+temps, notes d'appréciation, notes, ingrédients et étapes. On ne peut rien y
+modifier; **Modifier dans Open the Pantry**, à la fin, l'ouvre dans
+l'application principale pour ça. **Imprimer**, en haut de la recette,
+imprime la recette seule sur fond blanc (sans vos notes, avec l'adresse Web
+de la source écrite en clair), quel que soit le thème du téléphone. Le geste
+Retour du téléphone la ferme.
 
 - Dans un groupe, les choix sont des alternatives (Dîner ou Souper); d'un
   groupe à l'autre, tous doivent être respectés (un souper, cuit au four,
@@ -396,6 +404,9 @@ ouvert la page>:8090`.
   recette partielle sans le dire.
 - **Saisie manuelle** — champs de texte libre et photo facultative, pour
   les fiches manuscrites ou tout ce que l'OCR ne lit pas de façon fiable.
+  Les boîtes Ingrédients et Étapes (ici, à l'écran de révision et dans
+  Modifier la recette) font le double de la hauteur des autres zones de
+  texte, pour vérifier une recette sans défiler à l'intérieur.
 - **Toute recette enregistrée peut être modifiée ensuite** avec « Modifier
   la recette » sur sa page — titre, ingrédients, étapes, étiquettes,
   portions et temps. Le texte extrait d'origine (ce que l'extracteur ou
@@ -767,8 +778,9 @@ ouvert la page>:8090`.
 - La suppression est totale : la ligne de la base et tout fichier sur le
   disque (image, PDF) sont retirés. Les fichiers d'une session d'ajout
   abandonnée (téléversés mais jamais enregistrés) sont supprimés à la
-  fermeture de la boîte de dialogue, avec un nettoyage au démarrage en
-  filet de sécurité.
+  fermeture de la boîte de dialogue, avec un nettoyage au démarrage et
+  toutes les 6 heures en filet de sécurité (il tourne en arrière-plan et ne
+  bloque jamais l'application, même pendant une sauvegarde).
 
 **Partager / imprimer**
 - Un seul gabarit HTML sert à la vue d'impression de l'application, à un

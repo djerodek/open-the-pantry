@@ -108,8 +108,9 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   recipe text to a dedicated inbox
 - Optional "What to eat?" page (off by default): a second, read-only page on
   port 8091 that picks a random recipe by meal type, cooking style, main
-  ingredient or pace and shows it to read there; no login, so anyone who can
-  reach the port can read your recipes; switched on in Settings
+  ingredient or pace, shuffles through titles and stops on one to read and
+  print right there (read-only; edit in the main app); no login, so anyone
+  who can reach the port can read your recipes; switched on in Settings
 - Full backup (restorable) or every recipe as PDFs, from Settings
 - Logs: Settings → Logs (view, download, clear), `docker logs
   open-the-pantry`, or `data/logs/app.log`
