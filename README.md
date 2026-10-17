@@ -859,6 +859,18 @@ at>:8090`.
   - **No framing.** Both ports send `X-Frame-Options: DENY` and
     `Content-Security-Policy: frame-ancestors 'none'`, so another site
     can't show the app inside its own page to trick taps on it.
+- **Security headers on both ports.** A `Content-Security-Policy` lets
+  pages load scripts, styles, images and connections only from the app
+  itself (inline style attributes are allowed; inline scripts aren't, and
+  there are none), so a script that ever got into a page wouldn't run or
+  reach anywhere else. `Referrer-Policy: no-referrer` keeps "View original"
+  from telling a recipe's site your server's address, and
+  `Permissions-Policy` switches off browser features the app never uses
+  (camera, microphone, location...), keeping only "keep screen awake".
+  `Strict-Transport-Security` is deliberately **not** sent: it applies to
+  every port of a host name, so once a browser had seen it on the HTTPS
+  address, the plain `http://` addresses the app keeps working (8090, and
+  What to eat? on 8091, which has no HTTPS) would stop opening.
 - **Share → Email PDF sends from your email account**, so it needs the
   settings password. It's also capped: at most five recipients per email
   and 10 emails per hour. It's only offered once the email-ingest account

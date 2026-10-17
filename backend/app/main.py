@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 from typing import Literal, Optional
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 import anyio
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Request
 from fastapi.responses import Response, JSONResponse, FileResponse
@@ -547,21 +548,61 @@ def report_client_error(report: schemas.ClientErrorReport):
     return None
 
 
+# Browser features the app never uses, switched off for its pages. Keeping
+# the screen awake is the one it does use (Settings -> Keep screen awake).
+PERMISSIONS_POLICY = ", ".join([
+    "camera=()", "microphone=()", "geolocation=()", "payment=()", "usb=()", "serial=()", "hid=()",
+    "bluetooth=()", "midi=()", "accelerometer=()", "gyroscope=()", "magnetometer=()",
+    "display-capture=()", "browsing-topics=()", "screen-wake-lock=(self)",
+])
+
+
+def _security_headers(request: Request, response):
+    """On every response from either port:
+    - Content-Security-Policy: only this server's own scripts, styles,
+      images and connections, so a script that ever got into a page (a
+      crafted recipe, say) wouldn't run or reach anywhere else. Inline
+      style attributes are allowed (the app sets some), inline scripts are
+      not (it has none). Images may also be data: and blob: (the HTML
+      export, photo previews). The main page may also reach the What to
+      eat? port: Settings checks whether it answers.
+    - frame-ancestors 'none' and X-Frame-Options: DENY: never shown inside
+      another site's page, where a hidden frame could start an import
+      (/?share_url=) or trick taps (Claude review round 9).
+    - Referrer-Policy: no-referrer: "View original" doesn't tell the
+      recipe's site this server's address.
+    - Permissions-Policy: features the app never uses are off.
+    Not sent: Strict-Transport-Security. It covers every port of a host
+    name, and the app deliberately keeps plain http:// working beside its
+    HTTPS address (8090, and What to eat? on 8091, which has no HTTPS)."""
+    connect = "'self'"
+    if request.scope.get("app") is not picker_app:
+        try:
+            parts = urlsplit(picker.picker_url(request))
+            connect += f" {parts.scheme}://{parts.netloc}"
+        except Exception:
+            log.debug("CSP: no picker address for connect-src", exc_info=True)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self'; "
+        f"connect-src {connect}; manifest-src 'self'; worker-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
+
+
 # The app's own files (index.html, app.js, styles.css, the service worker)
 # are sent with Cache-Control: no-cache: the browser keeps them but asks the
 # server each time (a 304 when nothing changed). Without it iOS kept old
 # copies for hours after an update. Photos (unique file names) and API
 # responses are left alone.
 # Every response, on both ports (picker.create_app gets this middleware
-# too), also says it may not be shown inside another site's page: a hidden
-# frame could otherwise start an import (/?share_url=) or trick taps on
-# the app's buttons. Neither app frames its own pages (Claude review
-# round 9).
+# too), also carries the security headers below (_security_headers).
 @app.middleware("http")
 async def app_files_revalidate(request: Request, call_next):
     response = await call_next(request)
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    _security_headers(request, response)
     path = request.url.path
     if request.method == "GET" and not path.startswith(("/api/", "/uploads/", "/tmp-preview/")) and path != "/healthz":
         response.headers["Cache-Control"] = "no-cache"

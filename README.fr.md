@@ -1027,6 +1027,20 @@ courriel)**
     et `Content-Security-Policy: frame-ancestors 'none'`, donc un autre site
     ne peut pas afficher l'application dans sa propre page pour piéger les
     touchers.
+- **En-têtes de sécurité sur les deux ports.** Une `Content-Security-Policy`
+  ne laisse les pages charger scripts, styles, images et connexions que
+  depuis l'application elle-même (les attributs de style en ligne sont
+  permis; les scripts en ligne non, et il n'y en a aucun), donc un script
+  qui se glisserait un jour dans une page ne s'exécuterait pas et ne
+  joindrait rien d'autre. `Referrer-Policy: no-referrer` empêche « Voir
+  l'original » de donner au site de la recette l'adresse de votre serveur,
+  et `Permissions-Policy` désactive les fonctions du navigateur que
+  l'application n'utilise jamais (caméra, micro, position…), sauf « garder
+  l'écran allumé ». `Strict-Transport-Security` n'est volontairement **pas**
+  envoyé : il s'applique à tous les ports d'un nom d'hôte, donc une fois vu
+  sur l'adresse HTTPS, les adresses `http://` que l'application garde
+  (8090, et On mange quoi? sur 8091, qui n'a pas de HTTPS) ne s'ouvriraient
+  plus.
 - **Partager → Envoyer le PDF par courriel envoie à partir de votre compte
   de courriel**; il demande donc le mot de passe des paramètres. C'est
   aussi plafonné : au plus cinq destinataires par courriel et 10 courriels

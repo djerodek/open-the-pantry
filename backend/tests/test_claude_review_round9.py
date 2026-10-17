@@ -89,7 +89,7 @@ def test_neither_port_can_be_framed(client):
         for path in paths:
             r = c.get(path)
             assert r.headers.get("x-frame-options") == "DENY", path
-            assert r.headers.get("content-security-policy") == "frame-ancestors 'none'", path
+            assert "frame-ancestors 'none'" in r.headers.get("content-security-policy", ""), path
 
 
 def test_a_shared_link_waits_for_a_tap():
