@@ -199,4 +199,4 @@ def test_automatic_backups_switch(server, page):
         _password_if_asked(p)
     wait_until(pg, "document.querySelector('#auto-backup-enabled').checked")
     pg.click("#auto-backup-run")
-    wait_until(pg, "document.querySelector('#auto-backup-status').textContent.includes('Last backup')", timeout=20)
+    wait_until(pg, "document.querySelector('#auto-backup-status').textContent.includes('Last:')", timeout=20)

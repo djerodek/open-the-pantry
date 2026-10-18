@@ -213,17 +213,17 @@
     "A short line ending in “:” starts a section, e.g. “Sauce:”.": "Une ligne courte qui se termine par « : » commence une section, p. ex. « Sauce : ».",
     "Learning": "Apprentissage",
     "Learn from my recipes": "Apprendre de mes recettes",
-    "Learns from the recipes you've saved how your photo, PDF and email imports are laid out and how you tag. It runs on this server, retrains itself after changes, and is only used where it does better than the built-in rules.": "L'application apprend, à partir des recettes que vous avez enregistrées, comment sont présentées vos importations de photos, de PDF et de courriels, et comment vous étiquetez. Tout se fait sur ce serveur; le modèle se réentraîne après les changements et n'est utilisé que là où il fait mieux que les règles intégrées.",
+    "Learns how your imports are laid out and how you tag, on this server. Used only where it beats the built-in rules.":
+      "Apprend la mise en page de vos importations et votre façon d'étiqueter, sur ce serveur. Utilisé seulement là où il fait mieux que les règles intégrées.",
     "Retrain now": "Réentraîner maintenant",
     "Off: imports and tag suggestions use the built-in rules only.": "Désactivé : les importations et les suggestions d'étiquettes n'utilisent que les règles intégrées.",
-    "Reading imports: learned model in use. On your {1} imported recipes it put {2}% of lines in the right place, against {3}% for the built-in rules.": "Lecture des importations : modèle appris utilisé. Sur vos {1} recettes importées, il a bien classé {2} % des lignes, contre {3} % pour les règles intégrées.",
-    "Reading imports: built-in rules. Learning starts after {1} recipes imported from a photo, PDF or email ({2} so far).": "Lecture des importations : règles intégrées. L'apprentissage commence après {1} recettes importées d'une photo, d'un PDF ou d'un courriel ({2} jusqu'ici).",
+    "Reading imports: learned ({2}% right vs {3}% for the rules, on {1} recipes).":
+      "Lecture des importations : apprise ({2} % juste contre {3} % pour les règles, sur {1} recettes).",
+    "Reading imports: built-in rules until {1} imported recipes ({2} so far).":
+      "Lecture des importations : règles intégrées jusqu'à {1} recettes importées ({2} jusqu'ici).",
     "Reading imports: not trained yet.": "Lecture des importations : pas encore entraîné.",
-    "Tag suggestions: keywords, plus learned suggestions for {1}.": "Suggestions d'étiquettes : mots-clés, plus des suggestions apprises pour {1}.",
-    "Tag suggestions: keywords only. Learning starts after {1} tagged recipes ({2} so far).": "Suggestions d'étiquettes : mots-clés seulement. L'apprentissage commence après {1} recettes étiquetées ({2} jusqu'ici).",
-    "Tag suggestions: keywords only. No tag is on enough recipes yet to learn from.": "Suggestions d'étiquettes : mots-clés seulement. Aucune étiquette n'est encore sur assez de recettes pour apprendre.",
-    "Tag suggestions: keywords only. No tag could yet be predicted reliably enough to add suggestions.": "Suggestions d'étiquettes : mots-clés seulement. Aucune étiquette n'a encore pu être prédite de façon assez fiable pour ajouter des suggestions.",
-    "Tag suggestions: not trained yet.": "Suggestions d'étiquettes : pas encore entraîné.",
+    "Tags: keywords only until {1} tagged recipes ({2} so far).":
+      "Étiquettes : mots-clés seulement jusqu'à {1} recettes étiquetées ({2} jusqu'ici).",
     "Training…": "Entraînement…",
     "The last training failed: {1}": "Le dernier entraînement a échoué : {1}",
     "Last trained: {1}": "Dernier entraînement : {1}",
@@ -420,34 +420,35 @@
     "Light": "Clair",
     "Dark": "Sombre",
     "System": "Système",
-    "Dark mode uses true black, not a gray substitute.": "Le mode sombre utilise un vrai noir, pas un gris.",
+    "Dark is true black.":
+      "Le mode sombre est un vrai noir.",
     "Screen": "Écran",
     "Keep screen awake when viewing a recipe": "Garder l'écran allumé pendant la consultation d'une recette",
-    "Applies automatically to every recipe you open. You can still toggle it per recipe. Released when you close the recipe.":
-      "S'applique automatiquement à chaque recette ouverte. Vous pouvez quand même l'activer ou le désactiver par recette. Désactivé à la fermeture de la recette.",
+    "For every recipe you open; each recipe also has its own switch.":
+      "Pour chaque recette ouverte; chaque recette a aussi son propre interrupteur.",
     "Text size": "Taille du texte",
     "Decrease text size": "Réduire la taille du texte",
     "Increase text size": "Augmenter la taille du texte",
     "Recipe list": "Liste des recettes",
     "Show photos on recipe cards": "Afficher les photos sur les fiches de recettes",
-    "Off shows a compact list of titles. Remembered on this device.":
-      "Désactivé, la liste n'affiche que les titres. Mémorisé sur cet appareil.",
+    "Off: titles only. On this device.":
+      "Désactivé : titres seulement. Sur cet appareil.",
     "Tags": "Étiquettes",
     "Add suggested tags to all recipes": "Ajouter les étiquettes suggérées à toutes les recettes",
-    "Runs the automatic tagger over every recipe and adds any suggested tag a recipe doesn't already have. Nothing is removed. You'll see what would be added before anything changes.":
-      "Analyse chaque recette avec l'étiquetage automatique et ajoute les étiquettes suggérées qu'elle n'a pas déjà. Rien n'est retiré. Vous verrez ce qui serait ajouté avant toute modification.",
+    "Suggests tags for every recipe; you pick which to add. Nothing is removed.":
+      "Suggère des étiquettes pour chaque recette; vous choisissez lesquelles ajouter. Rien n'est retiré.",
     "Manage tag groups and keywords": "Gérer les groupes d'étiquettes et les mots-clés",
-    "Add groups (like Cuisine) and tags, and the words that make the tagger suggest a tag. Built-in tags already know their usual words (Chicken knows chicken, poultry); keywords here are extra.":
-      "Ajoutez des groupes (comme Cuisine du monde) et des étiquettes, ainsi que les mots qui déclenchent la suggestion d'une étiquette. Les étiquettes intégrées connaissent déjà leurs mots habituels (Poulet reconnaît poulet, volaille); les mots-clés ajoutés ici s'y ajoutent.",
+    "Your own groups (like Cuisine), tags, and the words that suggest them.":
+      "Vos propres groupes (comme Cuisine du monde), étiquettes et les mots qui les suggèrent.",
     "Email ingest": "Réception par courriel",
     "Configure email ingest": "Configurer la réception par courriel",
-    "Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry scans once daily.":
-      "Facultatif. Permet d'envoyer des recettes par courriel à une boîte dédiée, qu'Open the Pantry vérifie une fois par jour.",
+    "Email recipes to a dedicated inbox; it's checked daily.":
+      "Envoyez des recettes à une boîte dédiée; elle est vérifiée chaque jour.",
     "Backup & export": "Sauvegarde et exportation",
     "Full backup": "Sauvegarde complète",
     "Recipes as JSON": "Recettes en JSON",
-    "Every recipe as a schema.org Recipe file, the format recipe websites use, with its photo, in a .zip. Other recipe apps can import it, and so can this one (it adds; the full backup is what restores).":
-      "Chaque recette en fichier Recipe schema.org, le format des sites de recettes, avec sa photo, dans un .zip. D'autres applications de recettes peuvent l'importer, et celle-ci aussi (elle ajoute; c'est la sauvegarde complète qui restaure).",
+    "Every recipe in the standard recipe format, with photos, for other recipe apps.":
+      "Chaque recette dans le format de recette standard, avec ses photos, pour d'autres applications.",
     "To review ({1})": "À vérifier ({1})",
     "To review": "À vérifier",
     "Marked as checked.": "Marquée comme vérifiée.",
@@ -485,22 +486,9 @@
     "no meat or fish word found": "aucun mot de viande ou de poisson trouvé",
     "Suggested because:": "Suggérées parce que :",
     "Added. Remove any that don't fit, then save.": "Ajoutées. Retirez celles qui ne conviennent pas, puis enregistrez.",
-    "Reading imports: built-in rules. On your {1} imported recipes the learned model put {2}% of lines in the right place, against {3}% for the rules; it's used once it does at least {4} points better.":
-      "Lecture des importations : règles intégrées. Sur vos {1} recettes importées, le modèle appris a placé {2} % des lignes au bon endroit, contre {3} % pour les règles; il est utilisé quand il fait au moins {4} points de mieux.",
-    "Learned from {n} tagged recipe.": "Appris de {n} recette étiquetée.",
-    "Learned from {n} tagged recipes.": "Appris de {n} recettes étiquetées.",
-    "{n} tagged recipe so far.": "{n} recette étiquetée jusqu'ici.",
-    "{n} tagged recipes so far.": "{n} recettes étiquetées jusqu'ici.",
-    "Tried on {n} tagged recipe.": "Essayé sur {n} recette étiquetée.",
-    "Tried on {n} tagged recipes.": "Essayé sur {n} recettes étiquetées.",
-    "{1} {2}%": "{1} {2} %",
-    "{1} (too few right)": "{1} (trop peu de justes)",
-    "Not learned yet, as their extra suggestions weren't right often enough ({1}% needed): {2}.":
-      "Pas encore apprises, car leurs suggestions en plus n'étaient pas assez souvent justes ({1} % nécessaire) : {2}.",
-    "and {n} more tag.": "et {n} autre étiquette.",
-    "and {n} more tags.": "et {n} autres étiquettes.",
-    "{n} recipe still to review isn't learned from until it's checked.": "{n} recette encore à vérifier n'est pas apprise tant qu'elle n'est pas vérifiée.",
-    "{n} recipes still to review aren't learned from until they're checked.": "{n} recettes encore à vérifier ne sont pas apprises tant qu'elles ne sont pas vérifiées.",
+    "Reading imports: built-in rules (learned {2}% vs {3}% on {1} recipes; it needs {4} points more).":
+      "Lecture des importations : règles intégrées (apprise {2} % contre {3} % sur {1} recettes; il lui faut {4} points de plus).",
+    "{1} {2}%": "{1} {2} %",
     "⧉ Duplicate": "⧉ Dupliquer",
     "The copy": "La copie",
     "Copy made: {1}. Change it here, then save.": "Copie faite : {1}. Modifiez-la ici, puis enregistrez.",
@@ -515,21 +503,29 @@
     "{1}:00": "{1} h 00",
     "{n} backup": "{n} sauvegarde",
     "{n} backups": "{n} sauvegardes",
-    "Saved in {1}, inside the data folder: a failed disk would take both. The README (Automatic backups) shows how to keep them on another disk.":
-      "Enregistrées dans {1}, dans le dossier de données : un disque en panne emporterait les deux. Le README (Sauvegardes automatiques) explique comment les garder sur un autre disque.",
-    "Saved in {1}.": "Enregistrées dans {1}.",
     "A backup is being made now.": "Une sauvegarde est en cours.",
     "No automatic backup yet.": "Pas encore de sauvegarde automatique.",
-    "Last backup: {1}.": "Dernière sauvegarde : {1}.",
-    "The last backup failed ({1}): {2}": "La dernière sauvegarde a échoué ({1}) : {2}",
-    "{n} backup in the folder ({1}), newest: {2}.": "{n} sauvegarde dans le dossier ({1}), la plus récente : {2}.",
-    "{n} backups in the folder ({1}), newest: {2}.": "{n} sauvegardes dans le dossier ({1}), la plus récente : {2}.",
     "Automatic backups on.": "Sauvegardes automatiques activées.",
     "Automatic backups off.": "Sauvegardes automatiques désactivées.",
     "Backup made.": "Sauvegarde faite.",
+    "One PDF per recipe, readable anywhere. Can't be restored.":
+      "Un PDF par recette, lisible partout. Ne se restaure pas.",
+    "Closest: {1} ({2}% needed).": "Les plus proches : {1} ({2} % nécessaire).",
+    "{n} recipe to review isn't used yet.": "{n} recette à vérifier n'est pas encore utilisée.",
+    "{n} recipes to review aren't used yet.": "{n} recettes à vérifier ne sont pas encore utilisées.",
+    "In {1}, on the same disk as your data (README: Automatic backups).": "Dans {1}, sur le même disque que vos données (README : Sauvegardes automatiques).",
+    "In {1}.": "Dans {1}.",
+    "Last: {1}.": "Dernière : {1}.",
+    "Last one failed ({1}): {2}": "La dernière a échoué ({1}) : {2}",
+    "{n} backup kept ({1}).": "{n} sauvegarde gardée ({1}).",
+    "{n} backups kept ({1}).": "{n} sauvegardes gardées ({1}).",
+    "Tags: keywords, plus learned for {1} ({2} tagged recipes).": "Étiquettes : mots-clés, plus apprises pour {1} ({2} recettes étiquetées).",
+    "Tags: keywords only; no tag is on enough recipes yet ({1} tagged).": "Étiquettes : mots-clés seulement; aucune n'est encore sur assez de recettes ({1} étiquetées).",
+    "Tags: keywords only; no tag can be predicted reliably yet ({1} tagged recipes).": "Étiquettes : mots-clés seulement; aucune ne peut encore être prédite de façon fiable ({1} recettes étiquetées).",
+    "Tags: not trained yet.": "Étiquettes : pas encore entraîné.",
     "Restore or import": "Restaurer ou importer",
-    "A full backup (.zip) replaces your library with the one in the backup, after a confirmation and a safety copy of what's here now. Any other file adds its recipes and replaces nothing: a schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). Ones already here from the same link are skipped.":
-      "Une sauvegarde complète (.zip) remplace votre bibliothèque par celle de la sauvegarde, après une confirmation et une copie de sécurité de ce qui est ici maintenant. Tout autre fichier ajoute ses recettes et ne remplace rien : un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Celles déjà présentes depuis le même lien sont ignorées.",
+    "A full backup replaces your library, after a confirmation and a safety copy. Any other file (schema.org .json or .zip, Paprika export) adds its recipes.":
+      "Une sauvegarde complète remplace votre bibliothèque, après confirmation et copie de sécurité. Tout autre fichier (.json ou .zip schema.org, exportation Paprika) ajoute ses recettes.",
     "Continue": "Continuer",
     "Replace my library": "Remplacer ma bibliothèque",
     "Nothing was changed.": "Rien n'a été modifié.",
@@ -549,8 +545,8 @@
     "That file is larger than 1 GB.": "Ce fichier dépasse 1 Go.",
     "Importing {1}…": "Importation de {1}…",
     "{1} added, {2} skipped, {3} failed.": "{1} ajoutée(s), {2} ignorée(s), {3} en échec.",
-    "The database plus every photo and uploaded PDF, as a .zip. This is the one you restore from — it puts the app back exactly as it is now. Instructions are inside.":
-      "La base de données, toutes les photos et tous les PDF envoyés, dans un fichier .zip. C'est celle qui sert à restaurer : l'application revient exactement à son état actuel. Les instructions sont incluses.",
+    "Everything, as a .zip. The one to restore from.":
+      "Tout, dans un .zip. Celle qui sert à restaurer.",
     "Recipes as PDFs": "Recettes en PDF",
     "One PDF per recipe in a .zip, readable anywhere without this app.":
       "Un PDF par recette dans un fichier .zip, lisible partout sans cette application.",
@@ -679,8 +675,8 @@
     "Open {1}": "Ouvrir {1}",
     "HTTPS is on: these open only at {1}": "HTTPS est activé : ils s'ouvrent seulement à {1}",
     "Change settings password": "Changer le mot de passe des paramètres",
-    "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they need a password. Everything else stays open.":
-      "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils demandent donc un mot de passe. Tout le reste demeure ouvert.",
+    "Protects the Server settings, Email PDF, restoring and automatic backups. Everything else stays open.":
+      "Protège les paramètres Serveur, l'envoi du PDF par courriel, la restauration et les sauvegardes automatiques. Le reste demeure ouvert.",
     "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.":
       "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils sont donc protégés par un mot de passe. Créez-le maintenant. Tout le reste de l'application demeure ouvert.",
     "Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.":
@@ -736,8 +732,8 @@
     // Settings → HTTPS
     "HTTPS": "HTTPS",
     "Configure HTTPS": "Configurer HTTPS",
-    "Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.":
-      "Facultatif. Une adresse sécurisée https:// sur votre réseau, avec un certificat Let's Encrypt gratuit. Nécessaire pour garder l'écran allumé.",
+    "An https:// address on your network (Let's Encrypt). Needed to keep the screen awake.":
+      "Une adresse https:// sur votre réseau (Let's Encrypt). Nécessaire pour garder l'écran allumé.",
     "Could not load the HTTPS settings.": "Impossible de charger les paramètres HTTPS.",
     "Setting up HTTPS…": "Configuration de HTTPS…",
     "On: {1}": "Activé : {1}",
@@ -782,8 +778,8 @@
     "View log": "Voir le journal",
     "Hide log": "Masquer le journal",
     "Clear log": "Vider le journal",
-    "What the app recorded: recipe imports, email scans and errors. Useful when something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.":
-      "Ce que l'application a consigné : importations de recettes, vérifications de courriel et erreurs. Utile quand quelque chose n'a pas fonctionné. Limité à environ 4 Mo; les entrées les plus anciennes disparaissent d'elles-mêmes.",
+    "Imports, email scans and errors. Kept to about 4 MB.":
+      "Importations, vérifications de courriel et erreurs. Limité à environ 4 Mo.",
     "Everything": "Tout",
     "Warnings and errors": "Avertissements et erreurs",
     "Refresh": "Actualiser",
@@ -865,8 +861,8 @@
     "Add some in Open the Pantry.": "Ajoutez-en dans Open the Pantry.",
     "The server returned an error ({1}).": "Le serveur a renvoyé une erreur ({1}).",
     "Turn on the What to eat? page": "Activer la page On mange quoi?",
-    "A second, simple page on its own port: choose a meal type, cooking style, main ingredient or pace, and it picks a recipe at random to read there. Nothing can be changed from it. It has no login: anyone who can reach the port can read your recipes, notes included (cocktails aside).":
-      "Une deuxième page toute simple, sur son propre port : choisissez un type de repas, un mode de cuisson, un ingrédient principal ou un rythme, et elle tire une recette au hasard, à lire sur place. On ne peut rien y modifier. Elle n'a pas de connexion : quiconque peut joindre le port peut lire vos recettes, notes comprises (sauf les cocktails).",
+    "A read-only page on its own port that picks a random recipe. No login: anyone who can reach that port can read your recipes and notes.":
+      "Une page en lecture seule, sur son propre port, qui choisit une recette au hasard. Sans connexion : quiconque atteint ce port peut lire vos recettes et vos notes.",
     "Address:": "Adresse :",
     "Shared link: press Fetch recipe to import it.": "Lien partagé : appuyez sur Récupérer la recette pour l'importer.",
     "That share had no web link in it. Paste the recipe's address here.": "Ce partage ne contenait aucun lien Web. Collez ici l'adresse de la recette.",
@@ -887,8 +883,8 @@
     "Press Save again to add it anyway.": "Appuyez de nouveau sur Enregistrer pour l'ajouter quand même.",
     "a recipe with this title was already in your library": "une recette de ce titre était déjà dans votre bibliothèque",
     "already in your library from this link; not added again": "déjà dans votre bibliothèque depuis ce lien; pas ajoutée de nouveau",
-    "RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.":
-      "RECIPE_APP_API_KEY est défini, mais ne couvre pas cette page : quiconque peut joindre son port peut l'utiliser sans la clé.",
+    "RECIPE_APP_API_KEY doesn't cover this page.":
+      "RECIPE_APP_API_KEY ne couvre pas cette page.",
     "Port {1} is in use inside the container.": "Le port {1} est déjà utilisé dans le conteneur.",
     "The page couldn't start. Settings → Logs has the details.": "La page n'a pas pu démarrer. Les détails sont dans Paramètres → Journal.",
     "Starting…": "Démarrage…",

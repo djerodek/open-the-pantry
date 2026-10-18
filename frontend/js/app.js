@@ -531,17 +531,16 @@
     autoBackup.keep.value = String(st.keep);
     autoBackup.hour.disabled = autoBackup.keep.disabled = !st.enabled;
     autoBackup.folder.textContent = st.folder_in_data
-      ? tx("Saved in {1}, inside the data folder: a failed disk would take both. The README (Automatic backups) shows how to keep them on another disk.", { 1: st.folder })
-      : tx("Saved in {1}.", { 1: st.folder });
+      ? tx("In {1}, on the same disk as your data (README: Automatic backups).", { 1: st.folder })
+      : tx("In {1}.", { 1: st.folder });
     const parts = [];
     if (st.running) parts.push(tx("A backup is being made now."));
     else if (!st.last_run_at) parts.push(tx("No automatic backup yet."));
-    else if (st.last_ok) parts.push(tx("Last backup: {1}.", { 1: fmtDateTime(st.last_run_at) }));
-    else parts.push(tx("The last backup failed ({1}): {2}", { 1: fmtDateTime(st.last_run_at), 2: st.last_message || "" }));
+    else if (st.last_ok) parts.push(tx("Last: {1}.", { 1: fmtDateTime(st.last_run_at) }));
+    else parts.push(tx("Last one failed ({1}): {2}", { 1: fmtDateTime(st.last_run_at), 2: st.last_message || "" }));
     if (st.backups.length) {
       const total = st.backups.reduce((a, b) => a + b.size, 0);
-      parts.push(txn(st.backups.length, "{n} backup in the folder ({1}), newest: {2}.", "{n} backups in the folder ({1}), newest: {2}.",
-        { 1: formatBytes(total), 2: st.backups[0].name }));
+      parts.push(txn(st.backups.length, "{n} backup kept ({1}).", "{n} backups kept ({1}).", { 1: formatBytes(total) }));
     }
     autoBackup.status.textContent = parts.join(" ");
   }
@@ -800,7 +799,7 @@
   const httpsPanel = $("#https-settings-panel");
   const httpsToggle = $("#https-settings-toggle");
   const httpsSummary = $("#https-summary");
-  const HTTPS_HINT = () => tx("Optional. A secure https:// address on your network, with a free Let's Encrypt certificate. Needed for keeping the screen awake.");
+  const HTTPS_HINT = () => tx("An https:// address on your network (Let's Encrypt). Needed to keep the screen awake.");
   let httpsPollTimer = null;
   let httpsLastState = null;
 
@@ -2440,25 +2439,24 @@
       tagText = "";
     } else {
       imports = {
-        active: () => tx("Reading imports: learned model in use. On your {1} imported recipes it put {2}% of lines in the right place, against {3}% for the built-in rules.",
+        active: () => tx("Reading imports: learned ({2}% right vs {3}% for the rules, on {1} recipes).",
           { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy) }),
-        rules_better: () => tx("Reading imports: built-in rules. On your {1} imported recipes the learned model put {2}% of lines in the right place, against {3}% for the rules; it's used once it does at least {4} points better.",
+        rules_better: () => tx("Reading imports: built-in rules (learned {2}% vs {3}% on {1} recipes; it needs {4} points more).",
           { 1: seg.imported_recipes, 2: pct(seg.learned_accuracy), 3: pct(seg.rules_accuracy), 4: pct(seg.min_gain != null ? seg.min_gain : 0.02) }),
-        not_enough_data: () => tx("Reading imports: built-in rules. Learning starts after {1} recipes imported from a photo, PDF or email ({2} so far).",
+        not_enough_data: () => tx("Reading imports: built-in rules until {1} imported recipes ({2} so far).",
           { 1: seg.needed, 2: seg.imported_recipes || 0 }),
       }[seg.status];
       imports = imports ? imports() : tx("Reading imports: not trained yet.");
       tagText = {
-        active: () => tx("Tag suggestions: keywords, plus learned suggestions for {1}.", { 1: (tags.learned || []).map((n) => tagLabel(n)).join(", ") })
-          + " " + txn(tags.tagged_recipes || 0, "Learned from {n} tagged recipe.", "Learned from {n} tagged recipes."),
-        not_enough_data: () => tx("Tag suggestions: keywords only. Learning starts after {1} tagged recipes ({2} so far).",
+        active: () => tx("Tags: keywords, plus learned for {1} ({2} tagged recipes).",
+          { 1: (tags.learned || []).map((n) => tagLabel(n)).join(", "), 2: tags.tagged_recipes || 0 }),
+        not_enough_data: () => tx("Tags: keywords only until {1} tagged recipes ({2} so far).",
           { 1: tags.needed, 2: tags.tagged_recipes || 0 }),
-        no_tags: () => tx("Tag suggestions: keywords only. No tag is on enough recipes yet to learn from.")
-          + " " + txn(tags.tagged_recipes || 0, "{n} tagged recipe so far.", "{n} tagged recipes so far."),
-        nothing_learned: () => tx("Tag suggestions: keywords only. No tag could yet be predicted reliably enough to add suggestions.")
-          + " " + txn(tags.tagged_recipes || 0, "Tried on {n} tagged recipe.", "Tried on {n} tagged recipes."),
+        no_tags: () => tx("Tags: keywords only; no tag is on enough recipes yet ({1} tagged).", { 1: tags.tagged_recipes || 0 }),
+        nothing_learned: () => tx("Tags: keywords only; no tag can be predicted reliably yet ({1} tagged recipes).",
+          { 1: tags.tagged_recipes || 0 }),
       }[tags.status];
-      tagText = tagText ? tagText() : tx("Tag suggestions: not trained yet.");
+      tagText = tagText ? tagText() : tx("Tags: not trained yet.");
     }
     $("#learning-imports").textContent = imports;
     $("#learning-tags").textContent = tagText;
@@ -2467,20 +2465,20 @@
     // were right in cross-validation, against what's needed.
     let details = "";
     const notUsed = (s.enabled && (tags.status === "active" || tags.status === "nothing_learned") && tags.not_used) || [];
-    if (notUsed.length) {
-      const items = notUsed.map((t) => t.precision != null
-        ? tx("{1} {2}%", { 1: tagLabel(t), 2: pct(t.precision) })
-        : tx("{1} (too few right)", { 1: tagLabel(t) }));
-      details = tx("Not learned yet, as their extra suggestions weren't right often enough ({1}% needed): {2}.",
-        { 1: pct(tags.precision_needed || 0.85), 2: items.join(", ") });
-      const more = (tags.not_used_count || 0) - notUsed.length;
-      if (more > 0) details += " " + txn(more, "and {n} more tag.", "and {n} more tags.");
+    // Only the tags that came close are worth naming; "too few right" for
+    // every tag is what "no tag can be predicted reliably yet" already says.
+    const close = notUsed.filter((t) => t.precision != null);
+    if (close.length) {
+      details = tx("Closest: {1} ({2}% needed).", {
+        1: close.map((t) => tx("{1} {2}%", { 1: tagLabel(t), 2: pct(t.precision) })).join(", "),
+        2: pct(tags.precision_needed || 0.85),
+      });
     }
     $("#learning-tag-details").textContent = details;
     $("#learning-tag-details").hidden = !details;
     const left = s.enabled ? (s.left_out_to_review || 0) : 0;
     $("#learning-review").textContent = left
-      ? txn(left, "{n} recipe still to review isn't learned from until it's checked.", "{n} recipes still to review aren't learned from until they're checked.")
+      ? txn(left, "{n} recipe to review isn't used yet.", "{n} recipes to review aren't used yet.")
       : "";
     $("#learning-review").hidden = !left;
     let trained = "";

@@ -234,7 +234,7 @@
           <button type="button" data-theme-choice="dark">Dark</button>
           <button type="button" data-theme-choice="system">System</button>
         </div>
-        <div class="field-hint">Dark mode uses true black, not a gray substitute.</div>
+        <div class="field-hint">Dark is true black.</div>
       </div>
 
       <div class="filter-section" id="wakelock-setting" hidden>
@@ -244,8 +244,7 @@
           <input type="checkbox" role="switch" id="wakelock-default" class="switch">
         </label>
         <div class="field-hint">
-          Applies automatically to every recipe you open. You can still toggle it
-          per recipe. Released when you close the recipe.
+          For every recipe you open; each recipe also has its own switch.
         </div>
       </div>
 
@@ -263,7 +262,7 @@
           <span>Show photos on recipe cards</span>
           <input type="checkbox" role="switch" id="thumbnails-setting" class="switch">
         </label>
-        <div class="field-hint">Off shows a compact list of titles. Remembered on this device.</div>
+        <div class="field-hint">Off: titles only. On this device.</div>
       </div>
     </section>
 
@@ -273,9 +272,7 @@
         <div class="filter-section-title">Tags</div>
         <button type="button" id="autotag-btn" class="btn-secondary">Add suggested tags to all recipes</button>
         <div class="field-hint">
-          Runs the automatic tagger over every recipe and adds any suggested tag
-          a recipe doesn't already have. Nothing is removed. You'll see what
-          would be added before anything changes.
+          Suggests tags for every recipe; you pick which to add. Nothing is removed.
         </div>
         <div id="autotag-result" role="status"></div>
 
@@ -283,9 +280,7 @@
                 aria-controls="taggroups-panel" style="margin-top:0.9rem">Manage tag groups and keywords</button>
         <div id="taggroups-panel" hidden>
           <div class="field-hint">
-            Add groups (like Cuisine) and tags, and the words that make the
-            tagger suggest a tag. Built-in tags already know their usual words
-            (Chicken knows chicken, poultry); keywords here are extra.
+            Your own groups (like Cuisine), tags, and the words that suggest them.
           </div>
           <div id="taggroups-list"></div>
         </div>
@@ -298,10 +293,7 @@
           <input type="checkbox" role="switch" id="learning-enabled" class="switch">
         </label>
         <div class="field-hint">
-          Learns from the recipes you've saved how your photo, PDF and email
-          imports are laid out and how you tag. It runs on this server, retrains
-          itself after changes, and is only used where it does better than the
-          built-in rules.
+          Learns how your imports are laid out and how you tag, on this server. Used only where it beats the built-in rules.
         </div>
         <p class="field-hint" id="learning-imports" role="status"></p>
         <p class="field-hint" id="learning-tags"></p>
@@ -318,12 +310,9 @@
           <input type="checkbox" role="switch" id="picker-enabled" class="switch">
         </label>
         <div class="field-hint">
-          A second, simple page on its own port: choose a meal type, cooking style,
-          main ingredient or pace, and it picks a recipe at random to read there.
-          Nothing can be changed from it. It has no login: anyone who can reach
-          the port can read your recipes, notes included (cocktails aside).
+          A read-only page on its own port that picks a random recipe. No login: anyone who can reach that port can read your recipes and notes.
         </div>
-        <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.</p>
+        <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY doesn't cover this page.</p>
         <p class="field-hint" id="picker-status" role="status" hidden></p>
         <p class="field-hint field-warning" id="picker-warning" hidden></p>
       </div>
@@ -337,28 +326,21 @@
             <input type="radio" name="backup-format" value="database" checked>
             <span>
               <strong>Full backup</strong>
-              <span class="field-hint">The database plus every photo and uploaded
-              PDF, as a .zip. This is the one you restore from &mdash; it puts the
-              app back exactly as it is now. Instructions are inside.</span>
+              <span class="field-hint">Everything, as a .zip. The one to restore from.</span>
             </span>
           </label>
           <label class="backup-format">
             <input type="radio" name="backup-format" value="pdfs">
             <span>
               <strong>Recipes as PDFs</strong>
-              <span class="field-hint">One PDF per recipe in a .zip, readable
-              anywhere without this app. <strong>Cannot</strong> be restored
-              from. Large libraries take a while to build.</span>
+              <span class="field-hint">One PDF per recipe, readable anywhere. Can't be restored.</span>
             </span>
           </label>
           <label class="backup-format">
             <input type="radio" name="backup-format" value="json">
             <span>
               <strong>Recipes as JSON</strong>
-              <span class="field-hint">Every recipe as a schema.org Recipe file, the
-              format recipe websites use, with its photo, in a .zip. Other recipe
-              apps can import it, and so can this one (it adds; the full backup
-              is what restores).</span>
+              <span class="field-hint">Every recipe in the standard recipe format, with photos, for other recipe apps.</span>
             </span>
           </label>
           <label class="backup-notes-option" for="backup-pdf-notes" hidden>
@@ -389,12 +371,7 @@
 
         <div class="import-box" id="import-box">
           <div class="restore-help-title" id="import-label">Restore or import</div>
-          <div class="field-hint">A full backup (.zip) replaces your library with
-          the one in the backup, after a confirmation and a safety copy of what's
-          here now. Any other file adds its recipes and replaces nothing: a
-          schema.org recipe file (.json) or a .zip of them, from this app's
-          Recipes as JSON or another recipe app, or a Paprika export
-          (.paprikarecipes). Ones already here from the same link are skipped.</div>
+          <div class="field-hint">A full backup replaces your library, after a confirmation and a safety copy. Any other file (schema.org .json or .zip, Paprika export) adds its recipes.</div>
           <input type="file" id="import-file" accept=".json,.zip,.paprikarecipes,application/json,application/zip" aria-labelledby="import-label">
           <button type="button" id="import-btn" class="btn-secondary">Continue</button>
           <div class="restore-confirm" id="restore-confirm" hidden>
@@ -448,8 +425,7 @@
       <div class="filter-section" id="admin-lock-section">
         <div class="filter-section-title">Settings password</div>
         <div class="field-hint">
-          Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login,
-          so they need a password. Everything else stays open.
+          Protects the Server settings, Email PDF, restoring and automatic backups. Everything else stays open.
         </div>
         <p class="field-hint" id="admin-lock-status" role="status"></p>
         <div class="logs-buttons" id="admin-lock-actions" hidden>
@@ -464,8 +440,7 @@
           Configure email ingest
         </button>
         <div class="field-hint">
-          Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
-          scans once daily.
+          Email recipes to a dedicated inbox; it's checked daily.
         </div>
         <div id="email-settings-panel" hidden></div>
       </div>
@@ -476,8 +451,7 @@
           Configure HTTPS
         </button>
         <div class="field-hint" id="https-summary">
-          Optional. A secure https:// address on your network, with a free Let's Encrypt
-          certificate. Needed for keeping the screen awake.
+          An https:// address on your network (Let's Encrypt). Needed to keep the screen awake.
         </div>
         <div id="https-settings-panel" hidden></div>
       </div>
@@ -490,8 +464,7 @@
           <button type="button" id="logs-clear" class="btn-secondary">Clear log</button>
         </div>
         <div class="field-hint">
-          What the app recorded: recipe imports, email scans and errors. Useful when
-          something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.
+          Imports, email scans and errors. Kept to about 4 MB.
         </div>
         <div id="logs-panel" hidden></div>
       </div>

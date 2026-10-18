@@ -832,8 +832,8 @@ ouvert la page>:8090`.
     résultats de chaque modèle par rapport à ce qu'il lui faut (pour la
     lecture des importations, les deux taux et l'écart à battre), combien
     de recettes étiquetées ont servi aux modèles d'étiquettes, les
-    étiquettes restées sans modèle avec la fréquence à laquelle leurs
-    suggestions en plus étaient justes, et combien de recettes ont été
+    étiquettes les plus proches d'avoir un modèle avec la fréquence à
+    laquelle leurs suggestions en plus étaient justes, et combien de recettes ont été
     laissées de côté parce qu'encore *À vérifier*.
 
   Les deux se réentraînent seuls quelques minutes après un changement de
