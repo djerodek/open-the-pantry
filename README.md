@@ -16,8 +16,9 @@ image, no LLM dependency required for any ingestion path.
 > its address can read, modify, and delete every recipe — and use its API.
 > There is no login screen, no user accounts, and no permission model. The
 > one exception is the parts that use your email account or DNS login
-> (Email ingest, HTTPS, Logs and Email PDF), which need a
-> [settings password](#security-notes) created in the app.
+> (Email ingest, HTTPS, Logs and Email PDF), and restoring a backup over
+> the library, which need a [settings password](#security-notes) created
+> in the app.
 >
 > **Do not expose it directly to the internet.** Run it on your LAN, or reach
 > it remotely through a VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse
@@ -876,6 +877,8 @@ at>:8090`.
   your email account or the cPanel DNS token (the log holds email subjects
   and senders), so they need a password; the rest of the app has none.
   The inbox scan in the + menu stays open (it only reads the recipe inbox).
+  Restoring a full backup (Settings → Backup & export) needs it too, from
+  the moment the backup is checked: it replaces the whole library.
   - The password is created in the app the first time one of those is
     opened (at least 8 characters). Until then, anyone on the network who
     opens one first would be the one to create it, so open one of them
@@ -1186,7 +1189,9 @@ at>:8090`.
   lists. A yield line ("Makes 12", "Serves 4", "Donne environ 10
   croquettes") fills in Servings instead of becoming an ingredient. By
   hand: a short line (six words at most) ending in ":" in the Ingredients
-  or Steps box starts a section ("Sauce:"); the boxes say so.
+  or Steps box starts a section ("Sauce:"); the boxes say so. An
+  ingredient that happens to end in ":" ("Salt and pepper to taste:")
+  stays an ingredient.
 - Heuristic parsing (non-JSON-LD URLs, PDF/OCR segmentation) is regex/rule
   based until Settings → Learning has enough of your corrected imports to
   do better, and even then it learns only from what you've saved — expect

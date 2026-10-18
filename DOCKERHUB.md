@@ -10,9 +10,9 @@ Interface in English or French. No LLM dependency.
 
 **No authentication by default.** Anyone who can reach this container can read,
 modify, and delete every recipe, and use its API. There is no login screen and
-no user accounts. The exception: Email ingest, HTTPS, Logs and Email PDF, which
-use your email account or DNS login, need a settings password created in the
-app (15-minute unlock). Forgotten: delete `data/admin-password.json`; the new
+no user accounts. The exceptions: Email ingest, HTTPS, Logs and Email PDF, which
+use your email account or DNS login, and restoring a backup over the library,
+need a settings password created in the app (15-minute unlock). Forgotten: delete `data/admin-password.json`; the new
 password then clears the saved email password and HTTPS, to be set up again.
 
 **Do not expose it to the internet.** Run it on your LAN, or reach it remotely
@@ -88,11 +88,14 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   French words), applied to new recipes or, after a review, to all of them
 - Learns from your own saved recipes, on the server (no LLM, no outside
   service): how your photo, PDF and email imports are laid out, and how you
-  tag; used only where it beats the built-in rules on your recipes
+  tag; used only where it beats the built-in rules on your recipes, and
+  each suggested tag says where it came from (a keyword, or learned)
 - Full-text search across recipes and tags; stacked filters; pace and
   cook-time filters; sort by date, title, rating, cook time or difficulty
 - Ratings, favorites, per-recipe notes (marked on the recipe cards),
-  showcase images
+  showcase images; duplicate a recipe to make a variant
+- Recipes saved without review (batch links, batch PDFs, email) are marked
+  "To review", with a list of what to check, until you've looked at them
 - Print, PDF, and self-contained HTML export; email the PDF to someone
   straight from the Share menu
 - English or French (Quebec) interface, chosen per device, including

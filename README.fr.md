@@ -22,7 +22,8 @@ Docker, et aucun modèle de langage (LLM) requis pour aucune méthode d'ajout.
 > recettes, et utiliser son API. Il n'y a pas d'écran de connexion, pas de
 > comptes d'utilisateur et pas de gestion des permissions. Seule exception :
 > les parties qui utilisent votre compte de courriel ou votre accès DNS
-> (réception par courriel, HTTPS, journal et envoi du PDF par courriel)
+> (réception par courriel, HTTPS, journal et envoi du PDF par courriel),
+> ainsi que la restauration d'une sauvegarde par-dessus la bibliothèque,
 > demandent un [mot de passe des paramètres](#notes-de-sécurité) créé dans
 > l'application.
 >
@@ -1044,6 +1045,9 @@ courriel)**
   des objets et des expéditeurs de courriels); ils demandent donc un mot de
   passe. Le reste de l'application n'en a pas. La vérification de la boîte
   dans le menu + reste ouverte (elle ne lit que la boîte des recettes).
+  Restaurer une sauvegarde complète (Paramètres → Sauvegarde et
+  exportation) le demande aussi, dès la vérification de la sauvegarde :
+  elle remplace toute la bibliothèque.
   - Le mot de passe se crée dans l'application la première fois qu'on
     ouvre l'une de ces parties (au moins 8 caractères). D'ici là, la
     première personne du réseau à en ouvrir une le créerait; ouvrez-en donc
@@ -1421,7 +1425,8 @@ courriel)**
   personnes », « Makes 12 ») remplit Portions au lieu de devenir un
   ingrédient. À la main : une ligne courte (six mots au plus) terminée par
   « : » dans la boîte Ingrédients ou Étapes commence une section
-  (« Sauce : »); les boîtes l'indiquent.
+  (« Sauce : »); les boîtes l'indiquent. Un ingrédient qui se termine
+  par « : » (« Sel et poivre au goût : ») reste un ingrédient.
 - L'analyse heuristique (URL sans JSON-LD, découpage des PDF et de l'OCR)
   repose sur des expressions régulières et des règles tant que Paramètres →
   Apprentissage n'a pas assez de vos importations corrigées pour faire
