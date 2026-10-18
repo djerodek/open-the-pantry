@@ -1583,7 +1583,19 @@ python -m pytest
 
 `pytest.ini` définit `pythonpath = .`, donc les modules de test importent
 le paquet de l'application directement, sans manipuler `sys.path` dans
-chaque fichier.
+chaque fichier. `tests/README.md` indique quels fichiers couvrent quelle
+fonction.
+
+Les pages ont leurs propres tests, dans Chromium sans interface contre un
+vrai serveur (`tests_browser/`) : chacun échoue aussi sur une erreur
+JavaScript ou une violation de la Content-Security-Policy. L'intégration
+continue les exécute dans une tâche séparée.
+
+```bash
+pip install -r requirements-browser.txt
+python -m playwright install --with-deps chromium
+python -m pytest tests_browser
+```
 
 Nécessite les mêmes paquets système que l'image Docker (`tesseract-ocr`
 plus les bibliothèques de polices et de rendu de WeasyPrint — voir le

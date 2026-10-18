@@ -1321,7 +1321,18 @@ python -m pytest
 ```
 
 `pytest.ini` sets `pythonpath = .`, so test modules import the app package
-directly without per-file `sys.path` manipulation.
+directly without per-file `sys.path` manipulation. `tests/README.md` lists
+which files cover which feature.
+
+The pages have their own tests, in headless Chromium against a real server
+(`tests_browser/`): every one also fails on a JavaScript error or a
+Content-Security-Policy violation. CI runs them as a separate job.
+
+```bash
+pip install -r requirements-browser.txt
+python -m playwright install --with-deps chromium
+python -m pytest tests_browser
+```
 
 Requires the same system packages as the Docker image (`tesseract-ocr` plus
 WeasyPrint's font/rendering libraries — see the Dockerfile) since the PDF
@@ -1416,6 +1427,7 @@ backend/
   docker-entrypoint.sh   drops from root to non-root user at container start
   requirements.txt
   requirements-test.txt  pytest + httpx + piexif, not included in the deployed image
+  requirements-browser.txt  + Playwright, for tests_browser/
   pytest.ini             pythonpath = . (no per-file sys.path boilerplate)
   tests/
     __init__.py            makes tests a package, so `from .conftest import ...` resolves

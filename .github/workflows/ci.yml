@@ -38,9 +38,37 @@ jobs:
         # and downloaded pages. If an advisory can't be fixed yet, ignore it
         # explicitly with --ignore-vuln <ID> and a comment saying why.
 
+  browser:
+    # The pages in headless Chromium against a real server (backend/
+    # tests_browser): JavaScript errors, CSP violations, and the page bugs
+    # the server tests can't see.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr tesseract-ocr-osd tesseract-ocr-fra tzdata libpango-1.0-0 libpangocairo-1.0-0 libcairo2 \
+            libgdk-pixbuf-2.0-0 libharfbuzz-subset0 libffi-dev shared-mime-info fonts-liberation
+
+      - name: Install Python dependencies and Chromium
+        run: |
+          pip install -r backend/requirements-browser.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: cd backend && python -m pytest tests_browser -v
+
   docker-build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, browser]
     steps:
       - uses: actions/checkout@v4
 
