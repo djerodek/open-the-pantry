@@ -140,12 +140,31 @@ def _ends_clean(path: str, ext: str) -> bool:
         return f.read() == tail
 
 
+# What the upload re-encoding itself leaves in a file (reencode_image):
+# format and timing fields, no content about the photo.
+_KEPT_INFO = {"jfif", "jfif_density", "jfif_unit", "jfif_version", "dpi", "progressive", "progression",
+              "background", "version", "duration", "loop", "timestamp", "transparency", "gamma", "aspect"}
+
+
+def _metadata(img) -> list[str]:
+    """Metadata a re-encoded upload wouldn't have (EXIF with its camera and
+    location fields, XMP, colour profiles, comments, text chunks), by name;
+    empty for a photo the app stored (GPT review of 0095: a JPEG ending
+    cleanly kept its EXIF)."""
+    found = sorted(k for k in img.info if k not in _KEPT_INFO)
+    found += [m for m, data in getattr(img, "applist", []) if not (m == "APP0" and data.startswith(b"JFIF"))]
+    if getattr(img, "text", None):
+        found.append("text")
+    return sorted(set(found))
+
+
 def _content_ok(path: str, name: str) -> bool:
     """The same standard as an upload (GPT review of 0093: only the first
     bytes were checked). The type read from the content must match the
     name's extension, and a PDF must be named .pdf. An image must decode
     in full; one with anything after its image data (trailing bytes, a
-    polyglot) goes through the upload re-encoding, which drops it. A file
+    polyglot) or metadata (_metadata) goes through the upload re-encoding,
+    which drops it. A file
     the app stored was already re-encoded, so it's kept byte for byte:
     re-saving every JPEG on each restore would lose a little each time."""
     ext = os.path.splitext(name)[1].lower()
@@ -160,8 +179,10 @@ def _content_ok(path: str, name: str) -> bool:
         from PIL import Image
         with Image.open(path, formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
             img.load()
-        if not _ends_clean(path, kind):
-            log.info("Restore: %s has data after the image; re-encoded", name)
+            extra = _metadata(img)
+        if extra or not _ends_clean(path, kind):
+            log.info("Restore: %s has %s; re-encoded like an upload", name,
+                     ", ".join(extra) if extra else "data after the image")
             reencode_image(path)
     except Exception:
         log.info("Restore: %s isn't a readable image; left out", name, exc_info=True)

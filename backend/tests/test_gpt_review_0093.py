@@ -141,3 +141,31 @@ def test_only_the_schemes_own_port_is_dropped():
     assert normalize_url("https://example.test:443/r") == "example.test/r"
     assert normalize_url("http://example.test:443/r") == "example.test:443/r"
     assert normalize_url("https://example.test:80/r") == "example.test:80/r"
+
+
+def test_restored_photos_with_metadata_are_cleaned(tmp_path):
+    """GPT review of 0095: a JPEG ending cleanly kept its EXIF (camera,
+    possibly location), which an upload would have dropped."""
+    from app import restore
+    from PIL import Image, PngImagePlugin
+    exif = Image.Exif()
+    exif[0x010E] = "kitchen photo"
+    exif[0x013B] = "Someone"
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), (200, 100, 50)).save(buf, "JPEG", exif=exif.tobytes(), comment=b"hello")
+    jpg = _png(tmp_path, "img-h.jpg", buf.getvalue())
+    assert restore._content_ok(jpg, "img-h.jpg")
+    with Image.open(jpg) as im:
+        assert "exif" not in im.info and "comment" not in im.info and restore._metadata(im) == []
+    meta = PngImagePlugin.PngInfo()
+    meta.add_text("Author", "Someone")
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16)).save(buf, "PNG", pnginfo=meta, icc_profile=b"\0" * 128)
+    png = _png(tmp_path, "img-i.png", buf.getvalue())
+    with Image.open(png) as im:
+        im.load()
+        assert set(restore._metadata(im)) >= {"icc_profile", "text"}
+    assert restore._content_ok(png, "img-i.png")
+    with Image.open(png) as im:
+        im.load()
+        assert restore._metadata(im) == []
