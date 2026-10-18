@@ -2,6 +2,18 @@ import os
 import re
 from .logging_setup import get_logger
 
+from PIL import Image as _PILImage
+
+# Pillow refuses an image above twice this many pixels
+# (DecompressionBombError) and only warns between one and two times. Its
+# default (89 MP, refused above 179 MP) let any upload, restored photo or
+# imported photo make the server decode an image needing ~700 MB of memory
+# from a few KB of file. 40 MP: refused above 80 MP (~240 MB to decode),
+# which still takes a 48 MP phone photo. Set here, at import, for every
+# image the app opens (uploads, OCR, restore, imports). Looked at after
+# Claude review round 10.
+_PILImage.MAX_IMAGE_PIXELS = 40_000_000
+
 log = get_logger("files")
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB -- generous for a recipe PDF/photo, bounds memory/disk use

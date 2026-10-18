@@ -684,8 +684,11 @@ ouvert la page>:8090`.
   ajout. Les résultats listent chaque recette ajoutée, ignorée ou refusée
   (p. ex. une ligne au-delà des limites habituelles). Les archives sont
   lues avec des limites (20 000 fichiers, 25 Mo par fichier, 2 Go
-  décompressés, 5 000 recettes, 1 Go téléversé) et seulement par nom, donc
-  un zip endommagé ou malveillant ne peut rien écrire nulle part. Le format
+  décompressés, 5 000 recettes, 1 Go téléversé, 4 Go de décompression en
+  tout, photos relues comprises) et seulement par nom, donc un zip
+  endommagé ou malveillant ne peut rien écrire nulle part ni occuper le
+  serveur. Chaque photo est lue au moment où sa recette est enregistrée,
+  donc une grosse exportation n'est pas gardée en mémoire. Le format
   de Paprika n'est pas publié; les champs lus sont ceux que ses
   exportations contiennent d'après ce qui en est connu.
 - Les deux sont créées dans un fichier temporaire et transmises en continu
@@ -698,15 +701,18 @@ ouvert la page>:8090`.
   si un téléchargement meurt en cours de route.
 - **Restaurer une sauvegarde complète** (la même boîte que l'importation :
   un `.zip` qui contient un `recipes.db` est pris pour une sauvegarde, tout
-  le reste est importé). Le fichier est vérifié d'abord et rien ne change
+  le reste est importé). Vérifier une sauvegarde complète demande déjà le
+  mot de passe des paramètres (elle décompresse et vérifie une base
+  pouvant atteindre 4 Go); un fichier à importer, non. Le fichier est vérifié d'abord et rien ne change
   avant votre confirmation : le zip est lu seulement par nom et avec des
   limites, `recipes.db` doit passer la vérification d'intégrité de SQLite
   et avoir les tables de cette application, et l'écran indique combien de
   recettes il contient par rapport à combien il y en a ici. **Remplacer ma
-  bibliothèque** demande ensuite le mot de passe des paramètres (écraser
+  bibliothèque** demande aussi le mot de passe des paramètres (écraser
   toute la bibliothèque est ce que l'application peut faire de plus
   destructeur, donc c'est derrière le même mot de passe que la réception
-  par courriel et HTTPS) et :
+  par courriel et HTTPS). Une sauvegarde vérifiée attend 30 minutes;
+  vérifier un autre fichier ne l'annule pas. Ensuite, la restauration :
   - écrit une **sauvegarde de sécurité** de la bibliothèque actuelle dans
     le dossier de données (`restore-safety-<date>.zip`, une sauvegarde
     complète normale; les trois plus récentes sont gardées), pour qu'une
@@ -1199,7 +1205,10 @@ courriel)**
   plage `100.64.0.0/10` qu'utilise Tailscale). Les pages PDF numérisées et
   les photos téléversées sont rendues ou agrandies pour l'OCR dans une
   limite de 35 mégapixels, pour qu'une page ou une image très haute ou très
-  étroite ne puisse pas épuiser la mémoire.
+  étroite ne puisse pas épuiser la mémoire. Une image de plus de 80
+  mégapixels est refusée d'où qu'elle vienne (téléversement, importation,
+  restauration) : quelques Ko de fichier peuvent décrire une image qui
+  demande des gigaoctets pour être décodée.
 - **Les identifiants de courriel (si vous utilisez la réception par
   courriel)** sont chiffrés avec Fernet (AES-128-CBC + HMAC). La clé vient
   de l'un de deux endroits :

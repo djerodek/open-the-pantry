@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import gzip
 import io
 import json
@@ -50,6 +51,7 @@ MAX_ENTRIES = 20_000                  # files in one archive
 MAX_ENTRY_BYTES = 25 * 1024 * 1024    # one unpacked file (a recipe or a photo)
 MAX_TOTAL_BYTES = 2 * 1024 ** 3       # everything unpacked
 MAX_RECIPES = 5_000                   # recipes in one import
+UNPACK_BUDGET = 4 * 1024 ** 3         # all the unpacking one import may do (_Budget)
 
 # ---------------------------------------------------------------------------
 # Export
@@ -241,7 +243,13 @@ class ImportedRecipe:
     tag_names: list[str] = field(default_factory=list)   # labels from another app: matched to existing tags
     custom_tag_names: list[str] = field(default_factory=list)  # the person's own categories (Paprika): kept as Custom
     image_bytes: bytes | None = None
+    # Reads the photo when the recipe is saved, not when the file is read:
+    # a file of 5,000 recipes with photos is never in memory all at once.
+    image_loader: object = None
     image_url: str | None = None
+
+    def photo(self) -> bytes | None:
+        return self.image_loader() if self.image_loader else self.image_bytes
 
 
 def _text(value, limit: int) -> str | None:
@@ -355,11 +363,22 @@ def from_jsonld(item: dict, origin: str, read_member=None) -> ImportedRecipe:
         if re.match(r"^https?://", image, re.I):
             r.image_url = image
         elif read_member:
-            r.image_bytes = read_member(image)
+            r.image_loader = lambda: read_member(image)
     return r
 
 
-def from_paprika(obj: dict, origin: str) -> ImportedRecipe:
+def _paprika_photo(obj: dict) -> bytes | None:
+    if isinstance(obj.get("photo_data"), str) and obj["photo_data"].strip():
+        try:
+            return base64.b64decode(obj["photo_data"], validate=False) or None
+        except (binascii.Error, ValueError):
+            return None
+    return None
+
+
+def from_paprika(obj: dict, origin: str, photo_loader=None) -> ImportedRecipe:
+    """photo_loader() reads the photo again when the recipe is saved (the
+    zip import); without one it's decoded now."""
     r = ImportedRecipe(
         title=_text(obj.get("name"), 500) or "Untitled Recipe",
         origin=origin,
@@ -376,12 +395,12 @@ def from_paprika(obj: dict, origin: str) -> ImportedRecipe:
         difficulty_rating=_DIFFICULTY.get((_text(obj.get("difficulty"), 40) or "").lower()),
         custom_tag_names=[c[:100] for c in _lines(obj.get("categories"))][:50],
     )
-    if isinstance(obj.get("photo_data"), str) and obj["photo_data"].strip():
-        try:
-            r.image_bytes = base64.b64decode(obj["photo_data"], validate=False)
-        except (binascii.Error, ValueError):
-            r.image_bytes = None
-    if not r.image_bytes:
+    has_photo = isinstance(obj.get("photo_data"), str) and bool(obj["photo_data"].strip())
+    if has_photo and photo_loader:
+        r.image_loader = photo_loader
+    elif has_photo:
+        r.image_bytes = _paprika_photo(obj)
+    if not has_photo:
         r.image_url = _image_from(obj.get("image_url"))
     return r
 
@@ -394,24 +413,51 @@ def _check_archive(zf: zipfile.ZipFile):
         raise ImportFileError("This archive unpacks to more than 2 GB.")
 
 
-def _read(zf: zipfile.ZipFile, name: str, limit: int = MAX_ENTRY_BYTES) -> bytes | None:
+class _OverBudget(Exception):
+    pass
+
+
+class _Budget:
+    """All the unpacking one import may do: zip entries read, Paprika
+    entries un-gzipped, photos read again when saved. Each entry has its
+    own cap (MAX_ENTRY_BYTES), but the same 25 MB photo named by 5,000
+    recipes, or 5,000 small gzip bombs, came to over 100 GB of work from a
+    small upload (looked at after Claude review round 10). The total is
+    capped here, so the work is bounded whatever the file holds."""
+
+    def __init__(self, total: int):
+        self.left = total
+        self.spent_out = False
+
+    def take(self, n: int):
+        self.left -= n
+        if self.left < 0:
+            self.spent_out = True
+            raise _OverBudget
+
+
+def _read(zf: zipfile.ZipFile, name: str, limit: int = MAX_ENTRY_BYTES, budget: _Budget | None = None) -> bytes | None:
     try:
         info = zf.getinfo(name)
     except KeyError:
         return None
     if info.file_size > limit or info.is_dir():
         return None
+    if budget:
+        budget.take(info.file_size)      # what zipfile will unpack at most (it stops at the stated size)
     with zf.open(info) as f:
         data = f.read(limit + 1)
     return data if len(data) <= limit else None
 
 
-def _gunzip(data: bytes, limit: int = MAX_ENTRY_BYTES) -> bytes | None:
+def _gunzip(data: bytes, limit: int = MAX_ENTRY_BYTES, budget: _Budget | None = None) -> bytes | None:
     try:
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as g:
             out = g.read(limit + 1)
     except (OSError, EOFError):
         return None
+    if budget:
+        budget.take(len(out))
     return out if len(out) <= limit else None
 
 
@@ -427,9 +473,18 @@ def _json(data: bytes):
 
 
 def read_file(path: str, filename: str) -> tuple[list[ImportedRecipe], list[dict]]:
-    """Recipes found in an uploaded file, and per-entry problems
-    [{"origin", "error"}]. Raises ImportFileError for a file that can't be
-    read at all."""
+    """The recipes and problems, for a look at what a file holds; photos in
+    a zip can't be read from them afterwards (opened() is for saving)."""
+    with opened(path, filename) as found:
+        return found
+
+
+@contextlib.contextmanager
+def opened(path: str, filename: str):
+    """Yields (recipes, problems) with the file still open, so each
+    recipe's photo is read when it's saved (ImportedRecipe.photo()).
+    problems: [{"origin", "error"}], added to while photos are read.
+    Raises ImportFileError for a file that can't be read at all."""
     with open(path, "rb") as f:
         head = f.read(4)
     if head.startswith(b"PK"):
@@ -439,7 +494,12 @@ def read_file(path: str, filename: str) -> tuple[list[ImportedRecipe], list[dict
             raise ImportFileError("This file is damaged or isn't a zip.")
         with zf:
             _check_archive(zf)
-            return _read_zip(zf)
+            yield _read_zip(zf)
+        return
+    yield _read_json_file(path, filename)
+
+
+def _read_json_file(path: str, filename: str):
     if os.path.getsize(path) > MAX_ENTRY_BYTES:
         raise ImportFileError("This JSON file is larger than 25 MB.")
     with open(path, "rb") as f:
@@ -470,7 +530,12 @@ def _convert(make, origin: str, recipes: list, problems: list):
 def _read_zip(zf: zipfile.ZipFile) -> tuple[list[ImportedRecipe], list[dict]]:
     recipes, problems = [], []
     names = [i.filename for i in zf.infolist() if not i.is_dir()]
-    base_dirs = {}
+    budget = _Budget(UNPACK_BUDGET)
+    over = f"This file takes more than {UNPACK_BUDGET // 1024 ** 3} GB of unpacking; the rest was left out."
+
+    def spent(origin):
+        if not any(p.get("error") == over for p in problems):
+            problems.append({"origin": origin, "error": over})
 
     def reader_for(entry: str):
         folder = entry.rsplit("/", 1)[0] + "/" if "/" in entry else ""
@@ -481,10 +546,27 @@ def _read_zip(zf: zipfile.ZipFile) -> tuple[list[ImportedRecipe], list[dict]]:
                 return None
             # "images/x.jpg" next to "recipes/": relative to the zip's root,
             # or to the recipe file's folder.
-            return _read(zf, rel) or _read(zf, folder + rel)
+            try:
+                return _read(zf, rel, budget=budget) or _read(zf, folder + rel, budget=budget)
+            except _OverBudget:
+                spent(rel)
+                return None
         return read_member
 
+    def paprika_photo(entry: str):
+        def load():
+            try:
+                raw = _read(zf, entry, budget=budget)
+                obj = _json(_gunzip(raw, budget=budget) if raw and raw[:2] == b"\x1f\x8b" else raw or b"")
+            except _OverBudget:
+                spent(os.path.basename(entry))
+                return None
+            return _paprika_photo(obj) if isinstance(obj, dict) else None
+        return load
+
     for name in names:
+        if budget.spent_out:
+            break
         if len(recipes) >= MAX_RECIPES:
             problems.append({"origin": name, "error": f"More than {MAX_RECIPES} recipes in one file; the rest were left out."})
             break
@@ -493,14 +575,23 @@ def _read_zip(zf: zipfile.ZipFile) -> tuple[list[ImportedRecipe], list[dict]]:
         if base.startswith(".") or "__macosx/" in low:
             continue
         if low.endswith(".paprikarecipe"):
-            raw = _read(zf, name)
-            obj = _json(_gunzip(raw) if raw and raw[:2] == b"\x1f\x8b" else raw or b"")
+            try:
+                raw = _read(zf, name, budget=budget)
+                obj = _json(_gunzip(raw, budget=budget) if raw and raw[:2] == b"\x1f\x8b" else raw or b"")
+            except _OverBudget:
+                spent(base)
+                break
             if not isinstance(obj, dict):
                 problems.append({"origin": base, "error": "Couldn't read this Paprika recipe."})
                 continue
-            _convert(lambda: from_paprika(obj, base), base, recipes, problems)
+            _convert(lambda: from_paprika(obj, base, paprika_photo(name)), base, recipes, problems)
+            del obj      # the photo is read again when the recipe is saved
         elif low.endswith(".json"):
-            raw = _read(zf, name)
+            try:
+                raw = _read(zf, name, budget=budget)
+            except _OverBudget:
+                spent(base)
+                break
             data = _json(raw) if raw else None
             if data is None:
                 problems.append({"origin": base, "error": "Couldn't read this JSON file."})

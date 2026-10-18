@@ -459,7 +459,10 @@
         try {
           const body = new FormData();
           body.append("file", file);
-          const res = await fetch(`${API}/backup/restore/check`, { method: "POST", body });
+          // A full backup needs the settings password even to be checked
+          // (the server answers 401 locked); adminFetch asks for it and
+          // sends the file again. Anything else is checked without it.
+          const res = await adminFetch(`${API}/backup/restore/check`, { method: "POST", body });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { status.textContent = apiErrorText(data, res.status); importBtn.disabled = false; return; }
           if (data.kind === "backup") {

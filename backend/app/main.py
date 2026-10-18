@@ -460,11 +460,20 @@ async def settings_password_gate(request: Request, call_next):
     refused before this one says anything about the lock."""
     if not admin_lock.is_locked_path(request.url.path):
         return await call_next(request)
+    refused = _settings_lock_refusal(request)
+    return refused if refused is not None else await call_next(request)
+
+
+def _settings_lock_refusal(request: Request):
+    """None when this request may use what the settings password guards,
+    else the response refusing it (the https-only 403 or the locked 401).
+    Also used inside an endpoint whose path is open but some of whose
+    requests aren't (the restore check, for a full backup)."""
     secure_url = _https_only_url(request)
     if secure_url:
         return _https_only_response(secure_url)
     if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
-        return await call_next(request)
+        return None
     detail = ("Locked. Enter the settings password." if admin_lock.password_set()
               else "Create a settings password first.")
     return JSONResponse(status_code=401, content={"detail": detail, "locked": True,
@@ -3375,8 +3384,9 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, O
             seen.add((t.name, t.category))
             unique_tags.append(t)
     image = None
-    if r.image_bytes:
-        image = validate_and_save_image_bytes(r.image_bytes, TMP_DIR, f"imp-{uuid.uuid4().hex}")
+    photo = r.photo()
+    if photo:
+        image = validate_and_save_image_bytes(photo, TMP_DIR, f"imp-{uuid.uuid4().hex}")
     try:
         payload = schemas.RecipeCreate(
             title=r.title[:500], source_type=(r.source_type or "import")[:20], source_url=r.source_url,
@@ -3409,6 +3419,26 @@ def _validation_text(e: Exception) -> str:
     return str(getattr(e, "detail", None) or e) or e.__class__.__name__
 
 
+def _import_and_save(db: Session, path: str, name: str):
+    succeeded, failed, skipped = [], [], []
+    with interchange.opened(path, name) as (recipes, problems):
+        for r in recipes:
+            try:
+                existing = duplicates.same_link(db, r.source_url)
+                if existing:
+                    skipped.append({"origin": r.origin, "recipe_id": existing["id"], "title": existing["title"]})
+                    continue
+                rid, dup = _save_imported(db, r)
+                succeeded.append({"origin": r.origin, "recipe_id": rid, "title": r.title[:500], "duplicate_of": dup})
+            except Exception as e:
+                db.rollback()
+                log.warning("Import of %r from %s failed: %s", r.title, name, _validation_text(e))
+                failed.append({"origin": r.origin, "title": r.title[:500], "error": _validation_text(e)})
+        # Read last: reading photos can add one ("…the rest was left out").
+        failed = [dict(p) for p in problems] + failed
+    return succeeded, failed, skipped
+
+
 @app.post("/api/import/recipes")
 def import_recipes(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Adds the recipes in a schema.org .json, a zip of them (this app's
@@ -3434,26 +3464,14 @@ def import_recipes(file: UploadFile = File(...), db: Session = Depends(get_db)):
         if not written:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
         try:
-            recipes, problems = _run_heavy(interchange.read_file, path, name)
+            # The file stays open while the recipes are saved: each photo is
+            # read as its recipe is saved, not all of them first.
+            succeeded, failed, skipped = _run_heavy(_import_and_save, db, path, name)
         except interchange.ImportFileError as e:
             raise HTTPException(status_code=422, detail=str(e))
     finally:
         if os.path.isfile(path):
             os.remove(path)
-
-    succeeded, failed, skipped = [], [dict(p) for p in problems], []
-    for r in recipes:
-        try:
-            existing = duplicates.same_link(db, r.source_url)
-            if existing:
-                skipped.append({"origin": r.origin, "recipe_id": existing["id"], "title": existing["title"]})
-                continue
-            rid, dup = _save_imported(db, r)
-            succeeded.append({"origin": r.origin, "recipe_id": rid, "title": r.title[:500], "duplicate_of": dup})
-        except Exception as e:
-            db.rollback()
-            log.warning("Import of %r from %s failed: %s", r.title, name, _validation_text(e))
-            failed.append({"origin": r.origin, "title": r.title[:500], "error": _validation_text(e)})
     log.info("Import from %s: %d added, %d skipped, %d failed", name, len(succeeded), len(skipped), len(failed))
     return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
 
@@ -3471,20 +3489,54 @@ def _pending_restore_paths(token: str) -> tuple[str, str]:
             os.path.join(BACKUP_TMP_DIR, f"restore-{token}.db"))
 
 
-def _clear_pending_restores(keep: str | None = None):
+PENDING_RESTORE_SECONDS = 30 * 60   # a checked backup waits this long for "Replace my library"
+
+
+def _remove_pending(token: str):
+    for path in _pending_restore_paths(token):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.debug("_remove_pending: couldn't remove %s", path, exc_info=True)
+
+
+def _clear_pending_restores(older_than: float | None = PENDING_RESTORE_SECONDS):
+    """Checked backups nobody confirmed. Only those older than
+    PENDING_RESTORE_SECONDS by default: a check used to delete every
+    pending backup, so a second check (another tab, two at once) made the
+    first one's Replace fail or its check return a 500 (Claude review
+    round 10). None removes all (after a restore)."""
+    now = time.time()
     for name in os.listdir(BACKUP_TMP_DIR):
-        if name.startswith("restore-") and (keep is None or keep not in name):
-            try:
-                os.remove(os.path.join(BACKUP_TMP_DIR, name))
-            except OSError:
-                log.debug("_clear_pending_restores: couldn't remove %s", name, exc_info=True)
+        if not name.startswith("restore-"):
+            continue
+        path = os.path.join(BACKUP_TMP_DIR, name)
+        try:
+            if older_than is None or now - os.path.getmtime(path) > older_than:
+                os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.debug("_clear_pending_restores: couldn't remove %s", name, exc_info=True)
 
 
 @app.post("/api/backup/restore/check")
-def restore_check(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def restore_check(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """First step: what's in the file. A full backup is kept (unpacked
     database checked) until it's confirmed; anything else is for the import
-    path ("kind": "import"), which adds instead of replacing."""
+    path ("kind": "import"), which adds instead of replacing.
+
+    The path is open, because the same box imports, and an import needs no
+    password. A full backup does: checking one unpacks and integrity-checks
+    a database of up to 4 GB, which nobody without the password should be
+    able to make the server do (Claude review round 10 left it unreviewed;
+    looked at here). Without it, uploads stop at the import's 1 GB, and a
+    backup gets the locked 401, which makes the page ask for the password
+    and send the file again."""
+    refusal = _settings_lock_refusal(request)
+    limit = restore_mod.MAX_TOTAL_BYTES if refusal is None else MAX_IMPORT_BYTES
     token = uuid.uuid4().hex
     zip_path, db_path = _pending_restore_paths(token)
     _clear_pending_restores()
@@ -3495,9 +3547,11 @@ def restore_check(file: UploadFile = File(...), db: Session = Depends(get_db)):
             if not chunk:
                 break
             written += len(chunk)
-            if written > restore_mod.MAX_TOTAL_BYTES:
+            if written > limit:
                 out.close()
                 os.remove(zip_path)
+                if refusal is not None:
+                    return refusal        # too big for an import: only a backup could be
                 raise HTTPException(status_code=413, detail="File too large.")
             out.write(chunk)
     try:
@@ -3510,13 +3564,16 @@ def restore_check(file: UploadFile = File(...), db: Session = Depends(get_db)):
         if kind != "backup":
             os.remove(zip_path)
             return {"kind": kind}
+        if refusal is not None:
+            os.remove(zip_path)
+            return refusal
         info = _run_heavy(restore_mod.inspect, zip_path, db_path)
     except restore_mod.RestoreError as e:
-        _clear_pending_restores()
+        _remove_pending(token)
         raise HTTPException(status_code=422, detail=str(e))
     except Exception:
         log.warning("Restore check failed on %s", file.filename, exc_info=True)
-        _clear_pending_restores()
+        _remove_pending(token)
         raise
     info.update(token=token, current_recipes=db.query(models.Recipe).count())
     return info
@@ -3624,6 +3681,7 @@ def restore_backup(payload: schemas.RestoreRequest):
             lock.release()
         _restoring.clear()
         _restore_lock.release()
+        _remove_pending(payload.token)      # used, or failed: either way it's done with
         _clear_pending_restores()
     # After the app is open again: the learned models and the What to eat?
     # switch follow the restored data.

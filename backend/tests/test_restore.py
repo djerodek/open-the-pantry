@@ -159,7 +159,16 @@ def test_restore_keeps_this_servers_https_settings(client):
 def test_restore_needs_the_settings_password(client):
     from app.main import app
     stranger = TestClient(app)
-    tok = _check(stranger, client.get("/api/backup/database.zip").content).json()["token"]
+    backup = client.get("/api/backup/database.zip").content
+    # Checking a full backup needs it too (round 10): the page asks and resends.
+    r = _check(stranger, backup)
+    assert r.status_code == 401 and r.json().get("locked")
+    # An import file is still checked without it.
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as zf:
+        zf.writestr("recipes/a.json", "{}")
+    assert _check(stranger, out.getvalue()).json() == {"kind": "import"}
+    tok = _check(client, backup).json()["token"]
     r = stranger.post("/api/backup/restore", headers=H, json={"token": tok})
     assert r.status_code == 401 and r.json().get("locked")
 

@@ -583,8 +583,10 @@ at>:8090`.
   when there's no match; suggested tags are added as for any import. The
   results list each recipe added, skipped or refused (e.g. a line over the
   usual length limits). Archives are read with limits (20,000 files, 25 MB
-  per file, 2 GB unpacked, 5,000 recipes, 1 GB upload) and only by name,
-  so a damaged or hostile zip can't write anywhere. Paprika's format isn't
+  per file, 2 GB unpacked, 5,000 recipes, 1 GB upload, 4 GB of unpacking
+  in all, counting photos read again) and only by name, so a damaged or
+  hostile zip can't write anywhere or keep the server busy. Each photo is
+  read when its recipe is saved, so a large export isn't held in memory. Paprika's format isn't
   published; the fields read are the ones its exports are known to contain.
 - Both are built to a temp file and streamed by the server, never
   assembled in its memory — a library with a few hundred photos is larger
@@ -593,14 +595,17 @@ at>:8090`.
   navigating away on iOS, and fine up to a few hundred MB.) Temp archives are deleted once sent, and swept if a
   download dies mid-flight.
 - **Restore a full backup** (the same box as the import: a `.zip` with a
-  `recipes.db` inside is taken as a backup, anything else is imported). The
+  `recipes.db` inside is taken as a backup, anything else is imported). Checking
+  a full backup already needs the settings password (it unpacks and
+  checks a database of up to 4 GB); an import file doesn't. The
   file is checked first and nothing changes until you confirm: the zip is
   read only by name and with limits, `recipes.db` must pass SQLite's
   integrity check and have this app's tables, and the screen shows how many
   recipes are in it against how many are here now. **Replace my library**
-  then asks for the settings password (overwriting the whole library is
-  the most destructive thing the app can do, so it sits behind the same
-  password as Email ingest and HTTPS) and:
+  needs the settings password too (overwriting the whole library is the
+  most destructive thing the app can do, so it sits behind the same
+  password as Email ingest and HTTPS). A checked backup waits 30 minutes
+  for it; checking another file doesn't cancel it. Then the restore:
   - writes a **safety backup** of the current library to the data folder
     (`restore-safety-<date>.zip`, a normal full backup; the newest three are
     kept), so restoring the wrong file can be undone by restoring that one;
@@ -1000,7 +1005,10 @@ at>:8090`.
   addresses (anything not globally routable is refused, including the
   `100.64.0.0/10` range Tailscale uses). Scanned PDF pages and uploaded
   photos are rendered/upscaled for OCR within a 35-megapixel budget, so an
-  extremely tall or narrow page or image can't exhaust memory.
+  extremely tall or narrow page or image can't exhaust memory. An image
+  over 80 megapixels is refused wherever it comes in (upload, import,
+  restore): a few KB of file can describe one that takes gigabytes to
+  decode.
 - **Email credentials (if you use email ingest)** are encrypted at rest
   with Fernet (AES-128-CBC + HMAC). The key comes from one of two places:
 
