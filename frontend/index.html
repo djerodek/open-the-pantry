@@ -370,6 +370,23 @@
         <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
         <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
 
+        <div class="import-box" id="auto-backup-box">
+          <div class="restore-help-title" id="auto-backup-label">Automatic backups</div>
+          <label class="switch-row" for="auto-backup-enabled">
+            <span>Make a full backup every day</span>
+            <input type="checkbox" role="switch" id="auto-backup-enabled" class="switch">
+          </label>
+          <div class="auto-backup-options">
+            <label for="auto-backup-hour">At</label>
+            <select id="auto-backup-hour"></select>
+            <label for="auto-backup-keep">Keep the newest</label>
+            <select id="auto-backup-keep"></select>
+          </div>
+          <div class="field-hint" id="auto-backup-folder"></div>
+          <p class="field-hint" id="auto-backup-status" role="status" aria-live="polite"></p>
+          <button type="button" id="auto-backup-run" class="btn-secondary">Back up now</button>
+        </div>
+
         <div class="import-box" id="import-box">
           <div class="restore-help-title" id="import-label">Restore or import</div>
           <div class="field-hint">A full backup (.zip) replaces your library with

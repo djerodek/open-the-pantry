@@ -126,6 +126,16 @@ _FR_PATTERNS = [
        r"nouveau mot de passe n'a donc pas été créé, car il ouvrirait encore ce jeton. Corrigez les permissions de ce "
        r"dossier sur le serveur (l'application doit pouvoir y écrire), puis réessayez. Le mot de passe de courriel et "
        r"HTTPS ont déjà été effacés."),
+    _p(r"^A restore is running; the backup will be made at the next check\.$",
+       "Une restauration est en cours; la sauvegarde sera faite à la prochaine vérification."),
+    _p(r"^A backup is already being made\.$", "Une sauvegarde est déjà en cours."),
+    _p(r"^The backup folder (.*?) can't be created \((.*)\)\.$", r"Le dossier de sauvegarde \1 ne peut pas être créé (\2)."),
+    _p(r"^The backup folder (.*?) can't be read \((.*)\)\.$", r"Le dossier de sauvegarde \1 ne peut pas être lu (\2)."),
+    _p(r"^Not enough free space in (.*?): (\d+) MB free, (\d+) MB needed\.$",
+       r"Pas assez d'espace libre dans \1 : \2 Mo libres, \3 Mo nécessaires."),
+    _p(r"^The backup couldn't be written to (.*?) \((.*)\)\.$", r"La sauvegarde n'a pas pu être écrite dans \1 (\2)."),
+    _p(r"^The backup failed \((\w+)\); Settings -> Logs has the details\.$",
+       r"La sauvegarde a échoué (\1); Paramètres → Journal donne les détails."),
     _p(r"^The new password couldn't be saved; try again\. ",
        "Le nouveau mot de passe n'a pas pu être enregistré; réessayez. "),
     _p(r"^HTTPS setup is running\. Try again when it has finished\.$",
@@ -500,7 +510,7 @@ def translate(text, lang: str | None = None):
 
 
 # Fields of a JSON response that hold messages for people to read.
-MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem", "step", "last_error"}
+MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem", "step", "last_error", "last_message"}
 
 
 def _translate_validation_error(item: dict, lang: str) -> dict:

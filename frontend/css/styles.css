@@ -1931,3 +1931,9 @@ input.needs-check, textarea.needs-check {
   color: var(--color-ink);
 }
 .settings-group + .settings-group { margin-top: 0.75rem; }
+
+/* Settings -> Backup & export -> Automatic backups */
+.auto-backup-options { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0.4rem 0; }
+.auto-backup-options label { font-size: 0.9rem; }
+.auto-backup-options select { width: auto; }
+#auto-backup-box { margin-bottom: 0.75rem; }

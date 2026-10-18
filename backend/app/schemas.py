@@ -398,5 +398,11 @@ class PickerSettingsIn(BaseModel):
     enabled: bool
 
 
+class BackupScheduleIn(BaseModel):
+    enabled: bool
+    hour: int = Field(3, ge=0, le=23)
+    keep: int = Field(7, ge=1, le=30)
+
+
 class RestoreRequest(BaseModel):
     token: str = Field(..., max_length=64)

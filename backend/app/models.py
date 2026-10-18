@@ -228,3 +228,19 @@ class PickerSettings(Base):
 
     id = Column(Integer, primary_key=True)
     enabled = Column(Boolean, nullable=False, default=False)
+
+
+class BackupSchedule(Base):
+    """Singleton row (id=1): Settings -> Backup & export -> Automatic
+    backups (scheduled_backup.py). Off until turned on; a database from
+    before it has no table, and create_all() adds one."""
+    __tablename__ = "backup_schedule"
+
+    id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    hour = Column(Integer, nullable=False, default=3)      # local time (TZ), 0-23
+    keep = Column(Integer, nullable=False, default=7)      # newest backups kept
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_ok = Column(Boolean, nullable=True)
+    last_message = Column(Text, nullable=True)
+

@@ -42,6 +42,7 @@ from .backup import build_database_backup, build_pdf_bundle, remove_upload_file,
 from .time_utils import ddhhmm_to_minutes, available_time_buckets
 from . import email_client
 from . import review
+from . import scheduled_backup
 from . import crypto
 from . import i18n
 from . import https_setup
@@ -251,6 +252,7 @@ async def lifespan(app: FastAPI):
     await _run_sweeps()
     sweep_task = asyncio.create_task(_periodic_tmp_sweep())
     email_scan_task = asyncio.create_task(_daily_email_scan_loop())
+    backup_task = asyncio.create_task(_scheduled_backup_loop())
     # Optional HTTPS (Settings -> HTTPS): serve it if it was set up, and
     # renew the certificate in time.
     try:
@@ -279,6 +281,7 @@ async def lifespan(app: FastAPI):
     yield
     sweep_task.cancel()
     email_scan_task.cancel()
+    backup_task.cancel()
     https_renew_task.cancel()
     await https_setup.stop_server()
     await picker.stop_server()
@@ -3474,6 +3477,125 @@ def import_recipes(file: UploadFile = File(...), db: Session = Depends(get_db)):
             os.remove(path)
     log.info("Import from %s: %d added, %d skipped, %d failed", name, len(succeeded), len(skipped), len(failed))
     return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
+# Automatic backups (scheduled_backup.py)
+# ---------------------------------------------------------------------------
+
+_backup_run_lock = threading.Lock()
+
+
+def _backup_schedule(db: Session) -> models.BackupSchedule:
+    row = db.get(models.BackupSchedule, 1)
+    if row is None:
+        row = models.BackupSchedule(id=1, enabled=False, hour=3, keep=7)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def _backup_status(db: Session) -> dict:
+    row = _backup_schedule(db)
+    return {
+        "enabled": bool(row.enabled), "hour": row.hour, "keep": row.keep,
+        "folder": scheduled_backup.folder(),
+        "folder_in_data": os.path.abspath(scheduled_backup.folder()).startswith(os.path.abspath(DATA_DIR) + os.sep),
+        "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
+        "last_ok": row.last_ok, "last_message": row.last_message,
+        "backups": scheduled_backup.listing(),
+        "running": _backup_run_lock.locked(),
+    }
+
+
+def run_scheduled_backup() -> dict:
+    """One automatic backup now (the daily loop, or "Back up now"); its
+    result is saved for Settings. Not while a restore runs or another
+    backup is being made."""
+    if _restoring.is_set():
+        raise scheduled_backup.BackupError("A restore is running; the backup will be made at the next check.")
+    if not _backup_run_lock.acquire(blocking=False):
+        raise scheduled_backup.BackupError("A backup is already being made.")
+    try:
+        db = SessionLocal()
+        try:
+            keep = _backup_schedule(db).keep
+        finally:
+            db.close()
+        ok, message, result = True, None, None
+        try:
+            result = _run_heavy(scheduled_backup.make, keep, build_database_backup)
+            message = result["name"]
+        except scheduled_backup.BackupError as e:
+            ok, message = False, str(e)
+            log.error("Automatic backup failed: %s", e)
+        except Exception as e:
+            ok, message = False, f"The backup failed ({e.__class__.__name__}); Settings -> Logs has the details."
+            log.exception("Automatic backup failed")
+        db = SessionLocal()
+        try:
+            row = _backup_schedule(db)
+            row.last_run_at, row.last_ok, row.last_message = _utc_now(), ok, message
+            db.commit()
+        finally:
+            db.close()
+        if not ok:
+            raise scheduled_backup.BackupError(message)
+        return result
+    finally:
+        _backup_run_lock.release()
+
+
+async def _scheduled_backup_loop():
+    """Checks every 10 minutes whether a backup is due
+    (scheduled_backup.due); a failure is recorded and never ends the loop."""
+    while True:
+        await asyncio.sleep(scheduled_backup.CHECK_EVERY)
+        try:
+            def _check():
+                db = SessionLocal()
+                try:
+                    row = _backup_schedule(db)
+                    return scheduled_backup.due(bool(row.enabled), row.hour, row.last_run_at)
+                finally:
+                    db.close()
+            if await anyio.to_thread.run_sync(_check):
+                await anyio.to_thread.run_sync(run_scheduled_backup)
+        except scheduled_backup.BackupError:
+            log.debug("_scheduled_backup_loop: recorded failure, continuing", exc_info=True)
+        except Exception:
+            log.exception("Automatic backup: the check failed; trying again in 10 minutes")
+
+
+@app.get("/api/backups/status")
+def backups_status(db: Session = Depends(get_db)):
+    """The schedule, the last result and the backups in the folder."""
+    return _backup_status(db)
+
+
+@app.put("/api/backups/schedule")
+def backups_schedule(payload: schemas.BackupScheduleIn, db: Session = Depends(get_db)):
+    row = _backup_schedule(db)
+    row.enabled, row.hour, row.keep = payload.enabled, payload.hour, payload.keep
+    db.commit()
+    log.info("Automatic backups %s (%02d:00, keep %d) in %s", "on" if payload.enabled else "off",
+             payload.hour, payload.keep, scheduled_backup.folder())
+    if payload.enabled:
+        scheduled_backup.prune(payload.keep)
+    return _backup_status(db)
+
+
+@app.post("/api/backups/run")
+def backups_run(db: Session = Depends(get_db)):
+    """"Back up now"."""
+    try:
+        run_scheduled_backup()
+    except scheduled_backup.BackupError as e:
+        raise HTTPException(status_code=409 if "already" in str(e) or "restore is running" in str(e) else 500,
+                            detail=str(e))
+    db.expire_all()
+    return _backup_status(db)
 
 
 # ---------------------------------------------------------------------------

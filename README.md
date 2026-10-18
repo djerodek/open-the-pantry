@@ -595,6 +595,28 @@ at>:8090`.
   the finished file in memory before saving it; that's the price of not
   navigating away on iOS, and fine up to a few hundred MB.) Temp archives are deleted once sent, and swept if a
   download dies mid-flight.
+- **Automatic backups** (Settings → Backup & export): once switched on, a
+  full backup (the same zip as Download → Full backup) is made every day
+  at the hour you choose, in the container's time zone (`TZ`), and only
+  the newest ones are kept (7 by default; 1 to 30). A backup missed
+  because the server was off (none for 36 hours) is made at the next check,
+  every 10 minutes. **Back up now** makes one at once. Settings shows the
+  last result, why it failed if it did (no space left, folder not
+  writable), and the backups in the folder. Changing them needs the
+  settings password, so nobody can quietly switch them off.
+  - They go to `data/backups/` unless you say otherwise. A failed disk
+    takes the data folder and that folder together, so for a real second
+    copy mount a folder on another disk and point the app at it: in
+    `docker-compose.yml`, uncomment
+    `- /path/on/another/disk/pantry-backups:/app/backups` under
+    `volumes:` and `RECIPE_APP_BACKUP_DIR: "/app/backups"` under
+    `environment:`. The container sets that folder's owner on start, as
+    it does for `data/`.
+  - Only files named like the app's own backups
+    (`open-the-pantry-backup-YYYYMMDD-HHMMSS.zip`) are ever deleted there,
+    and a backup gets that name only once it's complete.
+  - To restore one, use **Restore or import** with that file, or the
+    manual steps.
 - **Restore a full backup** (the same box as the import: a `.zip` with a
   `recipes.db` inside is taken as a backup, anything else is imported). Checking
   a full backup already needs the settings password (it unpacks and

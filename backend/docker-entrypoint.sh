@@ -29,4 +29,15 @@ if [ "$current_uid" != "$PUID" ] || [ "$current_gid" != "$PGID" ]; then
     chown -R appuser:appuser /app/data
 fi
 
+# Settings -> Backup & export -> Automatic backups can write to a folder on
+# another disk (RECIPE_APP_BACKUP_DIR, mounted into the container). Same
+# ownership fix as /app/data, when it's a separate mount.
+if [ -n "$RECIPE_APP_BACKUP_DIR" ] && [ -d "$RECIPE_APP_BACKUP_DIR" ]; then
+    b_uid="$(stat -c %u "$RECIPE_APP_BACKUP_DIR")"
+    b_gid="$(stat -c %g "$RECIPE_APP_BACKUP_DIR")"
+    if [ "$b_uid" != "$PUID" ] || [ "$b_gid" != "$PGID" ]; then
+        chown -R appuser:appuser "$RECIPE_APP_BACKUP_DIR"
+    fi
+fi
+
 exec gosu appuser "$@"

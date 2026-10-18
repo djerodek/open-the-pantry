@@ -27,6 +27,11 @@ services:
         required: false
     volumes:
       - ./data:/app/data     # SQLite DB + uploaded images/PDFs, persists across updates
+      # Optional: keep Settings -> Backup & export -> Automatic backups on
+      # another disk (a failed disk would otherwise take the data and its
+      # backups together). Uncomment, change the left side, and uncomment
+      # RECIPE_APP_BACKUP_DIR under environment: below.
+      # - /path/on/another/disk/pantry-backups:/app/backups
     restart: unless-stopped
     # Optional resource limits. Measured worst case: about 3.4 GB with three
     # big scans being OCR'd at once (the app runs at most three, Settings ->
@@ -56,6 +61,9 @@ services:
     #   # security notes. Requires a client or reverse proxy that sends the
     #   # X-API-Key header.
     #   RECIPE_APP_API_KEY: "choose-a-long-random-string"
+    #
+    #   # Only with the backups volume line above: where Automatic backups go.
+    #   RECIPE_APP_BACKUP_DIR: "/app/backups"
     #
     #   # Only if the What to eat? line under ports: publishes another
     #   # number than 8091 (e.g. "9000:8091"): that number.

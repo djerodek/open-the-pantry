@@ -507,7 +507,80 @@
     });
   }
 
-  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAdminSection(); refreshLearning(); refreshPicker(); openModal(settingsOverlay); });
+  $("#settings-toggle").addEventListener("click", () => { refreshBackupStats(); refreshAutoBackup(); refreshAdminSection(); refreshLearning(); refreshPicker(); openModal(settingsOverlay); });
+
+  // Settings -> Backup & export -> Automatic backups (scheduled_backup.py).
+  // Changing them or "Back up now" needs the settings password; the status
+  // is open.
+  const autoBackup = {
+    enabled: $("#auto-backup-enabled"), hour: $("#auto-backup-hour"), keep: $("#auto-backup-keep"),
+    run: $("#auto-backup-run"), status: $("#auto-backup-status"), folder: $("#auto-backup-folder"),
+  };
+  for (let h = 0; h < 24; h++) {
+    autoBackup.hour.appendChild(el("option", { value: String(h), text: tx("{1}:00", { 1: String(h).padStart(2, "0") }) }));
+  }
+  for (const n of [1, 3, 7, 14, 30]) {
+    autoBackup.keep.appendChild(el("option", { value: String(n), text: txn(n, "{n} backup", "{n} backups") }));
+  }
+  function renderAutoBackup(st) {
+    autoBackup.enabled.checked = !!st.enabled;
+    autoBackup.hour.value = String(st.hour);
+    if (![...autoBackup.keep.options].some((o) => o.value === String(st.keep))) {
+      autoBackup.keep.appendChild(el("option", { value: String(st.keep), text: txn(st.keep, "{n} backup", "{n} backups") }));
+    }
+    autoBackup.keep.value = String(st.keep);
+    autoBackup.hour.disabled = autoBackup.keep.disabled = !st.enabled;
+    autoBackup.folder.textContent = st.folder_in_data
+      ? tx("Saved in {1}, inside the data folder: a failed disk would take both. The README (Automatic backups) shows how to keep them on another disk.", { 1: st.folder })
+      : tx("Saved in {1}.", { 1: st.folder });
+    const parts = [];
+    if (st.running) parts.push(tx("A backup is being made now."));
+    else if (!st.last_run_at) parts.push(tx("No automatic backup yet."));
+    else if (st.last_ok) parts.push(tx("Last backup: {1}.", { 1: fmtDateTime(st.last_run_at) }));
+    else parts.push(tx("The last backup failed ({1}): {2}", { 1: fmtDateTime(st.last_run_at), 2: st.last_message || "" }));
+    if (st.backups.length) {
+      const total = st.backups.reduce((a, b) => a + b.size, 0);
+      parts.push(txn(st.backups.length, "{n} backup in the folder ({1}), newest: {2}.", "{n} backups in the folder ({1}), newest: {2}.",
+        { 1: formatBytes(total), 2: st.backups[0].name }));
+    }
+    autoBackup.status.textContent = parts.join(" ");
+  }
+  async function refreshAutoBackup() {
+    const res = await fetch(`${API}/backups/status`).catch(() => null);
+    if (res && res.ok) renderAutoBackup(await res.json());
+  }
+  async function saveAutoBackup() {
+    const res = await adminFetch(`${API}/backups/schedule`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: autoBackup.enabled.checked, hour: Number(autoBackup.hour.value), keep: Number(autoBackup.keep.value) }),
+    }).catch(() => null);
+    if (res && res.ok) {
+      const st = await res.json();
+      renderAutoBackup(st);
+      announce(st.enabled ? tx("Automatic backups on.") : tx("Automatic backups off."));
+      return;
+    }
+    const body = res ? await res.json().catch(() => ({})) : {};
+    if (res && !body.locked) announceError(apiErrorText(body, res.status));
+    refreshAutoBackup();          // back to what's saved
+  }
+  autoBackup.enabled.addEventListener("change", saveAutoBackup);
+  autoBackup.hour.addEventListener("change", saveAutoBackup);
+  autoBackup.keep.addEventListener("change", saveAutoBackup);
+  autoBackup.run.addEventListener("click", async () => {
+    autoBackup.run.disabled = true;
+    autoBackup.status.textContent = tx("A backup is being made now.");
+    const res = await adminFetch(`${API}/backups/run`, { method: "POST" }).catch(() => null);
+    autoBackup.run.disabled = false;
+    if (res && res.ok) {
+      renderAutoBackup(await res.json());
+      announce(tx("Backup made."));
+      return;
+    }
+    const body = res ? await res.json().catch(() => ({})) : {};
+    if (res && !body.locked) announceError(res ? apiErrorText(body, res.status) : tx("Couldn't reach Open the Pantry. Check your connection and try again."));
+    refreshAutoBackup();
+  });
   $("#settings-close").addEventListener("click", () => closeModal(settingsOverlay));
   settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeModal(settingsOverlay); });
 

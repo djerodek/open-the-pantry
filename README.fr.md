@@ -700,6 +700,30 @@ ouvert la page>:8090`.
   pas quitter la page sur iOS, et ça va jusqu'à quelques centaines de Mo.)
   Les archives temporaires sont supprimées une fois envoyées, et nettoyées
   si un téléchargement meurt en cours de route.
+- **Sauvegardes automatiques** (Paramètres → Sauvegarde et exportation) :
+  une fois activées, une sauvegarde complète (le même .zip que Télécharger
+  → Sauvegarde complète) est faite chaque jour à l'heure choisie, dans le
+  fuseau horaire du conteneur (`TZ`), et seules les plus récentes sont
+  gardées (7 par défaut; de 1 à 30). Une sauvegarde manquée parce que le
+  serveur était éteint (aucune depuis 36 heures) est faite à la vérification
+  suivante, toutes les 10 minutes. **Sauvegarder maintenant** en fait une
+  tout de suite. Les Paramètres affichent le dernier résultat, la raison
+  d'un échec (plus d'espace, dossier non accessible en écriture) et les
+  sauvegardes du dossier. Les modifier demande le mot de passe des
+  paramètres, pour que personne ne puisse les désactiver discrètement.
+  - Elles vont dans `data/backups/` sauf indication contraire. Un disque
+    en panne emporte le dossier de données et ce dossier ensemble; pour
+    une vraie deuxième copie, montez un dossier d'un autre disque et
+    indiquez-le à l'application : dans `docker-compose.yml`, décommentez
+    `- /path/on/another/disk/pantry-backups:/app/backups` sous `volumes:`
+    et `RECIPE_APP_BACKUP_DIR: "/app/backups"` sous `environment:`. Le
+    conteneur règle le propriétaire de ce dossier au démarrage, comme pour
+    `data/`.
+  - Seuls les fichiers nommés comme les sauvegardes de l'application
+    (`open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip`) y sont supprimés, et une
+    sauvegarde ne reçoit ce nom qu'une fois complète.
+  - Pour en restaurer une, utilisez **Restaurer ou importer** avec ce
+    fichier, ou les étapes manuelles.
 - **Restaurer une sauvegarde complète** (la même boîte que l'importation :
   un `.zip` qui contient un `recipes.db` est pris pour une sauvegarde, tout
   le reste est importé). Vérifier une sauvegarde complète demande déjà le
