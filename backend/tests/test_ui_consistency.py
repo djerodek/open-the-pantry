@@ -432,3 +432,23 @@ def test_shared_link_opens_add_from_url():
     assert "openSharedLink();" in js[js.index("(async function init() {"):]
     sw = (CSS.parents[1] / "service-worker.js").read_text(encoding="utf-8")
     assert 'if (!url.pathname.startsWith("/api/") && url.search) return false;' in sw
+
+
+def test_settings_are_in_three_groups():
+    """Settings: Display, Recipes, Server, each section in one of them."""
+    import re
+    html = (CSS.parents[1] / "index.html").read_text(encoding="utf-8")
+    modal = html[html.index('id="settings-modal"'):html.index("<!-- Settings password: create")]
+    groups = re.findall(r'<h3 class="settings-group-title" id="settings-group-(\w+)">', modal)
+    assert groups == ["display", "recipes", "server"]
+    titles = re.findall(r'<div class="filter-section-title"[^>]*>([^<]+)<', modal)
+    parts = re.split(r'<section class="settings-group"', modal)
+    assert parts[0].count("filter-section-title") == 0          # nothing outside a group
+    assert sum(p.count("filter-section-title") for p in parts[1:]) == len(titles) == 13
+    assert "Settings password" in parts[3] and "Email ingest" in parts[3] and "Backup &amp; export" in parts[2]
+
+
+def test_hidden_always_hides():
+    """A class's display value used to beat the hidden attribute: "Change
+    password" showed before any password existed."""
+    assert "[hidden] { display: none !important; }" in CSS.read_text(encoding="utf-8")

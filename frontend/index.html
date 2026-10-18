@@ -217,259 +217,268 @@
     <button class="modal-close" id="settings-close" type="button" aria-label="Close dialog">&times;</button>
     <h2 id="settings-heading">Settings</h2>
 
-    <div class="filter-section">
-      <div class="filter-section-title" id="language-setting-label">Language</div>
-      <div class="mode-switch" id="language-switch" role="group" aria-labelledby="language-setting-label">
-        <button type="button" data-lang-choice="en" lang="en">English</button>
-        <button type="button" data-lang-choice="fr" lang="fr">Français</button>
+    <section class="settings-group" aria-labelledby="settings-group-display">
+      <h3 class="settings-group-title" id="settings-group-display">Display</h3>
+      <div class="filter-section">
+        <div class="filter-section-title" id="language-setting-label">Language</div>
+        <div class="mode-switch" id="language-switch" role="group" aria-labelledby="language-setting-label">
+          <button type="button" data-lang-choice="en" lang="en">English</button>
+          <button type="button" data-lang-choice="fr" lang="fr">Français</button>
+        </div>
       </div>
-    </div>
 
-    <div class="filter-section">
-      <div class="filter-section-title" id="theme-setting-label">Theme</div>
-      <div class="mode-switch" id="theme-switch" role="group" aria-labelledby="theme-setting-label">
-        <button type="button" data-theme-choice="light">Light</button>
-        <button type="button" data-theme-choice="dark">Dark</button>
-        <button type="button" data-theme-choice="system">System</button>
+      <div class="filter-section">
+        <div class="filter-section-title" id="theme-setting-label">Theme</div>
+        <div class="mode-switch" id="theme-switch" role="group" aria-labelledby="theme-setting-label">
+          <button type="button" data-theme-choice="light">Light</button>
+          <button type="button" data-theme-choice="dark">Dark</button>
+          <button type="button" data-theme-choice="system">System</button>
+        </div>
+        <div class="field-hint">Dark mode uses true black, not a gray substitute.</div>
       </div>
-      <div class="field-hint">Dark mode uses true black, not a gray substitute.</div>
-    </div>
 
-    <div class="filter-section" id="wakelock-setting" hidden>
-      <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
-      <label class="switch-row" for="wakelock-default">
-        <span>Keep screen awake when viewing a recipe</span>
-        <input type="checkbox" role="switch" id="wakelock-default" class="switch">
-      </label>
-      <div class="field-hint">
-        Applies automatically to every recipe you open. You can still toggle it
-        per recipe. Released when you close the recipe.
-      </div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title" id="text-size-setting-label">Text size</div>
-      <div class="text-size-control" role="group" aria-labelledby="text-size-setting-label">
-        <button type="button" id="text-size-decrease" aria-label="Decrease text size">A-</button>
-        <button type="button" id="text-size-increase" aria-label="Increase text size">A+</button>
-      </div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">Recipe list</div>
-      <label class="switch-row" for="thumbnails-setting">
-        <span>Show photos on recipe cards</span>
-        <input type="checkbox" role="switch" id="thumbnails-setting" class="switch">
-      </label>
-      <div class="field-hint">Off shows a compact list of titles. Remembered on this device.</div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">Tags</div>
-      <button type="button" id="autotag-btn" class="btn-secondary">Add suggested tags to all recipes</button>
-      <div class="field-hint">
-        Runs the automatic tagger over every recipe and adds any suggested tag
-        a recipe doesn't already have. Nothing is removed. You'll see what
-        would be added before anything changes.
-      </div>
-      <div id="autotag-result" role="status"></div>
-
-      <button type="button" id="taggroups-toggle" class="btn-secondary" aria-expanded="false"
-              aria-controls="taggroups-panel" style="margin-top:0.9rem">Manage tag groups and keywords</button>
-      <div id="taggroups-panel" hidden>
+      <div class="filter-section" id="wakelock-setting" hidden>
+        <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
+        <label class="switch-row" for="wakelock-default">
+          <span>Keep screen awake when viewing a recipe</span>
+          <input type="checkbox" role="switch" id="wakelock-default" class="switch">
+        </label>
         <div class="field-hint">
-          Add groups (like Cuisine) and tags, and the words that make the
-          tagger suggest a tag. Built-in tags already know their usual words
-          (Chicken knows chicken, poultry); keywords here are extra.
+          Applies automatically to every recipe you open. You can still toggle it
+          per recipe. Released when you close the recipe.
         </div>
-        <div id="taggroups-list"></div>
       </div>
-    </div>
 
-    <div class="filter-section" id="learning-section">
-      <div class="filter-section-title">Learning</div>
-      <label class="switch-row" for="learning-enabled">
-        <span>Learn from my recipes</span>
-        <input type="checkbox" role="switch" id="learning-enabled" class="switch">
-      </label>
-      <div class="field-hint">
-        Learns from the recipes you've saved how your photo, PDF and email
-        imports are laid out and how you tag. It runs on this server, retrains
-        itself after changes, and is only used where it does better than the
-        built-in rules.
+      <div class="filter-section">
+        <div class="filter-section-title" id="text-size-setting-label">Text size</div>
+        <div class="text-size-control" role="group" aria-labelledby="text-size-setting-label">
+          <button type="button" id="text-size-decrease" aria-label="Decrease text size">A-</button>
+          <button type="button" id="text-size-increase" aria-label="Increase text size">A+</button>
+        </div>
       </div>
-      <p class="field-hint" id="learning-imports" role="status"></p>
-      <p class="field-hint" id="learning-tags"></p>
-      <p class="field-hint" id="learning-tag-details" hidden></p>
-      <p class="field-hint" id="learning-review" hidden></p>
-      <p class="field-hint" id="learning-trained"></p>
-      <button type="button" id="learning-train" class="btn-secondary">Retrain now</button>
-    </div>
 
-    <div class="filter-section" id="picker-section">
-      <div class="filter-section-title">What to eat?</div>
-      <label class="switch-row" for="picker-enabled">
-        <span>Turn on the What to eat? page</span>
-        <input type="checkbox" role="switch" id="picker-enabled" class="switch">
-      </label>
-      <div class="field-hint">
-        A second, simple page on its own port: choose a meal type, cooking style,
-        main ingredient or pace, and it picks a recipe at random to read there.
-        Nothing can be changed from it. It has no login: anyone who can reach
-        the port can read your recipes, notes included (cocktails aside).
-      </div>
-      <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.</p>
-      <p class="field-hint" id="picker-status" role="status" hidden></p>
-      <p class="field-hint field-warning" id="picker-warning" hidden></p>
-    </div>
-
-    <div class="filter-section" id="admin-lock-section">
-      <div class="filter-section-title">Settings password</div>
-      <div class="field-hint">
-        Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login,
-        so they need a password. Everything else stays open.
-      </div>
-      <p class="field-hint" id="admin-lock-status" role="status"></p>
-      <div class="logs-buttons" id="admin-lock-actions" hidden>
-        <button type="button" id="admin-lock-now" class="btn-secondary">Lock now</button>
-        <button type="button" id="admin-change-toggle" class="btn-secondary">Change password</button>
-      </div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">Email ingest</div>
-      <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
-        Configure email ingest
-      </button>
-      <div class="field-hint">
-        Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
-        scans once daily.
-      </div>
-      <div id="email-settings-panel" hidden></div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">HTTPS</div>
-      <button type="button" id="https-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="https-settings-panel">
-        Configure HTTPS
-      </button>
-      <div class="field-hint" id="https-summary">
-        Optional. A secure https:// address on your network, with a free Let's Encrypt
-        certificate. Needed for keeping the screen awake.
-      </div>
-      <div id="https-settings-panel" hidden></div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title">Logs</div>
-      <div class="logs-buttons">
-        <button type="button" id="logs-view-toggle" class="btn-secondary" aria-expanded="false" aria-controls="logs-panel">View log</button>
-        <button type="button" id="logs-download" class="btn-secondary">Download</button>
-        <button type="button" id="logs-clear" class="btn-secondary">Clear log</button>
-      </div>
-      <div class="field-hint">
-        What the app recorded: recipe imports, email scans and errors. Useful when
-        something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.
-      </div>
-      <div id="logs-panel" hidden></div>
-    </div>
-
-    <div class="filter-section">
-      <div class="filter-section-title" id="backup-format-label">Backup &amp; export</div>
-      <p class="field-hint" id="backup-stats">&nbsp;</p>
-
-      <fieldset class="backup-formats" aria-labelledby="backup-format-label">
-        <label class="backup-format">
-          <input type="radio" name="backup-format" value="database" checked>
-          <span>
-            <strong>Full backup</strong>
-            <span class="field-hint">The database plus every photo and uploaded
-            PDF, as a .zip. This is the one you restore from &mdash; it puts the
-            app back exactly as it is now. Instructions are inside.</span>
-          </span>
+      <div class="filter-section">
+        <div class="filter-section-title">Recipe list</div>
+        <label class="switch-row" for="thumbnails-setting">
+          <span>Show photos on recipe cards</span>
+          <input type="checkbox" role="switch" id="thumbnails-setting" class="switch">
         </label>
-        <label class="backup-format">
-          <input type="radio" name="backup-format" value="pdfs">
-          <span>
-            <strong>Recipes as PDFs</strong>
-            <span class="field-hint">One PDF per recipe in a .zip, readable
-            anywhere without this app. <strong>Cannot</strong> be restored
-            from. Large libraries take a while to build.</span>
-          </span>
-        </label>
-        <label class="backup-format">
-          <input type="radio" name="backup-format" value="json">
-          <span>
-            <strong>Recipes as JSON</strong>
-            <span class="field-hint">Every recipe as a schema.org Recipe file, the
-            format recipe websites use, with its photo, in a .zip. Other recipe
-            apps can import it, and so can this one (it adds; the full backup
-            is what restores).</span>
-          </span>
-        </label>
-        <label class="backup-notes-option" for="backup-pdf-notes" hidden>
-          <input type="checkbox" id="backup-pdf-notes" checked>
-          <span>Include my notes in the PDFs</span>
-        </label>
-      </fieldset>
+        <div class="field-hint">Off shows a compact list of titles. Remembered on this device.</div>
+      </div>
+    </section>
 
-      <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
-      <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
+    <section class="settings-group" aria-labelledby="settings-group-recipes">
+      <h3 class="settings-group-title" id="settings-group-recipes">Recipes</h3>
+      <div class="filter-section">
+        <div class="filter-section-title">Tags</div>
+        <button type="button" id="autotag-btn" class="btn-secondary">Add suggested tags to all recipes</button>
+        <div class="field-hint">
+          Runs the automatic tagger over every recipe and adds any suggested tag
+          a recipe doesn't already have. Nothing is removed. You'll see what
+          would be added before anything changes.
+        </div>
+        <div id="autotag-result" role="status"></div>
 
-      <div class="import-box" id="import-box">
-        <div class="restore-help-title" id="import-label">Restore or import</div>
-        <div class="field-hint">A full backup (.zip) replaces your library with
-        the one in the backup, after a confirmation and a safety copy of what's
-        here now. Any other file adds its recipes and replaces nothing: a
-        schema.org recipe file (.json) or a .zip of them, from this app's
-        Recipes as JSON or another recipe app, or a Paprika export
-        (.paprikarecipes). Ones already here from the same link are skipped.</div>
-        <input type="file" id="import-file" accept=".json,.zip,.paprikarecipes,application/json,application/zip" aria-labelledby="import-label">
-        <button type="button" id="import-btn" class="btn-secondary">Continue</button>
-        <div class="restore-confirm" id="restore-confirm" hidden>
-          <p id="restore-summary"></p>
-          <div class="restore-confirm-actions">
-            <button type="button" id="restore-go" class="btn-danger">Replace my library</button>
-            <button type="button" id="restore-cancel" class="btn-secondary">Cancel</button>
+        <button type="button" id="taggroups-toggle" class="btn-secondary" aria-expanded="false"
+                aria-controls="taggroups-panel" style="margin-top:0.9rem">Manage tag groups and keywords</button>
+        <div id="taggroups-panel" hidden>
+          <div class="field-hint">
+            Add groups (like Cuisine) and tags, and the words that make the
+            tagger suggest a tag. Built-in tags already know their usual words
+            (Chicken knows chicken, poultry); keywords here are extra.
           </div>
+          <div id="taggroups-list"></div>
         </div>
-        <p class="field-hint" id="import-status" role="status" aria-live="polite"></p>
-        <div id="import-results"></div>
       </div>
 
-      <details class="restore-help">
-        <summary>Restore by hand or move to another drive</summary>
-        <p>Your library lives in one folder on the server: the <strong>left side</strong>
-        of the <code>volumes:</code> line in <code>docker-compose.yml</code>
-        (<code>./data</code> unless you changed it).</p>
+      <div class="filter-section" id="learning-section">
+        <div class="filter-section-title">Learning</div>
+        <label class="switch-row" for="learning-enabled">
+          <span>Learn from my recipes</span>
+          <input type="checkbox" role="switch" id="learning-enabled" class="switch">
+        </label>
+        <div class="field-hint">
+          Learns from the recipes you've saved how your photo, PDF and email
+          imports are laid out and how you tag. It runs on this server, retrains
+          itself after changes, and is only used where it does better than the
+          built-in rules.
+        </div>
+        <p class="field-hint" id="learning-imports" role="status"></p>
+        <p class="field-hint" id="learning-tags"></p>
+        <p class="field-hint" id="learning-tag-details" hidden></p>
+        <p class="field-hint" id="learning-review" hidden></p>
+        <p class="field-hint" id="learning-trained"></p>
+        <button type="button" id="learning-train" class="btn-secondary">Retrain now</button>
+      </div>
 
-        <p class="restore-help-title">Move to another drive</p>
-        <ol>
-          <li>Stop the app: <code>docker compose down</code></li>
-          <li>Copy the whole folder to the new location, e.g.
-            <code>cp -a ./data /path/on/nas/pantry-data</code></li>
-          <li>In <code>docker-compose.yml</code>, change only the left side of the volume line:
-            <code>- /path/on/nas/pantry-data:/app/data</code></li>
-          <li>Start it: <code>docker compose up -d</code>, and check your recipes are
-            there before deleting the old folder.</li>
-        </ol>
+      <div class="filter-section" id="picker-section">
+        <div class="filter-section-title">What to eat?</div>
+        <label class="switch-row" for="picker-enabled">
+          <span>Turn on the What to eat? page</span>
+          <input type="checkbox" role="switch" id="picker-enabled" class="switch">
+        </label>
+        <div class="field-hint">
+          A second, simple page on its own port: choose a meal type, cooking style,
+          main ingredient or pace, and it picks a recipe at random to read there.
+          Nothing can be changed from it. It has no login: anyone who can reach
+          the port can read your recipes, notes included (cocktails aside).
+        </div>
+        <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY is set, but it doesn't cover this page: anyone who can reach its port can use it without the key.</p>
+        <p class="field-hint" id="picker-status" role="status" hidden></p>
+        <p class="field-hint field-warning" id="picker-warning" hidden></p>
+      </div>
 
-        <p class="restore-help-title">Restore a full backup by hand</p>
-        <p>For when the app won't start. Otherwise use the box above.</p>
-        <ol>
-          <li>Stop the app: <code>docker compose down</code></li>
-          <li>Unzip the backup into the data folder so <code>recipes.db</code> and
-            <code>uploads/</code> are directly inside it:
-            <code>unzip -o open-the-pantry-backup-*.zip -d ./data</code></li>
-          <li>Start it: <code>docker compose up -d</code></li>
-        </ol>
-        <p>Restoring replaces everything currently in the app. Always stop the app first:
-        replacing the database while it runs can corrupt it.</p>
-        <p>The backup doesn't include the email encryption key. If you use email ingest,
-        copy <code>encryption.key</code> from the old folder too, or set up encryption
-        again and re-enter the password.</p>
-      </details>
-    </div>
+      <div class="filter-section">
+        <div class="filter-section-title" id="backup-format-label">Backup &amp; export</div>
+        <p class="field-hint" id="backup-stats">&nbsp;</p>
+
+        <fieldset class="backup-formats" aria-labelledby="backup-format-label">
+          <label class="backup-format">
+            <input type="radio" name="backup-format" value="database" checked>
+            <span>
+              <strong>Full backup</strong>
+              <span class="field-hint">The database plus every photo and uploaded
+              PDF, as a .zip. This is the one you restore from &mdash; it puts the
+              app back exactly as it is now. Instructions are inside.</span>
+            </span>
+          </label>
+          <label class="backup-format">
+            <input type="radio" name="backup-format" value="pdfs">
+            <span>
+              <strong>Recipes as PDFs</strong>
+              <span class="field-hint">One PDF per recipe in a .zip, readable
+              anywhere without this app. <strong>Cannot</strong> be restored
+              from. Large libraries take a while to build.</span>
+            </span>
+          </label>
+          <label class="backup-format">
+            <input type="radio" name="backup-format" value="json">
+            <span>
+              <strong>Recipes as JSON</strong>
+              <span class="field-hint">Every recipe as a schema.org Recipe file, the
+              format recipe websites use, with its photo, in a .zip. Other recipe
+              apps can import it, and so can this one (it adds; the full backup
+              is what restores).</span>
+            </span>
+          </label>
+          <label class="backup-notes-option" for="backup-pdf-notes" hidden>
+            <input type="checkbox" id="backup-pdf-notes" checked>
+            <span>Include my notes in the PDFs</span>
+          </label>
+        </fieldset>
+
+        <button type="button" id="backup-download-btn" class="btn-primary">Download</button>
+        <p class="field-hint" id="backup-status" role="status" aria-live="polite"></p>
+
+        <div class="import-box" id="import-box">
+          <div class="restore-help-title" id="import-label">Restore or import</div>
+          <div class="field-hint">A full backup (.zip) replaces your library with
+          the one in the backup, after a confirmation and a safety copy of what's
+          here now. Any other file adds its recipes and replaces nothing: a
+          schema.org recipe file (.json) or a .zip of them, from this app's
+          Recipes as JSON or another recipe app, or a Paprika export
+          (.paprikarecipes). Ones already here from the same link are skipped.</div>
+          <input type="file" id="import-file" accept=".json,.zip,.paprikarecipes,application/json,application/zip" aria-labelledby="import-label">
+          <button type="button" id="import-btn" class="btn-secondary">Continue</button>
+          <div class="restore-confirm" id="restore-confirm" hidden>
+            <p id="restore-summary"></p>
+            <div class="restore-confirm-actions">
+              <button type="button" id="restore-go" class="btn-danger">Replace my library</button>
+              <button type="button" id="restore-cancel" class="btn-secondary">Cancel</button>
+            </div>
+          </div>
+          <p class="field-hint" id="import-status" role="status" aria-live="polite"></p>
+          <div id="import-results"></div>
+        </div>
+
+        <details class="restore-help">
+          <summary>Restore by hand or move to another drive</summary>
+          <p>Your library lives in one folder on the server: the <strong>left side</strong>
+          of the <code>volumes:</code> line in <code>docker-compose.yml</code>
+          (<code>./data</code> unless you changed it).</p>
+
+          <p class="restore-help-title">Move to another drive</p>
+          <ol>
+            <li>Stop the app: <code>docker compose down</code></li>
+            <li>Copy the whole folder to the new location, e.g.
+              <code>cp -a ./data /path/on/nas/pantry-data</code></li>
+            <li>In <code>docker-compose.yml</code>, change only the left side of the volume line:
+              <code>- /path/on/nas/pantry-data:/app/data</code></li>
+            <li>Start it: <code>docker compose up -d</code>, and check your recipes are
+              there before deleting the old folder.</li>
+          </ol>
+
+          <p class="restore-help-title">Restore a full backup by hand</p>
+          <p>For when the app won't start. Otherwise use the box above.</p>
+          <ol>
+            <li>Stop the app: <code>docker compose down</code></li>
+            <li>Unzip the backup into the data folder so <code>recipes.db</code> and
+              <code>uploads/</code> are directly inside it:
+              <code>unzip -o open-the-pantry-backup-*.zip -d ./data</code></li>
+            <li>Start it: <code>docker compose up -d</code></li>
+          </ol>
+          <p>Restoring replaces everything currently in the app. Always stop the app first:
+          replacing the database while it runs can corrupt it.</p>
+          <p>The backup doesn't include the email encryption key. If you use email ingest,
+          copy <code>encryption.key</code> from the old folder too, or set up encryption
+          again and re-enter the password.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="settings-group" aria-labelledby="settings-group-server">
+      <h3 class="settings-group-title" id="settings-group-server">Server</h3>
+      <div class="filter-section" id="admin-lock-section">
+        <div class="filter-section-title">Settings password</div>
+        <div class="field-hint">
+          Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login,
+          so they need a password. Everything else stays open.
+        </div>
+        <p class="field-hint" id="admin-lock-status" role="status"></p>
+        <div class="logs-buttons" id="admin-lock-actions" hidden>
+          <button type="button" id="admin-lock-now" class="btn-secondary">Lock now</button>
+          <button type="button" id="admin-change-toggle" class="btn-secondary">Change password</button>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-section-title">Email ingest</div>
+        <button type="button" id="email-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="email-settings-panel">
+          Configure email ingest
+        </button>
+        <div class="field-hint">
+          Optional. Lets you email recipes to a dedicated inbox, which Open the Pantry
+          scans once daily.
+        </div>
+        <div id="email-settings-panel" hidden></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-section-title">HTTPS</div>
+        <button type="button" id="https-settings-toggle" class="btn-secondary" aria-expanded="false" aria-controls="https-settings-panel">
+          Configure HTTPS
+        </button>
+        <div class="field-hint" id="https-summary">
+          Optional. A secure https:// address on your network, with a free Let's Encrypt
+          certificate. Needed for keeping the screen awake.
+        </div>
+        <div id="https-settings-panel" hidden></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-section-title">Logs</div>
+        <div class="logs-buttons">
+          <button type="button" id="logs-view-toggle" class="btn-secondary" aria-expanded="false" aria-controls="logs-panel">View log</button>
+          <button type="button" id="logs-download" class="btn-secondary">Download</button>
+          <button type="button" id="logs-clear" class="btn-secondary">Clear log</button>
+        </div>
+        <div class="field-hint">
+          What the app recorded: recipe imports, email scans and errors. Useful when
+          something didn't work. Kept to about 4 MB; the oldest entries drop off by themselves.
+        </div>
+        <div id="logs-panel" hidden></div>
+      </div>
+    </section>
   </div>
 </div>
 

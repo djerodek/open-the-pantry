@@ -504,6 +504,9 @@
     "⧉ Duplicate": "⧉ Dupliquer",
     "The copy": "La copie",
     "Copy made: {1}. Change it here, then save.": "Copie faite : {1}. Modifiez-la ici, puis enregistrez.",
+    "Display": "Affichage",
+    "Recipes": "Recettes",
+    "Server": "Serveur",
     "Restore or import": "Restaurer ou importer",
     "A full backup (.zip) replaces your library with the one in the backup, after a confirmation and a safety copy of what's here now. Any other file adds its recipes and replaces nothing: a schema.org recipe file (.json) or a .zip of them, from this app's Recipes as JSON or another recipe app, or a Paprika export (.paprikarecipes). Ones already here from the same link are skipped.":
       "Une sauvegarde complète (.zip) remplace votre bibliothèque par celle de la sauvegarde, après une confirmation et une copie de sécurité de ce qui est ici maintenant. Tout autre fichier ajoute ses recettes et ne remplace rien : un fichier de recette schema.org (.json) ou un .zip de ces fichiers, venant de Recettes en JSON de cette application ou d'une autre application de recettes, ou une exportation Paprika (.paprikarecipes). Celles déjà présentes depuis le même lien sont ignorées.",
