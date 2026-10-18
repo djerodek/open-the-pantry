@@ -119,6 +119,13 @@ _FR_PATTERNS = [
     _p(r"^The new password couldn't be saved\. The email password and HTTPS were already cleared; try again\. ",
        "Le nouveau mot de passe n'a pas pu être enregistré. Le mot de passe de courriel et HTTPS ont déjà été "
        "effacés; réessayez. "),
+    _p(r"^The saved cPanel token in the data folder's https/ folder can't be removed \((.*?)\), so the new password "
+       r"wasn't created: it would still open that token\. Fix that folder's permissions on the server \(the app must "
+       r"be able to write to it\), then try again\. The email password and HTTPS were already cleared\.$",
+       r"Le jeton cPanel enregistré dans le dossier https/ du dossier de données ne peut pas être retiré (\1); le "
+       r"nouveau mot de passe n'a donc pas été créé, car il ouvrirait encore ce jeton. Corrigez les permissions de ce "
+       r"dossier sur le serveur (l'application doit pouvoir y écrire), puis réessayez. Le mot de passe de courriel et "
+       r"HTTPS ont déjà été effacés."),
     _p(r"^The new password couldn't be saved; try again\. ",
        "Le nouveau mot de passe n'a pas pu être enregistré; réessayez. "),
     _p(r"^HTTPS setup is running\. Try again when it has finished\.$",

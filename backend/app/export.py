@@ -1,10 +1,12 @@
 import base64
 import mimetypes
 import os
+
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 
 from . import i18n
+from .text_rules import is_part_name
 
 
 def cook_time_label(total_minutes: int | None, lang: str) -> str | None:
@@ -26,6 +28,7 @@ def cook_time_label(total_minutes: int | None, lang: str) -> str | None:
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
+_env.globals["is_part_name"] = is_part_name
 
 
 def _image_to_data_uri(image_path: str) -> str | None:

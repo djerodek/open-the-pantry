@@ -175,7 +175,14 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
             # loading the whole response into memory first.
             resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
                                 allow_redirects=False, stream=True)
-            resp._content = _read_limited(resp, current_url, max_bytes, deadline)
+            # The body read so far becomes the response's content (requests
+            # keeps it in _content; .text and .content read it from there).
+            # Then the connection is closed here rather than left to garbage
+            # collection (DeepSeek review of 0096).
+            try:
+                resp._content = _read_limited(resp, current_url, max_bytes, deadline)
+            finally:
+                resp.close()
         except requests.RequestException as e:
             log.warning("GET %s failed: %s: %s", current_url, type(e).__name__, e)
             raise

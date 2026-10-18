@@ -349,8 +349,16 @@ async def retrain_after_changes(request: Request, call_next):
 @app.middleware("http")
 async def log_unhandled_errors(request: Request, call_next):
     """Anything that escapes a handler as a 500 gets its traceback logged.
-    Registered first, which in Starlette makes it the innermost middleware:
-    it sits directly around the route handlers."""
+
+    Where it sits (DeepSeek review of 0096: this said "registered first,
+    so innermost", which stopped being true when restore_guard and
+    retrain_after_changes were added above it). In Starlette the last
+    middleware registered is the outermost, so this one wraps the route
+    handlers plus the two registered before it, and every check registered
+    after it (settings password, cross-site, API key, rate limit, headers,
+    language) runs outside it. Those don't raise by design; if one ever
+    did, uvicorn still logs the traceback ("Exception in ASGI application").
+    On the picker port it's the first in the list, so innermost there."""
     try:
         return await call_next(request)
     except Exception:
@@ -643,7 +651,12 @@ async def app_files_revalidate(request: Request, call_next):
 # middleware: the language is known to everything inside, and messages the
 # other middlewares return (a 429, a refused write) are translated too.
 # Only JSON bodies of a modest size are rewritten; recipe lists and files
-# pass straight through.
+# pass straight through. A response is translated only when it states its
+# length (Content-Length) and that is under this: a streamed response, or
+# one without a length, passes through in English even if it's small JSON.
+# Every JSON endpoint today returns a normal JSONResponse, which has one; a
+# new endpoint that streams messages for the page must set it to be
+# translated (DeepSeek review of 0096).
 _TRANSLATE_MAX_BYTES = 256 * 1024
 
 
@@ -688,10 +701,12 @@ def _frontend_version() -> str:
                 try:
                     with open(os.path.join(root, f), "rb") as fh:
                         h.update(f.encode()); h.update(fh.read())
-                except OSError:
+                except OSError as e:
                     # The page can't load a file the server can't read either,
                     # so this is worth seeing in the log, not only at DEBUG.
-                    log.warning("_frontend_version: unreadable %s", f, exc_info=True)
+                    # The name and the reason are enough to fix it; no
+                    # traceback per file (DeepSeek review of 0096).
+                    log.warning("_frontend_version: unreadable %s: %s", os.path.join(root, f), e.strerror or e)
     return h.hexdigest()[:16]
 
 
@@ -1090,6 +1105,9 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
             source_type="email",
             source_url=result.get("source_url"),
             servings=result.get("servings"),
+            prep_time=result.get("prep_time"),
+            cook_time=result.get("cook_time"),
+            total_time=result.get("total_time"),
             raw_text=result.get("raw_text"),
             ocr_confidence=result.get("ocr_confidence"),
             image_path=image_path,

@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 
 from .ingestion.url_ingest import _flatten_instructions
 from .logging_setup import get_logger
+from .text_rules import is_part_name
 
 log = get_logger("import")
 
@@ -99,7 +100,7 @@ def _instructions(steps: list[str]) -> list[dict]:
         t = (text or "").strip()
         if not t:
             continue
-        if t.endswith(":") and len(t.split()) <= 6:
+        if is_part_name(t):
             section = {"@type": "HowToSection", "name": t.rstrip(":").strip(), "itemListElement": []}
             out.append(section)
             continue

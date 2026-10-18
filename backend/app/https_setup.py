@@ -223,10 +223,30 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
 
 
 def forget_token():
-    """Settings password reset: the saved token goes; the rest stays."""
+    """Settings password reset: the saved token goes; the rest stays. If the
+    file can't be rewritten, the whole login file goes instead. If neither
+    works, HttpsError: the new password must not be created while it could
+    still use the old token (DeepSeek review of 0096: an OSError here was
+    an unexplained 500 on every try)."""
     d = _stored_login()
-    if d.pop("token_encrypted", None) is not None:
+    if d.pop("token_encrypted", None) is None:
+        return
+    try:
         _write_login(d)
+        return
+    except OSError:
+        log.warning("Reset: couldn't rewrite %s; removing it instead", LOGIN_PATH, exc_info=True)
+    try:
+        os.remove(LOGIN_PATH)
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        log.error("Reset: the saved cPanel token in %s can't be removed", LOGIN_PATH, exc_info=True)
+        raise HttpsError(
+            f"The saved cPanel token in the data folder's https/ folder can't be removed ({e.strerror or e}), "
+            "so the new password wasn't created: it would still open that token. Fix that folder's "
+            "permissions on the server (the app must be able to write to it), then try again. The email "
+            "password and HTTPS were already cleared.")
 
 
 def clear_login():
@@ -780,8 +800,16 @@ def forget_certificate():
         raise RuntimeError("forget_certificate() must run inside reserved()")
     turn_off()
     for path in (KEY_PATH, CERT_PATH, ACCOUNT_KEY_PATH):
-        with contextlib.suppress(FileNotFoundError):
+        try:
             os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # HTTPS is already off, and a new setup writes these again: a
+            # file that can't be deleted (read-only folder, another owner)
+            # mustn't stop the new password (DeepSeek review of 0096).
+            log.warning("Reset: couldn't delete %s; HTTPS is off and a new setup replaces it", path,
+                        exc_info=True)
     db = SessionLocal()
     try:
         _settings(db).cert_expires_at = None

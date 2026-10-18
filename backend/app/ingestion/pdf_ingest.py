@@ -457,10 +457,7 @@ saupoudrer servir tailler trancher transferer verser dans pendant entre-temps en
 # Ingredient lines with no quantity that read like a sentence: "Salt and
 # pepper to taste", "Fresh herbs, for serving". They usually come straight
 # after the last measured ingredient, where one would become step 1.
-_INGREDIENT_TAIL = re.compile(
-    r"\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|"
-    r"au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin|en quantit[ée] suffisante|"
-    r"pour (?:la )?friture|for frying|for deep[- ]frying)\b", re.IGNORECASE)
+from ..text_rules import INGREDIENT_TAIL as _INGREDIENT_TAIL  # noqa: E402 (one copy, shared)
 
 
 def _is_prose(line: str) -> bool:
@@ -474,10 +471,27 @@ def _is_prose(line: str) -> bool:
     stripped = _MARKER_GARBAGE.sub("", line).strip()
     if not stripped or _QTY_START.match(stripped):
         return False
+    return bool(re.search(r"[.!?]\s*$", line)) or _first_word(stripped) in _STEP_VERBS
+
+
+def _first_word(text: str) -> str:
     import unicodedata
-    first = unicodedata.normalize("NFKD", stripped.split()[0].lower())
-    first = "".join(c for c in first if not unicodedata.combining(c)).strip(",.;:!")
-    return bool(re.search(r"[.!?]\s*$", line)) or first in _STEP_VERBS
+    first = unicodedata.normalize("NFKD", text.split()[0].lower())
+    return "".join(c for c in first if not unicodedata.combining(c)).strip(",.;:!")
+
+
+def _short_step(line: str) -> bool:
+    """A step too short for _is_prose ("Mix everything.", "Bake 20 min."):
+    under four words, starting with a cooking verb, no amount in front.
+    Only used where there are no headings, after the ingredients; the
+    four-word floor stays for _is_prose itself, which also decides where
+    ingredients end ("Top sirloin" mustn't become a step there). DeepSeek
+    review of 0096: such a step was dropped and the recipe failed as
+    having none."""
+    stripped = _MARKER_GARBAGE.sub("", line).strip()
+    if not stripped or len(stripped.split()) >= 4 or _QTY_START.match(stripped) or _INGREDIENT_TAIL.search(line):
+        return False
+    return _first_word(stripped) in _STEP_VERBS
 
 
 def _prose_steps(lines):
@@ -703,7 +717,8 @@ def rule_segment_raw_text(raw_text: str) -> dict:
         body = [l for l in lines[1:] if not _is_junk(l)]
         parts = _component_recipe(body)
         qty = [k for k, l in enumerate(body) if QUANTITY_LEAD.match(l) and not _is_prose(l)]
-        prose = [k for k, l in enumerate(body) if _is_prose(l)]
+        prose = [k for k, l in enumerate(body)
+                 if _is_prose(l) or (qty and k > qty[-1] and _short_step(l))]
         if parts:
             ingredients, steps, servings = parts
         elif qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:

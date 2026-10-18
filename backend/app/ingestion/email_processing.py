@@ -200,7 +200,7 @@ def extract_email_parts(msg) -> dict:
 
 
 def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_confidence=None, source_detail="",
-                  source_url=None, servings=None):
+                  source_url=None, servings=None, times=None):
     parsed_ingredients = parse_ingredient_block(ingredients_raw)
     tag_suggestions = suggest_tags(
         title, [i["name"] or i["raw_line"] for i in parsed_ingredients], raw_text
@@ -219,6 +219,9 @@ def _build_result(title, ingredients_raw, steps, raw_text, image_path=None, ocr_
         # shows it as a "View original" link.
         "source_url": source_url,
         "servings": servings,
+        # Prep, cook and total time, from a link's recipe data only (DeepSeek
+        # review of 0096: they were read, then dropped).
+        **{k: (times or {}).get(k) for k in ("prep_time", "cook_time", "total_time")},
     }
 
 
@@ -400,6 +403,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                     url_result.title, url_result.ingredients, url_result.steps,
                     url_result.raw_text, source_detail=f"URL in body ({url})",
                     source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
+                    times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
                 )
             except Exception as e:
                 # Full traceback for the unexpected; the URL checks and a

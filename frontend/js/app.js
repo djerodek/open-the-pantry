@@ -3827,7 +3827,10 @@
   // small heading in the lists (same test as the export template).
   function isPartName(text) {
     const t = (text || "").trim();
-    return t.endsWith(":") && t.split(/\s+/).length <= 6;
+    // Not an ingredient that ends in ":" ("Salt and pepper to taste:").
+    // Same pattern as text_rules.INGREDIENT_TAIL (test_ui_consistency).
+    const notAPart = /\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin|en quantit[ée] suffisante|pour (?:la )?friture|for frying|for deep[- ]frying)\b/i;
+    return t.endsWith(":") && t.split(/\s+/).length <= 6 && !notAPart.test(t);
   }
 
   function renderRecipeDetail(recipe) {

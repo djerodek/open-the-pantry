@@ -77,7 +77,7 @@
   <ul class="ingredients">
     {% for ing in recipe.ingredients %}
     {% set line = (ing.raw_line or ing.name or "") | trim %}
-    <li{% if line.endswith(":") and line.split() | length <= 6 %} class="part"{% endif %}>
+    <li{% if is_part_name(line) %} class="part"{% endif %}>
       {# Matches ingredientText() in app.js: the line as the person typed it,
          falling back to the parsed fields only for rows saved before
          raw_line existed. Rendering quantity/unit/name here instead
@@ -92,7 +92,7 @@
     {% set ns = namespace(n=0) %}
     {% for step in recipe.steps %}
     {% set line = (step.text or "") | trim %}
-    {% if line.endswith(":") and line.split() | length <= 6 %}
+    {% if is_part_name(line) %}
     <li class="part">{{ step.text }}</li>
     {% else %}
     {% set ns.n = ns.n + 1 %}

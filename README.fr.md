@@ -1062,7 +1062,13 @@ courriel)**
     mot de passe d'une installation mise à jour depuis une version qui
     n'en avait pas n'efface rien : l'application garde
     `admin-password.created` pour distinguer une réinitialisation d'une
-    première configuration.
+    première configuration. Si l'application ne peut pas écrire dans le
+    dossier `https/` du dossier de données (mauvais propriétaire, lecture
+    seule), un fichier de certificat qu'elle ne peut pas supprimer reste
+    (HTTPS est désactivé de toute façon), mais un jeton cPanel enregistré
+    qu'elle ne peut pas retirer bloque le nouveau mot de passe, avec un
+    message qui le dit : corrigez les permissions de ce dossier et
+    réessayez.
   - Les mots de passe sont vérifiés un à la fois. Après 5 mauvais de
     suite à partir d'une même adresse, ou 20 de toutes les adresses
     ensemble, chaque essai suivant doit attendre (30 secondes, puis le

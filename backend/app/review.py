@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 from . import models
+from .text_rules import is_part_name as _part_name
 
 OCR_CHECK_BELOW = 80          # the confidence badge's "high" tier starts here
 SHORT_STEP = 12               # characters
@@ -26,10 +27,6 @@ _NO_AMOUNT_OK = re.compile(
 _AMOUNT = re.compile(r"[\d¼½¾⅓⅔⅛⅜⅝⅞]|\b(a|an|one|two|three|four|five|six|half|un|une|deux|trois|quatre|cinq|six|demi)\b",
                      re.I)
 
-
-def _part_name(text: str) -> bool:
-    t = (text or "").strip()
-    return t.endswith(":") and len(t.split()) <= 6
 
 
 def title_guessed(recipe: models.Recipe) -> bool:

@@ -537,3 +537,50 @@ def test_the_proxy_route_relies_on_forwarded_headers():
     assert '"--proxy-headers"' in (root / "backend" / "Dockerfile").read_text()
     compose = (root / "docker-compose.https.yml").read_text()
     assert "FORWARDED_ALLOW_IPS:" in compose and "RECIPE_APP_HTTPS_URL:" in compose
+
+
+def test_a_reset_survives_certificate_files_that_cant_be_deleted(credentials, secure_stranger, monkeypatch):
+    """DeepSeek review of 0096: one certificate file that couldn't be
+    deleted (read-only folder, another owner) made every try at the new
+    password a bare 500. HTTPS is off by then, so it's logged and skipped."""
+    import os
+    from app import https_setup
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
+    os.remove(credentials.PASSWORD_PATH)
+    real_remove = os.remove
+
+    def stuck(path, *a, **k):
+        if path == https_setup.KEY_PATH:
+            raise PermissionError(13, "Permission denied")
+        return real_remove(path, *a, **k)
+    with monkeypatch.context() as m:
+        m.setattr(https_setup.os, "remove", stuck)
+        r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 200
+    st = _state()
+    assert st["https_enabled"] is False and st["email_password"] is None
+    assert st["files"]["fullchain.pem"] is False and st["files"]["privkey.pem"] is True   # left, logged
+
+
+def test_a_reset_stops_if_the_saved_token_cant_be_removed(credentials, secure_stranger, monkeypatch):
+    """The cPanel token is the one thing the new password must not reach:
+    if it can't be removed, no password, and a message saying what to fix."""
+    import os
+    from app import https_setup
+    secure_stranger.post("/api/admin/password", json={"password": "first-password"})
+    https_setup._write_login({"username": "u", "token_encrypted": "blob"})
+    os.remove(credentials.PASSWORD_PATH)
+
+    def read_only(*a, **k):
+        raise PermissionError(13, "Permission denied")
+    real_remove = os.remove
+    with monkeypatch.context() as m:
+        m.setattr(https_setup, "_write_login", read_only)
+        m.setattr(https_setup.os, "remove",
+                  lambda p, *a, **k: read_only() if p == https_setup.LOGIN_PATH else real_remove(p, *a, **k))
+        r = secure_stranger.post("/api/admin/password", json={"password": "second-password"})
+    assert r.status_code == 409 and "permissions" in r.json()["detail"]
+    assert not credentials.password_set() and credentials.was_reset()
+    # Writable again: the retry goes through and the token is gone.
+    assert secure_stranger.post("/api/admin/password", json={"password": "second-password"}).status_code == 200
+    assert "token_encrypted" not in https_setup._stored_login()

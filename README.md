@@ -891,6 +891,11 @@ at>:8090`.
     app's reach and stays. The first password
     on an install upgraded from a version without one clears nothing: the app keeps
     `admin-password.created` to tell a reset from a first setup.
+    If the app can't write to the data folder's `https/` folder (wrong
+    owner, read-only), a certificate file it can't delete is left (HTTPS is
+    off anyway), but a saved cPanel token it can't remove stops the new
+    password, with a message saying so: fix that folder's permissions and
+    try again.
   - Passwords are checked one at a time. After 5 wrong ones in a row from
     one address, or 20 from all addresses together, each further try has
     to wait (30 seconds, doubling up to 15 minutes). The second limit means
