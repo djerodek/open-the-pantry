@@ -929,6 +929,13 @@ ouvert la page>:8090`.
   supprimer plusieurs recettes d'un coup, en plus de la suppression d'une
   seule recette (« Supprimer la recette », à côté de « Modifier la
   recette », au bas d'une recette).
+- **Étiquettes…**, dans la barre de sélection, ajoute une étiquette
+  existante à toutes les recettes sélectionnées, ou la leur retire. Elle
+  indique combien ont changé, combien l'avaient déjà (ou ne l'avaient
+  pas) et toute recette qui a déjà le nombre maximal d'étiquettes (50). La
+  sélection reste, pour enchaîner avec une autre étiquette. Les nouvelles
+  étiquettes se créent sur une recette (Modifier) ou dans Paramètres →
+  Étiquettes.
 - La suppression demande d'abord une confirmation. Si elle échoue,
   l'application dit pourquoi (erreur du serveur, serveur injoignable, déjà
   supprimée) et abandonne après 10 secondes plutôt que de laisser la boîte

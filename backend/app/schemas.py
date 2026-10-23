@@ -278,6 +278,14 @@ class BatchDeleteRequest(BaseModel):
     ids: list[DbInt]
 
 
+class BatchTagRequest(BaseModel):
+    """Select mode -> Tags: one existing tag added to, or removed from,
+    every selected recipe."""
+    ids: list[DbInt] = Field(..., min_length=1, max_length=10_000)
+    tag_id: DbInt
+    action: Literal["add", "remove"]
+
+
 class BatchUrlIngestRequest(BaseModel):
     urls: list[str]
 

@@ -2129,6 +2129,43 @@ def batch_delete_recipes(payload: schemas.BatchDeleteRequest, db: Session = Depe
     return {"deleted": deleted, "missing": missing, "failed": failed}
 
 
+# A recipe holds at most this many tags (RecipeCreate.tags).
+MAX_TAGS_PER_RECIPE = 50
+
+
+@app.post("/api/recipes/batch-tags")
+def batch_tag_recipes(payload: schemas.BatchTagRequest, db: Session = Depends(get_db)):
+    """Select mode -> Tags: add one existing tag to, or remove it from,
+    every selected recipe, in one commit. Reports which recipes changed,
+    which already had it (or didn't), which have no room for another tag
+    and which no longer exist. The retrain middleware picks this path up."""
+    tag = db.get(models.Tag, payload.tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    changed, unchanged, full, missing = [], [], [], []
+    for recipe_id in dict.fromkeys(payload.ids):
+        recipe = db.get(models.Recipe, recipe_id)
+        if recipe is None:
+            missing.append(recipe_id)
+            continue
+        has = any(t.id == tag.id for t in recipe.tags)
+        if payload.action == "add" and not has:
+            if len(recipe.tags) >= MAX_TAGS_PER_RECIPE:
+                full.append(recipe_id)
+                continue
+            recipe.tags.append(tag)
+        elif payload.action == "remove" and has:
+            recipe.tags = [t for t in recipe.tags if t.id != tag.id]
+        else:
+            unchanged.append(recipe_id)
+            continue
+        recipe.tags_text = " ".join(t.name for t in recipe.tags)   # search column, see _apply_tags
+        changed.append(recipe_id)
+    db.commit()
+    log.info("Batch tags: %s %r on %d recipe(s)", payload.action, tag.name, len(changed))
+    return {"changed": changed, "unchanged": unchanged, "full": full, "missing": missing}
+
+
 @app.put("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
 def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)

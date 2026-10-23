@@ -200,3 +200,34 @@ def test_automatic_backups_switch(server, page):
     wait_until(pg, "document.querySelector('#auto-backup-enabled').checked")
     pg.click("#auto-backup-run")
     wait_until(pg, "document.querySelector('#auto-backup-status').textContent.includes('Last:')", timeout=20)
+
+
+def test_tag_the_selected_recipes(server, api, page):
+    """0108: Select mode -> Tags adds one tag to every selected recipe and
+    removes it again; the batch bar fits a 320 px phone."""
+    suffix = uuid.uuid4().hex[:6]
+    tagged = add_recipe(api, f"Batch tagged {suffix}", tags=[{"name": f"Weeknight{suffix}", "category": "custom"}])
+    plain = add_recipe(api, f"Batch plain {suffix}")
+    p = page(width=320)
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector(f"text={plain['title']}")
+    pg.click("#select-mode-toggle")
+    pg.click(f".recipe-card:has-text('{tagged['title']}')")
+    pg.click(f".recipe-card:has-text('{plain['title']}')")
+    pg.wait_for_selector("#batch-bar:not([hidden])")
+    assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    outside = pg.evaluate("""[...document.querySelectorAll('#batch-bar > *')].filter((n) => {
+      const r = n.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth; }).map((n) => n.id)""")
+    assert outside == []
+    pg.click("#batch-tags-btn")
+    pg.wait_for_selector("#batch-tags-overlay:not([hidden])")
+    assert pg.inner_text("#batch-tags-count") == "2 recipes selected"
+    pg.select_option("#batch-tags-select", label=f"Weeknight{suffix}")
+    pg.click("#batch-tags-add")
+    wait_until(pg, "document.querySelector('#batch-tags-status').textContent.includes('added to 1 recipe')")
+    assert "1 recipe already had it." in pg.inner_text("#batch-tags-status")
+    assert [t["name"] for t in api.get(f"/api/recipes/{plain['id']}").json()["tags"]] == [f"Weeknight{suffix}"]
+    pg.click("#batch-tags-remove")
+    wait_until(pg, "document.querySelector('#batch-tags-status').textContent.includes('removed from 2 recipes')")
+    assert api.get(f"/api/recipes/{tagged['id']}").json()["tags"] == []

@@ -785,6 +785,11 @@ at>:8090`.
 - Select mode (the button at the right end of the toolbar) for
   multi-select batch delete, alongside normal single-recipe delete
   ("Delete recipe", next to "Edit recipe" at the bottom of a recipe).
+- **Tags…** in the selection bar adds one existing tag to every selected
+  recipe, or removes it from them. It reports how many changed, how many
+  already had it (or didn't), and any recipe that already has the most
+  tags allowed (50). The selection stays, so another tag can follow. New
+  tags are made on a recipe (Edit) or in Settings → Tags.
 - Deleting asks first. If it fails, the app says why (server error, can't
   reach the server, already deleted) and gives up after 10 seconds rather
   than leaving the dialog stuck. A batch delete reports how many were

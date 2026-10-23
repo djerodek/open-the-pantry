@@ -2666,6 +2666,68 @@
     renderRecipeList(currentRecipes);
   });
 
+  // Select mode -> Tags: one existing tag on or off every selected recipe
+  // (POST /api/recipes/batch-tags). The selection stays, so another tag
+  // can follow; the list reloads to show the change.
+  const batchTagsOverlay = $("#batch-tags-overlay");
+  $("#batch-tags-close").addEventListener("click", () => closeModal(batchTagsOverlay));
+  batchTagsOverlay.addEventListener("click", (e) => { if (e.target === batchTagsOverlay) closeModal(batchTagsOverlay); });
+
+  $("#batch-tags-btn").addEventListener("click", () => {
+    if (!state.selectedIds.size) return;
+    const select = $("#batch-tags-select");
+    const previous = select.value;
+    select.replaceChildren(...tagGroups().map(([key, label]) => {
+      const tags = state.allTags.filter((t) => t.category === key)
+        .sort((a, b) => tagLabel(a).localeCompare(tagLabel(b), LANG));
+      return tags.length ? el("optgroup", { label }, tags.map((t) => el("option", { value: String(t.id), text: tagLabel(t) }))) : null;
+    }).filter(Boolean));
+    if (previous && select.querySelector(`option[value="${CSS.escape(previous)}"]`)) select.value = previous;
+    const none = !select.options.length;
+    $("#batch-tags-add").disabled = none;
+    $("#batch-tags-remove").disabled = none;
+    $("#batch-tags-count").textContent = txn(state.selectedIds.size, "{n} recipe selected", "{n} recipes selected");
+    $("#batch-tags-status").textContent = none ? tx("There are no tags yet.") : "";
+    openModal(batchTagsOverlay);
+  });
+
+  async function batchTags(action) {
+    const select = $("#batch-tags-select");
+    const tag = state.allTags.find((t) => String(t.id) === select.value);
+    if (!tag || !state.selectedIds.size) return;
+    const buttons = [$("#batch-tags-add"), $("#batch-tags-remove")];
+    buttons.forEach((b) => { b.disabled = true; });
+    const status = $("#batch-tags-status");
+    status.textContent = tx("Working...");
+    const result = await fetchWithTimeout(`${API}/recipes/batch-tags`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...state.selectedIds], tag_id: tag.id, action }),
+    });
+    buttons.forEach((b) => { b.disabled = false; });
+    if (!result.ok) {
+      status.textContent = result.status === 404 ? tx("That tag no longer exists.") : writeFailureMessage(result, tx("The selected recipes"));
+      if (result.status === 404) loadTags();
+      return;
+    }
+    const body = await result.res.json();
+    const name = tagLabel(tag);
+    const parts = [action === "add"
+      ? txn(body.changed.length, "“{1}” added to {n} recipe.", "“{1}” added to {n} recipes.", { 1: name })
+      : txn(body.changed.length, "“{1}” removed from {n} recipe.", "“{1}” removed from {n} recipes.", { 1: name })];
+    if (body.unchanged.length) {
+      parts.push(action === "add"
+        ? txn(body.unchanged.length, "{n} recipe already had it.", "{n} recipes already had it.")
+        : txn(body.unchanged.length, "{n} recipe didn't have it.", "{n} recipes didn't have it."));
+    }
+    if (body.full.length) parts.push(txn(body.full.length, "{n} recipe already has 50 tags.", "{n} recipes already have 50 tags."));
+    if (body.missing.length) parts.push(txn(body.missing.length, "{n} recipe no longer exists.", "{n} recipes no longer exist."));
+    status.textContent = parts.join(" ");
+    announce(parts.join(" "));
+    loadRecipes();
+  }
+  $("#batch-tags-add").addEventListener("click", () => batchTags("add"));
+  $("#batch-tags-remove").addEventListener("click", () => batchTags("remove"));
+
   $("#batch-delete-btn").addEventListener("click", async () => {
     if (!state.selectedIds.size) return;
     if (!confirm(tx("Delete {1} recipe(s)? This cannot be undone.", { 1: state.selectedIds.size }))) return;

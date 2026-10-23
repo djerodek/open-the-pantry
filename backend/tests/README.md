@@ -20,7 +20,7 @@ New tests go in the feature file when there is one.
 | Import from a PDF or photo (reading the text) | `test_pdf_ingest.py`, `test_component_recipes.py`, `test_deskew.py`, `test_incomplete_sources.py` | `test_review_round2_followup.py` (OCR limits), `test_sept27_fixes.py`, `test_deepseek_0073.py`, `test_deepseek_review_0096.py` |
 | Ingredients (parsing, scaling) | `test_ingredient_parser.py`, `test_ui_consistency.py` (scaling) | `test_claude_review_round9.py` |
 | French | `test_french.py`, `test_i18n_catalog.py` | `test_friday_batch.py` (server messages), `test_deepseek_0073.py` |
-| Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py` | `test_deepseek_round.py` |
+| Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py`, `test_batch_tags.py` | `test_deepseek_round.py` |
 | Learning | `test_learning.py`, `test_learning_explained.py` | |
 | Already in your library? | `test_duplicates.py` | `test_claude_review_round9.py`, `test_gpt_review_0093.py` |
 | Duplicate a recipe | `test_duplicate_recipe.py` | |

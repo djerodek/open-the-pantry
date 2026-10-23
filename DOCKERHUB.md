@@ -109,7 +109,10 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   from Settings (cPanel-managed domains; see the README)
 - Optional email ingest (off by default): email a link, PDF, photo or the
   recipe text to a dedicated inbox
-- Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×)
+- Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×),
+  units included ("1 cup" → "2 cups")
+- Select several recipes to delete them, or to add or remove a tag on all
+  of them at once
 - Warns when a recipe being added is already in the library (same link or
   title); batch and emailed links already saved are skipped
 - Share a page's link to the app (Android share sheet, or an iPhone
