@@ -20,12 +20,94 @@ class PdfTooLargeError(ValueError):
 MIN_SHOWCASE_IMAGE_DIMENSION = 200  # px -- avoids picking tiny icons/bullets/logos as the showcase image
 
 
+# PDF image filters whose decoding stays out of Pillow's file parsers.
+# The last filter decides how pypdf turns the stream into an image:
+# DCTDecode goes to the JPEG decoder; Flate and RunLength output (and no
+# filter at all) is raw pixel data that Pillow only copies. LZWDecode and
+# ASCII85Decode as the last filter, CCITTFaxDecode, JBIG2Decode and
+# JPXDecode send the bytes to Pillow's TIFF, PNG/PPM and JPEG 2000
+# parsers, which are skipped: recipe photos in a PDF are almost always
+# JPEG or Flate, and those parsers are where Pillow's decoder bugs have
+# been (CVE-2026-112896, CVE-2026-113786 and others). Earlier filters in
+# a chain only unwrap the stream and never reach Pillow.
+_SHOWCASE_LAST_FILTERS = {"/DCTDecode", "/FlateDecode", "/RunLengthDecode"}
+_STREAM_ONLY_FILTERS = {"/ASCII85Decode", "/ASCIIHexDecode", "/FlateDecode", "/RunLengthDecode", "/LZWDecode"}
+_MAX_FORM_DEPTH = 4         # Form XObjects nested inside each other
+_MAX_DECODE_ATTEMPTS = 5    # candidates decoded, largest first, before giving up
+
+
+def _filters_allowed(xobj, depth: int = 0) -> bool:
+    """True if this image, and any soft mask pypdf would decode with it,
+    uses only the filters above."""
+    if depth > 2:
+        return False
+    filters = xobj.get("/Filter")
+    if filters is not None:
+        filters = filters.get_object()
+        chain = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+        if chain:
+            if chain[-1] not in _SHOWCASE_LAST_FILTERS:
+                return False
+            if any(f not in _STREAM_ONLY_FILTERS for f in chain[:-1]):
+                return False
+    smask = xobj.get("/SMask")
+    if smask is not None:
+        smask = smask.get_object()
+        if hasattr(smask, "get") and not _filters_allowed(smask, depth + 1):
+            return False
+    return True
+
+
+def _image_xobjects(resources_owner, depth: int, seen: set):
+    """Yield the image XObjects in a page's (or form's) resources,
+    descending into Form XObjects. Reads dictionaries only; nothing is
+    decoded here."""
+    if depth > _MAX_FORM_DEPTH:
+        return
+    try:
+        resources = resources_owner.get("/Resources")
+        xobjects = resources.get_object().get("/XObject") if resources is not None else None
+        xobjects = xobjects.get_object() if xobjects is not None else None
+        items = list(xobjects.values()) if hasattr(xobjects, "values") else []
+    except Exception:
+        log.debug("_image_xobjects: unreadable resources, skipping", exc_info=True)
+        return
+    for ref in items:
+        try:
+            xobj = ref.get_object()
+            key = getattr(ref, "idnum", None) or id(xobj)
+            if key in seen:
+                continue
+            seen.add(key)
+            subtype = xobj.get("/Subtype")
+        except Exception:
+            log.debug("_image_xobjects: unreadable XObject, skipping", exc_info=True)
+            continue
+        if subtype == "/Image":
+            yield xobj
+        elif subtype == "/Form":
+            yield from _image_xobjects(xobj, depth + 1, seen)
+
+
+def _declared_size(xobj) -> tuple[int, int] | None:
+    try:
+        width, height = xobj.get("/Width"), xobj.get("/Height")
+        width, height = int(width), int(height)
+    except Exception:
+        log.debug("_declared_size: no usable /Width or /Height", exc_info=True)
+        return None
+    return (width, height) if width > 0 and height > 0 else None
+
+
 def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
     """Best-effort extraction of the largest embedded raster image across
     the PDF's pages, as a heuristic for "the recipe's featured photo" --
-    real recipe PDFs commonly have exactly one large photo and the rest
-    small decorative/logo elements, so picking by area is a reasonable
-    proxy without needing to understand document layout.
+    a real thumbnail beats a generic placeholder for PDF-ingested recipes.
+
+    Sizes come from each image's /Width and /Height, so only the image
+    that is picked gets decoded, and only if it uses the filters in
+    _SHOWCASE_LAST_FILTERS (see there). pypdf's page.images is not used:
+    it decodes inline images while listing the page's images.
 
     Returns raw image bytes, still unvalidated -- the caller must run
     these through the same magic-byte-check + re-encode pipeline as any
@@ -36,7 +118,6 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
     """
     try:
         from pypdf import PdfReader
-        from PIL import Image
         import io
     except Exception:
         log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
@@ -44,36 +125,55 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
 
     try:
         reader = PdfReader(pdf_path)
+        pages = list(reader.pages)[:MAX_PDF_PAGES]
     except Exception:
         log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
         return None
 
-    best_bytes = None
-    best_area = 0
-    for page in reader.pages:
+    max_pixels = Image.MAX_IMAGE_PIXELS
+    candidates = []
+    seen: set = set()
+    for page in pages:
         try:
-            images = page.images
+            for xobj in _image_xobjects(page, 0, seen):
+                size = _declared_size(xobj)
+                if size is None:
+                    continue
+                width, height = size
+                if width < MIN_SHOWCASE_IMAGE_DIMENSION or height < MIN_SHOWCASE_IMAGE_DIMENSION:
+                    continue
+                if max_pixels and width * height > max_pixels:
+                    continue
+                if not _filters_allowed(xobj):
+                    continue
+                candidates.append((width * height, len(candidates), xobj))
         except Exception:
             log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
             continue
-        for img in images:
-            try:
-                # Same format allowlist as the upload and email paths: this
-                # only reads the size, but opening lets Pillow pick any of
-                # its ~40 decoders for bytes taken from an untrusted PDF.
-                pil_img = Image.open(io.BytesIO(img.data), formats=["JPEG", "PNG", "GIF", "WEBP"])
-                width, height = pil_img.size
-            except Exception:
-                log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
-                continue
-            if width < MIN_SHOWCASE_IMAGE_DIMENSION or height < MIN_SHOWCASE_IMAGE_DIMENSION:
-                continue
-            area = width * height
-            if area > best_area:
-                best_area = area
-                best_bytes = img.data
 
-    return best_bytes
+    candidates.sort(key=lambda c: (-c[0], c[1]))
+    for _, _, xobj in candidates[:_MAX_DECODE_ATTEMPTS]:
+        try:
+            img = xobj.decode_as_image()
+            if img is None:
+                continue
+            # pypdf re-encodes what it decoded: JPEG for a DCTDecode image
+            # (quality kept), PNG otherwise. Any other format means the
+            # decode took a path the filter check doesn't expect.
+            if img.format not in ("JPEG", "PNG"):
+                continue
+            if img.width < MIN_SHOWCASE_IMAGE_DIMENSION or img.height < MIN_SHOWCASE_IMAGE_DIMENSION:
+                continue
+            out = io.BytesIO()
+            if img.format == "JPEG":
+                img.save(out, format="JPEG", quality="keep")
+            else:
+                img.save(out, format="PNG")
+            return out.getvalue()
+        except Exception:
+            log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
+            continue
+    return None
 
 
 class PdfIngestResult:

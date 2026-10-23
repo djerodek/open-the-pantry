@@ -1116,6 +1116,11 @@ at>:8090`.
   URL ingestion (downloaded) or PDF ingestion (extracted from the
   document) go through this same size-cap/magic-byte/re-encode pipeline —
   they're exactly as untrusted as a direct upload, regardless of source.
+  Pillow only ever opens images with its JPEG, PNG, GIF and WEBP
+  decoders. From a PDF, only the largest photo is decoded, and only if it
+  is stored as JPEG or as compressed raw pixels; images stored in a form
+  that would go through Pillow's TIFF, JPEG 2000 or other parsers are
+  skipped.
 - **Search input** is treated as literal text, not query syntax — user
   search terms can't be used to alter which columns/fields get searched.
 - **Stored filename fields are allow-listed.** Any API field naming a

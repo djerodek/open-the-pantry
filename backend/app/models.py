@@ -243,4 +243,3 @@ class BackupSchedule(Base):
     last_run_at = Column(DateTime(timezone=True), nullable=True)
     last_ok = Column(Boolean, nullable=True)
     last_message = Column(Text, nullable=True)
-

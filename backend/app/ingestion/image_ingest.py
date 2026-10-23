@@ -5,7 +5,7 @@ import pytesseract
 
 from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS, ocr_lang  # reuse the same heuristic segmentation and pixel budget
 from .deskew import deskew_grayscale, auto_orient
-from ..file_validation import JPEG_QUALITY
+from ..file_validation import IMAGE_FORMATS, JPEG_QUALITY
 from ..logging_setup import get_logger
 
 log = get_logger("ocr")
@@ -24,7 +24,7 @@ def _preprocess(image_path: str):
     a slight angle). Returns (image, degrees rotated clockwise)."""
     img = cv2.imread(image_path)
     if img is None:
-        return Image.open(image_path).convert("L"), 0
+        return Image.open(image_path, formats=IMAGE_FORMATS).convert("L"), 0
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     oriented, rotated = auto_orient(Image.fromarray(gray))
@@ -54,7 +54,7 @@ def _rotate_stored_file(image_path: str, degrees_clockwise: int):
     """Keep the saved photo the same way up as the text that was read from
     it, so the recipe's showcase image doesn't display sideways."""
     try:
-        with Image.open(image_path) as im:
+        with Image.open(image_path, formats=IMAGE_FORMATS) as im:
             im.load()
             fmt = im.format
             turned = im.rotate(-degrees_clockwise, expand=True)

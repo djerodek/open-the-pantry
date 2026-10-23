@@ -1334,6 +1334,11 @@ courriel)**
   par la même chaîne de plafond de taille, de vérification de signature et
   de réencodage — elles sont exactement aussi peu fiables qu'un
   téléversement direct, peu importe leur source.
+  Pillow n'ouvre jamais une image qu'avec ses décodeurs JPEG, PNG, GIF et
+  WEBP. Dans un PDF, seule la plus grande photo est décodée, et seulement
+  si elle est stockée en JPEG ou en pixels bruts compressés; une image
+  stockée sous une forme qui passerait par les analyseurs TIFF, JPEG 2000
+  ou autres de Pillow est ignorée.
 - **Le texte de recherche** est traité comme du texte littéral, pas comme
   une syntaxe de requête — les termes de recherche ne peuvent pas changer
   les colonnes ou les champs cherchés.

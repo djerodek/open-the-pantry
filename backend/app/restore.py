@@ -32,7 +32,7 @@ import zipfile
 import zlib
 from datetime import datetime
 
-from .file_validation import PDF_MAGIC, detect_image_ext, is_safe_stored_filename, reencode_image
+from .file_validation import IMAGE_FORMATS, PDF_MAGIC, detect_image_ext, is_safe_stored_filename, reencode_image
 from .logging_setup import get_logger
 
 log = get_logger("restore")
@@ -177,7 +177,7 @@ def _content_ok(path: str, name: str) -> bool:
         return False
     try:
         from PIL import Image
-        with Image.open(path, formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
+        with Image.open(path, formats=IMAGE_FORMATS) as img:
             img.load()
             extra = _metadata(img)
         if extra or not _ends_clean(path, kind):
