@@ -114,8 +114,13 @@ def inspect(zip_path: str, db_path: str) -> dict:
                 raise RestoreError("The database in this backup is damaged (integrity check failed).")
             if not REQUIRED_TABLES <= tables:
                 raise RestoreError("The database in this backup isn't Open the Pantry's.")
-            recipes = con.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
-            photos = con.execute("SELECT COUNT(*) FROM recipes WHERE image_path IS NOT NULL").fetchone()[0]
+            # A backup from 0109 on can hold recipes in Recently deleted:
+            # they come back there, and aren't counted with the library.
+            live = ("WHERE deleted_at IS NULL"
+                    if any(r[1] == "deleted_at" for r in con.execute("PRAGMA table_info(recipes)")) else "")
+            recipes = con.execute(f"SELECT COUNT(*) FROM recipes {live}").fetchone()[0]
+            photos = con.execute(f"SELECT COUNT(*) FROM recipes {live} {'AND' if live else 'WHERE'} "
+                                 "image_path IS NOT NULL").fetchone()[0]
         finally:
             con.close()
     except sqlite3.DatabaseError:

@@ -52,6 +52,8 @@ NEW_RECIPE_COLUMNS = {
     "autotag_ignored": "INTEGER NOT NULL DEFAULT 0",
     # Existing recipes aren't flagged: they were saved before the flag existed.
     "needs_review": "INTEGER NOT NULL DEFAULT 0",
+    # Recently deleted (0109): none deleted before it existed.
+    "deleted_at": "DATETIME",
 }
 
 FTS_COLUMNS = ("title", "raw_text", "tags_text", "content_text", "notes")

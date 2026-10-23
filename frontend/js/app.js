@@ -1643,6 +1643,7 @@
     pace: new Set(),         // pace-rating filter: 'quick' | 'moderate' | 'long', OR logic
     toReview: false,         // only recipes saved without review (batch, email)
     reviewCount: 0,          // how many there are (sidebar)
+    binCount: 0,             // recipes in Recently deleted (sidebar)
     grouping: "all",         // 'all' | 'meal_type' | 'cooking_style' | 'main_ingredient'
     allTags: [],
     timeBuckets: [],
@@ -1866,6 +1867,17 @@
             syncClearFiltersButton();
             loadRecipes();
           },
+        }),
+      ]));
+    }
+
+    // Recently deleted: only while something is waiting there.
+    if (state.binCount) {
+      container.appendChild(el("div", { class: "sidebar-review-region" }, [
+        el("button", {
+          type: "button", class: "tag-node review-filter", "aria-haspopup": "dialog", "aria-controls": "bin-overlay",
+          text: tx("Recently deleted ({1})", { 1: state.binCount }),
+          onclick: openBin,
         }),
       ]));
     }
@@ -2730,7 +2742,8 @@
 
   $("#batch-delete-btn").addEventListener("click", async () => {
     if (!state.selectedIds.size) return;
-    if (!confirm(tx("Delete {1} recipe(s)? This cannot be undone.", { 1: state.selectedIds.size }))) return;
+    if (!confirm(txn(state.selectedIds.size, "Delete {n} recipe? You can put it back from Recently deleted for 30 days.",
+      "Delete {n} recipes? You can put them back from Recently deleted for 30 days."))) return;
     const ids = [...state.selectedIds];
     const btn = $("#batch-delete-btn");
     btn.disabled = true;
@@ -2761,7 +2774,8 @@
     let summary;
     try {
       const body = await result.res.json();
-      const parts = [tx("{1} deleted", { 1: body.deleted.length })];
+      const parts = [txn(body.deleted.length, "{n} recipe moved to Recently deleted (in the side menu) for 30 days",
+        "{n} recipes moved to Recently deleted (in the side menu) for 30 days")];
       if (body.missing.length) parts.push(tx("{1} already gone", { 1: body.missing.length }));
       if (body.failed.length) parts.push(tx("{1} failed", { 1: body.failed.length }));
       summary = parts.join(", ") + ".";
@@ -2820,7 +2834,97 @@
     renderRecipeList(currentRecipes);
     announce(txn(currentRecipes.length, "{n} recipe found", "{n} recipes found"));
     refreshReviewCount();
+    refreshBin();
   }
+
+  // -------------------------------------------------------------------
+  // Recently deleted (0109): deleting moves a recipe here for 30 days.
+  // -------------------------------------------------------------------
+  const binOverlay = $("#bin-overlay");
+  $("#bin-close").addEventListener("click", () => closeModal(binOverlay));
+  binOverlay.addEventListener("click", (e) => { if (e.target === binOverlay) closeModal(binOverlay); });
+
+  async function fetchBin() {
+    try {
+      const res = await fetch(`${API}/recently-deleted`);
+      return res.ok ? await res.json() : null;
+    } catch { return null; }
+  }
+
+  // The sidebar count; the open sheet is redrawn too.
+  async function refreshBin(data) {
+    data = data || await fetchBin();
+    if (!data) return;
+    const count = data.recipes.length;
+    if (!binOverlay.hidden) renderBin(data);
+    if (count === state.binCount) return;
+    state.binCount = count;
+    renderSidebar();
+  }
+
+  function renderBin(data) {
+    const list = $("#bin-list");
+    $("#bin-empty").hidden = !data.recipes.length;
+    if (!data.recipes.length) {
+      list.replaceChildren(el("li", { class: "bin-empty-note", text: tx("Nothing here.") }));
+      return;
+    }
+    list.replaceChildren(...data.recipes.map((r) => {
+      const restore = el("button", { type: "button", class: "btn-secondary btn-small", text: tx("Put back"),
+        "aria-label": tx("Put back {1}", { 1: r.title }), onclick: () => binAction(r, "restore", restore) });
+      const forget = el("button", { type: "button", class: "btn-secondary btn-small btn-danger", text: tx("Delete now"),
+        "aria-label": tx("Delete {1} for good", { 1: r.title }), onclick: () => binAction(r, "forget", forget) });
+      return el("li", { class: "bin-item" }, [
+        el("div", { class: "bin-item-text" }, [
+          el("span", { class: "bin-item-title", text: r.title }),
+          el("span", { class: "field-hint", text: `${tx("Deleted {1}", { 1: fmtDateTime(r.deleted_at) })} · ${
+            txn(r.days_left, "gone in {n} day", "gone in {n} days")}` }),
+        ]),
+        el("div", { class: "bin-item-actions" }, [restore, forget]),
+      ]);
+    }));
+  }
+
+  async function openBin() {
+    $("#bin-status").textContent = "";
+    const data = await fetchBin();
+    if (!data) { announceError(tx("Couldn't reach Open the Pantry. Check your connection and try again.")); return; }
+    renderBin(data);
+    openModal(binOverlay);
+  }
+
+  async function binAction(recipe, action, btn) {
+    if (action === "forget" && !confirm(tx("Delete “{1}” for good? This cannot be undone.", { 1: recipe.title }))) return;
+    btn.disabled = true;
+    const result = action === "restore"
+      ? await fetchWithTimeout(`${API}/recently-deleted/${recipe.id}/restore`, { method: "POST" })
+      : await fetchWithTimeout(`${API}/recently-deleted/${recipe.id}`, { method: "DELETE" });
+    if (!result.ok && result.status !== 404) {
+      btn.disabled = false;
+      $("#bin-status").textContent = writeFailureMessage(result, tx("That recipe"));
+      return;
+    }
+    const msg = result.status === 404 ? tx("That recipe was no longer in Recently deleted.")
+      : action === "restore" ? tx("Put back: {1}", { 1: recipe.title }) : tx("Deleted for good: {1}", { 1: recipe.title });
+    $("#bin-status").textContent = msg;
+    announce(msg);
+    if (action === "restore") { await loadTimeBuckets(); loadRecipes(); }
+    else refreshBin();
+  }
+
+  $("#bin-empty").addEventListener("click", async () => {
+    if (!confirm(tx("Delete everything in Recently deleted for good? This cannot be undone."))) return;
+    const btn = $("#bin-empty");
+    btn.disabled = true;
+    const result = await fetchWithTimeout(`${API}/recently-deleted`, { method: "DELETE" });
+    btn.disabled = false;
+    if (!result.ok) { $("#bin-status").textContent = writeFailureMessage(result, tx("Recently deleted")); return; }
+    const n = (await result.res.json()).deleted;
+    const msg = txn(n, "{n} recipe deleted for good.", "{n} recipes deleted for good.");
+    $("#bin-status").textContent = msg;
+    announce(msg);
+    refreshBin();
+  });
 
   // The sidebar's "To review (n)". The last recipe reviewed turns the
   // filter off, so the list doesn't stay empty behind a hidden button.
@@ -4455,7 +4559,7 @@
   }
 
   async function deleteRecipe(id, btn, label) {
-    if (!confirm(tx("Delete this recipe? This cannot be undone."))) return;
+    if (!confirm(tx("Delete this recipe? You can put it back from Recently deleted for 30 days."))) return;
 
     // Guard against a double-fire, but deliberately do NOT touch the modal's
     // close button or the Escape handler: the modal now stays open until the
@@ -4467,7 +4571,7 @@
 
     if (result.ok) {
       closeModal(detailOverlay);
-      announce(tx("Recipe deleted."));
+      announce(tx("Moved to Recently deleted (in the side menu) for 30 days."));
       await loadTimeBuckets();
       loadRecipes();
       return;
@@ -4549,14 +4653,14 @@
       type: "button", class: "btn-secondary btn-small btn-danger result-delete", text: tx("Delete"),
       "aria-label": tx("Delete {1}", { 1: title }),
       onclick: async () => {
-        if (!confirm(tx("Delete this recipe? This cannot be undone."))) return;
+        if (!confirm(tx("Delete this recipe? You can put it back from Recently deleted for 30 days."))) return;
         del.disabled = true;
         const res = await fetchWithTimeout(`${API}/recipes/${recipeId}`, { method: "DELETE" });
         if (res.ok || res.status === 404) {
           li.className = "deleted";
           text.textContent = `\u2715 ${tx("Deleted: {1}", { 1: title })}`;
           del.remove();
-          announce(tx("Recipe deleted."));
+          announce(tx("Moved to Recently deleted (in the side menu) for 30 days."));
           await loadTimeBuckets();
           loadRecipes();
           return;

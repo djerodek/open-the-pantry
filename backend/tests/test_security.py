@@ -129,6 +129,9 @@ def test_draft_file_promoted_on_save_and_removed_on_delete(client, data_dir):
     assert os.path.isfile(os.path.join(UPLOADS_DIR, temp_name))
 
     client.delete(f"/api/recipes/{recipe_id}")
+    # Recently deleted (0109) keeps the file until the recipe goes for good.
+    assert os.path.isfile(os.path.join(UPLOADS_DIR, temp_name))
+    client.delete(f"/api/recently-deleted/{recipe_id}")
     assert not os.path.isfile(os.path.join(UPLOADS_DIR, temp_name)), "total deletion: file must be removed too"
 
 

@@ -50,6 +50,7 @@ def test_a_copy_has_everything_and_its_own_photo(client):
         assert copy["id"] in [x["id"] for x in client.get("/api/recipes", params={"q": f"Mine{sfx}"}).json()]
         # Deleting the original leaves the copy's photo.
         client.delete(f"/api/recipes/{src['id']}", headers=H)
+        client.delete(f"/api/recently-deleted/{src['id']}", headers=H)     # for good (0109)
         assert client.get(f"/uploads/{photo}").status_code == 404
         assert client.get(f"/uploads/{copy['image_path']}").status_code == 200
     finally:

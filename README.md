@@ -794,8 +794,16 @@ at>:8090`.
   reach the server, already deleted) and gives up after 10 seconds rather
   than leaving the dialog stuck. A batch delete reports how many were
   deleted, missing or failed, and keeps the failures selected for a retry.
-- Deletion is total: the DB row and any file on disk (image/PDF) are both
-  removed. Draft files from an abandoned add-recipe session (uploaded but
+- **Recently deleted.** A deleted recipe (one, or a selection) is hidden
+  everywhere (list, search, What to eat?, exports, duplicate checks,
+  learning) and waits 30 days under **Recently deleted** in the side
+  menu, shown while something is there. From there it can be put back as
+  it was (tags, ratings, notes, photo), or deleted now, one at a time or
+  all at once. After 30 days the background sweep (start-up and every 6
+  hours) deletes it for good, together with its photo or PDF. A full
+  backup includes what's waiting there, and a restore puts it back there.
+- Deleting for good is total: the DB row and any file on disk (image/PDF)
+  are both removed. Draft files from an abandoned add-recipe session (uploaded but
   never saved) are discarded when the dialog closes, with a sweep at
   start-up and every 6 hours as a backstop for anything missed (it runs in
   the background, so it never holds up the app, even during a backup).

@@ -942,8 +942,18 @@ ouvert la page>:8090`.
   de dialogue bloquée. Une suppression en lot indique combien ont été
   supprimées, introuvables ou en échec, et garde les échecs sélectionnés
   pour réessayer.
-- La suppression est totale : la ligne de la base et tout fichier sur le
-  disque (image, PDF) sont retirés. Les fichiers d'une session d'ajout
+- **Récemment supprimées.** Une recette supprimée (une seule, ou une
+  sélection) est cachée partout (liste, recherche, On mange quoi?,
+  exportations, détection des doublons, apprentissage) et attend 30 jours
+  dans **Récemment supprimées**, au menu latéral, affiché tant qu'il y a
+  quelque chose. De là, on peut la remettre telle quelle (étiquettes,
+  notes, photo) ou la supprimer tout de suite, une à la fois ou toutes
+  ensemble. Après 30 jours, le nettoyage en arrière-plan (au démarrage et
+  toutes les 6 heures) la supprime pour de bon, avec sa photo ou son PDF.
+  Une sauvegarde complète inclut ce qui y attend, et une restauration l'y
+  remet.
+- La suppression pour de bon est totale : la ligne de la base et tout
+  fichier sur le disque (image, PDF) sont retirés. Les fichiers d'une session d'ajout
   abandonnée (téléversés mais jamais enregistrés) sont supprimés à la
   fermeture de la boîte de dialogue, avec un nettoyage au démarrage et
   toutes les 6 heures en filet de sécurité (il tourne en arrière-plan et ne

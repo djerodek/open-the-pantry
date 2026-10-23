@@ -231,3 +231,28 @@ def test_tag_the_selected_recipes(server, api, page):
     pg.click("#batch-tags-remove")
     wait_until(pg, "document.querySelector('#batch-tags-status').textContent.includes('removed from 2 recipes')")
     assert api.get(f"/api/recipes/{tagged['id']}").json()["tags"] == []
+
+
+def test_delete_and_put_back(server, api, page):
+    """0109: a deleted recipe waits in Recently deleted (side menu) and can
+    be put back from there."""
+    r = add_recipe(api, f"Bin browser {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click("#recipe-detail-body button.btn-danger:has-text('Delete recipe')")
+    pg.wait_for_selector("#recipe-detail-overlay", state="hidden")
+    wait_until(pg, f"!document.body.innerText.includes({r['title']!r}) || !!document.querySelector('.review-filter[aria-controls=bin-overlay]')")
+    assert api.get(f"/api/recipes/{r['id']}").status_code == 404
+    pg.click("#sidebar-toggle")
+    pg.click(".review-filter[aria-controls=bin-overlay]")
+    pg.wait_for_selector("#bin-overlay:not([hidden])")
+    item = pg.locator(".bin-item", has_text=r["title"])
+    assert "gone in 30 days" in item.inner_text()
+    item.locator("button", has_text="Put back").click()
+    wait_until(pg, "document.querySelector('#bin-status').textContent.startsWith('Put back:')")
+    assert api.get(f"/api/recipes/{r['id']}").status_code == 200
+    pg.click("#bin-close")
+    pg.wait_for_selector(f".recipe-card:has-text('{r['title']}')")

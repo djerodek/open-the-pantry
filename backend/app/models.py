@@ -1,7 +1,8 @@
 from sqlalchemy import (
     Column, Integer, String, Text, ForeignKey, DateTime, Table, UniqueConstraint, Float, Boolean
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy import event
+from sqlalchemy.orm import Session, relationship, with_loader_criteria
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -48,6 +49,10 @@ class Recipe(Base):
     # shown as "To review" and left out of learning until it is saved from
     # Edit or marked "Looks right" (review.py).
     needs_review = Column(Boolean, nullable=False, default=False)
+    # Set when the recipe is deleted (UTC): it waits in Recently deleted for
+    # RECENTLY_DELETED_DAYS, then the sweep deletes it for good. Every ORM
+    # query leaves such recipes out (see _hide_recently_deleted below).
+    deleted_at = Column(DateTime, nullable=True)
     tastiness_rating = Column(Integer, nullable=True)  # 1-5
     cook_time_rating = Column(String, nullable=True)  # 'quick' | 'moderate' | 'long'
     difficulty_rating = Column(String, nullable=True)  # 'easy' | 'medium' | 'hard'
@@ -243,3 +248,17 @@ class BackupSchedule(Base):
     last_run_at = Column(DateTime(timezone=True), nullable=True)
     last_ok = Column(Boolean, nullable=True)
     last_message = Column(Text, nullable=True)
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _hide_recently_deleted(state):
+    """Recipes in Recently deleted are left out of every ORM query --
+    lists, search, counts, the picker, exports, duplicate checks, learning,
+    Session.get() -- in one place rather than a filter in each. Queries
+    that need them (Recently deleted itself, its sweep, the uploads
+    sweep) say so with .execution_options(include_deleted=True). Raw SQL
+    and queries on the recipe_tags table alone don't pass through here."""
+    if (state.is_select and not state.is_column_load
+            and not state.execution_options.get("include_deleted", False)):
+        state.statement = state.statement.options(
+            with_loader_criteria(Recipe, lambda cls: cls.deleted_at.is_(None), include_aliases=True))

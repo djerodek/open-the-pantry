@@ -190,6 +190,23 @@
   </div>
 </div>
 
+<!-- Recently deleted: deleted recipes wait here 30 days (sidebar link). -->
+<div class="modal-overlay" id="bin-overlay" hidden>
+  <div
+    class="modal modal-sheet"
+    id="bin-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="bin-heading">
+    <button class="modal-close" id="bin-close" type="button" aria-label="Close dialog">&times;</button>
+    <h2 id="bin-heading">Recently deleted</h2>
+    <p class="field-hint">Deleted recipes wait here for 30 days, then they and their photos are deleted for good.</p>
+    <ul id="bin-list" class="bin-list"><!-- populated by app.js --></ul>
+    <p id="bin-status" class="field-hint" role="status"></p>
+    <button type="button" id="bin-empty" class="btn-secondary btn-danger">Delete all now</button>
+  </div>
+</div>
+
 <!-- Select mode -> Tags: one existing tag added to or removed from every
      selected recipe. -->
 <div class="modal-overlay" id="batch-tags-overlay" hidden>

@@ -14,7 +14,7 @@ New tests go in the feature file when there is one.
 
 | Feature | Feature files | Also in review files |
 |---|---|---|
-| Recipes: create, edit, delete, list, sort | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py` | `test_stability.py`, `test_friday_batch.py`, `test_claude_review_round8.py` |
+| Recipes: create, edit, delete, list, sort | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py`, `test_recently_deleted.py` | `test_stability.py`, `test_friday_batch.py`, `test_claude_review_round8.py` |
 | Search | `test_search_and_parsing.py` | |
 | Import from a link | `test_incomplete_sources.py` | `test_security.py`, `test_security_round2.py` (address and size checks), `test_review_round2_followup.py` (slow downloads), `test_claude_review_round9.py` |
 | Import from a PDF or photo (reading the text) | `test_pdf_ingest.py`, `test_component_recipes.py`, `test_deskew.py`, `test_incomplete_sources.py` | `test_review_round2_followup.py` (OCR limits), `test_sept27_fixes.py`, `test_deepseek_0073.py`, `test_deepseek_review_0096.py` |

@@ -178,8 +178,9 @@ def _sweep_orphaned_upload_files():
     before its commit was due to land."""
     db = SessionLocal()
     try:
+        # Recently deleted recipes keep their photos until deleted for good.
         referenced = {
-            r[0] for r in db.query(models.Recipe.image_path)
+            r[0] for r in db.query(models.Recipe.image_path).execution_options(include_deleted=True)
             .filter(models.Recipe.image_path.isnot(None)).all()
         }
     finally:
@@ -205,6 +206,7 @@ async def _run_sweeps():
     request on both ports until the backup ended (DeepSeek review of
     0083)."""
     await asyncio.to_thread(_sweep_stale_tmp_files)
+    await asyncio.to_thread(purge_recently_deleted)
     await asyncio.to_thread(_sweep_orphaned_upload_files)
 
 
@@ -335,7 +337,7 @@ async def restore_guard(request: Request, call_next):
 
 # Changes the learned models train on: recipes saved, edited or deleted,
 # tags changed, batch and email imports.
-_RETRAIN_AFTER = re.compile(r"^/api/(recipes|tags|tag-groups|ingest/(url|pdf)/batch|email-settings/scan|import)(/|$)")
+_RETRAIN_AFTER = re.compile(r"^/api/(recipes|tags|tag-groups|ingest/(url|pdf)/batch|email-settings/scan|import|recently-deleted)(/|$)")
 
 
 @app.middleware("http")
@@ -2091,25 +2093,21 @@ def get_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
 
 @app.delete("/api/recipes/{recipe_id}")
 def delete_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    """To Recently deleted: hidden everywhere, restorable for
+    RECENTLY_DELETED_DAYS, then deleted for good (with its files) by the
+    sweep, or sooner from Recently deleted."""
     recipe = db.get(models.Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
-    db.delete(recipe)
+    recipe.deleted_at = _utc_now()
     db.commit()
-    # Only touch the filesystem after the DB delete has actually committed --
-    # deleting the file first would leave the DB row referencing a file that
-    # no longer exists if the commit then failed.
-    _delete_recipe_files(recipe)
-    return {"ok": True}
+    return {"ok": True, "days": RECENTLY_DELETED_DAYS}
 
 
 @app.post("/api/recipes/batch-delete")
 def batch_delete_recipes(payload: schemas.BatchDeleteRequest, db: Session = Depends(get_db)):
-    """Per-item commit + per-item file deletion (rather than one commit at
-    the end): if a delete mid-batch fails, everything before it is already
-    safely committed and cleaned up, and everything after it is untouched --
-    instead of one failure potentially leaving files deleted from disk for
-    recipes whose DB rows never actually got removed."""
+    """To Recently deleted, like a single delete. Per-item commit, so a
+    failure mid-batch leaves the ones before it done and reported."""
     deleted, missing, failed = [], [], []
     for recipe_id in payload.ids:
         recipe = db.get(models.Recipe, recipe_id)
@@ -2117,16 +2115,91 @@ def batch_delete_recipes(payload: schemas.BatchDeleteRequest, db: Session = Depe
             missing.append(recipe_id)
             continue
         try:
-            db.delete(recipe)
+            recipe.deleted_at = _utc_now()
             db.commit()
         except Exception as e:
             log.warning("batch_delete_recipes: caught error, continuing", exc_info=True)
             db.rollback()
             failed.append({"id": recipe_id, "error": str(e)})
             continue
-        _delete_recipe_files(recipe)
         deleted.append(recipe_id)
-    return {"deleted": deleted, "missing": missing, "failed": failed}
+    return {"deleted": deleted, "missing": missing, "failed": failed, "days": RECENTLY_DELETED_DAYS}
+
+
+# ---------------------------------------------------------------------------
+# Recently deleted (0109). A deleted recipe keeps its row and files, with
+# deleted_at set, and is hidden from every query (models._hide_recently_
+# deleted). It can be put back for RECENTLY_DELETED_DAYS; after that the
+# sweep (start-up and every 6 hours) deletes it for good, files included.
+# ---------------------------------------------------------------------------
+RECENTLY_DELETED_DAYS = 30
+
+
+def _binned(db: Session):
+    return (db.query(models.Recipe).execution_options(include_deleted=True)
+            .filter(models.Recipe.deleted_at.isnot(None)))
+
+
+def _delete_for_good(db: Session, recipes: list) -> int:
+    """Rows first, files once the commit has landed (a file deleted before
+    a failed commit would leave a row pointing at nothing)."""
+    for r in recipes:
+        db.delete(r)
+    db.commit()
+    for r in recipes:
+        _delete_recipe_files(r)
+    return len(recipes)
+
+
+def purge_recently_deleted() -> int:
+    """The sweep's part: recipes deleted more than RECENTLY_DELETED_DAYS ago."""
+    db = SessionLocal()
+    try:
+        cutoff = _utc_now() - timedelta(days=RECENTLY_DELETED_DAYS)
+        gone = _delete_for_good(db, _binned(db).filter(models.Recipe.deleted_at < cutoff).all())
+    finally:
+        db.close()
+    if gone:
+        log.info("Recently deleted: %d recipe(s) older than %d days deleted for good", gone, RECENTLY_DELETED_DAYS)
+    return gone
+
+
+@app.get("/api/recently-deleted")
+def recently_deleted(db: Session = Depends(get_db)):
+    now = _utc_now()
+    out = []
+    for r in _binned(db).order_by(models.Recipe.deleted_at.desc(), models.Recipe.id.desc()).all():
+        left = r.deleted_at + timedelta(days=RECENTLY_DELETED_DAYS) - now
+        out.append({"id": r.id, "title": r.title, "image_path": r.image_path,
+                    "deleted_at": _iso_utc(r.deleted_at),
+                    "days_left": max(0, left.days + (1 if left.seconds or left.microseconds else 0))})
+    return {"days": RECENTLY_DELETED_DAYS, "recipes": out}
+
+
+@app.post("/api/recently-deleted/{recipe_id}/restore")
+def restore_deleted_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    recipe = _binned(db).filter(models.Recipe.id == recipe_id).first()
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Not in Recently deleted")
+    recipe.deleted_at = None
+    # A tag deleted meanwhile left its name in the search column.
+    recipe.tags_text = " ".join(t.name for t in recipe.tags)
+    db.commit()
+    return {"ok": True, "id": recipe.id, "title": recipe.title}
+
+
+@app.delete("/api/recently-deleted/{recipe_id}")
+def delete_recipe_for_good(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
+    recipe = _binned(db).filter(models.Recipe.id == recipe_id).first()
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Not in Recently deleted")
+    _delete_for_good(db, [recipe])
+    return {"ok": True}
+
+
+@app.delete("/api/recently-deleted")
+def empty_recently_deleted(db: Session = Depends(get_db)):
+    return {"deleted": _delete_for_good(db, _binned(db).all())}
 
 
 # A recipe holds at most this many tags (RecipeCreate.tags).

@@ -342,6 +342,8 @@ def picker_options(request: Request, db: Session = Depends(get_db)):
     rows = (db.query(models.Tag.id, models.Tag.name, models.Tag.category, models.Tag.subgroup,
                      func.count(models.recipe_tags.c.recipe_id))
             .join(models.recipe_tags, models.recipe_tags.c.tag_id == models.Tag.id)
+            # Through Recipe, so recipes in Recently deleted aren't counted.
+            .join(models.Recipe, models.Recipe.id == models.recipe_tags.c.recipe_id)
             .filter(models.Tag.category.in_(CATEGORIES), models.recipe_tags.c.recipe_id.notin_(drinks))
             .group_by(models.Tag.id).all())
     out = {c: [] for c in CATEGORIES}

@@ -97,6 +97,7 @@ def test_restore_puts_the_backup_back(client):
     backup = client.get("/api/backup/database.zip").content
     later = _recipe(client, f"Restore later {uuid.uuid4().hex[:6]}")
     client.delete(f"/api/recipes/{kept['id']}", headers=H)
+    client.delete(f"/api/recently-deleted/{kept['id']}", headers=H)        # for good (0109)
     assert client.get(f"/uploads/{kept['image_path']}").status_code == 404
 
     # A backup whose email password this server can't read, a bad file

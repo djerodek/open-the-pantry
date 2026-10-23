@@ -277,7 +277,9 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
 
     snapshot_database(tmp_db)
     with sqlite3.connect(tmp_db) as snap:
-        recipe_count = snap.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
+        # Recipes in Recently deleted are in the backup (and come back there
+        # on a restore) but aren't counted as the library's.
+        recipe_count = snap.execute("SELECT COUNT(*) FROM recipes WHERE deleted_at IS NULL").fetchone()[0]
         referenced = sorted({
             r[0] for r in snap.execute("SELECT image_path FROM recipes WHERE image_path IS NOT NULL")
         })
