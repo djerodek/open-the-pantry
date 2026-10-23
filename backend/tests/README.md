@@ -22,7 +22,7 @@ New tests go in the feature file when there is one.
 | French | `test_french.py`, `test_i18n_catalog.py` | `test_friday_batch.py` (server messages), `test_deepseek_0073.py` |
 | Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py`, `test_batch_tags.py` | `test_deepseek_round.py` |
 | Learning | `test_learning.py`, `test_learning_explained.py` | |
-| Already in your library? | `test_duplicates.py` | `test_claude_review_round9.py`, `test_gpt_review_0093.py` |
+| Already in your library? | `test_duplicates.py`, `test_library_check.py` | `test_claude_review_round9.py`, `test_gpt_review_0093.py` |
 | Duplicate a recipe | `test_duplicate_recipe.py` | |
 | Review queue (To review) | `test_review_queue.py` | |
 | Email ingest | `test_email_ingest.py`, `test_email_real_world.py` | `test_deepseek_round.py`, `test_security_round2.py` (saved password), `test_qwen_review.py` |

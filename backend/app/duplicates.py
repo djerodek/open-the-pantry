@@ -83,3 +83,33 @@ def same_link(db: Session, url: str | None) -> dict | None:
     """The saved recipe with this link, if any."""
     found = find(db, url=url, limit=1)
     return found[0] if found and found[0]["reason"] == "link" else None
+
+
+def groups(db: Session) -> list[list[dict]]:
+    """Sets of recipes that look like the same one (same link or same
+    title, as find() decides), for Settings -> Library check. A recipe
+    sharing a link with one and a title with another puts all three in one
+    set. Each set oldest first; sets by their first title."""
+    rows = db.query(models.Recipe.id, models.Recipe.title, models.Recipe.source_url).order_by(models.Recipe.id).all()
+    parent = {rid: rid for rid, _, _ in rows}
+
+    def root(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    first_by_key: dict = {}
+    for rid, title, url in rows:
+        for key in (("link", normalize_url(url)), ("title", normalize_title(title))):
+            if key[1] is None:
+                continue
+            if key in first_by_key:
+                parent[root(rid)] = root(first_by_key[key])
+            else:
+                first_by_key[key] = rid
+    sets: dict = {}
+    for rid, title, _ in rows:
+        sets.setdefault(root(rid), []).append({"id": rid, "title": title})
+    found = [s for s in sets.values() if len(s) > 1]
+    return sorted(found, key=lambda s: normalize_title(s[0]["title"]) or "")

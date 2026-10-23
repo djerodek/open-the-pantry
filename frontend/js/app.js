@@ -2192,6 +2192,51 @@
     renderRecipeList(currentRecipes);
   });
 
+  // Settings -> Library check (GET /api/library-check): what's missing,
+  // and recipes that look the same. A title opens the recipe; the results
+  // stay for when Settings is opened again.
+  const LIBRARY_CHECKS = [
+    ["no_ingredients", "Without ingredients"], ["no_steps", "Without steps"], ["no_tags", "Without tags"],
+    ["photo_missing", "Photo file missing"], ["no_photo", "Without a photo"], ["to_review", "Still to review"],
+  ];
+  $("#library-check-btn").addEventListener("click", async () => {
+    const btn = $("#library-check-btn");
+    const out = $("#library-check-result");
+    btn.disabled = true;
+    out.replaceChildren(el("p", { class: "field-hint", text: tx("Working...") }));
+    let data = null;
+    try {
+      const res = await fetch(`${API}/library-check`);
+      if (res.ok) data = await res.json();
+    } catch { /* below */ }
+    btn.disabled = false;
+    if (!data) {
+      out.replaceChildren(el("p", { class: "field-hint field-warning", text: tx("Couldn't reach Open the Pantry. Check your connection and try again.") }));
+      return;
+    }
+    const open = (id) => () => { closeModal(settingsOverlay); openRecipeDetail(id); };
+    const link = (r) => el("button", { type: "button", class: "link-button", text: r.title, onclick: open(r.id) });
+    const parts = [el("p", { class: "field-hint", text: txn(data.total, "{n} recipe checked.", "{n} recipes checked.") })];
+    for (const [key, label] of LIBRARY_CHECKS) {
+      const list = data.checks[key] || [];
+      if (!list.length) continue;
+      parts.push(el("details", { class: "library-check-group" }, [
+        el("summary", { text: `${tx(label)} (${list.length})` }),
+        el("ul", {}, list.map((r) => el("li", {}, [link(r)]))),
+      ]));
+    }
+    if (data.duplicates.length) {
+      parts.push(el("details", { class: "library-check-group" }, [
+        el("summary", { text: `${tx("Look like the same recipe")} (${data.duplicates.length})` }),
+        el("p", { class: "field-hint", text: tx("Same link, or same title. To combine two, select them in the list and use Merge….") }),
+        el("ul", {}, data.duplicates.map((set) => el("li", { class: "library-check-set" },
+          set.flatMap((r, i) => (i ? [document.createTextNode(" · "), link(r)] : [link(r)]))))),
+      ]));
+    }
+    if (parts.length === 1) parts.push(el("p", { text: tx("Nothing to report: every recipe has ingredients, steps, tags and a photo, and none look the same.") }));
+    out.replaceChildren(...parts);
+  });
+
   // Settings -> Tags: preview, then add, the tagger's suggestions for every
   // recipe (POST /api/tags/auto-apply). Two steps inside the dialog rather
   // than a browser confirm(), which would block the page.

@@ -113,6 +113,8 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   units included ("1 cup" → "2 cups")
 - Select several recipes to delete them, or to add or remove a tag on all
   of them at once; merge two into one, choosing each part
+- Library check in Settings: recipes missing ingredients, steps, tags or a
+  photo, and ones that look like the same recipe
 - Deleted recipes wait 30 days in Recently deleted, where they can be put
   back
 - Warns when a recipe being added is already in the library (same link or

@@ -285,3 +285,28 @@ def test_merge_two_recipes(server, api, page):
     assert merged["title"] == small["title"] and merged["servings"] == "2" and len(merged["ingredients"]) == 3
     assert api.get(f"/api/recipes/{small['id']}").status_code == 404
     assert pg.is_hidden("#batch-bar")
+
+
+def test_library_check(server, api, page):
+    """0111: Settings -> Library check lists recipes missing something and
+    look-alikes; a title opens the recipe."""
+    sfx = uuid.uuid4().hex[:6]
+    bare = add_recipe(api, f"Check bare {sfx}", ingredients=[], steps=[])
+    add_recipe(api, f"Check twin {sfx}")
+    add_recipe(api, f"CHECK TWIN {sfx}")
+    p = page()
+    pg = p.page
+    _open_settings(p, server["url"])
+    pg.click("#library-check-btn")
+    wait_until(pg, "document.querySelector('#library-check-result').textContent.includes('recipes checked')")
+    result = pg.locator("#library-check-result")
+    group = result.locator("details", has_text="Without ingredients")
+    group.locator("summary").click()
+    group.locator("button", has_text=bare["title"]).click()
+    pg.wait_for_selector("#settings-overlay", state="hidden")
+    wait_until(pg, f"document.querySelector('#recipe-detail-heading')?.textContent === {bare['title']!r}")
+    pg.click("#recipe-detail-close")
+    pg.click("#settings-toggle")
+    dup = pg.locator("#library-check-result details", has_text="Look like the same recipe")
+    dup.locator("summary").click()
+    assert f"Check twin {sfx}" in dup.inner_text() and f"CHECK TWIN {sfx}" in dup.inner_text()

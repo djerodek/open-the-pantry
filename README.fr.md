@@ -936,6 +936,13 @@ ouvert la page>:8090`.
   sélection reste, pour enchaîner avec une autre étiquette. Les nouvelles
   étiquettes se créent sur une recette (Modifier) ou dans Paramètres →
   Étiquettes.
+- **Paramètres → Vérification de la bibliothèque** liste les recettes sans
+  ingrédients, étapes, étiquettes ou photo, celles dont le fichier de
+  photo manque dans le dossier de données, celles encore à vérifier, et
+  les groupes qui semblent être la même recette (même lien ou même titre,
+  comme pour l'avertissement à l'ajout). Chaque titre ouvre la recette.
+  Lecture seule : rien n'est modifié. Les recettes dans Récemment
+  supprimées ne sont pas comptées.
 - **Fusionner…** apparaît dans la barre de sélection quand exactement deux
   recettes sont sélectionnées. Pour chaque partie, on choisit de quelle
   recette elle vient : titre, photo (ou aucune), ingrédients et étapes

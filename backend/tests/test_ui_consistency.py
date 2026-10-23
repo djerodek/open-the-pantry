@@ -470,8 +470,9 @@ def test_settings_are_in_three_groups():
     titles = re.findall(r'<div class="filter-section-title"[^>]*>([^<]+)<', modal)
     parts = re.split(r'<section class="settings-group"', modal)
     assert parts[0].count("filter-section-title") == 0          # nothing outside a group
-    assert sum(p.count("filter-section-title") for p in parts[1:]) == len(titles) == 13
+    assert sum(p.count("filter-section-title") for p in parts[1:]) == len(titles) == 14      # + Library check (0111)
     assert "Settings password" in parts[3] and "Email ingest" in parts[3] and "Backup &amp; export" in parts[2]
+    assert "Library check" in parts[2]
 
 
 def test_hidden_always_hides():

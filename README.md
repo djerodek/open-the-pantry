@@ -790,6 +790,12 @@ at>:8090`.
   already had it (or didn't), and any recipe that already has the most
   tags allowed (50). The selection stays, so another tag can follow. New
   tags are made on a recipe (Edit) or in Settings → Tags.
+- **Settings → Library check** lists recipes without ingredients, steps,
+  tags or a photo, ones whose photo file is missing from the data folder,
+  ones still to review, and sets that look like the same recipe (same
+  link or same title, as the add-recipe warning decides). Each title
+  opens that recipe. Read only: it changes nothing. Recipes in Recently
+  deleted aren't counted.
 - **Merge…** shows in the selection bar when exactly two recipes are
   selected. It asks, part by part, which recipe each comes from: title,
   photo (or none), ingredients and steps (with the original text),

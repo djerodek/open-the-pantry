@@ -2007,6 +2007,34 @@ def get_time_buckets(db: Session = Depends(get_db)):
     return available_time_buckets(logged)
 
 
+@app.get("/api/library-check")
+def library_check(db: Session = Depends(get_db)):
+    """Settings -> Library check (0111): recipes missing something, and
+    sets that look like the same recipe (duplicates.groups). Read only."""
+    ing = dict(db.query(models.Ingredient.recipe_id, func.count()).group_by(models.Ingredient.recipe_id).all())
+    steps = dict(db.query(models.Step.recipe_id, func.count()).group_by(models.Step.recipe_id).all())
+    tagged = {rid for (rid,) in db.query(models.recipe_tags.c.recipe_id).distinct()}
+    checks = {k: [] for k in ("no_ingredients", "no_steps", "no_tags", "no_photo", "photo_missing", "to_review")}
+    rows = db.query(models.Recipe.id, models.Recipe.title, models.Recipe.image_path, models.Recipe.needs_review).all()
+    for rid, title, image, review in sorted(rows, key=lambda r: (r[1] or "").casefold()):
+        item = {"id": rid, "title": title}
+        if not ing.get(rid):
+            checks["no_ingredients"].append(item)
+        if not steps.get(rid):
+            checks["no_steps"].append(item)
+        if rid not in tagged:
+            checks["no_tags"].append(item)
+        if not image:
+            checks["no_photo"].append(item)
+        else:
+            path = safe_join(UPLOADS_DIR, image)
+            if not path or not os.path.isfile(path):
+                checks["photo_missing"].append(item)
+        if review:
+            checks["to_review"].append(item)
+    return {"total": len(rows), "checks": checks, "duplicates": duplicates.groups(db)}
+
+
 @app.get("/api/review-queue")
 def review_queue(db: Session = Depends(get_db)):
     """How many recipes are still to review (the sidebar's "To review")."""
