@@ -2949,6 +2949,67 @@
   const AMBIGUOUS_THOUSANDS = /^\d{1,3}[.,]\d{3}$/;
   const SECOND_AMOUNT = /^\s*[a-zA-ZÀ-ÿ.]+\.?\s*(?:\+|plus\b|and\b|et\b)?\s*\d+(?:[.,/]\d+)?\s*(?!%)[a-zA-ZÀ-ÿ]/i;
 
+  // The word after a scaled amount follows the new amount: "1 cup" at 2x
+  // is "2 cups", "1 1/2 cups" at ½ is "3/4 cup", "1 gousse" at 2x "2
+  // gousses". Only the words below (units, containers, portions, eggs);
+  // abbreviations (tbsp, g, oz, c. à soupe) never change, and any other word
+  // ("3 apples") stays as written. English counts more than 1 as plural,
+  // French 2 or more; a word both languages use ("litre") goes by the
+  // amount's decimal comma. Case of the first letter is kept.
+  const UNIT_WORDS_EN = [
+    ["cup", "cups"], ["tablespoon", "tablespoons"], ["teaspoon", "teaspoons"], ["pound", "pounds"],
+    ["ounce", "ounces"], ["pint", "pints"], ["quart", "quarts"], ["gallon", "gallons"],
+    ["liter", "liters"], ["litre", "litres"], ["milliliter", "milliliters"], ["millilitre", "millilitres"],
+    ["gram", "grams"], ["kilogram", "kilograms"], ["clove", "cloves"], ["can", "cans"], ["jar", "jars"],
+    ["bottle", "bottles"], ["package", "packages"], ["packet", "packets"], ["bag", "bags"], ["box", "boxes"],
+    ["container", "containers"], ["slice", "slices"], ["stick", "sticks"], ["sprig", "sprigs"],
+    ["bunch", "bunches"], ["head", "heads"], ["stalk", "stalks"], ["sheet", "sheets"], ["leaf", "leaves"],
+    ["pinch", "pinches"], ["dash", "dashes"], ["handful", "handfuls"], ["piece", "pieces"],
+    ["inch", "inches"], ["fillet", "fillets"], ["serving", "servings"], ["portion", "portions"],
+    ["egg", "eggs"], ["yolk", "yolks"], ["white", "whites"],
+  ];
+  const UNIT_WORDS_FR = [
+    ["tasse", "tasses"], ["cuillère", "cuillères"], ["cuillerée", "cuillerées"], ["gousse", "gousses"],
+    ["pincée", "pincées"], ["boîte", "boîtes"], ["conserve", "conserves"], ["tranche", "tranches"],
+    ["branche", "branches"], ["feuille", "feuilles"], ["sachet", "sachets"], ["paquet", "paquets"],
+    ["botte", "bottes"], ["bâton", "bâtons"], ["morceau", "morceaux"], ["verre", "verres"], ["bol", "bols"],
+    ["poignée", "poignées"], ["filet", "filets"], ["litre", "litres"], ["millilitre", "millilitres"],
+    ["gramme", "grammes"], ["kilogramme", "kilogrammes"], ["portion", "portions"], ["personne", "personnes"],
+    ["part", "parts"], ["œuf", "œufs"], ["jaune", "jaunes"], ["blanc", "blancs"], ["pot", "pots"],
+  ];
+  function unitWordTable(pairs) {
+    const m = new Map();
+    for (const [one, many] of pairs) { m.set(one, [one, many]); m.set(many, [one, many]); }
+    return m;
+  }
+  const UNIT_EN = unitWordTable(UNIT_WORDS_EN);
+  const UNIT_FR = unitWordTable(UNIT_WORDS_FR);
+  // "1 egg yolk": the yolk is what's counted ("2 egg yolks"), not the egg.
+  const COUNTED_AFTER = { egg: ["yolk", "yolks", "white", "whites"], "œuf": [] };
+
+  function agreeWord(word, value, frenchAmount) {
+    const lower = word.toLowerCase();
+    const en = UNIT_EN.get(lower), fr = UNIT_FR.get(lower);
+    if (!en && !fr) return word;
+    const french = fr && (!en || frenchAmount);
+    const [one, many] = french ? fr : en;
+    const plural = french ? value >= 2 : value > 1 + 1e-9;
+    const out = plural ? many : one;
+    return word[0] !== lower[0] ? out[0].toUpperCase() + out.slice(1) : out;
+  }
+
+  // rest: the text after the scaled amount(s); value: the last new amount.
+  function agreeUnit(rest, value, frenchAmount) {
+    const m = /^(\s*)([a-zA-ZÀ-ÿœŒ]+)(?![.\w])(\s+([a-zA-ZÀ-ÿœŒ]+)(?![.\w]))?/.exec(rest);
+    if (!m || !m[1]) return rest;
+    const first = m[2].toLowerCase();
+    const after = m[4] ? m[4].toLowerCase() : "";
+    if (COUNTED_AFTER[first] && COUNTED_AFTER[first].includes(after)) {
+      return m[1] + m[2] + rest.slice(m[1].length + m[2].length).replace(m[4], agreeWord(m[4], value, frenchAmount));
+    }
+    return m[1] + agreeWord(m[2], value, frenchAmount) + rest.slice(m[1].length + m[2].length);
+  }
+
   // { text, kept }: kept is true when the line starts with an amount that
   // was left as written (shown with a note), false when it was scaled or
   // has no amount to scale.
@@ -2964,7 +3025,11 @@
       return { text, kept: true };
     }
     const one = (a) => { const v = parseAmount(a); return Number.isFinite(v) ? formatAmount(v * factor, a) : a; };
-    return { text: m[1] + one(m[2]) + (m[4] ? m[3] + one(m[4]) : "") + rest, kept: false };
+    const lastWritten = one(m[4] || m[2]);           // the amount as shown, rounding included
+    const shown = parseAmount(lastWritten);
+    const unitRest = multiplier || !Number.isFinite(shown)
+      ? rest : agreeUnit(rest, shown, /,/.test(lastWritten));
+    return { text: m[1] + one(m[2]) + (m[4] ? m[3] + one(m[4]) : "") + unitRest, kept: false };
   }
 
   function scaleLine(text, factor) {

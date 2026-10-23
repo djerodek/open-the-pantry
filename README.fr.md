@@ -948,7 +948,10 @@ ouvert la page>:8090`.
   d'ingrédient (« 1 1/2 c. à soupe » → « 3 c. à soupe »; « 250 g » → « 125 g »;
   « 2 à 3 œufs » → « 4 à 6 œufs »), dans le même style que l'original (les
   fractions restent des fractions, « 1,5 l » garde sa virgule), et les
-  portions avec. Les quantités dans les étapes, et les lignes sans quantité
+  portions avec. Un mot d'unité ou de compte juste après la quantité
+  s'accorde avec elle (« 1 gousse » → « 2 gousses », « 3 tasses » →
+  « 1 1/2 tasse », « 1 cup » → « 2 cups »); les abréviations (c. à soupe,
+  g, tbsp) et les autres mots restent tels qu'écrits. Les quantités dans les étapes, et les lignes sans quantité
   au début (« Sel au goût »), restent telles qu'écrites. Les lignes que
   l'application ne peut pas ajuster sans risque aussi, marquées « (tel
   qu'écrit) » avec un compte au-dessus de la liste : « 1.000 g » (mille, ou

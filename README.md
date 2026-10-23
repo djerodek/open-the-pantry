@@ -800,7 +800,10 @@ at>:8090`.
   They rewrite the amount at the start of each ingredient line ("1 1/2
   cups" → "3 cups"; "250 g" → "125 g"; "2-3 eggs" → "4-6 eggs"), in the
   same style as written (fractions stay fractions, "1,5 l" keeps its
-  comma), and the servings with them. Amounts inside the steps, and lines
+  comma), and the servings with them. A unit or count word right after
+  the amount follows it ("1 cup" → "2 cups", "1 1/2 cups" → "3/4 cup",
+  "1 gousse" → "2 gousses", "1 egg yolk" → "2 egg yolks"); abbreviations
+  (tbsp, g, c. à soupe) and other words stay as written. Amounts inside the steps, and lines
   without a leading amount ("Salt to taste"), stay as written. So do lines
   the app can't scale safely, marked "(as written)" with a count above the
   list: "1,000 g" (a thousand, or one?) and two amounts in one line ("1 lb

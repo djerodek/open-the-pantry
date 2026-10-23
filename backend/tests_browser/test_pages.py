@@ -45,7 +45,7 @@ def test_list_and_a_recipe_without_a_photo(server, api, page):
     # Scaling (0087): 2x doubles the leading amounts.
     p.page.click(".scale-button[aria-label='Double the quantities']")
     lines = p.page.inner_text(".recipe-ingredients .ingredients-list, .recipe-ingredients ul")
-    assert re.search(r"^2 cups? flour", lines, re.M) and re.search(r"^4 eggs", lines, re.M)
+    assert re.search(r"^2 cups flour", lines, re.M) and re.search(r"^4 eggs", lines, re.M)
 
 
 def test_largest_text_has_no_sideways_scroll(server, api, page):

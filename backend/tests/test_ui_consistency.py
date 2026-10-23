@@ -374,7 +374,7 @@ def _scale_line():
 def test_scaling_rewrites_the_leading_amount_only():
     run = _scale_line()
     cases = [
-        ("1 1/2 cups flour", 2, "3 cups flour"), ("1 1/2 cups flour", 0.5, "3/4 cups flour"),
+        ("1 1/2 cups flour", 2, "3 cups flour"), ("1 1/2 cups flour", 0.5, "3/4 cup flour"),
         ("250 g beurre", 0.5, "125 g beurre"), ("251 g sugar", 0.5, "126 g sugar"),
         ("½ tsp salt", 2, "1 tsp salt"), ("½ tsp salt", 0.5, "¼ tsp salt"), ("1½ tbsp oil", 0.5, "¾ tbsp oil"),
         ("1,5 l de lait", 0.5, "0,75 l de lait"), ("0.5 cup milk", 2, "1 cup milk"),
@@ -398,7 +398,7 @@ def test_scaling_leaves_ambiguous_lines_as_written():
         (["1,000 g flour", 0.5, None], "1,000 g flour"), (["1.000 g farine", 2, None], "1.000 g farine"),
         (["1,000 g flour", 0.5, "kept"], True), (["1 lb 8 oz beef", 0.5, "kept"], True),
         (["2 tbsp + 1 tsp sugar", 2, "kept"], True), (["2 tbsp plus 1 tsp sugar", 2, "kept"], True),
-        (["1 cup 2% milk", 2, None], "2 cup 2% milk"), (["2 x 400 g tomatoes", 2, None], "4 x 400 g tomatoes"),
+        (["1 cup 2% milk", 2, None], "2 cups 2% milk"), (["2 x 400 g tomatoes", 2, None], "4 x 400 g tomatoes"),
         (["1,25 kg pommes", 2, None], "2,5 kg pommes"), (["Salt to taste", 2, "kept"], False),
         (["3 apples", 2, "kept"], False),
         (["environ 10 croquettes", 2, "servings"], "environ 20 croquettes"),
@@ -408,6 +408,32 @@ def test_scaling_leaves_ambiguous_lines_as_written():
     got = run([c for c, _ in cases])
     for (case, want), out in zip(cases, got):
         assert out == want, (case, out)
+
+
+def test_scaling_makes_the_unit_agree():
+    """0107: "1 cup" at 2x read "2 cup". Known unit words follow the new
+    amount (English: more than 1 is plural; French: 2 or more);
+    abbreviations and other words stay as written."""
+    run = _scale_line()
+    cases = [
+        ("1 cup flour", 2, "2 cups flour"), ("2 cups flour", 0.5, "1 cup flour"),
+        ("1 1/2 cups milk", 0.5, "3/4 cup milk"), ("1 tablespoon oil", 2, "2 tablespoons oil"),
+        ("1 Cup sugar", 2, "2 Cups sugar"), ("1 pinch salt", 2, "2 pinches salt"),
+        ("1 leaf gelatin", 2, "2 leaves gelatin"), ("1 clove garlic", 0.5, "1/2 clove garlic"),
+        ("1 egg", 2, "2 eggs"), ("2 eggs", 0.5, "1 egg"), ("1 egg yolk", 2, "2 egg yolks"),
+        ("2 egg whites", 0.5, "1 egg white"), ("1-2 cup broth", 2, "2-4 cups broth"),
+        ("1 tbsp butter", 2, "2 tbsp butter"), ("1 lb beef", 2, "2 lb beef"), ("1 c. à soupe d'huile", 2, "2 c. à soupe d'huile"),
+        ("1 gousse d'ail", 2, "2 gousses d'ail"), ("3 tasses de farine", 0.5, "1 1/2 tasse de farine"),
+        ("1 cuillère à soupe de sucre", 2, "2 cuillères à soupe de sucre"), ("1 œuf", 2, "2 œufs"),
+        ("1 morceau de beurre", 2, "2 morceaux de beurre"), ("1,5 litre de lait", 2, "3 litres de lait"),
+        ("1,5 litre de lait", 1, "1,5 litre de lait"), ("1.5 litres milk", 0.5, "0.75 litre milk"),
+        ("3 apples", 0.5, "1 1/2 apples"), ("2 (14 oz) cans tomatoes", 0.5, "1 (14 oz) cans tomatoes"),
+        ("2 x 400 g cans", 0.5, "1 x 400 g cans"), ("1 cupful rice", 2, "2 cupful rice"),
+    ]
+    got = run([[t, f] for t, f, _ in cases])
+    for (text, factor, want), out in zip(cases, got):
+        assert out == want, (text, factor, out)
+    assert run([["4 servings", 0.5, "servings"], ["2 personnes", 0.5, "servings"]]) == ["2 servings", "1 personne"]
 
 
 def test_scale_buttons_in_the_recipe_view():
