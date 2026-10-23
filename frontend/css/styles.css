@@ -1913,6 +1913,7 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 .library-check-group li { margin: 0.2rem 0; overflow-wrap: anywhere; }
 
 /* Share -> Image */
+.image-sheet-notes { margin-top: 0.5rem; }
 .image-sheet-preview { margin: 0.5rem 0 0.9rem; max-height: 50vh; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius); }
 .image-sheet-preview img { display: block; width: 100%; height: auto; }
 .image-sheet-preview p { margin: 0.75rem; }

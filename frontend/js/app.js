@@ -4667,8 +4667,8 @@
   // -------------------------------------------------------------------
   // Share -> Image (JPG) (0113). Drawn on a canvas in the browser from the
   // recipe as saved (1x): photo, title, servings and times, ingredients,
-  // instructions, and where it came from. No server work and nothing to
-  // install; notes are left out (they're yours). JPEG: a fraction of a
+  // instructions, your notes if you tick them in (0114; off by default),
+  // and where it came from. No server work and nothing to install. JPEG: a fraction of a
   // PNG's size once there's a photo, and fine for text at quality 0.9.
   // -------------------------------------------------------------------
   const IMAGE_WIDTH = 1080;
@@ -4704,7 +4704,7 @@
     return lines;
   }
 
-  async function recipeImageBlob(recipe) {
+  async function recipeImageBlob(recipe, { includeNotes = false } = {}) {
     const css = getComputedStyle(document.documentElement);
     const display = css.getPropertyValue("--font-display").trim() || "serif";
     const body = css.getPropertyValue("--font-body").trim() || "sans-serif";
@@ -4756,6 +4756,11 @@
         block(step.text, `32px ${body}`, C.ink, 32, { indent: 58, marker: `${n}.`, markerColor: C.accent, after: 14 });
       }
     }
+    const notes = includeNotes ? (recipe.notes || "").trim() : "";
+    if (notes) {
+      heading(tx("Notes"));
+      block(notes, `italic 30px ${body}`, C.ink, 30, { after: 6 });
+    }
     let source = null;
     try { source = recipe.source_url ? new URL(recipe.source_url).host.replace(/^www\./, "") : null; } catch { source = null; }
     y += 40;
@@ -4801,24 +4806,32 @@
     const status = $("#image-sheet-status");
     const shareBtn = $("#image-sheet-share");
     const saveBtn = $("#image-sheet-download");
-    preview.replaceChildren(el("p", { class: "field-hint", text: tx("Preparing…") }));
+    const notesRow = $(".image-sheet-notes");
+    const notesBox = $("#image-sheet-notes");
+    notesRow.hidden = true;
+    notesBox.checked = false;
+    notesBox.onchange = null;
     status.textContent = "";
-    shareBtn.hidden = true;
-    saveBtn.disabled = true;
     openModal(imageSheetOverlay);
     let url = null;
-    imageSheetOverlay._onClose = () => { if (url) URL.revokeObjectURL(url); };
-    try {
-      // A card's recipe can be the list's short form, without ingredients.
-      if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) {
-        const res = await fetch(`${API}/recipes/${recipe.id}`);
-        if (!res.ok) throw new Error(String(res.status));
-        recipe = await res.json();
-      }
-      const blob = await recipeImageBlob(recipe);
-      if (!blob || imageSheetOverlay.hidden) return;
+    let ticket = 0;
+    imageSheetOverlay._onClose = () => { ticket += 1; if (url) URL.revokeObjectURL(url); url = null; };
+
+    // Drawn again when "Include my notes" changes; only the latest drawing
+    // is shown.
+    async function draw() {
+      const mine = ++ticket;
+      preview.replaceChildren(el("p", { class: "field-hint", text: tx("Preparing…") }));
+      shareBtn.hidden = true;
+      saveBtn.disabled = true;
+      notesBox.disabled = true;
+      const blob = await recipeImageBlob(recipe, { includeNotes: notesBox.checked });
+      notesBox.disabled = false;
+      if (mine !== ticket || imageSheetOverlay.hidden) return;
+      if (!blob) throw new Error("no image");
       const name = safeFilename(recipe.title, "jpg");
       const file = new File([blob], name, { type: "image/jpeg" });
+      if (url) URL.revokeObjectURL(url);
       url = URL.createObjectURL(blob);
       preview.replaceChildren(el("img", { src: url, alt: tx("Image of {1}", { 1: recipe.title }) }));
       saveBtn.disabled = false;
@@ -4838,8 +4851,28 @@
           catch (err) { if (!err || err.name !== "AbortError") status.textContent = tx("Couldn't open the share sheet; use Download."); }
         };
       }
+    }
+
+    try {
+      // A card's recipe can be the list's short form, without ingredients.
+      if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) {
+        preview.replaceChildren(el("p", { class: "field-hint", text: tx("Preparing…") }));
+        const res = await fetch(`${API}/recipes/${recipe.id}`);
+        if (!res.ok) throw new Error(String(res.status));
+        recipe = await res.json();
+      }
+      if ((recipe.notes || "").trim()) {
+        notesRow.hidden = false;
+        notesBox.onchange = () => { status.textContent = ""; draw().catch(failed); };
+      }
+      await draw();
     } catch {
+      failed();
+    }
+
+    function failed() {
       preview.replaceChildren();
+      notesBox.disabled = false;
       status.textContent = tx("Couldn't make the image.");
     }
   }

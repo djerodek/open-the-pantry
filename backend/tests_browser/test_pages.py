@@ -343,3 +343,35 @@ def test_share_as_image(server, api, page, tmp_path):
     pg.click(f".recipe-card:has-text('{r['title']}') .card-share-btn")
     pg.click("#share-sheet-actions button:has-text('Image (JPG)')")
     wait_until(pg, "document.querySelector('#image-sheet-preview img')?.naturalWidth === 1080")
+
+
+def test_share_as_image_with_notes(server, api, page, tmp_path):
+    """0114: "Include my notes" (off by default) adds the notes to the
+    image; it shows only for a recipe that has notes."""
+    from PIL import Image
+    plain = add_recipe(api, f"Image plain {uuid.uuid4().hex[:6]}")
+    r = add_recipe(api, f"Image notes {uuid.uuid4().hex[:6]}")
+    api.patch(f"/api/recipes/{r['id']}/notes", json={"notes": "Double the garlic.\nFreezes well for a month."})
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+
+    def open_image(title):
+        pg.click(f".recipe-card:has-text('{title}') .card-share-btn")
+        pg.click("#share-sheet-actions button:has-text('Image (JPG)')")
+        wait_until(pg, "document.querySelector('#image-sheet-preview img')?.naturalWidth > 0")
+        return pg.evaluate("document.querySelector('#image-sheet-preview img').naturalHeight")
+
+    open_image(plain["title"])
+    assert pg.is_hidden(".image-sheet-notes")
+    pg.click("#image-sheet-close")
+    without = open_image(r["title"])
+    assert pg.is_visible(".image-sheet-notes") and not pg.is_checked("#image-sheet-notes")
+    pg.check("#image-sheet-notes")
+    wait_until(pg, f"document.querySelector('#image-sheet-preview img')?.naturalHeight > {without}")
+    with pg.expect_download() as dl:
+        pg.click("#image-sheet-download")
+    path = tmp_path / "with-notes.jpg"
+    dl.value.save_as(path)
+    with Image.open(path) as im:
+        assert im.height > without

@@ -999,7 +999,9 @@ ouvert la page>:8090`.
 - **Partager → Image (JPG)** dessine la recette en une grande image
   (1080 px de large) : sa photo, le titre, les portions et les temps, les
   ingrédients et la préparation (avec les parties), et le site d'où elle
-  vient; les notes personnelles sont laissées de côté. L'image est faite
+  vient. Vos notes sont laissées de côté, sauf si vous activez **Inclure
+  mes notes** dans l'aperçu (affiché quand la recette a des notes;
+  désactivé à chaque fois). L'image est faite
   dans votre navigateur, sans travail pour le serveur. Un aperçu s'ouvre
   avec **Télécharger** et, sur un téléphone en HTTPS, **Partager…** pour
   la feuille de partage du téléphone (Messages, courriel…). Une très

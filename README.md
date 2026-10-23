@@ -843,8 +843,9 @@ at>:8090`.
 **Share/print**
 - **Share → Image (JPG)** draws the recipe as one tall picture (1080 px
   wide): its photo, title, servings and times, ingredients and
-  instructions (part names kept), and the site it came from; notes are
-  left out. It's drawn in your browser, so the server does no work for
+  instructions (part names kept), and the site it came from. Your notes
+  are left out unless you turn on **Include my notes** in the preview
+  (shown when the recipe has notes; off each time). It's drawn in your browser, so the server does no work for
   it. A preview opens with **Download** and, on a phone over HTTPS,
   **Share…** for the phone's share sheet (Messages, mail…). A very long
   recipe is drawn smaller rather than cut off.
