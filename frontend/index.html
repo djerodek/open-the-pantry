@@ -16,6 +16,7 @@
 <a class="skip-link" href="#main-content">Skip to content</a>
 
 <header class="topbar">
+  <h1 class="visually-hidden">Open the Pantry</h1>
   <button
     id="sidebar-toggle"
     class="sidebar-toggle"
@@ -109,7 +110,7 @@
   </main>
 </div>
 
-<div id="batch-bar" class="batch-bar" hidden>
+<div id="batch-bar" class="batch-bar" role="region" aria-label="Selected recipes" hidden>
   <span id="batch-count">0 selected</span>
   <button type="button" id="batch-tags-btn" class="btn-secondary" aria-haspopup="dialog" aria-controls="batch-tags-overlay">Tags…</button>
   <button type="button" id="batch-merge-btn" class="btn-secondary" aria-haspopup="dialog" aria-controls="merge-overlay" hidden>Merge…</button>

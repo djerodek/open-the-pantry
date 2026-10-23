@@ -115,6 +115,7 @@
     "Look like the same recipe": "Semblent être la même recette",
     "Same link, or same title. To combine two, select them in the list and use Merge….": "Même lien ou même titre. Pour en combiner deux, sélectionnez-les dans la liste et utilisez Fusionner….",
     "Nothing to report: every recipe has ingredients, steps, tags and a photo, and none look the same.": "Rien à signaler : chaque recette a des ingrédients, des étapes, des étiquettes et une photo, et aucune ne semble en double.",
+    "Selected recipes": "Recettes sélectionnées",
     // Select mode -> Merge
     "Merge…": "Fusionner…",
     "Merge two recipes": "Fusionner deux recettes",

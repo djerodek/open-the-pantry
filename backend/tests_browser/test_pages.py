@@ -54,9 +54,12 @@ def test_largest_text_has_no_sideways_scroll(server, api, page):
     p = page(width=320)
     p.page.goto(server["url"])
     p.page.wait_for_selector(".recipe-card")
-    p.page.evaluate("localStorage.setItem('recipe-app-text-size', '5')")
+    # The largest step (26px). This set 'recipe-app-text-size', a key the
+    # app never reads, so it ran at the default size (fixed in 0112).
+    p.page.evaluate("localStorage.setItem('recipe-app-font-size-idx', '6')")
     p.page.reload()
     p.page.wait_for_selector(".recipe-card")
+    assert p.page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--base-font-size').trim()") == "26px"
     assert p.page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
 
 

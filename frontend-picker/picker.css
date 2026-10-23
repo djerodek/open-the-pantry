@@ -12,7 +12,10 @@
   --color-ink-muted: #6B675C;
   --color-border: #E4DFD3;
   --color-accent: #C48A2E;
-  --color-accent-ink: #FFFFFF;
+  /* Text on an accent fill (primary buttons, +, chosen chips). White on
+     #C48A2E is 2.99:1, under the 4.5:1 floor (found by the accessibility
+     scan, 0112); this ink is 5.44:1, as dark mode already used black. */
+  --color-accent-ink: #22201B;
   /* Accent as TEXT needs to be darker than accent as a border/fill.
      #C48A2E on white measures 2.99:1 -- below the 4.5:1 floor -- so every
      accent-coloured label (a set rating, a hover state) was failing in

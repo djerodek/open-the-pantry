@@ -1369,6 +1369,13 @@ which files cover which feature.
 The pages have their own tests, in headless Chromium against a real server
 (`tests_browser/`): every one also fails on a JavaScript error or a
 Content-Security-Policy violation. CI runs them as a separate job.
+`test_accessibility.py` runs axe-core (WCAG 2.0–2.2 A/AA and best
+practices) on every screen of both pages, in English/light and
+French/dark, and fails on any serious or critical finding; the one rule
+switched off is the zoom one (pinch-zoom on phones is disabled on purpose;
+Settings → Text size is the alternative). An automated scan finds roughly
+a third of accessibility problems: it can't judge reading order or
+wording.
 
 ```bash
 pip install -r requirements-browser.txt

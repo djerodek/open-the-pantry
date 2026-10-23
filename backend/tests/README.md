@@ -2,7 +2,8 @@
 
 Run from `backend/`: `python -m pytest -q`. The scaling tests run `app.js`
 functions in Node and are skipped without it. The pages' own tests are in
-`../tests_browser/` (headless Chromium, `python -m pytest tests_browser`).
+`../tests_browser/` (headless Chromium, `python -m pytest tests_browser`),
+with the accessibility scan in `test_accessibility.py`.
 
 Files are named two ways. **Feature files** hold the tests for one part of
 the app. **Review files** (`test_<reviewer>_…`) hold the regression tests

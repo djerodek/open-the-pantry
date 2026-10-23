@@ -1641,6 +1641,14 @@ Les pages ont leurs propres tests, dans Chromium sans interface contre un
 vrai serveur (`tests_browser/`) : chacun échoue aussi sur une erreur
 JavaScript ou une violation de la Content-Security-Policy. L'intégration
 continue les exécute dans une tâche séparée.
+`test_accessibility.py` passe axe-core (WCAG 2.0 à 2.2 A/AA et bonnes
+pratiques) sur chaque écran des deux pages, en anglais/clair et
+français/sombre, et échoue sur toute constatation sérieuse ou critique;
+la seule règle désactivée est celle du zoom (le pincement est désactivé
+sur les téléphones, exprès; Paramètres → Taille du texte le remplace). Un
+balayage automatique trouve environ le tiers des problèmes
+d'accessibilité : il ne peut juger ni l'ordre de lecture ni la
+formulation.
 
 ```bash
 pip install -r requirements-browser.txt
