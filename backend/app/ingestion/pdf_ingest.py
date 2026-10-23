@@ -36,12 +36,20 @@ _MAX_FORM_DEPTH = 4         # Form XObjects nested inside each other
 _MAX_DECODE_ATTEMPTS = 5    # candidates decoded, largest first, before giving up
 
 
-def _filters_allowed(xobj, depth: int = 0) -> bool:
+def _decode_allowed(xobj, max_pixels, depth: int = 0) -> bool:
     """True if this image, and any soft mask pypdf would decode with it,
-    uses only the filters above."""
+    uses only the filters above. A soft mask is decoded at its own
+    /Width x /Height whatever the image's size, so it has to declare a
+    size within max_pixels too (the image's own size is checked by the
+    caller)."""
     if depth > 2:
         return False
+    if depth > 0:
+        size = _declared_size(xobj)
+        if size is None or (max_pixels and size[0] * size[1] > max_pixels):
+            return False
     filters = xobj.get("/Filter")
+    chain = []
     if filters is not None:
         filters = filters.get_object()
         chain = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
@@ -52,8 +60,13 @@ def _filters_allowed(xobj, depth: int = 0) -> bool:
                 return False
     smask = xobj.get("/SMask")
     if smask is not None:
+        # pypdf gives a JPEG with a soft mask back as JPEG 2000, which the
+        # app doesn't accept: skipped before the decode and the round trip
+        # through OpenJPEG.
+        if chain and chain[-1] == "/DCTDecode":
+            return False
         smask = smask.get_object()
-        if hasattr(smask, "get") and not _filters_allowed(smask, depth + 1):
+        if not hasattr(smask, "get") or not _decode_allowed(smask, max_pixels, depth + 1):
             return False
     return True
 
@@ -105,8 +118,9 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
     a real thumbnail beats a generic placeholder for PDF-ingested recipes.
 
     Sizes come from each image's /Width and /Height, so only the image
-    that is picked gets decoded, and only if it uses the filters in
-    _SHOWCASE_LAST_FILTERS (see there). pypdf's page.images is not used:
+    that is picked gets decoded, and only if it and its soft mask use the
+    filters in _SHOWCASE_LAST_FILTERS (see there) and declare at most
+    Pillow's pixel limit. pypdf's page.images is not used:
     it decodes inline images while listing the page's images.
 
     Returns raw image bytes, still unvalidated -- the caller must run
@@ -144,7 +158,7 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
                     continue
                 if max_pixels and width * height > max_pixels:
                     continue
-                if not _filters_allowed(xobj):
+                if not _decode_allowed(xobj, max_pixels):
                     continue
                 candidates.append((width * height, len(candidates), xobj))
         except Exception:

@@ -610,11 +610,14 @@ at>:8090`.
     `docker-compose.yml`, uncomment
     `- /path/on/another/disk/pantry-backups:/app/backups` under
     `volumes:` and `RECIPE_APP_BACKUP_DIR: "/app/backups"` under
-    `environment:`. The container sets that folder's owner on start, as
-    it does for `data/`.
+    `environment:`. On start the container gives the app that folder and
+    its own backup files in it, nothing else there (it can be a shared
+    folder). If the share doesn't allow it, the app still starts and
+    Settings shows why the backups can't be written.
   - Only files named like the app's own backups
-    (`open-the-pantry-backup-YYYYMMDD-HHMMSS.zip`) are ever deleted there,
-    and a backup gets that name only once it's complete.
+    (`open-the-pantry-backup-YYYYMMDD-HHMMSS.zip`, with `-2`, `-3`… for
+    another one in the same second) are ever deleted there, and a backup
+    gets that name only once it's complete.
   - To restore one, use **Restore or import** with that file, or the
     manual steps.
 - **Restore a full backup** (the same box as the import: a `.zip` with a

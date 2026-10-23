@@ -28,7 +28,14 @@ log = get_logger("backup")
 
 BACKUP_DIR = os.environ.get("RECIPE_APP_BACKUP_DIR", "").strip() or os.path.join(DATA_DIR, "backups")
 NAME_FORMAT = "open-the-pantry-backup-%Y%m%d-%H%M%S.zip"
-NAME_RE = re.compile(r"^open-the-pantry-backup-\d{8}-\d{6}\.zip$")
+# A second backup in the same second (Back up now twice) gets -2, -3...
+# rather than replacing the first.
+NAME_RE = re.compile(r"^open-the-pantry-backup-(\d{8}-\d{6})(?:-(\d+))?\.zip$")
+
+
+def _order(name: str):
+    m = NAME_RE.match(name)
+    return (m.group(1), int(m.group(2) or 1))
 CHECK_EVERY = 10 * 60           # seconds between checks of the schedule
 CATCH_UP_AFTER = timedelta(hours=36)
 MIN_FREE_BYTES = 200 * 1024 ** 2
@@ -49,7 +56,7 @@ def listing() -> list[dict]:
     except FileNotFoundError:
         return []
     out = []
-    for n in sorted(names, reverse=True):
+    for n in sorted(names, key=_order, reverse=True):
         try:
             out.append({"name": n, "size": os.path.getsize(os.path.join(BACKUP_DIR, n))})
         except OSError:
@@ -89,7 +96,11 @@ def make(keep: int, build) -> dict:
     if free < needed:
         raise BackupError(f"Not enough free space in {BACKUP_DIR}: {free // 1024 ** 2} MB free, "
                           f"{needed // 1024 ** 2} MB needed.")
-    name = datetime.now().strftime(NAME_FORMAT)
+    stem = datetime.now().strftime(NAME_FORMAT)[:-len(".zip")]
+    name, n = stem + ".zip", 1
+    while os.path.exists(os.path.join(BACKUP_DIR, name)):  # runs are one at a time (the caller's lock)
+        n += 1
+        name = f"{stem}-{n}.zip"
     final = os.path.join(BACKUP_DIR, name)
     partial = final + ".partial"
     try:

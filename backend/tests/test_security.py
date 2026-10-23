@@ -57,7 +57,8 @@ def test_reencode_handles_trailing_garbage_without_rejecting(client):
     'broken data stream' on a file with bytes appended after a valid PNG
     stream, which would incorrectly reject an otherwise-fine upload.
     reencode_image copies the decoded pixels into a fresh image (now via
-    tobytes()/frombytes(); see its docstring for why not getdata()/putdata())
+    Image.copy(); see its docstring for why not getdata()/putdata() or
+    tobytes()/frombytes())
     specifically because that handles this correctly. This locks that in."""
     polyglot = TINY_PNG + b"some trailing non-image bytes" * 5
     r = client.post("/api/upload-image", files={"file": ("trailer.png", polyglot, "image/png")})

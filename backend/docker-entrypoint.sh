@@ -30,14 +30,21 @@ if [ "$current_uid" != "$PUID" ] || [ "$current_gid" != "$PGID" ]; then
 fi
 
 # Settings -> Backup & export -> Automatic backups can write to a folder on
-# another disk (RECIPE_APP_BACKUP_DIR, mounted into the container). Same
-# ownership fix as /app/data, when it's a separate mount.
+# another disk (RECIPE_APP_BACKUP_DIR, mounted into the container). It may
+# be a share holding other files, so only the folder itself and the app's
+# own backups change owner, never what else is in it; and a share that
+# refuses (some NAS mounts, read-only) doesn't stop the app from starting:
+# Settings then shows why the backup failed.
 if [ -n "$RECIPE_APP_BACKUP_DIR" ] && [ -d "$RECIPE_APP_BACKUP_DIR" ]; then
     b_uid="$(stat -c %u "$RECIPE_APP_BACKUP_DIR")"
     b_gid="$(stat -c %g "$RECIPE_APP_BACKUP_DIR")"
     if [ "$b_uid" != "$PUID" ] || [ "$b_gid" != "$PGID" ]; then
-        chown -R appuser:appuser "$RECIPE_APP_BACKUP_DIR"
+        if ! chown appuser:appuser "$RECIPE_APP_BACKUP_DIR"; then
+            echo "Warning: couldn't change the owner of $RECIPE_APP_BACKUP_DIR; automatic backups may fail to write there." >&2
+        fi
     fi
+    find "$RECIPE_APP_BACKUP_DIR" -maxdepth 1 -type f -name 'open-the-pantry-backup-*.zip*' \
+        ! -user "$PUID" -exec chown appuser:appuser {} + 2>/dev/null || true
 fi
 
 exec gosu appuser "$@"

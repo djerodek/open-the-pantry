@@ -716,12 +716,16 @@ ouvert la page>:8090`.
     une vraie deuxième copie, montez un dossier d'un autre disque et
     indiquez-le à l'application : dans `docker-compose.yml`, décommentez
     `- /path/on/another/disk/pantry-backups:/app/backups` sous `volumes:`
-    et `RECIPE_APP_BACKUP_DIR: "/app/backups"` sous `environment:`. Le
-    conteneur règle le propriétaire de ce dossier au démarrage, comme pour
-    `data/`.
+    et `RECIPE_APP_BACKUP_DIR: "/app/backups"` sous `environment:`. Au
+    démarrage, le conteneur donne à l'application ce dossier et ses
+    propres fichiers de sauvegarde, rien d'autre (ce peut être un dossier
+    partagé). Si le partage ne le permet pas, l'application démarre quand
+    même et les paramètres indiquent pourquoi les sauvegardes ne peuvent
+    pas être écrites.
   - Seuls les fichiers nommés comme les sauvegardes de l'application
-    (`open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip`) y sont supprimés, et une
-    sauvegarde ne reçoit ce nom qu'une fois complète.
+    (`open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip`, avec `-2`, `-3`… pour
+    une autre dans la même seconde) y sont supprimés, et une sauvegarde ne
+    reçoit ce nom qu'une fois complète.
   - Pour en restaurer une, utilisez **Restaurer ou importer** avec ce
     fichier, ou les étapes manuelles.
 - **Restaurer une sauvegarde complète** (la même boîte que l'importation :

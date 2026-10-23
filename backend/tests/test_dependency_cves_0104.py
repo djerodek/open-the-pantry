@@ -144,7 +144,12 @@ def test_filters_that_reach_pillow_parsers_are_refused():
     def arr(*names):
         return ArrayObject(NameObject(n) for n in names)
 
-    ok = pdf_ingest._filters_allowed
+    def ok(x):
+        return pdf_ingest._decode_allowed(x, 40_000_000)
+
+    def sized(x):
+        x["/Width"], x["/Height"] = 400, 300
+        return x
     assert ok(xobj(None))
     assert ok(xobj(NameObject("/DCTDecode")))
     assert ok(xobj(NameObject("/FlateDecode")))
@@ -152,8 +157,8 @@ def test_filters_that_reach_pillow_parsers_are_refused():
     for bad in ("/JPXDecode", "/CCITTFaxDecode", "/JBIG2Decode", "/LZWDecode", "/ASCII85Decode"):
         assert not ok(xobj(NameObject(bad))), bad
     assert not ok(xobj(arr("/DCTDecode", "/FlateDecode")))      # DCT output re-filtered
-    assert not ok(xobj(NameObject("/DCTDecode"), smask=xobj(NameObject("/JPXDecode"))))
-    assert ok(xobj(NameObject("/DCTDecode"), smask=xobj(NameObject("/FlateDecode"))))
+    assert not ok(xobj(NameObject("/FlateDecode"), smask=sized(xobj(NameObject("/JPXDecode")))))
+    assert ok(xobj(NameObject("/FlateDecode"), smask=sized(xobj(NameObject("/FlateDecode")))))
 
 
 def test_an_oversized_declared_image_is_skipped_without_decoding(tmp_path):
@@ -165,8 +170,10 @@ def test_an_oversized_declared_image_is_skipped_without_decoding(tmp_path):
 
     path = _write(tmp_path, _edit_images(pdf, huge))
     from pypdf.generic import _image_xobject
-    with patch.object(_image_xobject, "_xobj_to_image", side_effect=AssertionError("decoded")):
+    decoded = []
+    with patch.object(_image_xobject, "_xobj_to_image", side_effect=lambda *a, **k: decoded.append(1)):
         assert extract_largest_embedded_image(path) is None
+    assert decoded == []
 
 
 def test_page_images_is_not_used(tmp_path):
@@ -189,4 +196,4 @@ def test_patched_library_versions():
         return tuple(int(p) for p in re.findall(r"\d+", s)[:3])
 
     assert v(PIL.__version__) >= (13, 0, 0)
-    assert v(pypdf.__version__) >= (6, 21, 1)
+    assert v(pypdf.__version__) >= (6, 21, 2)

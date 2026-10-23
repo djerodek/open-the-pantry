@@ -26,11 +26,11 @@ New tests go in the feature file when there is one.
 | Duplicate a recipe | `test_duplicate_recipe.py` | |
 | Review queue (To review) | `test_review_queue.py` | |
 | Email ingest | `test_email_ingest.py`, `test_email_real_world.py` | `test_deepseek_round.py`, `test_security_round2.py` (saved password), `test_qwen_review.py` |
-| Backup and export | `test_backup.py`, `test_interchange.py` | `test_qwen_review.py`, `test_deepseek_0083.py`, `test_gpt_review_0093.py` |
+| Backup and export | `test_backup.py`, `test_interchange.py`, `test_scheduled_backup.py` | `test_qwen_review.py`, `test_deepseek_0083.py`, `test_gpt_review_0093.py`, `test_gpt_review_0104.py` (names in the same second, backup folder owner) |
 | Restore | `test_restore.py` | `test_gpt_review_0093.py` |
 | Settings password | `test_settings_password.py` | |
 | HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` | |
-| Security (uploads, paths, cross-site, headers) | `test_security.py`, `test_security_round2.py`, `test_security_headers.py` | `test_claude_review_round8.py` |
+| Security (uploads, paths, cross-site, headers) | `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory) |
 | Logs | `test_log_review.py` | `test_claude_review_round7.py` |
 | What to eat? | `test_picker.py` | `test_gpt_review_0078.py`, `test_claude_review_round7.py`, `test_claude_review_round8.py` |
 | Things kept in two places (French text, page vs server rules) | `test_ui_consistency.py`, `test_i18n_catalog.py` | `test_deepseek_review_0096.py` (part names) |

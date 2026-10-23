@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from .logging_setup import get_logger
 
 from PIL import Image as _PILImage
@@ -21,6 +22,10 @@ PDF_MAGIC = b"%PDF"
 # Stored photos are re-encoded (and re-encoded again if OCR finds them
 # sideways); Pillow's JPEG default of 75 visibly compounded across the two.
 JPEG_QUALITY = 90
+# Re-encodes running at once. One at the pixel limit (80 MP) holds about
+# 610 MiB at its peak; uploads, imports, email and restore all come here,
+# from as many threads as the server runs.
+_REENCODE_SLOTS = threading.BoundedSemaphore(2)
 # The only Pillow decoders the app lets run, passed as formats= to every
 # Image.open: a bare Image.open() picks among ~40 decoders by content.
 IMAGE_FORMATS = ("JPEG", "PNG", "GIF", "WEBP")
@@ -115,14 +120,19 @@ def reencode_image(path: str):
     reliably raises "broken data stream" and rejects an otherwise-fine
     upload. Don't simplify this without re-testing against that case.
 
-    The copy goes through tobytes()/frombytes(), not getdata()/putdata().
-    putdata(list(getdata())) built a Python tuple per pixel: measured 864 MB
-    of heap and 11 s for one 12-megapixel photo, which is what an iPhone
-    sends at full size (newer ones send 24 MP). frombytes copies one buffer.
-    It also lost the palette: a fresh "P" image gets a default greyscale
-    palette, so palette PNGs and GIFs came out with the wrong colours. The
-    palette and palette transparency are carried over; they describe the
-    pixels. Everything else in img.info (EXIF, ICC, comments) is not.
+    The copy is Image.copy(): one buffer copied, and a plain Image with no
+    file behind it. (putdata(list(getdata())) built a Python tuple per
+    pixel: 864 MB and 11 s for a 12 MP photo. tobytes()/frombytes() held
+    about four copies of the pixels at its peak: 645 MiB for a 45 MP
+    photo, now 345 MiB; 80 MP, the most Pillow accepts, 1,146 -> 612 MiB.)
+    The palette comes with the copy (a fresh "P" image would get a
+    greyscale one), and palette transparency is kept; they describe the
+    pixels. Everything else in img.info (EXIF, ICC, comments) is cleared.
+
+    Memory: EXIF orientation is applied in place and the decoded image is
+    freed before saving, so at most two copies of the pixels exist; only
+    two re-encodes run at once (_REENCODE_SLOTS). Pillow refuses above
+    80 MP (see MAX_IMAGE_PIXELS at the top).
 
     EXIF orientation is applied to the pixel data itself (not carried
     forward as metadata, all of which is still stripped) before the
@@ -133,15 +143,18 @@ def reencode_image(path: str):
     recipe photos aren't a real use case here, so that's an accepted
     simplification, not an oversight."""
     from PIL import Image, ImageOps
-    with Image.open(path, formats=IMAGE_FORMATS) as img:
-        img.load()  # force full decode now, not lazily later
-        fmt = img.format  # save() can't infer format from this temp filename
-        oriented = ImageOps.exif_transpose(img)  # bakes EXIF rotation into pixels
-        clean = Image.frombytes(oriented.mode, oriented.size, oriented.tobytes())
-        if oriented.mode in ("P", "PA"):
-            clean.putpalette(oriented.getpalette())
-            if "transparency" in oriented.info:
-                clean.info["transparency"] = oriented.info["transparency"]
+    with _REENCODE_SLOTS:
+        with Image.open(path, formats=IMAGE_FORMATS) as img:
+            img.load()  # force full decode now, not lazily later
+            fmt = img.format  # save() can't infer format from this temp filename
+            ImageOps.exif_transpose(img, in_place=True)  # bakes EXIF rotation into pixels
+            clean = img.copy()  # a plain Image: the decoded pixels and palette, no file behind it
+        # The decoded image is freed on leaving the with block: two copies
+        # of the pixels at most (tobytes()/frombytes() made four).
+        transparency = clean.info.get("transparency") if clean.mode in ("P", "PA") else None
+        clean.info = {}
+        if transparency is not None:
+            clean.info["transparency"] = transparency
         save_kwargs = {}
         if fmt == "JPEG":
             save_kwargs["quality"] = JPEG_QUALITY  # Pillow's default is 75
