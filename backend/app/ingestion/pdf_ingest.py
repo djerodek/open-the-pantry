@@ -120,7 +120,7 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
     Sizes come from each image's /Width and /Height, so only the image
     that is picked gets decoded, and only if it and its soft mask use the
     filters in _SHOWCASE_LAST_FILTERS (see there) and declare at most
-    Pillow's pixel limit. pypdf's page.images is not used:
+    the app's 50 MP limit. pypdf's page.images is not used:
     it decodes inline images while listing the page's images.
 
     Returns raw image bytes, still unvalidated -- the caller must run
@@ -144,7 +144,8 @@ def extract_largest_embedded_image(pdf_path: str) -> bytes | None:
         log.debug("extract_largest_embedded_image: caught error, continuing", exc_info=True)
         return None
 
-    max_pixels = Image.MAX_IMAGE_PIXELS
+    from ..file_validation import MAX_DECODED_PIXELS
+    max_pixels = MAX_DECODED_PIXELS
     candidates = []
     seen: set = set()
     for page in pages:

@@ -1,19 +1,23 @@
 import os
 import re
 import threading
+import warnings
 from .logging_setup import get_logger
 
 from PIL import Image as _PILImage
 
-# Pillow refuses an image above twice this many pixels
-# (DecompressionBombError) and only warns between one and two times. Its
-# default (89 MP, refused above 179 MP) let any upload, restored photo or
-# imported photo make the server decode an image needing ~700 MB of memory
-# from a few KB of file. 40 MP: refused above 80 MP (~240 MB to decode),
-# which still takes a 48 MP phone photo. Set here, at import, for every
-# image the app opens (uploads, OCR, restore, imports). Looked at after
-# Claude review round 10.
-_PILImage.MAX_IMAGE_PIXELS = 40_000_000
+# The largest image the app decodes, wherever it comes from (uploads, OCR,
+# restore, imports, email, PDF photos): 50 MP, e.g. 8,660 x 5,773. A 48 MP
+# phone photo fits; a recipe never needs more. Pillow's default (refused
+# above 179 MP) let a few KB of file make the server decode an image
+# needing ~700 MB.
+MAX_DECODED_PIXELS = 50_000_000
+# Pillow raises DecompressionBombError only above TWICE MAX_IMAGE_PIXELS and
+# just warns between one and two times, so it is set to half of the limit
+# and the warning, for images the app accepts on purpose, is silenced. Set
+# here, at import, for every image the app opens.
+_PILImage.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS // 2
+warnings.filterwarnings("ignore", category=_PILImage.DecompressionBombWarning)
 
 log = get_logger("files")
 
@@ -22,8 +26,8 @@ PDF_MAGIC = b"%PDF"
 # Stored photos are re-encoded (and re-encoded again if OCR finds them
 # sideways); Pillow's JPEG default of 75 visibly compounded across the two.
 JPEG_QUALITY = 90
-# Re-encodes running at once. One at the pixel limit (80 MP) holds about
-# 610 MiB at its peak; uploads, imports, email and restore all come here,
+# Re-encodes running at once. One at the pixel limit (50 MP) holds about
+# 385 MiB at its peak; uploads, imports, email and restore all come here,
 # from as many threads as the server runs.
 _REENCODE_SLOTS = threading.BoundedSemaphore(2)
 # The only Pillow decoders the app lets run, passed as formats= to every
@@ -124,15 +128,15 @@ def reencode_image(path: str):
     file behind it. (putdata(list(getdata())) built a Python tuple per
     pixel: 864 MB and 11 s for a 12 MP photo. tobytes()/frombytes() held
     about four copies of the pixels at its peak: 645 MiB for a 45 MP
-    photo, now 345 MiB; 80 MP, the most Pillow accepts, 1,146 -> 612 MiB.)
+    photo, now 345 MiB.)
     The palette comes with the copy (a fresh "P" image would get a
     greyscale one), and palette transparency is kept; they describe the
     pixels. Everything else in img.info (EXIF, ICC, comments) is cleared.
 
     Memory: EXIF orientation is applied in place and the decoded image is
     freed before saving, so at most two copies of the pixels exist; only
-    two re-encodes run at once (_REENCODE_SLOTS). Pillow refuses above
-    80 MP (see MAX_IMAGE_PIXELS at the top).
+    two re-encodes run at once (_REENCODE_SLOTS). Nothing above 50 MP is
+    decoded (MAX_DECODED_PIXELS at the top).
 
     EXIF orientation is applied to the pixel data itself (not carried
     forward as metadata, all of which is still stripped) before the

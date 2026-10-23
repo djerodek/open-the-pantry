@@ -127,7 +127,7 @@ def test_paprika_photos_are_read_when_saved(client):
 def test_huge_images_are_refused(tmp_path):
     from PIL import Image
     from app import file_validation
-    assert Image.MAX_IMAGE_PIXELS == 40_000_000
+    assert Image.MAX_IMAGE_PIXELS * 2 == file_validation.MAX_DECODED_PIXELS   # refused above 50 MP from 0106
     big = tmp_path / "big.png"
     Image.new("1", (10_000, 9_000)).save(big)          # 90 MP, a few KB on disk
     assert os.path.getsize(big) < 100_000

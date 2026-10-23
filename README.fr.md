@@ -1237,10 +1237,15 @@ courriel)**
   plage `100.64.0.0/10` qu'utilise Tailscale). Les pages PDF numérisées et
   les photos téléversées sont rendues ou agrandies pour l'OCR dans une
   limite de 35 mégapixels, pour qu'une page ou une image très haute ou très
-  étroite ne puisse pas épuiser la mémoire. Une image de plus de 80
-  mégapixels est refusée d'où qu'elle vienne (téléversement, importation,
-  restauration) : quelques Ko de fichier peuvent décrire une image qui
-  demande des gigaoctets pour être décodée.
+  étroite ne puisse pas épuiser la mémoire. Une image de plus de 50
+  mégapixels (environ 8 660 x 5 773; une photo de téléphone de 48 Mpx
+  passe) est refusée d'où qu'elle vienne (téléversement, importation,
+  courriel, photo d'un PDF, restauration) : quelques Ko de fichier peuvent
+  décrire une image qui demande des gigaoctets pour être décodée. Deux
+  images au plus sont réencodées à la fois, environ 385 Mo chacune à la
+  limite. Une photo au-delà de la limite dans une sauvegarde restaurée est
+  laissée de côté et comptée, comme tout fichier qui échoue aux
+  vérifications.
 - **Les identifiants de courriel (si vous utilisez la réception par
   courriel)** sont chiffrés avec Fernet (AES-128-CBC + HMAC). La clé vient
   de l'un de deux endroits :

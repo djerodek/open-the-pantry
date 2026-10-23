@@ -43,7 +43,10 @@ if [ -n "$RECIPE_APP_BACKUP_DIR" ] && [ -d "$RECIPE_APP_BACKUP_DIR" ]; then
             echo "Warning: couldn't change the owner of $RECIPE_APP_BACKUP_DIR; automatic backups may fail to write there." >&2
         fi
     fi
-    find "$RECIPE_APP_BACKUP_DIR" -maxdepth 1 -type f -name 'open-the-pantry-backup-*.zip*' \
+    # Exactly the names the app writes (scheduled_backup.NAME_RE, plus the
+    # .partial of one being written), not anything that merely starts alike.
+    find "$RECIPE_APP_BACKUP_DIR" -maxdepth 1 -type f -regextype posix-extended \
+        -regex '.*/open-the-pantry-backup-[0-9]{8}-[0-9]{6}(-[0-9]+)?\.zip(\.partial)?' \
         ! -user "$PUID" -exec chown appuser:appuser {} + 2>/dev/null || true
 fi
 

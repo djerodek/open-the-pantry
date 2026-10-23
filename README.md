@@ -1034,9 +1034,12 @@ at>:8090`.
   `100.64.0.0/10` range Tailscale uses). Scanned PDF pages and uploaded
   photos are rendered/upscaled for OCR within a 35-megapixel budget, so an
   extremely tall or narrow page or image can't exhaust memory. An image
-  over 80 megapixels is refused wherever it comes in (upload, import,
+  over 50 megapixels (about 8,660 x 5,773; a 48 MP phone photo fits) is
+  refused wherever it comes in (upload, import, email, a PDF's photo,
   restore): a few KB of file can describe one that takes gigabytes to
-  decode.
+  decode. Only two images are re-encoded at once, about 385 MB each at
+  the limit. A photo above the limit in a restored backup is left out and
+  counted, like any file that fails the checks.
 - **Email credentials (if you use email ingest)** are encrypted at rest
   with Fernet (AES-128-CBC + HMAC). The key comes from one of two places:
 
