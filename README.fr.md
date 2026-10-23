@@ -2,1712 +2,612 @@
 
 *[English](README.md) · Français*
 
-Gestionnaire de recettes auto-hébergé, avec recherche. Ajoutez des recettes
-à partir d'une URL, d'un PDF, d'une capture d'écran ou d'une photo, ou en
-les saisissant à la main; parcourez-les par type de repas, mode de cuisson
-ou ingrédient principal; filtrez et cherchez; notez et mettez en favori;
-imprimez ou exportez une fiche propre, sans publicité. Interface en anglais
-ou en français (Québec), choisie sur chaque appareil. Une seule image
-Docker, et aucun modèle de langage (LLM) requis pour aucune méthode d'ajout.
+Un gestionnaire de recettes auto-hébergé. On peut ajouter une recette à partir d'un lien, d'un PDF, d'une photo ou d'une capture d'écran, d'un courriel, ou en la tapant. On les parcourt par étiquette, on les cherche, on les note et on les partage. L'interface est en anglais ou en français (Québec). Le tout tient dans une seule image Docker, sans service d'IA.
 
-> Cette traduction suit la version anglaise ([README.md](README.md)). En
-> cas d'écart, c'est la version anglaise qui fait foi.
-
----
-
-> ## ⚠️ À utiliser seulement sur votre propre réseau
+> ## ⚠️ À utiliser sur votre propre réseau seulement
 >
-> **Cette application n'a aucune authentification par défaut.** Quiconque
-> peut joindre son adresse peut lire, modifier et supprimer toutes les
-> recettes, et utiliser son API. Il n'y a pas d'écran de connexion, pas de
-> comptes d'utilisateur et pas de gestion des permissions. Seule exception :
-> les parties qui utilisent votre compte de courriel ou votre accès DNS
-> (réception par courriel, HTTPS, journal et envoi du PDF par courriel),
-> ainsi que la restauration d'une sauvegarde par-dessus la bibliothèque,
-> demandent un [mot de passe des paramètres](#notes-de-sécurité) créé dans
+> **Il n'y a pas de connexion.** Quiconque peut joindre l'application peut
+> lire, modifier et supprimer toutes les recettes. Les seules exceptions
+> sont les parties qui utilisent votre compte de courriel ou votre accès
+> DNS, et la restauration d'une sauvegarde. Elles demandent un
+> [mot de passe des paramètres](#mot-de-passe-des-paramètres) créé dans
 > l'application.
 >
-> **Ne l'exposez pas directement à Internet.** Utilisez-la sur votre réseau
-> local, ou joignez-la à distance par un RPV (WireGuard, Tailscale, OpenVPN)
-> ou derrière un proxy inverse qui gère lui-même l'authentification. Si elle
-> doit être joignable au-delà d'un réseau de confiance, définir
-> `RECIPE_APP_API_KEY` est un minimum, pas une solution complète — voir
-> [Notes de sécurité](#notes-de-sécurité).
->
-> Ce n'est pas une préoccupation théorique. Une vulnérabilité permettant à
-> n'importe qui, sans authentification, de lire des fichiers arbitraires du
-> conteneur *et de supprimer la base de données de l'application* a été
-> trouvée et corrigée tard dans le développement — après que plusieurs
-> révisions eurent déclaré le code sans problème. Elle est corrigée et
-> couverte par des tests de régression, mais c'est une bonne indication que
-> d'autres peuvent exister sans avoir encore été trouvées. **La frontière du
-> réseau est la vraie protection.** Traitez-la comme telle.
->
-> Si vous activez la réception par courriel (facultative), l'application
-> conserve aussi des identifiants de courriel (chiffrés). À partir de là, le
-> contrôle d'accès n'est plus facultatif en pratique — utilisez un compte de
-> courriel dédié avec un mot de passe propre à l'application, jamais votre
-> compte principal.
+> **Ne l'exposez pas à Internet.** Utilisez-la sur votre réseau local, ou de
+> l'extérieur par un RPV (WireGuard, Tailscale…) ou un mandataire inverse qui
+> fait sa propre authentification. Une faille grave d'accès aux fichiers a
+> été trouvée et corrigée tard dans le développement, après plusieurs revues
+> qui jugeaient le code sain. D'autres peuvent exister. La frontière du
+> réseau est la vraie protection.
 
-> ## 📋 État du projet : non maintenu
->
-> Construit avec des outils de programmation par IA, pour un usage personnel
-> à la maison. Publié au cas où il serait utile à quelqu'un d'autre.
->
-> Fourni tel quel, sans soutien, sans suivi des signalements et sans
-> engagement à corriger des bogues ou à publier des mises à jour de
-> sécurité. Le développement continue seulement tant qu'il répond à mes
-> propres besoins. Les copies (forks) sont bienvenues et encouragées — si
-> vous avez besoin de changements, c'est la voie à suivre.
+> **Non maintenue.** Construite avec des outils de programmation par IA pour
+> un usage personnel, et publiée telle quelle : aucun soutien, aucun
+> engagement à corriger quoi que ce soit. Les copies (forks) sont les
+> bienvenues.
 
----
+## La lancer
 
-## Démarrer
-
-Nécessite Docker et Docker Compose.
+Il faut Docker avec Compose 2.24 ou plus récent (`docker compose version`).
 
 ```bash
 curl -O https://raw.githubusercontent.com/djerodek/open-the-pantry/main/docker-compose.yml
 docker compose up -d
 ```
 
-Ouvrez `http://localhost:8090`. Les données (base SQLite, images et PDF
-téléversés) sont conservées dans `./data`, à côté du fichier compose.
+Ouvrez `http://<serveur>:8090`. Puis **créez tout de suite le mot de passe
+des paramètres** : ouvrez Paramètres → Réception par courriel, HTTPS ou
+Journal, et il vous en demande un. Tant qu'il n'existe pas, la première
+personne de votre réseau à ouvrir une de ces sections le choisit.
 
-**Créez ensuite le mot de passe des paramètres tout de suite :** Paramètres
-→ Réception par courriel (ou HTTPS, ou Journal) le demande la première fois.
-D'ici là, la première personne de votre réseau à ouvrir l'une de ces
-sections le crée. Voir [Notes de sécurité](#notes-de-sécurité).
+- **Construire depuis les sources** plutôt : `docker compose -f docker-compose.build.yml up -d --build`.
+- **Mises à jour** : `docker compose pull && docker compose up -d`. La base
+  de données est mise à jour automatiquement au démarrage, sans toucher aux
+  recettes.
+  - `:main`, l'étiquette qu'utilise le fichier compose, suit chaque
+    construction. Pour choisir quand mettre à jour, épinglez une empreinte :
+    `image: djerodek/open-the-pantry@sha256:<empreinte>`.
+    `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
+    affiche celle de l'image qui tourne.
+- **Images** : `linux/amd64` et `linux/arm64` (un NAS, un VPS, un Raspberry
+  Pi). L'application tourne sous un utilisateur non root (UID 1000, ou
+  `PUID`/`PGID`). Au démarrage, le conteneur corrige le propriétaire du
+  dossier de données : aucun `chown` n'est nécessaire.
+- **Mémoire** : environ 160 Mo au repos, jusqu'à environ 3,4 Go au pire
+  (trois grosses numérisations à la fois). Les fichiers compose ont des
+  lignes `mem_limit`/`cpus` en commentaire pour fixer un plafond.
+- **Fuseau horaire** : réglez `TZ` dans le fichier compose (il est livré
+  avec `UTC`). Il fixe l'heure de la vérification quotidienne du courriel
+  et des sauvegardes automatiques.
 
-### Déplacer ou restaurer vos données
+### Vos données
 
-Tout ce que l'application conserve se trouve dans un seul dossier : ce qui
-est à gauche de la ligne `volumes:` dans `docker-compose.yml` (`./data` par
-défaut). Il contient `recipes.db`, `uploads/` (photos et PDF),
-`encryption.key` si vous avez configuré la réception par courriel dans les
-Paramètres, et `admin-password.json` (le mot de passe des paramètres) une
-fois celui-ci créé. Déplacer l'application vers un autre disque, c'est déplacer ce
-dossier et y faire pointer le fichier compose.
+Tout est dans un seul dossier, la partie gauche de la ligne `volumes:`
+(`./data` par défaut) :
+- `recipes.db` : la base de données;
+- `uploads/` : les photos et les PDF;
+- `encryption.key` : la clé du mot de passe de courriel et du jeton cPanel;
+- `admin-password.json` : le mot de passe des paramètres;
+- `https/` : le certificat et l'accès cPanel enregistré;
+- `logs/` : les journaux;
+- `ml/` : les modèles appris, reconstruits à partir des recettes;
+- `backups/` : les sauvegardes automatiques, sauf si vous avez choisi un
+  autre dossier.
 
-**Déplacer vers un autre disque ou chemin** (p. ex. de `./data` vers un
-disque plus grand) :
+**Pour le déplacer sur un autre disque :**
+1. Lancez `docker compose down`. Ne copiez pas pendant que l'application
+   tourne : la base pourrait être en pleine écriture.
+2. Copiez le dossier : `cp -a ./data /nouveau/chemin`.
+3. Changez seulement la partie gauche de la ligne du volume :
+   `- /nouveau/chemin:/app/data`.
+4. Lancez `docker compose up -d`. Vérifiez que vos recettes y sont avant de
+   supprimer l'ancien dossier.
 
-1. Arrêtez l'application : `docker compose down`. Ne copiez pas pendant
-   qu'elle fonctionne — SQLite peut garder des écritures récentes dans
-   `recipes.db-wal`, et une copie faite au milieu d'une écriture peut être
-   incohérente.
-2. Copiez le dossier au complet, en gardant tout ce qu'il contient :
-   `cp -a ./data /new/path/open-the-pantry-data`
-3. Modifiez la ligne de volume dans `docker-compose.yml`. Changez seulement
-   la partie de gauche; `/app/data` à droite est le chemin dans le
-   conteneur et doit rester tel quel :
+**Pour restaurer une sauvegarde complète :** utilisez Paramètres →
+Sauvegarde et exportation → Restaurer ou importer (voir
+[Sauvegarde et restauration](#sauvegarde-et-restauration)). Si
+l'application ne démarre pas, faites-le à la main :
+1. Lancez `docker compose down`.
+2. Décompressez dans le dossier de données :
+   `unzip -o open-the-pantry-backup-*.zip -d ./data`.
+3. Lancez `docker compose up -d`.
 
-   ```yaml
-   volumes:
-     - /new/path/open-the-pantry-data:/app/data
-   ```
-
-4. Démarrez-la : `docker compose up -d`. Le conteneur corrige les
-   propriétaires des fichiers au démarrage; aucun `chown` n'est nécessaire.
-5. Vérifiez que vos recettes sont là avant de supprimer l'ancien dossier.
-
-**Restaurer à partir d'une sauvegarde .zip** (Paramètres → Sauvegarde et
-exportation → Sauvegarde complète) :
-
-Depuis l'application : Paramètres → Sauvegarde et exportation →
-**Restaurer ou importer**, choisissez le .zip, vérifiez ce qu'il dit
-contenir, puis **Remplacer ma bibliothèque**. Le mot de passe des
-paramètres est demandé, une copie de sécurité de la bibliothèque actuelle
-est d'abord écrite dans le dossier de données, et rien n'a besoin d'être
-redémarré (détails sous *Sauvegarde et exportation* plus bas). Les étapes
-ci-dessous servent quand l'application ne démarre pas, ou pour monter à la
-main une nouvelle installation à partir d'une sauvegarde :
-
-1. `docker compose down`
-2. Décompressez dans le dossier visé par la ligne de volume, de façon que
-   `recipes.db` et `uploads/` soient directement dedans (pas dans un
-   sous-dossier) :
-   `unzip -o open-the-pantry-backup-*.zip -d /path/to/data`
-3. `docker compose up -d`
-
-La restauration remplace la bibliothèque actuelle. La sauvegarde .zip
-n'inclut volontairement **pas** `encryption.key`, pour qu'une sauvegarde
-qui fuit n'expose aucun mot de passe de courriel. Après une restauration
-sur une nouvelle installation, copiez `encryption.key` de l'ancien dossier
-de données, ou configurez de nouveau le chiffrement dans les Paramètres et
-entrez de nouveau le mot de passe du courriel. Rien d'autre ne dépend de la
-clé. Le mot de passe des paramètres (`admin-password.json`) n'est pas dans
-le .zip non plus : copiez-le aussi, ou créez-en un nouveau la première fois
-que vous ouvrez la réception par courriel, HTTPS ou le journal. Si l'ancien
-dossier avait un mot de passe et que son `admin-password.created` est copié
-sans `admin-password.json`, créer le nouveau compte comme une
-réinitialisation et efface le mot de passe de courriel et HTTPS. HTTPS
-lui-même (`https/` : le certificat et l'identifiant cPanel enregistré)
-n'est pas dans le .zip : copiez ce dossier avec `encryption.key` (le jeton
-cPanel enregistré est chiffré avec cette clé), ou configurez HTTPS de
-nouveau.
-
-Pour construire à partir du code source plutôt que de télécharger l'image
-publiée :
-
-```bash
-docker compose -f docker-compose.build.yml up -d --build
-```
+Une sauvegarde ne contient ni `encryption.key`, ni `admin-password.json`, ni
+`https/`. Sur une nouvelle installation, copiez-les depuis l'ancien dossier,
+ou bien configurez à nouveau le courriel et HTTPS et créez un nouveau mot de
+passe des paramètres.
 
 ### Facultatif : HTTPS sur votre réseau
 
-Désactivé par défaut. Configuré dans **Paramètres → HTTPS**, il donne à
-l'application une adresse `https://` avec un vrai certificat Let's
-Encrypt, sur votre réseau local et par votre RPV, sans rien exposer à
+HTTPS est désactivé par défaut. **Paramètres → HTTPS** donne à
+l'application une adresse `https://` avec un vrai certificat Let's Encrypt,
+pour votre réseau local et votre RPV seulement; rien n'est exposé à
 Internet. Les navigateurs refusent certaines fonctions aux pages en
-`http://`; pour cette application, « garder l'écran allumé » en a besoin.
+`http://` : ici, « garder l'écran allumé » et l'installation de
+l'application sur Android.
 
-Il fonctionne avec un domaine dont le DNS est géré dans **cPanel** (la
-plupart des hébergeurs Web mutualisés). Votre site Web reste où il est :
-l'application ajoute un enregistrement pour un nouveau nom, p. ex.
-`pantry.example.com`, qui pointe vers l'adresse locale de ce serveur, et
-prouve à Let's Encrypt que le nom vous appartient avec un enregistrement
-temporaire qu'elle retire ensuite. Elle renouvelle le certificat d'elle-même.
+Cela fonctionne avec un domaine dont le DNS est géré dans **cPanel**.
+L'application crée un enregistrement pour un nouveau nom (p. ex.
+`pantry.example.com`) qui pointe vers l'adresse locale de votre serveur.
+Elle prouve que le nom vous appartient avec un enregistrement temporaire,
+et elle renouvelle le certificat d'elle-même.
 
-Ce qui doit se faire hors de l'application, une seule fois : **créer un
-jeton d'API cPanel** (dans cPanel, Security → Manage API Tokens → Create).
-Donnez-lui une **date d'expiration** (un an, par exemple; le
-renouvellement s'arrête à l'expiration, et Paramètres → HTTPS l'indique).
-Si votre cPanel le permet, décochez l'accès complet et autorisez seulement
-la fonction DNS (Zone Editor), puis vérifiez que **Configurer HTTPS**
-fonctionne encore. Le jeton est conservé dans les données de
-l'application, et l'application lit des fichiers et des pages venus de
-l'extérieur (PDF, photos, courriels, pages Web); limiter le jeton limite ce
-que pourrait faire avec votre compte d'hébergement quiconque s'introduirait
-dans l'application.
+**Mise en place :**
+1. Dans cPanel, créez un jeton d'API (Sécurité → Gérer les jetons d'API).
+   Donnez-lui une date d'expiration. Si votre cPanel le permet,
+   limitez-le au DNS (Éditeur de zone).
+2. Dans Paramètres → HTTPS (qui demande le mot de passe des paramètres),
+   entrez :
+   - le nom d'utilisateur cPanel;
+   - l'adresse de cPanel avec son port, p. ex.
+     `https://cpanel.example.com:2083`;
+   - le jeton;
+   - le nom à utiliser.
 
-Ensuite, dans **Paramètres → HTTPS** (qui demande le mot de passe des
-paramètres) :
+   Appuyez sur **Enregistrer l'identifiant**. Le jeton est enregistré chiffré et
+   n'est plus jamais affiché.
+3. Entrez l'adresse locale du serveur et un courriel pour Let's Encrypt,
+   puis appuyez sur **Configurer HTTPS**. Après une minute ou deux, le lien
+   s'affiche, p. ex. `https://pantry.example.com:8443`. Sur un iPhone,
+   ajoutez cette adresse à l'écran d'accueil de nouveau : les réglages comme
+   la langue et le thème sont gardés par adresse.
 
-1. Entrez le **nom d'utilisateur cPanel**, l'**adresse cPanel** (où vous
-   vous connectez, avec son port, p. ex. `https://cpanel.example.com:2083`),
-   le **jeton d'API** et le **nom à utiliser**, p. ex.
-   `pantry.example.com`, puis appuyez sur **Enregistrer l'identifiant**. Le
-   jeton est conservé chiffré et n'est jamais réaffiché. Le nom est le seul
-   que l'application créera ou modifiera avec lui.
-2. Entrez l'adresse locale de ce serveur (déjà remplie si vous l'utilisez)
-   et un courriel pour Let's Encrypt, puis appuyez sur **Configurer
-   HTTPS**. Ça prend une minute ou deux et chaque étape est affichée. À la
-   fin, le lien s'affiche : `https://pantry.example.com:8443`. Sur un
-   iPhone, ouvrez-le et ajoutez-le de nouveau à l'écran d'accueil : les
-   réglages comme la langue et le thème sont conservés par adresse.
+Le fichier compose par défaut publie déjà le port 8443, et aucun
+redémarrage n'est nécessaire. Pour `https://` sans port, publiez plutôt
+`443:8443` et réglez le port à 443 dans les paramètres (seulement si rien
+d'autre sur la machine n'utilise le 443). L'ancienne adresse
+`http://…:8090` continue de fonctionner.
 
-Le `docker-compose.yml` par défaut publie déjà le port 8443 (si le vôtre
-est plus ancien, copiez ses lignes `ports:` de la version actuelle). Aucun
-redémarrage n'est nécessaire.
+**Garde-fous :**
+- L'application ne crée et ne modifie que l'enregistrement du nom
+  enregistré. Un nom déjà utilisé est refusé : votre site Web ne peut pas
+  être redirigé.
+- Le nom ne peut pointer que vers une adresse privée ou de RPV : `10.x`,
+  `172.16`–`172.31`, `192.168.x`, ou `100.64`–`100.127` pour Tailscale.
+- Au plus 5 demandes de certificat par semaine, la limite de Let's Encrypt.
+- Si vous changez le nom d'utilisateur ou l'adresse cPanel sans entrer le
+  jeton de nouveau, le jeton enregistré est effacé.
+- Si le nom ne se résout pas chez vous, votre routeur bloque peut-être les
+  réponses DNS qui pointent vers des adresses privées (« protection contre
+  le DNS rebinding »). Autorisez votre domaine là.
 
-**Vous préférez `.env`?** `CPANEL_USERNAME`, `CPANEL_TOKEN`,
-`CPANEL_BASE_URL` et `PANTRY_DOMAIN` dans un fichier `.env` à côté de
-`docker-compose.yml` fonctionnent toujours et l'emportent, champ par champ,
-sur ce qui est enregistré dans l'application; Paramètres → HTTPS les
-affiche comme « Défini dans .env ». Les installations qui utilisent déjà
-`.env` n'ont rien à changer. La forme `env_file:` avec `required: false` du
-fichier compose par défaut demande Docker Compose 2.24 ou plus récent
-(`docker compose version`); avec une version plus ancienne, mettez Compose
-à jour ou remplacez ces trois lignes par `env_file: .env` en gardant un
-fichier `.env` à cet endroit, même vide.
+`CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` et `PANTRY_DOMAIN` dans
+un fichier `.env` fonctionnent toujours, et ont priorité sur ce qui est
+enregistré dans l'application. Un jeton dans `.env` est en clair : gardez ce
+fichier privé.
 
-Garde-fous et remarques :
-- L'application ne crée jamais que l'enregistrement du nom enregistré, et
-  ne modifie jamais un enregistrement qu'elle n'a pas créé. Un nom déjà
-  utilisé (`www`, le domaine lui-même, tout ce qui a un enregistrement) est
-  refusé, pour que la page ne puisse pas servir à rediriger votre site Web.
-- Le nom ne peut pointer que vers une adresse de votre réseau domestique ou
-  de votre RPV (`10.x`, `172.16`–`172.31`, `192.168.x`, ou `100.64`–`100.127`
-  de Tailscale), jamais vers un serveur sur Internet.
-- Au plus 5 demandes de certificat en 7 jours, la limite de Let's Encrypt
-  pour un même nom; au-delà, la page indique quand elle pourra réessayer.
-- Changer le nom puis refaire la configuration retire l'enregistrement de
-  l'ancien nom, s'il contient encore ce que l'application y a écrit.
-- Changer le nom d'utilisateur ou l'adresse cPanel sans entrer de nouveau
-  le jeton efface le jeton enregistré, pour qu'il ne puisse pas être
-  envoyé à une adresse que quelqu'un d'autre a tapée.
-- L'ancienne adresse `http://<adresse>:8090` continue de fonctionner.
-- Pour `https://pantry.example.com` sans port, changez la partie de gauche
-  de `8443:8443` dans `docker-compose.yml` pour `443` (si la machine
-  n'utilise pas déjà le 443 — l'interface Web d'un NAS le fait souvent) et
-  mettez le port 443 dans Paramètres → HTTPS.
-- Certains routeurs bloquent les réponses DNS qui pointent vers des
-  adresses privées (« protection contre le DNS rebinding »). Si le nom ne
-  se résout pas à la maison, autorisez votre domaine dans le routeur.
-- Le nom apparaît dans les journaux publics de certificats, comme tout nom
-  Let's Encrypt; l'adresse privée vers laquelle il pointe est inutile de
-  l'extérieur.
-- **Autres hébergeurs DNS** (Cloudflare, OVH, Gandi et environ 150 autres) :
-  `docker-compose.https.yml` fait la même chose avec Traefik. Pas pour
-  cPanel : utiliser les deux ferait demander le même nom à Let's Encrypt
-  par deux clients. Les réglages vont dans `.env` (à partir de
-  `https.env.example`) et le jeton d'API de l'hébergeur DNS dans
-  `traefik.env` (à partir de `traefik.env.example`), que seul Traefik lit;
-  voir les commentaires dans ces fichiers. Cette méthode n'a pas de page
-  dans les Paramètres.
-  - Traefik reçoit une adresse fixe (`172.31.250.10`; changez
-    `PANTRY_NETWORK_SUBNET` et `PANTRY_TRAEFIK_IP` dans `.env` si cette plage
-    est déjà utilisée), et l'application croit les adresses de visiteurs que
-    Traefik lui transmet depuis celle-là seulement. Chaque visiteur a alors
-    sa propre limite de requêtes et son propre compte de mauvais mots de
-    passe.
-  - Le mot de passe des paramètres et les sections qu'il protège ne s'ouvrent
-    qu'à l'adresse `https://`, jamais sur `http://…:8090`
-    (`RECIPE_APP_HTTPS_URL` dans le fichier compose). S'ils indiquent qu'ils
-    s'ouvrent seulement à l'adresse sécurisée alors que vous y êtes déjà,
-    l'application ne voit pas l'adresse de Traefik : vérifiez
-    `PANTRY_TRAEFIK_IP`. Si Traefik lui-même est arrêté, ils restent fermés
-    sur `http://`, volontairement; sur le serveur, consultez
-    `docker compose logs open-the-pantry-https`, puis faites
-    `docker compose up -d`.
-  - **Mise à jour de cette méthode depuis une version antérieure** (le
-    jeton de l'hébergeur DNS encore dans `.env`) : déplacez les lignes du
-    jeton de `.env` vers `traefik.env`, puis faites
-    une fois `docker compose down` et `docker compose up -d` (la plage
-    d'adresses du réseau change).
-  - Traefik lit le socket Docker pour trouver l'application. Le monter en
-    `:ro` ne rend pas l'API Docker en lecture seule : quiconque prend le
-    contrôle de Traefik contrôle Docker, donc l'hôte en root. Un proxy de
-    socket qui ne permet que de lister les conteneurs (p. ex.
-    `tecnativa/docker-socket-proxy` avec `CONTAINERS=1`) règle ça, si ça
-    compte sur votre réseau.
+**Autres hébergeurs DNS** (Cloudflare, OVH, Gandi…) : `docker-compose.https.yml`
+fait la même chose avec Traefik. Ne l'utilisez pas en même temps que la voie
+cPanel.
+- Mettez les réglages dans `.env` (à partir de `https.env.example`) et le
+  jeton de l'hébergeur DNS dans `traefik.env` (à partir de
+  `traefik.env.example`); seul Traefik lit ce fichier. Les commentaires de
+  ces fichiers expliquent chaque réglage.
+- Sur cette voie, le mot de passe des paramètres ne fonctionne qu'à
+  l'adresse `https://`. Si Traefik est arrêté, ces sections restent fermées
+  exprès.
+- Traefik lit le socket Docker, ce qui lui donne le contrôle de Docker. Un
+  mandataire de socket qui ne permet que de lister les conteneurs règle
+  cela, si c'est important sur votre réseau.
 
 ### Facultatif : On mange quoi? (une recette au hasard)
 
-Désactivée par défaut. **On mange quoi?** est une deuxième page, volontairement
-minimale, pour la même bibliothèque, sur son propre port (8091). La fiche de
-recette et un grand bouton viennent en premier; les choix (type de repas, mode
-de cuisson, ingrédient principal, rythme) sont en dessous sur un téléphone et
-à côté sur un écran plus large. Choisissez-en, ou rien du tout, et appuyez sur
-**Choisis pour moi** : des titres défilent dans la fiche, qui s'arrête sur une
-recette au hasard qui correspond. Le bouton devient alors **Autre chose**, qui
-en choisit une autre sans en répéter aucune avant d'avoir montré toutes celles
-qui correspondent (jusqu'à 500 : au-delà, la page retient les 500 dernières
-montrées, donc une plus ancienne peut revenir avant que toutes aient eu leur
-tour). **Effacer**, à côté des choix, remet tout à zéro.
+C'est désactivé par défaut. **On mange quoi?** est une petite page en
+lecture seule, sur son propre port, le 8091. Vous choisissez des critères si
+vous voulez (type de repas, mode de cuisson, ingrédient principal, rythme)
+et vous appuyez sur **Choisis pour moi**. Des titres défilent et s'arrêtent sur une
+recette qui correspond. **Autre chose** en choisit une autre, sans
+répétition tant que toutes ne sont pas sorties; au-delà de 500
+correspondances, seules les 500 dernières montrées sont retenues. Touchez la
+carte pour lire la recette, ou l'imprimer. **Modifier dans Open the
+Pantry** l'ouvre dans l'application principale.
 
-Touchez la fiche pour lire toute la recette sur place : photo, portions et
-temps, notes d'appréciation, notes, ingrédients et étapes. On ne peut rien y
-modifier; **Modifier dans Open the Pantry**, à la fin, l'ouvre dans
-l'application principale pour ça. **Imprimer**, en haut de la recette,
-imprime la recette seule sur fond blanc (sans vos notes, avec l'adresse Web
-de la source écrite en clair), quel que soit le thème du téléphone. Le geste
-Retour du téléphone la ferme.
+- Dans un groupe, les choix sont des options (Souper ou Dîner). D'un groupe
+  à l'autre, tous doivent correspondre.
+- Les recettes mieux notées sortent un peu plus souvent (5★ a une fois et
+  demie plus de chances que 1★). Les cocktails ne sont jamais choisis.
+- Elle retient vos choix sur chaque appareil, et a son propre sélecteur de
+  langue.
 
-- Dans un groupe, les choix sont des alternatives (Dîner ou Souper); d'un
-  groupe à l'autre, tous doivent être respectés (un souper, cuit au four,
-  noté rapide). Un groupe où rien n'est choisi accepte toutes les recettes,
-  y compris celles sans étiquette dans ce groupe ou sans note de rythme.
-- Seuls les trois groupes d'étiquettes intégrés (avec les étiquettes que vous
-  y avez ajoutées) et le rythme sont proposés. La recherche, vos propres
-  groupes et les étiquettes personnalisées restent dans l'application
-  principale. Les cocktails ne sont jamais proposés ni choisis.
-- Les recettes jugées plus savoureuses sortent un peu plus souvent (5★ une
-  fois et demie plus souvent que 1★); aucune n'est jamais exclue. Les
-  favoris ne changent rien.
-- Elle retient vos derniers choix sur chaque appareil, a son propre
-  sélecteur EN/FR, suit le thème clair ou sombre de l'appareil et peut être
-  ajoutée à l'écran d'accueil d'un téléphone comme application à part.
+**Activez-la** dans Paramètres → On mange quoi?. Elle démarre aussitôt, et
+un lien apparaît dans la barre du haut.
 
-**Pour l'activer** : **Paramètres → On mange quoi?**. Elle démarre tout de
-suite, sans redémarrage, et le réglage est conservé dans la base de données
-(et dans les sauvegardes). Pendant qu'elle tourne, les Paramètres affichent
-son adresse, `http://<votre serveur>:8091`, et un lien On mange quoi?
-apparaît dans la barre du haut. Elle se désactive au même endroit. Elle ne
-demande pas le mot de passe des paramètres.
+**Si le port 8091 est déjà pris sur votre machine**, publiez-en un autre,
+p. ex. `"9000:8091"`, et réglez `RECIPE_APP_PICKER_PUBLIC_PORT: "9000"`. Les
+commentaires de `docker-compose.yml` montrent où. Derrière un mandataire,
+utilisez `RECIPE_APP_PICKER_PUBLIC_URL` et `RECIPE_APP_PUBLIC_URL`
+(l'adresse de l'application principale) pour que les deux pages se lient
+correctement.
 
-**Un fichier compose antérieur à cette page** ne publie pas le port : ajoutez
-`- "8091:8091"` sous `ports:` (le `docker-compose.yml` actuel l'a), puis
-`docker compose up -d`. Si autre chose sur la machine utilise déjà le port
-8091, le conteneur ne démarre pas, même la page désactivée : publiez un autre
-numéro, p. ex. `"9000:8091"`, et définissez
-`RECIPE_APP_PICKER_PUBLIC_PORT: "9000"` (les commentaires du
-`docker-compose.yml` montrent où). Les Paramètres vous avertissent quand la page est
-activée mais que l'appareil utilisé ne joint pas le port. (Depuis une adresse
-`https://`, la vérification est impossible; il n'y a donc pas
-d'avertissement.) « Le port 8091 est déjà utilisé dans le conteneur » veut
-dire qu'autre chose y écoute déjà dans le conteneur; `RECIPE_APP_PICKER_PORT`
-la déplace.
+**Elle n'a pas de connexion, et `RECIPE_APP_API_KEY` ne la couvre pas.**
+Quiconque peut joindre le port peut lire toutes les recettes qu'elle peut
+choisir, vos notes comprises. Elle est en `http://` seulement, et rien ne
+peut y être modifié. Si c'est plus que vous ne voulez, laissez-la
+désactivée.
 
-**En lecture seule, et ouverte à quiconque peut la joindre.** Le port ne sert
-que la page, ses choix et ses tirages, les photos des recettes et une
-vérification de santé; toute autre adresse répond « introuvable », donc rien
-ne peut y être modifié ni supprimé. Elle n'a pas de connexion, et
-`RECIPE_APP_API_KEY` ne s'y applique pas : quiconque peut joindre le port
-peut lire toutes les recettes qu'elle peut tirer (tout sauf les cocktails),
-vos notes comprises, et le nombre de recettes par étiquette. Elle est en `http://` seulement. Si c'est plus que vous ne voulez
-sur votre réseau, laissez-la désactivée.
+## Ce qu'elle fait
 
-**Autres numéros de port, ou un proxy** (variables d'environnement, toutes
-facultatives) :
+### Ajouter des recettes
 
-| Variable | Par défaut | Quand |
-|---|---|---|
-| `RECIPE_APP_PICKER_PORT` | 8091 | Le port dans le conteneur. Rarement utile. |
-| `RECIPE_APP_PICKER_PUBLIC_PORT` | celui ci-dessus | Le fichier compose publie la page sous un autre numéro (p. ex. `"9000:8091"`) : le lien de l'application principale l'utilise. |
-| `RECIPE_APP_PICKER_PUBLIC_URL` | | L'adresse complète de la page, p. ex. derrière un proxy, pour le lien de l'application principale. |
-| `RECIPE_APP_MAIN_PUBLIC_PORT` | 8090 | L'application principale est publiée sous un autre numéro : les liens de retour l'utilisent. |
-| `RECIPE_APP_PUBLIC_URL` | | L'adresse complète de l'application principale pour ces liens. |
+- **À partir d'un lien.** L'application essaie `recipe-scrapers` (plus de
+  100 sites), puis les données schema.org de la page, puis la page
+  elle-même. Elle garde aussi la photo de la page. On peut ajouter un lien,
+  ou jusqu'à 50 à la fois.
+- **À partir d'un PDF.** Les pages avec du texte sont lues directement. Les
+  pages numérisées passent par l'OCR, d'abord redressées et remises à
+  l'endroit. La plus grande photo du PDF devient la photo de la recette. On
+  peut ajouter un fichier, ou jusqu'à 20 à la fois.
+- **À partir d'une photo ou d'une capture d'écran.** L'OCR la lit, après
+  l'avoir remise à l'endroit et redressée. **Combiner plusieurs** réunit
+  jusqu'à 10 captures en une seule recette. L'OCR ne lit pas l'écriture à la
+  main : tapez ces recettes.
+- **Tapée à la main.** Des champs pour tout, plus une photo. Dans la boîte
+  Ingrédients ou Étapes, une ligne courte qui se termine par « : » commence
+  une section, p. ex. « Sauce: ».
+- **Partagée depuis une autre application.**
+  - Android, une fois l'application installée depuis le navigateur (il faut
+    HTTPS) : l'application apparaît dans le menu de partage.
+  - iPhone : créez un raccourci qui reçoit des **URL** depuis la **feuille de
+    partage**, avec deux actions :
+    1. **Encoder l'URL** sur l'entrée du raccourci.
+    2. **Ouvrir les URL** : `http://<serveur>:8090/?share_url=` suivi du
+       texte encodé.
 
-Sans elles, la page renvoie à l'adresse `https://` de l'application
-principale quand HTTPS est activé, sinon à `http://<le nom auquel vous avez
-ouvert la page>:8090`.
+  Dans les deux cas, le lien est rempli, mais rien n'est importé avant que
+  vous appuyiez sur **Récupérer la recette**.
+- **Par courriel** : voir
+  [Réception par courriel](#réception-par-courriel-facultatif).
+- **Vérifier avant d'enregistrer.** Une recette seule ouvre un écran de
+  vérification : les champs, à côté du texte lu dans la source. Les
+  recettes enregistrées sans cet écran sont marquées *À vérifier* : lots,
+  courriels et importations. Le menu latéral les liste. **Vérifier** ouvre
+  la recette avec une liste de points à contrôler; **C'est correct** retire la
+  marque.
+- **Les recettes incomplètes sont refusées.** Si un lien, un PDF, une photo
+  ou un courriel donne des ingrédients sans étapes (ou l'inverse),
+  l'importation échoue. L'application dit ce qui manque et propose une
+  autre façon de faire. Pour un lien, c'est souvent d'enregistrer la page en
+  PDF (Safari : Partager → Options → PDF). **Continuer quand même** ouvre ce
+  qui a été lu.
+- **Déjà dans votre bibliothèque?** Quand vous ajoutez une recette dont le
+  lien ou le titre correspond à une recette enregistrée, l'application vous
+  le dit, avec un lien vers celle-ci. Appuyez de nouveau sur Enregistrer pour
+  l'ajouter quand même. Les lots et les courriels sautent un lien déjà
+  enregistré.
+- **Les recettes en français** sont lues comme celles en anglais : titres de
+  section, numéros d'étapes, unités (« 2 c. à soupe », « 1,5 tasse ») et OCR
+  dans les deux langues.
+- **Chaque ligne d'ingrédient est gardée telle qu'écrite**, et elle est
+  aussi analysée en quantité, unité et nom.
 
-## Ce que fait l'application
+### Réception par courriel (facultatif)
 
-**Ajout de recettes**
-- **URL** — essaie d'abord `recipe-scrapers` (plus de 100 analyseurs propres
-  à des sites), puis le JSON-LD `schema.org`, puis une extraction
-  heuristique du HTML. Une à la fois ou par lot (jusqu'à 50 URL d'un coup,
-  enregistrées automatiquement sans révision une par une). Télécharge aussi
-  l'image vedette de la page (`og:image` ou image JSON-LD) quand il y en a
-  une, par la même chaîne de validation que toute autre image téléversée —
-  une image brisée, trop grosse ou invalide ne fait jamais échouer l'ajout;
-  elle est simplement ignorée.
-- **Quand un lien ne donne pas une recette complète** (le site bloque
-  l'application, la page n'a pas de recette lisible, ou elle revient sans
-  ingrédients ou sans étapes), l'ajout compte comme un échec et
-  l'application explique comment faire un PDF de la page à la place
-  (Safari : Partager → Options → PDF), avec un bouton **Ajouter à partir
-  d'un PDF** juste là. Une demi-recette peut quand même être ouverte avec
-  « Continuer quand même ». Les ajouts par lot l'indiquent comme un échec,
-  et un lien envoyé par courriel reçoit une réponse `[FAILURE]` qui suggère
-  d'envoyer plutôt le PDF en pièce jointe. Le navigateur a la page au
-  complet (au-delà de toute vérification anti-robots), donc son PDF se lit
-  habituellement bien.
-- **Quand un PDF ou une capture d'écran ne donne pas une recette
-  complète** (des ingrédients mais pas d'étapes, ou l'inverse), l'ajout
-  échoue de la même façon au lieu d'ouvrir l'écran de révision avec un
-  champ vide. La cause habituelle : le PDF d'un article de blogue qui
-  s'arrête avant la fiche recette, au bas de la page. L'application dit ce
-  qui manque et propose les autres façons de l'ajouter : des captures
-  d'écran de la fiche recette (ouvre « Combiner plusieurs »), un PDF (pour
-  une capture d'écran) ou la saisie à la main, plus « Continuer quand
-  même ». Un ajout de PDF par lot l'indique comme un échec.
-- **PDF** — vérifie d'abord si chaque page a déjà une couche de texte;
-  seules les pages qui n'en ont pas (images numérisées) passent par la
-  reconnaissance de texte (OCR) de Tesseract, avec un passage d'orientation
-  (les pages de côté ou à l'envers sont remises à l'endroit) et un
-  redressement pour les pages légèrement inclinées. Les documents mixtes
-  sont traités page par page. Un à la fois ou par lot (jusqu'à 20 fichiers
-  et 100 Mo au total, enregistrés automatiquement). Extrait aussi la plus
-  grande image incluse dans le document comme photo vedette, s'il y en a
-  une assez grande pour être vraisemblablement une vraie photo plutôt
-  qu'un logo ou une icône.
-- **Capture d'écran / photo** — OCR avec prétraitement (niveaux de gris,
-  orientation, redressement, agrandissement, seuillage). Une photo prise de
-  côté ou à l'envers est détectée et remise à l'endroit avant l'OCR, et la
-  photo enregistrée est tournée elle aussi pour s'afficher dans le bon
-  sens; le redressement corrige ensuite une page photographiée légèrement
-  de biais. Fonctionne bien sur du texte affiché à l'écran ou en capture;
-  moins bien sur des polices stylisées ou du texte peu contrasté sur une
-  image. Pas conçu pour l'écriture à la main — utilisez la saisie manuelle
-  pour les fiches manuscrites. Le mode « Combiner plusieurs » gère les
-  recettes qui tiennent sur plusieurs captures (jusqu'à 10) : chacune est
-  lue séparément, dans l'ordre choisi, puis le texte est mis bout à bout et
-  découpé comme une seule recette plutôt que comme des recettes séparées —
-  contrairement au mode par lot des URL et des PDF, qui produit
-  volontairement des recettes séparées. La première image devient la photo
-  vedette par défaut (modifiable ensuite); un fichier invalide n'importe où
-  dans l'ensemble annule toute la combinaison plutôt que de produire une
-  recette partielle sans le dire.
-- **Saisie manuelle** — champs de texte libre et photo facultative, pour
-  les fiches manuscrites ou tout ce que l'OCR ne lit pas de façon fiable.
-  Les boîtes Ingrédients et Étapes (ici, à l'écran de révision et dans
-  Modifier la recette) font le double de la hauteur des autres zones de
-  texte, pour vérifier une recette sans défiler à l'intérieur.
-- **Toute recette enregistrée peut être modifiée ensuite** avec « Modifier
-  la recette » sur sa page — titre, ingrédients, étapes, étiquettes,
-  portions et temps. Le texte extrait d'origine (ce que l'extracteur ou
-  l'OCR a réellement produit) est affiché en lecture seule à côté des
-  champs modifiables, pour qu'une extraction partielle se corrige d'après
-  la source plutôt que de mémoire. C'est surtout utile pour les méthodes
-  qui enregistrent sans révision (URL par lot, PDF par lot, courriel) et
-  pour un OCR peu fiable dont on ne remarque l'erreur que plus tard.
-- **Dupliquer** (à côté de Modifier et Supprimer, au bas d'une recette)
-  en fait une copie pour en tirer une variante : tout ce que la recette a,
-  intitulé « … (copie) », avec sa propre copie de la photo (supprimer
-  l'une laisse celle de l'autre), ouverte directement dans la
-  modification. Les marques Favori et *À vérifier* ne sont pas copiées.
-- L'ajout d'un seul élément (URL, PDF, capture) passe toujours par un écran
-  de révision — le texte extrait à côté des champs modifiables, plus un
-  aperçu de l'image vedette capturée, avec l'option « Ne pas utiliser
-  cette image » — avant l'enregistrement. L'ajout par lot enregistre
-  directement et indique le succès ou l'échec de chaque élément, puisque
-  réviser plusieurs éléments un par un n'est pas vraiment un lot.
-- **À vérifier.** Ce qui est enregistré sans cet écran (lots de liens, lots
-  de PDF, courriel) est marqué *À vérifier* : une pastille sur la carte, et
-  *À vérifier (n)* en haut du panneau latéral pour les lister. Une telle
-  recette s'ouvre avec une note et trois boutons : **Vérifier** l'ouvre
-  dans la modification avec une liste *À vérifier* des problèmes probables
-  (un titre lu sur la première ligne du texte, pas de portions, un OCR peu
-  fiable, une ligne d'ingrédient sans quantité, une étape très courte ou
-  très longue et, une fois le lecteur appris en service, les lignes dont
-  il n'était pas sûr) et ces champs encadrés; **C'est correct** retire la
-  marque; **Supprimer cet ajout** la supprime. Enregistrer depuis la
-  modification retire aussi la marque. Les résultats des lots, de
-  l'importation et de *Vérifier la boîte de courriel* ont aussi un bouton
-  Supprimer par recette. Les recettes enregistrées avant cette fonction ne
-  sont pas marquées.
-- **Les ingrédients sont conservés tels qu'écrits.** Chaque ligne est
-  gardée exactement comme saisie ou extraite, et aussi décomposée en
-  quantité, unité et nom (« 1½ cups flour » → 1½ / cup / flour), y compris
-  les lignes tapées dans les écrans de révision, de modification et de
-  saisie manuelle. La recette affiche la ligne telle qu'écrite.
-- Les recettes qui regroupent leurs étapes en sections (« Pour la pâte »,
-  « Pour la garniture ») gardent toutes les étapes, avec le nom des
-  sections comme intertitres.
-- **Comment le texte extrait devient une recette** (le texte des PDF, des
-  photos et des courriels suit les mêmes règles) : le titre est la ligne
-  au-dessus de la signature de l'auteur, ou une ligne courte que la page
-  répète, jamais la date d'impression du navigateur ni un fil d'Ariane.
-  Les lignes d'ingrédients coupées sont recollées, les sous-titres comme
-  « PEPPERED BACON CURE » deviennent « For the peppered bacon cure: », et
-  les boutons des fiches recettes (« 1X 2X 3X », « US Customary / Metric »)
-  sont retirés. Les étapes sont reconstituées au complet à partir de leurs
-  lignes imprimées, séparées aux numéros d'étape, et se terminent à
-  « Notes » ou « Nutrition ». La mise en forme des courriels en texte brut
-  (le `*gras*` de Gmail et les puces `-`) est comprise, et les étapes
-  numérotées sont trouvées même sans intertitre « Instructions ».
-- **Les recettes en français sont comprises aussi.** Les intertitres
-  français (Ingrédients, Préparation, Étapes, Mode de préparation…), les
-  numéros d'étape (« Étape 2 »), les unités (« 2 c. à soupe », « 250 ml »,
-  « 1,5 tasse ») et les majuscules accentuées sont lus de la même façon que
-  leurs équivalents anglais. L'OCR lit l'anglais et le français ensemble
-  (l'image inclut les données françaises de Tesseract); les captures en
-  anglais donnent le même résultat qu'avant, et l'OCR prend environ moitié
-  plus de temps.
-- Dans une recette sans aucun intertitre, une ligne sans quantité (« Salt
-  and pepper to taste », « Sel et poivre au goût ») reste avec les
-  ingrédients plutôt que de devenir l'étape 1.
-- Les fichiers téléversés (PDF, image) sont limités à 20 Mo et validés par
-  leur signature (magic bytes), pas seulement par leur extension, avant
-  toute analyse ou OCR.
-- **Déjà dans votre bibliothèque?** L'écran de révision et la saisie
-  manuelle le signalent quand une recette enregistrée a le même lien (sans
-  tenir compte de `www.`, de `http`/`https`, d'une barre oblique finale ni
-  des paramètres de suivi comme `utm_source`) ou le même titre (sans tenir
-  compte des majuscules, des accents ni de la ponctuation), avec un lien
-  pour l'ouvrir; appuyer une deuxième fois sur Enregistrer l'ajoute quand
-  même. Les liens par lot et les liens envoyés par courriel déjà
-  enregistrés sont ignorés et indiqués comme tels; une recette par lot ou
-  par courriel dont le titre existe déjà est quand même enregistrée (deux
-  recettes peuvent porter le même nom), avec une note dans les résultats.
-- **Partager depuis une autre application** — Android : une fois Open the
-  Pantry installée depuis le navigateur (ce qui demande l'adresse HTTPS;
-  voir *Facultatif : HTTPS sur votre réseau*), elle apparaît dans la
-  feuille de partage, et partager le lien d'une page ouvre Ajouter à partir
-  d'une URL avec ce lien déjà inscrit; appuyez sur **Récupérer la recette**
-  pour l'importer (rien ne démarre seul, donc un lien sur un autre site Web
-  ne peut pas lancer un ajout). L'iPhone et l'iPad ne
-  laissent pas une application Web de l'écran d'accueil recevoir des
-  partages; un raccourci fait le même travail : dans l'app Raccourcis,
-  créez un raccourci qui reçoit des **URL** de la **feuille de partage**,
-  avec deux actions : **Encoder l'URL** (l'**Entrée du raccourci**), puis
-  **Ouvrir les URL** réglée sur `http://<votre serveur>:8090/?share_url=`
-  suivi de la variable **Texte encodé en URL** (ou votre adresse
-  `https://`). Il apparaît alors dans la feuille de partage de Safari et
-  ouvre l'ajout dans Safari.
+Envoyez une recette à une boîte que vous avez configurée, avec un mot-clé
+dans l'objet (`[RECIPE]` par défaut), et l'application la récupère :
+- une fois par jour, à l'heure choisie;
+- ou sur demande, avec **Vérifier la boîte de courriel** dans le menu +.
 
-**Réception par courriel (facultative, désactivée par défaut)**
-- Envoyez une recette par courriel à une boîte configurée avec un mot-clé
-  dans l'objet (par défaut `[RECIPE]`), et Open the Pantry la récupère à sa
-  prochaine vérification. Tout ce qui n'a pas ce mot-clé est entièrement
-  ignoré — l'application n'essaie jamais d'analyser, ni même de lire au
-  complet, un courriel sans le mot-clé.
-- La vérification se fait une fois par jour à une heure configurable (par
-  défaut 3 h, dans le fuseau horaire du conteneur — mettez le vôtre dans
-  `TZ` dans `docker-compose.yml`, p. ex. `Europe/Paris`; l'exemple est
-  livré avec `UTC`; les heures affichées dans les Paramètres, comme la
-  dernière vérification, sont dans le fuseau de votre appareil dans tous
-  les cas), plus sur demande : « Vérifier la boîte de courriel » dans le
-  menu + (affiché une fois la réception par courriel activée), ou
-  « Vérifier la boîte maintenant » dans les Paramètres, pour ne pas
-  attendre.
-- Chaque courriel avec le mot-clé est essayé dans cet ordre : pièce jointe
-  PDF → photo → liens dans le corps (jusqu'à trois, dans l'ordre, passés à
-  la même chaîne d'ajout par URL) → le texte du corps lui-même. Chaque
-  méthode réutilise le même code d'ajout et de validation que son
-  équivalent manuel; un PDF reçu par courriel est donc traité exactement
-  comme un PDF téléversé dans l'interface.
-- Les photos et les PDF envoyés depuis Apple Mail comptent même si Apple
-  les marque « en ligne ». Une image en ligne doit faire au moins 640 px
-  sur son grand côté pour être traitée comme une photo de recette, ce qui
-  garde les logos de signature hors de l'OCR. Les pieds de page des
-  applications de courriel (« Sent from my iPhone », « Get Outlook for
-  iOS » et son lien) et tout ce qui suit une ligne de signature `-- ` sont
-  ignorés.
-- Le courriel n'a pas d'écran de révision : une photo ou un PDF entièrement
-  numérisé que la reconnaissance de texte ne peut pas lire de façon fiable
-  (fiabilité sous 50 %) est refusé plutôt qu'enregistré comme une recette
-  de mots déformés; le courriel `[FAILURE]` le dit et suggère une photo
-  plus nette ou le texte tapé. Les noms des pièces jointes sont décodés,
-  donc le `Screenshot … PM.pdf` d'Apple Mail apparaît tel quel. Une photo,
-  un PDF, un lien ou un texte de courriel qui ne donne qu'une partie d'une
-  recette (des ingrédients mais pas d'étapes, ou l'inverse) échoue plutôt
-  que d'être enregistré à moitié, et le courriel `[FAILURE]` dit quelle
-  partie manquait et quoi envoyer à la place.
-- Si un courriel ne peut pas devenir une recette, la raison énumère chaque
-  chose essayée et pourquoi elle a échoué. Elle est affichée sous
-  « Vérifier la boîte maintenant » et envoyée dans le courriel `[FAILURE]`.
-  Les courriels de plus de 30 Mo sont refusés avant le téléchargement.
-- Le type de connexion SMTP/IMAP suit le port : 465 et 993 sont chiffrés
-  dès le départ, les autres ports passent au chiffrement avec STARTTLS.
-  « Envoyer un courriel de test » vérifie séparément l'envoi et la lecture,
-  et quand une connexion échoue, il sonde le port et dit ce qu'il y a
-  trouvé.
-- Si la vérification de nuit ne peut pas lire la boîte, ou si son courriel
-  de résultats ne peut pas être envoyé, Paramètres → Réception par courriel
-  l'indique en haut, avec l'erreur et le nombre de résultats en attente
-  d'envoi. (Une configuration d'envoi brisée ne peut pas vous envoyer un
-  courriel pour dire qu'elle est brisée.) L'avertissement disparaît après
-  la prochaine vérification ou le prochain test réussi. Les mêmes erreurs
-  sont dans `data/logs/app.log`.
-- Un lien dans un courriel ajoute la recette mais pas la photo de la page
-  (« Ajouter à partir d'une URL » dans l'application, lui, la récupère).
-  Ajoutez-en une à partir de la page de la recette.
-- Les courriels de résultats sont rédigés dans la langue de la personne
-  qui a enregistré les paramètres de courriel en dernier (anglais ou
-  français). Les marqueurs `[SUCCESS]`, `[FAILURE]` et `[PARTIAL]` restent
-  les mêmes dans les deux langues, pour que les filtres de courriel
-  continuent de fonctionner.
-- Les résultats sont envoyés par courriel : `[SUCCESS]`, `[FAILURE]`, ou
-  `[PARTIAL]` quand une vérification a eu les deux. Les résultats à
-  l'intérieur d'une période d'attente configurable (30 min par défaut)
-  sont regroupés en un seul message plutôt qu'envoyés un par un. Si l'envoi
-  échoue, les résultats restent en file d'attente et partent avec la
-  prochaine vérification au lieu d'être perdus.
-- Un bouton « Envoyer un courriel de test » fait l'aller-retour complet —
-  envoie un message `[TEST]` par SMTP et confirme l'accès IMAP — et indique
-  quelle étape précise a échoué si quelque chose est mal configuré.
-- Les recettes reçues par courriel sont enregistrées automatiquement sans
-  écran de révision (personne n'est au clavier à 3 h du matin) et portent
-  une pastille de source `Email`, pour être faciles à trouver et à vérifier
-  ensuite.
-- **Utilisez une adresse de courriel dédiée qui ne sert à rien d'autre.**
-  C'est la configuration recommandée, pas seulement une précaution : créez
-  un compte ou un alias utilisé uniquement pour envoyer des recettes à
-  cette application, avec un mot de passe propre à l'application.
-  L'application a besoin des identifiants de la boîte que vous lui donnez;
-  lui donner un compte qui contient votre vraie correspondance, c'est
-  conserver des identifiants donnant accès à tout ça. Une adresse dédiée
-  limite les dégâts possibles à une boîte qui ne contient que des recettes.
-- Le mot de passe du courriel est conservé chiffré; une clé doit donc
-  d'abord exister. Paramètres → Réception par courriel a un bouton
-  **Configurer le chiffrement** qui en crée une (`encryption.key` dans le
-  dossier de données); aucune modification du fichier compose n'est
-  nécessaire. Définir `RECIPE_APP_ENCRYPTION_KEY` vous-même fonctionne
-  encore et a priorité — voir les Notes de sécurité pour la différence.
+Elle essaie, dans l'ordre :
+1. un PDF joint;
+2. une photo;
+3. les liens du message;
+4. le texte lui-même.
 
-**Image vedette**
-- Chaque recette peut avoir une photo représentative : affichée sous le
-  titre sur la page de la recette, et en vignette sur chaque fiche de la
-  liste ou de la grille.
-- Capturée automatiquement lors de l'ajout par URL ou par PDF (voir
-  ci-dessus), ou téléversée, remplacée ou retirée à la main en tout temps à
-  partir de la page de la recette — que la recette ait eu une image au
-  départ ou non.
-- Paramètres → Liste des recettes → « Afficher les photos sur les fiches
-  de recettes » active ou désactive les vignettes pour toute la liste,
-  mémorisé sur chaque appareil.
-- Jamais incluse dans le PDF partagé (voir Partager / imprimer plus bas);
-  le fichier HTML exporté et la vue d'impression de l'application
-  l'incluent.
+Le courriel sans le mot-clé n'est jamais lu.
 
-**Sauvegarde et exportation** (Paramètres → Sauvegarde et exportation)
-- Choisissez un format, puis Télécharger. Le fichier est récupéré en
-  arrière-plan et enregistré à partir de la page, pour qu'une application
-  installée sur iPhone ne reste pas bloquée sur l'aperçu d'un .zip sans
-  moyen de revenir. Une création qui échoue dit pourquoi au lieu de ne rien
-  faire en silence.
-- **Sauvegarde complète (`.zip`)** — celle qui se restaure. Contient un
-  instantané cohérent de la base SQLite plus chaque photo et PDF
-  téléversé, avec un `manifest.json` et un `RESTORE.txt` (ou
-  `RESTAURER.txt` en français) qui explique comment la remettre en place.
-  Restaurez-la depuis les Paramètres (plus bas), ou à la main quand
-  l'application ne démarre pas : arrêter l'application, décompresser dans
-  le dossier de données, la redémarrer (voir *Déplacer ou restaurer vos
-  données* ci-dessus; les mêmes étapes sont dans l'application, sous la
-  boîte Restaurer). L'application est arrêtée pour la méthode manuelle
-  volontairement — remplacer un fichier SQLite sous un processus en marche,
-  c'est la meilleure façon de le corrompre.
-- L'instantané est pris avec l'**API de sauvegarde en ligne** de SQLite,
-  pas en copiant `recipes.db`. C'est plus important qu'il n'y paraît :
-  l'application fonctionne en mode WAL, donc à tout moment une quantité
-  inconnue de données validées se trouve dans `recipes.db-wal` plutôt que
-  dans le fichier principal. Une simple copie de fichier produit, sans
-  rien dire, une sauvegarde qui manque vos recettes les plus récentes — de
-  façon mesurable; un test de régression vérifie que l'instantané contient
-  les lignes validées dans le WAL. La sauvegarde est aussi sortie du mode
-  WAL avant la compression, pour que l'archive contienne un seul fichier
-  autonome.
-- Les photos dans l'archive sont exactement celles auxquelles l'instantané
-  de la base fait référence, et la suppression d'une recette attend
-  qu'elles aient été copiées, donc une sauvegarde ne pointe jamais vers une
-  photo qu'elle ne contient pas. Les photos auxquelles rien ne fait
-  référence sont laissées de côté; une photo référencée qui manque sur le
-  disque (y compris une supprimée hors de l'application pendant la
-  sauvegarde) est inscrite dans `manifest.json` et dans le journal plutôt
-  qu'ignorée en silence.
-- **Recettes en PDF (`.zip`)** — un PDF par recette, plus un `index.csv`.
-  C'est l'archive qui survit à l'application : les PDF s'ouvrent partout,
-  sans Docker et sans SQLite. Elle **ne peut pas** servir à restaurer —
-  c'est une copie à lire, pas une sauvegarde. Les notes sont incluses par
-  défaut (c'est votre propre archive, contrairement à l'exportation
-  partagée) et une case permet de les exclure. Une recette dont le rendu
-  échoue est inscrite dans l'index et sautée plutôt que de faire échouer
-  toute l'archive.
-- **Recettes en JSON (`.zip`)** — chaque recette en fichier `.json`
-  [Recipe schema.org](https://schema.org/Recipe) (le format que publient
-  les sites de recettes, et que la plupart des gestionnaires de recettes
-  importent), avec sa photo dans `images/`. Les noms de parties deviennent
-  des `HowToSection`, les temps sont en ISO 8601 quand ils peuvent être
-  lus, et les champs propres à l'application (étiquettes et leurs groupes,
-  notes d'appréciation, favori, rythme, difficulté, temps réel, notes,
-  *À vérifier*) vont
-  sous `"x-open-the-pantry"`, donc réimporter le fichier ici ne perd rien.
-  Une recette peut aussi être téléchargée ainsi : Partager → Télécharger en
-  JSON (sans sa photo).
-- **Importer des recettes** (sous le bouton Télécharger) — un `.json`
-  schema.org (une recette, une liste ou un `@graph`), un `.zip` de ces
-  fichiers (l'exportation ci-dessus ou celle d'une autre application), ou
-  une exportation Paprika (`.paprikarecipes`). Les recettes sont
-  **ajoutées**; rien n'est remplacé. Une recette déjà présente depuis le
-  même lien est ignorée; une dont le titre existe déjà est ajoutée avec une
-  note. Les photos contenues dans le fichier sont gardées (vérifiées comme
-  tout téléversement); les photos qui ne sont que des liens Web ne sont pas
-  téléchargées. Étiquettes : l'exportation de cette application garde ses
-  étiquettes telles quelles; les mots-clés d'une autre application sont
-  associés aux étiquettes que vous avez déjà, et les catégories de Paprika
-  (les vôtres) deviennent des étiquettes personnalisées s'il n'y a pas de
-  correspondance; les étiquettes suggérées s'ajoutent comme pour tout
-  ajout. Les résultats listent chaque recette ajoutée, ignorée ou refusée
-  (p. ex. une ligne au-delà des limites habituelles). Les archives sont
-  lues avec des limites (20 000 fichiers, 25 Mo par fichier, 2 Go
-  décompressés, 5 000 recettes, 1 Go téléversé, 4 Go de décompression en
-  tout, photos relues comprises) et seulement par nom, donc un zip
-  endommagé ou malveillant ne peut rien écrire nulle part ni occuper le
-  serveur. Chaque photo est lue au moment où sa recette est enregistrée,
-  donc une grosse exportation n'est pas gardée en mémoire. Le format
-  de Paprika n'est pas publié; les champs lus sont ceux que ses
-  exportations contiennent d'après ce qui en est connu.
-- Les deux sont créées dans un fichier temporaire et transmises en continu
-  par le serveur, jamais assemblées dans sa mémoire — une bibliothèque de
-  quelques centaines de photos est trop grosse pour qu'il soit raisonnable
-  de la garder en mémoire vive sur un petit serveur. (Le navigateur, lui, garde le
-  fichier terminé en mémoire avant de l'enregistrer; c'est le prix pour ne
-  pas quitter la page sur iOS, et ça va jusqu'à quelques centaines de Mo.)
-  Les archives temporaires sont supprimées une fois envoyées, et nettoyées
-  si un téléchargement meurt en cours de route.
-- **Sauvegardes automatiques** (Paramètres → Sauvegarde et exportation) :
-  une fois activées, une sauvegarde complète (le même .zip que Télécharger
-  → Sauvegarde complète) est faite chaque jour à l'heure choisie, dans le
-  fuseau horaire du conteneur (`TZ`), et seules les plus récentes sont
-  gardées (7 par défaut; de 1 à 30). Une sauvegarde manquée parce que le
-  serveur était éteint (aucune depuis 36 heures) est faite à la vérification
-  suivante, toutes les 10 minutes. **Sauvegarder maintenant** en fait une
-  tout de suite. Les Paramètres affichent le dernier résultat, la raison
-  d'un échec (plus d'espace, dossier non accessible en écriture) et les
-  sauvegardes du dossier. Les modifier demande le mot de passe des
-  paramètres, pour que personne ne puisse les désactiver discrètement.
-  - Elles vont dans `data/backups/` sauf indication contraire. Un disque
-    en panne emporte le dossier de données et ce dossier ensemble; pour
-    une vraie deuxième copie, montez un dossier d'un autre disque et
-    indiquez-le à l'application : dans `docker-compose.yml`, décommentez
-    `- /path/on/another/disk/pantry-backups:/app/backups` sous `volumes:`
-    et `RECIPE_APP_BACKUP_DIR: "/app/backups"` sous `environment:`. Au
-    démarrage, le conteneur donne à l'application ce dossier et ses
-    propres fichiers de sauvegarde, rien d'autre (ce peut être un dossier
-    partagé). Si le partage ne le permet pas, l'application démarre quand
-    même et les paramètres indiquent pourquoi les sauvegardes ne peuvent
-    pas être écrites.
-  - Seuls les fichiers nommés comme les sauvegardes de l'application
-    (`open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip`, avec `-2`, `-3`… pour
-    une autre dans la même seconde) y sont supprimés, et une sauvegarde ne
-    reçoit ce nom qu'une fois complète.
-  - Pour en restaurer une, utilisez **Restaurer ou importer** avec ce
-    fichier, ou les étapes manuelles.
-- **Restaurer une sauvegarde complète** (la même boîte que l'importation :
-  un `.zip` qui contient un `recipes.db` est pris pour une sauvegarde, tout
-  le reste est importé). Vérifier une sauvegarde complète demande déjà le
-  mot de passe des paramètres (elle décompresse et vérifie une base
-  pouvant atteindre 4 Go); un fichier à importer, non. Le fichier est vérifié d'abord et rien ne change
-  avant votre confirmation : le zip est lu seulement par nom et avec des
-  limites, `recipes.db` doit passer la vérification d'intégrité de SQLite
-  et avoir les tables de cette application, et l'écran indique combien de
-  recettes il contient par rapport à combien il y en a ici. **Remplacer ma
-  bibliothèque** demande aussi le mot de passe des paramètres (écraser
-  toute la bibliothèque est ce que l'application peut faire de plus
-  destructeur, donc c'est derrière le même mot de passe que la réception
-  par courriel et HTTPS). Une sauvegarde vérifiée attend 30 minutes;
-  vérifier un autre fichier ne l'annule pas. Ensuite, la restauration :
-  - écrit une **sauvegarde de sécurité** de la bibliothèque actuelle dans
-    le dossier de données (`restore-safety-<date>.zip`, une sauvegarde
-    complète normale; les trois plus récentes sont gardées), pour qu'une
-    restauration du mauvais fichier puisse être annulée en restaurant
-    celle-là;
-  - met le reste de l'application en pause (les autres requêtes reçoivent
-    « réessayez dans un instant »), puis copie la sauvegarde dans la base
-    en service avec l'API de sauvegarde de SQLite, sous le verrouillage de
-    SQLite, et remplace `uploads/` par les photos et PDF de la sauvegarde
-    (chacun vérifié comme un téléversement; le reste est laissé de côté et
-    compté);
-  - met à jour la base d'une sauvegarde plus ancienne de la même façon
-    qu'une mise à jour, et recharge les modèles appris et Quoi manger?;
-  - garde ce qui appartient à ce serveur plutôt qu'à la sauvegarde : les
-    paramètres HTTPS, et le mot de passe du courriel quand
-    l'`encryption.key` de ce serveur peut le lire. Un mot de passe qu'elle
-    ne peut pas lire (une sauvegarde d'une autre installation) est effacé
-    et la réception par courriel désactivée, avec une note qui le dit.
+- **Les résultats** sont renvoyés par courriel, en `[SUCCESS]`, `[FAILURE]`
+  ou `[PARTIAL]`, regroupés sur une période d'attente. Un échec liste ce qui
+  a été essayé, et pourquoi chaque essai a abandonné. Les résultats qui
+  n'ont pas pu être envoyés attendent la vérification suivante.
+- **Le courriel illisible est refusé.** Une photo ou un PDF numérisé que
+  l'OCR ne lit pas de façon fiable est refusé plutôt qu'enregistré en texte
+  brouillé. Tout courriel de plus de 30 Mo l'est aussi.
+- **Expéditeurs acceptés.** « Accepter les courriels seulement de » limite les
+  adresses ou les domaines qui peuvent ajouter des recettes.
+- **Envoyer un courriel de test** vérifie l'envoi et la lecture séparément,
+  et dit ce qu'il a trouvé sur le port si une connexion échoue.
+- **Utilisez une adresse dédiée**, avec un mot de passe d'application, qui
+  ne reçoit rien d'autre. L'application garde le mot de passe de ce compte,
+  chiffré. **Configurer le chiffrement** dans les paramètres crée la clé.
 
-**Organiser et trouver**
-- Trois catégories d'étiquettes structurées (type de repas, mode de
-  cuisson, ingrédient principal) plus des étiquettes libres. Suggestion
-  automatique par mots-clés à l'ajout; toujours modifiable. Les étiquettes
-  intégrées connaissent les mots français comme anglais (« au four »
-  suggère Four, « poulet » Poulet, « souper » Souper), avec ou sans
-  accents. Les mots de repas suivent l'usage québécois : déjeuner, c'est le
-  matin, dîner le midi, souper le soir. Les bouillons, fonds et sauces
-  (« bouillon de poulet », « sauce de poisson ») ne comptent pas comme
-  ingrédient principal, mais excluent quand même Végétarien. Les
-  suggestions s'appliquent à l'ajout d'une recette; les étiquettes des
-  recettes existantes ne changent pas, sauf si vous utilisez Paramètres →
-  Étiquettes → « Ajouter les étiquettes suggérées à toutes les recettes ».
-  Cela liste les suggestions manquantes de chaque recette, avec une case
-  par recette et par étiquette (toutes cochées au départ); seul ce qui
-  reste coché est ajouté. Cela n'ajoute jamais une étiquette qu'une recette
-  a déjà, ni Végétarien à côté d'une étiquette de viande ou de poisson, et
-  ne retire rien. Les suggestions décochées ou retirées sont proposées de
-  nouveau la fois suivante, sauf si la recette est réglée à « Exclure à
-  l'avenir » (un bouton sur chaque ligne de la liste). L'écran de
-  modification d'une recette exclue permet de l'inclure de nouveau, et son
-  bouton « Suggérer des étiquettes » ajoute en tout temps les suggestions
-  pour cette recette dans le champ des étiquettes — exclue ou non — pour
-  que vous fassiez le tri avant d'enregistrer.
-- Paramètres → Étiquettes → « Gérer les groupes d'étiquettes et les
-  mots-clés » : ajoutez des groupes (p. ex. Cuisine du monde) et des
-  étiquettes dans n'importe quel groupe, chacune avec les mots qui la font
-  suggérer (« Thaï : citronnelle, galanga, sauce de poisson »). Les
-  étiquettes intégrées peuvent aussi recevoir des mots de plus (Bœuf :
-  bavette). Une étiquette d'ingrédient principal peut être marquée comme
-  voulant dire que le plat n'est pas végétarien. Les nouveaux groupes ont
-  leur propre bouton à côté de Type de repas / Mode de cuisson /
-  Ingrédient principal dès qu'ils ont des étiquettes. Les groupes et
-  étiquettes ajoutés là peuvent être supprimés, ce qui les retire des
-  recettes; les groupes et étiquettes intégrés ne peuvent pas l'être. Une
-  étiquette laissée dans un groupe qui n'existe plus (une base de données
-  modifiée hors de l'application, par exemple) est déplacée dans
-  Personnalisées au démarrage. Les modes de cuisson propres aux cocktails
-  (Agité, Remué, Monté au verre, Mélangé) s'affichent dans un
-  sous-onglet de Mode de cuisson.
-- Paramètres → Apprentissage (« Apprendre de mes recettes », activé par
-  défaut) : deux petits modèles entraînés sur ce serveur à partir de vos
-  propres recettes enregistrées, sans LLM ni service extérieur.
-  - **Lecture des importations.** Pour une recette importée d'une photo,
-    d'un PDF ou d'un courriel, le texte d'origine est gardé à côté de ce
-    que vous avez enregistré après l'écran de révision; chaque ligne en est
-    donc étiquetée — titre, ingrédient, partie d'une étape, ou rien —
-    corrections comprises. Un classificateur apprend ces étiquettes à
-    partir des mots et de la forme de chaque ligne, de ses voisines et de
-    ce que les règles intégrées en ont fait : il apprend où les règles se
-    trompent sur vos sources. Il lui faut 8 recettes de ce genre, et il
-    n'est utilisé que s'il classe plus de lignes correctement que les
-    règles en validation croisée sur vos recettes; les Paramètres
-    affichent les deux résultats. Les règles restent la solution de repli
-    pour toute importation où il ne trouve ni ingrédients ni étapes.
-  - Les recettes encore *À vérifier* sont exclues des deux modèles : c'est
-    la sortie de l'analyseur, non vérifiée, et en apprendre enseignerait
-    aux modèles leurs propres erreurs. Une fois vérifiées ou enregistrées
-    depuis la modification, elles comptent.
-  - **Suggestions d'étiquettes.** Un modèle par étiquette, à partir des
-    mots du titre, des ingrédients et des étapes de vos recettes
-    étiquetées (15 nécessaires, 5 par étiquette). Il s'ajoute aux
-    suggestions par mots-clés : une étiquette n'a un modèle que si, en
-    validation croisée, les suggestions de plus qu'il ferait étaient justes
-    au moins 85 % du temps — l'ajout par lot et par courriel enregistre les
-    étiquettes sans révision.
-  - **D'où vient une suggestion.** Sur l'écran de révision et après
-    *Suggérer des étiquettes* dans la modification, chaque étiquette
-    suggérée dit pourquoi : *mot-clé : bake* (le mot trouvé, intégré ou
-    ajouté dans les Paramètres), *appris*, ou, pour Végétarien, *aucun mot
-    de viande ou de poisson trouvé*; une étiquette qui revient à tort peut
-    ainsi être ramenée à son mot-clé. Paramètres → Apprentissage affiche les
-    résultats de chaque modèle par rapport à ce qu'il lui faut (pour la
-    lecture des importations, les deux taux et l'écart à battre), combien
-    de recettes étiquetées ont servi aux modèles d'étiquettes, les
-    étiquettes les plus proches d'avoir un modèle avec la fréquence à
-    laquelle leurs suggestions en plus étaient justes, et combien de recettes ont été
-    laissées de côté parce qu'encore *À vérifier*.
+### Trouver une recette
 
-  Les deux se réentraînent seuls quelques minutes après un changement de
-  recettes ou d'étiquettes, et au démarrage; « Réentraîner maintenant » le
-  fait tout de suite. Un entraînement prend de quelques secondes à environ
-  une minute pour quelques centaines de recettes, et quelques centaines de
-  Mo au plus; seules les 50 étiquettes les plus utilisées ont un modèle,
-  et un entraînement occupe l'une des trois places des traitements
-  OCR/PDF, donc il ne s'ajoute jamais au pire cas ci-dessous. Les modèles sont dans `data/ml/` sous forme de simples tableaux
-  de nombres, sont reconstruits à partir des recettes et ne sont pas dans
-  les sauvegardes. Désactiver l'apprentissage revient aux règles et aux
-  mots-clés seuls.
-- Recherche plein texte (SQLite FTS5) dans les titres, ingrédients, étapes,
-  notes, texte source *et* noms d'étiquettes, chaque résultat indiquant
-  s'il correspond à la recette ou à une étiquette. Les mots correspondent à
-  partir de leur début (« pou » trouve poulet), dans n'importe quel ordre,
-  et chaque mot doit correspondre. Le texte des ingrédients et des étapes
-  est tenu à jour par des déclencheurs de la base de données, donc les
-  modifications sont cherchables tout de suite.
-- Tri par plus récentes ou plus anciennes, titre, note, temps de cuisson ou
-  difficulté, dans un sens ou dans l'autre; les recettes sans valeur pour
-  le champ choisi vont toujours à la fin. Le choix est mémorisé. Le tri
-  s'applique aussi aux résultats de recherche.
-- « Effacer les filtres » apparaît (avec un compte) chaque fois que des
-  étiquettes, un rythme, une plage de temps de cuisson ou une recherche
-  sont actifs : dans la barre d'outils, et en haut du panneau latéral, à
-  l'écart des étiquettes elles-mêmes.
-- Une petite icône de notes sur une fiche (vue photos ou liste) indique les
-  recettes qui ont des notes.
-- Les fiches sans photo n'affichent que le titre, sans espace vide. Les
-  pastilles de source et de qualité de l'OCR sont sur la page de la
-  recette, pas sur les fiches. Une recette lue à partir d'une adresse web
-  (saisie, ou lien dans un courriel de recette) a aussi un lien **Voir
-  l'original** à côté de la pastille de source. Il ouvre la page dans un
-  nouvel onglet ou une nouvelle fenêtre. Dans une application installée,
-  c'est le téléphone qui décide si c'est votre navigateur par défaut ou une
-  visionneuse intégrée à l'application; une page web ne peut pas choisir.
-  Une impression ou une exportation affiche l'adresse elle-même. Pour un
-  lien reçu par courriel, l'adresse gardée est celle de la page où menait le
-  lien, pas le lien de suivi de l'infolettre.
-  Les recettes enregistrées avant cette version à partir d'un lien reçu par
-  courriel n'ont pas d'adresse enregistrée, donc pas de lien.
-- Le bouton ☰ ouvre « Parcourir par étiquette » : les groupes d'étiquettes,
-  où toucher une étiquette filtre la liste. Sur un téléphone, c'est un
-  tiroir qui se ferme quand on touche à côté.
-- Filtres d'étiquettes cumulatifs (logique ET — ne garde que les recettes
-  qui ont toutes les étiquettes choisies) plus un filtre imbriqué de temps
-  de cuisson (tranches d'heures qui se précisent jusqu'à des intervalles de
-  20 minutes), dont les options sont générées seulement à partir des temps
-  de cuisson réellement inscrits — aucune option vide.
-- Filtre de rythme (Rapide / Modéré / Long, d'après la note de rythme de
-  chaque recette). En choisir plus d'un montre les recettes qui ont l'un ou
-  l'autre; il se combine avec les étiquettes, le temps de cuisson et la
-  recherche.
-- Les filtres s'appliquent dès qu'on les touche. Terminé (toujours au bas
-  du panneau), le × ou Échap ferme le panneau et les garde.
+- **Les étiquettes** forment trois groupes intégrés (type de repas, mode de
+  cuisson, ingrédient principal), plus vos propres groupes et les étiquettes
+  Personnalisées.
+  - Des étiquettes sont suggérées à partir de mots-clés quand une recette
+    est ajoutée, en français et en anglais. Les repas suivent l'usage
+    québécois : déjeuner, dîner, souper.
+  - Paramètres → Étiquettes peut ajouter les étiquettes suggérées à toutes
+    les recettes (vous cochez lesquelles), et gérer les groupes, les
+    étiquettes et leurs mots-clés.
+- **L'apprentissage** (Paramètres → Apprentissage, activé par défaut)
+  entraîne deux petits modèles à partir de vos propres recettes corrigées :
+  l'un lit les importations, l'autre suggère des étiquettes.
+  - Chaque modèle n'est utilisé que s'il fait mieux que les règles
+    intégrées. Les paramètres affichent les scores.
+  - Chaque étiquette suggérée dit d'où elle vient (le mot-clé trouvé, ou
+    *appris*).
+  - Les recettes encore *À vérifier* ne servent pas à l'apprentissage.
+  - Les modèles sont gardés dans `data/ml/`. Ils sont reconstruits
+    automatiquement, et ne sont pas dans les sauvegardes.
+- **La recherche** couvre les titres, les ingrédients, les étapes, les
+  notes, le texte d'origine et les étiquettes. Les mots correspondent à
+  partir du début (« poul » trouve poulet), et chaque mot doit correspondre.
+- **Les filtres** : cumulez les étiquettes (une recette doit les avoir
+  toutes), le rythme et le temps de cuisson noté. **Triez** par date, titre,
+  note, temps de cuisson ou difficulté. **Effacer les filtres** remet tout à
+  zéro.
 
-**Notes et suivi**
-- Bascule de favori, plus trois notes indépendantes (goût de 1 à 5, rythme
-  rapide/modéré/long, difficulté facile/moyen/difficile) réglables
-  directement à partir de chaque fiche, sans ouvrir la recette. Sur une
-  fiche, elles ouvrent une feuille (une fiche coupe ce qui dépasse, donc
-  une fenêtre contextuelle serait tronquée et cacherait le titre); la page
-  de la recette utilise une fenêtre contextuelle, puisqu'il y a la place.
-  La feuille affiche aussi la valeur actuelle et permet de l'effacer.
-- Portions, saisies à la main sur la recette (ou à l'ajout; pour une
-  recette web, le rendement indiqué la remplit) : texte libre comme `4`,
-  `4-6` ou `12 biscuits`, jusqu'à 100 caractères. Pour information
-  seulement — aucun filtre, tri ou recherche ne s'en sert. Une fois les
-  portions ou le temps de cuisson réel saisis, les deux s'affichent en
-  texte simple sur la ligne sous la photo, avec un petit lien Modifier
-  qui rouvre les champs; les exports PDF et HTML incluent les deux.
-- Temps de cuisson réel facultatif (`dd:hh:mm`), inscrit séparément de tout
-  temps de préparation, de cuisson ou total indiqué par la source — c'est
-  lui qui alimente le filtre de temps. Jusqu'à 60 jours (salaisons et
-  fermentations longues); heures sous 24 et minutes sous 60. Le filtre
-  propose des intervalles de 20 minutes jusqu'à une journée, puis des
-  journées jusqu'à une semaine, puis des semaines, jusqu'au plus long temps
-  inscrit.
-- Notes libres pour chaque recette (substitutions, ajustements de temps,
-  résultat) avec un bouton sur la page de la recette — visuellement
-  différent quand des notes existent. Gérées uniquement par `PATCH /notes`;
-  volontairement absentes du corps de `PUT /api/recipes/{id}` (qui remplace
-  tout), pour qu'un client qui les omet ne puisse pas les effacer sans le
-  savoir.
+### Une recette
 
-**Gestion en lot**
-- Mode Sélectionner (le bouton à droite de la barre d'outils) pour
-  supprimer plusieurs recettes d'un coup, en plus de la suppression d'une
-  seule recette (« Supprimer la recette », à côté de « Modifier la
-  recette », au bas d'une recette).
-- **Étiquettes…**, dans la barre de sélection, ajoute une étiquette
-  existante à toutes les recettes sélectionnées, ou la leur retire. Elle
-  indique combien ont changé, combien l'avaient déjà (ou ne l'avaient
-  pas) et toute recette qui a déjà le nombre maximal d'étiquettes (50). La
-  sélection reste, pour enchaîner avec une autre étiquette. Les nouvelles
-  étiquettes se créent sur une recette (Modifier) ou dans Paramètres →
-  Étiquettes.
-- **Paramètres → Vérification de la bibliothèque** liste les recettes sans
-  ingrédients, étapes, étiquettes ou photo, celles dont le fichier de
-  photo manque dans le dossier de données, celles encore à vérifier, et
-  les groupes qui semblent être la même recette (même lien ou même titre,
-  comme pour l'avertissement à l'ajout). Chaque titre ouvre la recette.
-  Lecture seule : rien n'est modifié. Les recettes dans Récemment
-  supprimées ne sont pas comptées.
-- **Fusionner…** apparaît dans la barre de sélection quand exactement deux
-  recettes sont sélectionnées. Pour chaque partie, on choisit de quelle
-  recette elle vient : titre, photo (ou aucune), ingrédients et étapes
-  (avec le texte d'origine), portions et temps, lien, favori/notes/temps
-  réel, et notes personnelles (l'une, l'autre, ou les deux à la suite).
-  Les parties identiques ne sont pas demandées; par défaut, c'est la
-  recette la plus remplie. Les étiquettes des deux sont gardées. La
-  recette dont on garde les ingrédients et les étapes devient la recette
-  fusionnée; l'autre va dans Récemment supprimées, d'où on peut la
-  remettre telle quelle.
-- La suppression demande d'abord une confirmation. Si elle échoue,
-  l'application dit pourquoi (erreur du serveur, serveur injoignable, déjà
-  supprimée) et abandonne après 10 secondes plutôt que de laisser la boîte
-  de dialogue bloquée. Une suppression en lot indique combien ont été
-  supprimées, introuvables ou en échec, et garde les échecs sélectionnés
-  pour réessayer.
-- **Récemment supprimées.** Une recette supprimée (une seule, ou une
-  sélection) est cachée partout (liste, recherche, On mange quoi?,
-  exportations, détection des doublons, apprentissage) et attend 30 jours
-  dans **Récemment supprimées**, au menu latéral, affiché tant qu'il y a
-  quelque chose. De là, on peut la remettre telle quelle (étiquettes,
-  notes, photo) ou la supprimer tout de suite, une à la fois ou toutes
-  ensemble. Après 30 jours, le nettoyage en arrière-plan (au démarrage et
-  toutes les 6 heures) la supprime pour de bon, avec sa photo ou son PDF.
-  Une sauvegarde complète inclut ce qui y attend, et une restauration l'y
-  remet.
-- La suppression pour de bon est totale : la ligne de la base et tout
-  fichier sur le disque (image, PDF) sont retirés. Les fichiers d'une session d'ajout
-  abandonnée (téléversés mais jamais enregistrés) sont supprimés à la
-  fermeture de la boîte de dialogue, avec un nettoyage au démarrage et
-  toutes les 6 heures en filet de sécurité (il tourne en arrière-plan et ne
-  bloque jamais l'application, même pendant une sauvegarde).
+- **Les notes** se donnent directement sur la fiche : favori, goût de 1 à 5,
+  rythme, difficulté.
+- **Les portions** et le **temps réel** que vous avez noté (`jj:hh:mm`,
+  jusqu'à 60 jours). Le temps réel sert au filtre de temps.
+- **Les notes personnelles** : votre propre texte. Elles restent hors des
+  partages, sauf si vous le demandez.
+- **La photo** : prise de la source, téléversée, remplacée ou retirée.
+- **Voir l'original** ouvre la page d'où vient la recette.
+- **Ajuster avec ½ / 1× / 2×.** Cela réécrit la quantité au début de
+  chaque ligne d'ingrédient, dans le même style que l'original (« 1 1/2
+  tasse » → « 3 tasses », « 250 g » → « 125 g », « 2 à 3 » → « 4 à 6 »).
+  L'unité suit la nouvelle quantité (« 1 gousse » → « 2 gousses »), et les
+  portions sont ajustées aussi.
+  - Les quantités dans les étapes ne changent pas.
+  - Les lignes qu'elle ne peut pas ajuster sans risque sont marquées « (tel
+    qu'écrit) » : « 1.000 g » (mille, ou un?), et deux quantités sur une
+    ligne, comme « 1 lb 8 oz ».
+  - Rien n'est enregistré : la recette s'ouvre à 1× la fois suivante.
+- **Garder l'écran allumé** pendant qu'une recette est ouverte, sur toutes
+  les recettes (Paramètres) ou sur une seule. Il faut HTTPS.
 
-**Quantités**
-- La page d'une recette a des boutons **½**, **1×** et **2×** à côté
-  d'Ingrédients. Ils réécrivent la quantité au début de chaque ligne
-  d'ingrédient (« 1 1/2 c. à soupe » → « 3 c. à soupe »; « 250 g » → « 125 g »;
-  « 2 à 3 œufs » → « 4 à 6 œufs »), dans le même style que l'original (les
-  fractions restent des fractions, « 1,5 l » garde sa virgule), et les
-  portions avec. Un mot d'unité ou de compte juste après la quantité
-  s'accorde avec elle (« 1 gousse » → « 2 gousses », « 3 tasses » →
-  « 1 1/2 tasse », « 1 cup » → « 2 cups »); les abréviations (c. à soupe,
-  g, tbsp) et les autres mots restent tels qu'écrits. Les quantités dans les étapes, et les lignes sans quantité
-  au début (« Sel au goût »), restent telles qu'écrites. Les lignes que
-  l'application ne peut pas ajuster sans risque aussi, marquées « (tel
-  qu'écrit) » avec un compte au-dessus de la liste : « 1.000 g » (mille, ou
-  un?) et deux quantités sur une ligne (« 1 lb 8 oz », « 2 c. à soupe + 1
-  c. à thé »). Des portions comme « environ 10 croquettes » ajustent leur
-  seul nombre. Rien n'est
-  enregistré : chaque recette s'ouvre à 1×. L'impression depuis la page
-  imprime les quantités ajustées.
+### Gérer la bibliothèque
 
-**Partager / imprimer**
-- **Partager → Image (JPG)** dessine la recette en une grande image
-  (1080 px de large) : sa photo, le titre, les portions et les temps, les
-  ingrédients et la préparation (avec les parties), et le site d'où elle
-  vient. Vos notes sont laissées de côté, sauf si vous activez **Inclure
-  mes notes** dans l'aperçu (affiché quand la recette a des notes;
-  désactivé à chaque fois). L'image est faite
-  dans votre navigateur, sans travail pour le serveur. Un aperçu s'ouvre
-  avec **Télécharger** et, sur un téléphone en HTTPS, **Partager…** pour
-  la feuille de partage du téléphone (Messages, courriel…). Une très
-  longue recette est dessinée plus petite plutôt que coupée.
-- Un seul gabarit HTML sert à la vue d'impression de l'application, à un
-  PDF téléchargeable (WeasyPrint) et à un fichier HTML autonome (images
-  incluses en base64) pour partager hors de votre réseau.
-- Si une recette a des notes, le téléchargement du PDF demande s'il faut
-  les inclure; incluses, elles sont ajoutées à la fin dans une section
-  « Notes » bien identifiée. Les notes sont des annotations personnelles,
-  pas une partie de la recette, donc elles sont à inclure au cas par cas
-  plutôt que toujours présentes — l'impression et l'exportation HTML ne les
-  incluent jamais.
-- L'exportation PDF n'inclut jamais l'image vedette (pas un choix —
-  toujours exclue). Le fichier HTML exporté et la vue d'impression
-  l'incluent.
-- Les exportations utilisent la langue de l'interface pour leurs
-  étiquettes (Ingrédients, Préparation, Portions…); la recette elle-même
-  est exportée telle qu'écrite.
+- **Modifier** n'importe quelle recette. Le texte d'origine est affiché à
+  côté des champs, pour comparer.
+- **Dupliquer** fait une copie à transformer en variante. Elle a sa propre
+  copie de la photo.
+- **Le mode Sélectionner** (le bouton à droite de la barre d'outils) agit
+  sur plusieurs recettes à la fois :
+  - les **supprimer**;
+  - ajouter ou retirer une étiquette (**Étiquettes…**);
+  - avec exactement deux recettes sélectionnées, **Fusionner…**. Vous
+    choisissez d'où vient chaque partie : titre, photo, ingrédients et
+    étapes, portions et temps, lien, notes, notes personnelles. Les
+    étiquettes des deux sont gardées. L'autre recette va dans Récemment
+    supprimées.
+- **Récemment supprimées.** Une recette supprimée disparaît partout et
+  attend 30 jours dans **Récemment supprimées**, au menu latéral. De là, on
+  peut la remettre, ou la supprimer tout de suite. Après 30 jours, elle est
+  supprimée pour de bon, avec sa photo.
+- **Paramètres → Vérification de la bibliothèque** liste :
+  - les recettes sans ingrédients, étapes, étiquettes ou photo;
+  - les recettes dont le fichier de photo manque;
+  - les recettes encore à vérifier;
+  - les recettes qui semblent être la même.
 
-**Envoyer une recette par courriel (Partager → Envoyer le PDF par
-courriel)**
-- Envoie le même PDF que Télécharger le PDF, en pièce jointe, par le compte
-  de courriel configuré dans Paramètres → Réception par courriel. L'option
-  apparaît dans le menu Partager dès que ce compte a un serveur SMTP, un
-  nom d'utilisateur et un mot de passe enregistré; la vérification
-  quotidienne de la boîte n'a pas besoin d'être activée.
-- L'expéditeur est le compte de réception par courriel (affiché, non
-  modifiable). Le champ À accepte jusqu'à cinq adresses séparées par des
-  virgules, avec un message facultatif et une case pour inclure vos notes
-  quand la recette en a. L'objet est « Recette : <titre> » (« Recipe:
-  <title> » en anglais).
-- « Choisir dans les contacts » ouvre le sélecteur de contacts du
-  téléphone là où le navigateur en a un (Chrome sur Android). Partout
-  ailleurs, les adresses auxquelles vous avez déjà envoyé sont proposées
-  en suggestions d'un seul toucher; Paramètres → Réception par courriel →
-  Destinataires récents les liste, et vous pouvez en retirer ou en ajouter.
-- Si l'envoi échoue, le message dit pourquoi, avec le même diagnostic de
-  connexion que « Envoyer un courriel de test ».
-- Au plus 10 courriels de recettes par heure pour toute l'application (voir
-  les Notes de sécurité). Les envois qui échouent ne comptent pas.
+  Chaque titre ouvre la recette.
 
-**Interface**
-- **Anglais ou français.** Paramètres → Langue. Par défaut, la langue de
-  l'appareil (le français s'il est réglé à n'importe quel français, sinon
-  l'anglais), mémorisée sur chaque appareil, donc deux téléphones de la
-  même maison peuvent être différents. Tout est traduit : menus, messages
-  du serveur, dates, PDF et HTML exportés, instructions de restauration de
-  la sauvegarde et courriels de résultats (voir Réception par courriel).
-  Le français est celui du Québec. Les étiquettes et groupes intégrés sont
-  affichés en français (Four, Souper, Mode de cuisson) mais conservés sous
-  leur nom anglais, donc changer de langue ne change rien à la
-  bibliothèque; les étiquettes que vous créez sont affichées telles que
-  tapées.
-- PWA : installable, avec mise en cache de l'interface pour le hors-ligne
-  par un service worker.
-- **Les mises à jour apparaissent à la prochaine ouverture.** Les fichiers
-  de l'application sont servis avec `Cache-Control: no-cache`, donc le
-  navigateur vérifie chaque fois s'il y a une copie plus récente au lieu de
-  garder l'ancienne pendant des heures (comme iOS le faisait). Tirer vers
-  le bas en haut de la liste recharge les recettes et, si le serveur a une
-  version plus récente de l'application (`GET /api/version`), recharge la
-  page dans cette version.
-- Thème clair / sombre / système (menu des Paramètres). Le mode sombre est
-  un vrai noir (`#000000`), pas un gris foncé — les surfaces sont séparées
-  par de fines bordures, pas par un fond plus pâle.
-- Taille du texte réglable dans l'application (Paramètres, jusqu'à 26 px),
-  en plus du réglage de taille du texte du système. Sur téléphone et
-  tablette, le zoom de la page est désactivé — pincer, toucher deux fois, et
-  le zoom automatique d'iOS quand on touche un petit champ de texte — parce
-  qu'il poussait des boutons hors de l'écran; les champs de texte font au
-  moins 16 px pour qu'iOS n'ait pas de raison de zoomer. Sur ordinateur, le
-  zoom du navigateur (Ctrl/Cmd +/-) et le pincement sur le pavé tactile
-  fonctionnent normalement.
-- Sur grand écran (portable et plus), une recette s'affiche dans une
-  fenêtre plus large, les ingrédients à côté des instructions; la liste
-  d'ingrédients reste visible pendant que les instructions défilent, et le
-  texte est un peu plus grand.
-- **Garder l'écran allumé pendant la lecture d'une recette** — pratique
-  quand on a les mains occupées et le téléphone appuyé sur le comptoir.
-  Facultatif : activez une fois Paramètres → Écran → « Garder l'écran
-  allumé pendant la consultation d'une recette », et chaque recette ouverte
-  garde l'écran allumé jusqu'à sa fermeture. Ou laissez-le désactivé et
-  utilisez l'interrupteur « Garder l'écran allumé » sur les recettes où vous
-  le voulez. Il se remet en marche si vous changez d'application et revenez,
-  et l'interrupteur montre l'état réel : si le téléphone refuse (mode
-  économie d'énergie, par exemple), il s'affiche éteint. Utilise l'API
-  Screen Wake Lock du navigateur : Chrome/Edge, Firefox 126+, Safari 16.4+,
-  et les applications d'écran d'accueil de l'iPhone à partir d'iOS 18.4.
-  Les navigateurs ne l'offrent que sur une page sécurisée, donc il faut
-  ouvrir l'application en `https://` (voir *Facultatif : HTTPS sur votre
-  réseau*) ou en `localhost`; en simple `http://`, le réglage et
-  l'interrupteur de chaque recette n'apparaissent pas. (Un contournement
-  par vidéo silencieuse pour `http://` a été essayé et n'a pas gardé un
-  iPhone allumé.)
-- HTML sémantique, étiquettes ARIA sur les contrôles à icône seule et les
-  boîtes de dialogue, focus visible, focus retenu et rendu dans les
-  fenêtres modales.
+### Partager
 
-## Notes de sécurité
+Depuis le menu **Partager** d'une recette, ou le bouton de partage d'une
+fiche :
+- **Imprimer**;
+- **Télécharger le PDF** : il demande s'il faut inclure vos notes, et
+  n'inclut jamais la photo;
+- **Télécharger le HTML** : un seul fichier autonome, avec la photo;
+- **Télécharger en JSON** : au format schema.org;
+- **Image (JPG)** : la recette dessinée en une image de 1080 px dans votre
+  navigateur, sans travail pour le serveur. Activez **Inclure mes notes**
+  pour les ajouter. Sur un téléphone en HTTPS, **Partager…** ouvre la
+  feuille de partage du téléphone;
+- **Copier en texte**;
+- **Envoyer le PDF par courriel** : il part du compte de réception par
+  courriel, vers jusqu'à cinq adresses (au plus 10 courriels à l'heure). Il
+  apparaît une fois ce compte configuré, et demande le mot de passe des
+  paramètres. « Choisir dans les contacts » ne fonctionne que sur Android.
 
-- **Aucune authentification intégrée par défaut.** Chaque point d'accès de
-  l'API est joignable par quiconque peut joindre l'adresse réseau du
-  conteneur, sauf si vous activez la clé d'API ci-dessous — pas de
-  comptes, pas d'écran de connexion. Seule exception : le mot de passe des
-  paramètres juste en dessous, qui couvre les parties utilisant des
-  identifiants externes et rien d'autre. Ça correspond à l'usage prévu (un
-  outil personnel sur votre propre réseau local ou derrière votre propre
-  RPV) — voir l'avertissement au début de ce fichier. Le contrôle d'accès
-  est votre responsabilité, et il n'est pas facultatif si quelque chose que
-  vous ne contrôlez pas peut joindre l'application.
-- **Un mot de passe des paramètres pour les parties qui utilisent des
-  identifiants.** Paramètres → Réception par courriel, Paramètres → HTTPS,
-  Paramètres → Journal et Partager → Envoyer le PDF par courriel utilisent
-  votre compte de courriel ou le jeton DNS de cPanel (le journal contient
-  des objets et des expéditeurs de courriels); ils demandent donc un mot de
-  passe. Le reste de l'application n'en a pas. La vérification de la boîte
-  dans le menu + reste ouverte (elle ne lit que la boîte des recettes).
-  Restaurer une sauvegarde complète (Paramètres → Sauvegarde et
-  exportation) le demande aussi, dès la vérification de la sauvegarde :
-  elle remplace toute la bibliothèque.
-  - Le mot de passe se crée dans l'application la première fois qu'on
-    ouvre l'une de ces parties (au moins 8 caractères). D'ici là, la
-    première personne du réseau à en ouvrir une le créerait; ouvrez-en donc
-    une peu après l'installation.
-  - L'entrer déverrouille ce navigateur pendant 15 minutes. **Verrouiller
-    maintenant** et **Changer le mot de passe** sont dans Paramètres → Mot
-    de passe des paramètres; le changer verrouille tous les autres
-    appareils. Un redémarrage verrouille tout.
-  - Il est conservé sous forme de hachage scrypt salé dans
-    `admin-password.json`, dans le dossier de données, jamais en clair. Il
-    n'est pas dans la sauvegarde .zip; après une restauration, vous en créez
-    un nouveau.
-  - **Mot de passe oublié :** supprimez `admin-password.json` du dossier de
-    données (sans redémarrer); la visite suivante en demande un nouveau. Le
-    créer **efface le mot de passe de courriel et le jeton cPanel
-    enregistrés, et désactive HTTPS**, en supprimant le certificat; la
-    personne qui crée le nouveau mot de passe entre donc ceux-ci de
-    nouveau. Le serveur de courriel, le nom d'utilisateur et la liste des
-    destinataires, le nom d'utilisateur et l'adresse cPanel, le nom et
-    l'adresse HTTPS, les recettes et tout le reste sont conservés. Un jeton
-    défini dans `.env` est hors de portée de l'application et reste. Le premier
-    mot de passe d'une installation mise à jour depuis une version qui
-    n'en avait pas n'efface rien : l'application garde
-    `admin-password.created` pour distinguer une réinitialisation d'une
-    première configuration. Si l'application ne peut pas écrire dans le
-    dossier `https/` du dossier de données (mauvais propriétaire, lecture
-    seule), un fichier de certificat qu'elle ne peut pas supprimer reste
-    (HTTPS est désactivé de toute façon), mais un jeton cPanel enregistré
-    qu'elle ne peut pas retirer bloque le nouveau mot de passe, avec un
-    message qui le dit : corrigez les permissions de ce dossier et
-    réessayez.
-  - Les mots de passe sont vérifiés un à la fois. Après 5 mauvais de
-    suite à partir d'une même adresse, ou 20 de toutes les adresses
-    ensemble, chaque essai suivant doit attendre (30 secondes, puis le
-    double à chaque fois, jusqu'à 15 minutes). La deuxième limite veut dire
-    que quelqu'un qui devine peut vous faire attendre aussi, même depuis
-    votre propre appareil : un mauvais essai à chaque fin d'attente la
-    garde à 15 minutes. **Trop de mauvais mots de passe venant de plusieurs
-    appareils : redémarrez le conteneur** (`docker compose restart`); les
-    comptes ne sont gardés qu'en mémoire.
-  - **Une fois le HTTPS de l'application activé** (et en marche; ou avec
-    Traefik), le mot de passe et ces
-    sections ne fonctionnent qu'à l'adresse `https://`; sur
-    `http://…:8090`, où le mot de passe pourrait être lu sur le réseau,
-    l'application donne plutôt un lien vers l'adresse sécurisée. Seules les
-    requêtes venant de l'intérieur du conteneur sont exemptées (p. ex.
-    `docker exec open-the-pantry curl http://localhost:8090/…`); un
-    navigateur sur le serveur lui-même compte comme le réseau.
-  - La sauvegarde complète (Paramètres → Sauvegarde) reste ouverte, comme
-    les recettes. Elle contient le serveur de courriel, le nom
-    d'utilisateur, l'adresse des avis, les expéditeurs acceptés et les
-    destinataires récents, mais aucun mot de passe (seulement sa forme
-    chiffrée, sans la clé).
-  - Le déverrouillage est un témoin HttpOnly et SameSite=Strict : les
-    autres sites ne peuvent pas s'en servir, et les scripts de la page ne
-    peuvent pas le lire.
-- **Clé d'API facultative** : définissez `RECIPE_APP_API_KEY` pour exiger un
-  en-tête `X-API-Key` correspondant sur chaque requête sauf `/healthz`.
-  C'est un contrôle au niveau de l'API seulement — il n'y a pas d'écran de
-  connexion dans cette version, donc l'utiliser suppose un client d'API qui
-  envoie l'en-tête lui-même, ou un proxy inverse configuré pour l'ajouter.
-  L'interface de l'application ne fonctionne pas avec la clé seule;
-  l'application l'indique dans le journal au démarrage. Une couche
-  d'authentification au proxy inverse (authentification de base,
-  Tailscale, etc.) reste l'option la plus complète pour exposer
-  l'application au-delà de votre réseau local. La clé ne s'applique pas au
-  port de la page On mange quoi? (8091, désactivée par défaut) : elle n'a
-  aucune route d'écriture ni d'administration, mais quiconque peut la joindre
-  peut y lire vos recettes (sauf les cocktails), notes comprises. Avec la
-  clé, laissez cette page désactivée à moins que ça vous convienne.
-- **D'autres sites Web ne peuvent pas utiliser l'application par votre
-  navigateur.** « Seul mon réseau peut la joindre » ne couvre pas les pages
-  Web que les gens de votre réseau visitent : une telle page peut envoyer
-  des requêtes au serveur à partir de leur navigateur. Deux vérifications
-  bloquent ça :
-  - **Noms d'hôte.** Les requêtes sont acceptées pour les adresses IP,
-    `localhost` et les noms de style local (sans point, ou se terminant par
-    `.local`, `.lan`, `.home.arpa`, `.internal`). Tout autre nom — p. ex.
-    `pantry.example.com` derrière un proxy inverse, ou un nom MagicDNS de
-    Tailscale comme `nas.tail1234.ts.net` — doit être inscrit dans
-    `RECIPE_APP_ALLOWED_HOSTS` (séparés par des virgules) dans le fichier
-    compose, sinon ses requêtes reçoivent une erreur 400 qui le dit. Ça
-    bloque le DNS rebinding, où un site fait pointer son propre domaine
-    vers l'adresse de votre serveur.
-  - **Les écritures exigent un en-tête `X-Requested-With`.** Chaque requête
-    qui modifie des données doit le porter; les pages de l'application
-    l'ajoutent automatiquement. Une page d'un autre site ne peut pas
-    ajouter un en-tête personnalisé sans que le navigateur demande d'abord
-    à l'application, et l'application ne l'accepte jamais. Les scripts qui
-    appellent l'API directement doivent l'envoyer aussi (n'importe quelle
-    valeur).
-  - **Pas d'encadrement.** Les deux ports envoient `X-Frame-Options: DENY`
-    et `Content-Security-Policy: frame-ancestors 'none'`, donc un autre site
-    ne peut pas afficher l'application dans sa propre page pour piéger les
-    touchers.
-- **En-têtes de sécurité sur les deux ports.** Une `Content-Security-Policy`
-  ne laisse les pages charger scripts, styles, images et connexions que
-  depuis l'application elle-même (les attributs de style en ligne sont
-  permis; les scripts en ligne non, et il n'y en a aucun), donc un script
-  qui se glisserait un jour dans une page ne s'exécuterait pas et ne
-  joindrait rien d'autre. `Referrer-Policy: no-referrer` empêche « Voir
-  l'original » de donner au site de la recette l'adresse de votre serveur,
-  et `Permissions-Policy` désactive les fonctions du navigateur que
-  l'application n'utilise jamais (caméra, micro, position…), sauf « garder
-  l'écran allumé ». `Strict-Transport-Security` n'est volontairement **pas**
-  envoyé : il s'applique à tous les ports d'un nom d'hôte, donc une fois vu
-  sur l'adresse HTTPS, les adresses `http://` que l'application garde
-  (8090, et On mange quoi? sur 8091, qui n'a pas de HTTPS) ne s'ouvriraient
-  plus.
-- **Partager → Envoyer le PDF par courriel envoie à partir de votre compte
-  de courriel**; il demande donc le mot de passe des paramètres. C'est
-  aussi plafonné : au plus cinq destinataires par courriel et 10 courriels
-  par heure. L'option n'est offerte qu'une fois qu'un mot de passe est
-  enregistré pour le compte de réception par courriel.
-- **Paramètres → HTTPS conserve un jeton d'API cPanel.** Entré sur cette
-  page (protégée par le mot de passe des paramètres), il est conservé
-  chiffré avec la même clé que le mot de passe de courriel dans
-  `data/https/cpanel-login.json`, jamais réaffiché, jamais dans une
-  sauvegarde et jamais servi. Celui mis plutôt dans `.env` y reste en
-  clair; gardez donc ce fichier privé (`chmod 600`). Changer le nom d'utilisateur ou l'adresse
-  cPanel sans l'entrer de nouveau l'efface. Une réinitialisation du mot de
-  passe des paramètres l'efface aussi (celui de `.env` reste :
-  l'application ne peut pas modifier ce fichier). Même avec le mot de
-  passe, la page ne vaut que pour le nom enregistré : refaire la
-  configuration (au plus 5 demandes de certificat par semaine), faire
-  pointer le nom vers une autre adresse de votre réseau, ou désactiver
-  HTTPS. Elle ne peut créer aucun autre nom, faire pointer le nom vers
-  Internet, ni modifier ou s'approprier un enregistrement qu'elle n'a pas
-  créé (donc pas celui de votre site Web), et la clé du certificat reste
-  sur le serveur. Mais le jeton se trouve dans le conteneur de
-  l'application : quiconque y ferait exécuter du code aurait le jeton
-  lui-même, avec tout ce qu'il permet. Donnez-lui une date d'expiration et,
-  là où cPanel le permet, un accès au DNS seulement (voir *Facultatif :
-  HTTPS sur votre réseau*).
-- **Changer le serveur de courriel ou le nom d'utilisateur efface le mot de
-  passe enregistré**, sauf si un nouveau est saisi dans le même
-  enregistrement. Sinon, quiconque peut ouvrir les paramètres du courriel
-  pourrait les faire pointer vers son propre serveur et appuyer sur « Envoyer
-  un courriel de test » pour recevoir le mot de passe.
-- **Les courriels d'inconnus peuvent être ignorés.** Paramètres → Réception
-  par courriel → « Accepter les courriels seulement de » accepte des
-  adresses et des domaines, avec ou sans le `@` du début (`example.com` et
-  `@example.com` sont la même entrée). Les courriels avec le mot-clé venant
-  d'autres expéditeurs sont marqués comme lus et listés comme IGNORED dans
-  les résultats de vérification. Vide veut dire tout le monde, comme avant.
-  L'en-tête From peut être falsifié, donc ça tient à l'écart les gens qui
-  tombent par hasard sur l'adresse et le mot-clé — une adresse dédiée et
-  impossible à deviner reste importante.
-- **Le journal se lit dans Paramètres → Journal** avec le mot de passe des
-  paramètres (et depuis l'hôte : `docker logs`, `data/logs/app.log`). Il contient des objets et des
-  expéditeurs de courriels et les URL des recettes ajoutées, jamais de mots
-  de passe, de clés, de corps de courriels ni de contenu de pages. Le cache
-  hors ligne de l'application n'en garde jamais de copie.
-- **Les téléchargements de pages sont limités :** 10 Mo par page (20 Mo
-  pour les photos), 30 secondes au total, redirections comprises, même
-  contre un serveur qui envoie ses données au compte-gouttes plutôt que de
-  se taire complètement, et seulement des adresses publiques d'Internet
-  (tout ce qui n'est pas routable mondialement est refusé, y compris la
-  plage `100.64.0.0/10` qu'utilise Tailscale). Les pages PDF numérisées et
-  les photos téléversées sont rendues ou agrandies pour l'OCR dans une
-  limite de 35 mégapixels, pour qu'une page ou une image très haute ou très
-  étroite ne puisse pas épuiser la mémoire. Une image de plus de 50
-  mégapixels (environ 8 660 x 5 773; une photo de téléphone de 48 Mpx
-  passe) est refusée d'où qu'elle vienne (téléversement, importation,
-  courriel, photo d'un PDF, restauration) : quelques Ko de fichier peuvent
-  décrire une image qui demande des gigaoctets pour être décodée. Deux
-  images au plus sont réencodées à la fois, environ 385 Mo chacune à la
-  limite. Une photo au-delà de la limite dans une sauvegarde restaurée est
-  laissée de côté et comptée, comme tout fichier qui échoue aux
-  vérifications.
-- **Les identifiants de courriel (si vous utilisez la réception par
-  courriel)** sont chiffrés avec Fernet (AES-128-CBC + HMAC). La clé vient
-  de l'un de deux endroits :
+Les exportations utilisent la langue de l'interface pour leurs libellés. La
+recette elle-même est exportée telle qu'écrite.
 
-  1. **Le bouton Configurer le chiffrement** dans Paramètres → Réception par
-     courriel (le plus simple). Il écrit une clé aléatoire dans
-     `encryption.key`, dans le dossier de données, lisible seulement par
-     l'utilisateur de l'application. Le compromis : la clé est à côté de la
-     base de données, donc quiconque peut copier tout le dossier de données
-     obtient les deux. La sauvegarde .zip exclut la clé, donc une
-     sauvegarde seule n'expose toujours rien.
-  2. **`RECIPE_APP_ENCRYPTION_KEY`** dans le fichier compose, si vous voulez
-     garder la clé hors du dossier de données. Générez-en une avec le
-     Python de l'image, puisque l'hôte n'a habituellement pas la
-     bibliothèque installée :
+### Sauvegarde et restauration
 
-     ```bash
-     docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-     ```
+Dans Paramètres → Sauvegarde et exportation :
+- **Sauvegarde complète** (`.zip`) : la base de données et toutes les
+  photos et tous les PDF, plus des instructions de restauration. C'est
+  celle qu'on peut restaurer. Elle est faite avec l'API de sauvegarde de
+  SQLite, donc elle est cohérente même pendant que l'application tourne.
+- **Recettes en PDF** (`.zip`) : un PDF par recette, plus un index. C'est
+  une copie de lecture qui s'ouvre partout, et qu'on ne peut pas restaurer.
+  Les notes sont incluses, sauf si vous les décochez.
+- **Recettes en JSON** (`.zip`) : des fichiers schema.org avec les photos,
+  pour d'autres applications de recettes. Les champs propres à cette
+  application sont gardés : réimporter le fichier ici ne perd rien.
+- **Sauvegardes automatiques** : une sauvegarde complète chaque jour à
+  l'heure choisie. Les plus récentes sont gardées (7 par défaut);
+  **Sauvegarder maintenant** en fait une tout de suite.
+  - Elles vont dans `data/backups/`. Pour une vraie deuxième copie, montez
+    un dossier sur un autre disque et réglez `RECIPE_APP_BACKUP_DIR`; le
+    fichier compose a les lignes, en commentaire.
+  - Seuls les fichiers de sauvegarde de l'application y sont supprimés.
+  - Changer l'horaire demande le mot de passe des paramètres.
+- **Restaurer ou importer** prend un fichier et le traite selon son type.
+  - **Une sauvegarde complète remplace la bibliothèque**, après une
+    vérification et une confirmation. Elle demande le mot de passe des
+    paramètres. Une copie de sécurité de la bibliothèque actuelle est
+    d'abord écrite (`restore-safety-<date>.zip`), et aucun redémarrage
+    n'est nécessaire. La configuration HTTPS et le mot de passe de courriel
+    de ce serveur sont gardés.
+  - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
+    `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une
+    recette dont le lien est déjà enregistré est sautée. Les archives sont
+    lues avec des limites de taille.
 
-     Si cette variable est définie, elle est utilisée et tout
-     `encryption.key` est ignoré. Une valeur définie mais invalide est
-     signalée comme une erreur et ne se rabat **pas** sur le fichier de clé.
-     Changer de clé en silence ferait cesser de fonctionner les
-     identifiants enregistrés sans cause visible.
+### Interface
 
-  Dans les deux cas, perdre la clé veut dire entrer de nouveau le mot de
-  passe du courriel; rien d'autre n'est touché. L'application échoue de
-  façon sûre : sans clé valide, elle refuse d'enregistrer un identifiant
-  plutôt que de le garder en clair, et le champ du mot de passe reste
-  désactivé tant qu'une clé n'existe pas. Le mot de passe n'est jamais
-  renvoyé par l'API sous aucune forme, chiffrée ou non — seulement un
-  booléen qui indique s'il est défini.
-- **Deux avertissements propres à la réception par courriel**, à lire avant
-  de l'activer :
-  - Les paramètres du courriel sont protégés par le mot de passe des
-    paramètres, mais le reste de l'application n'a **aucune
-    authentification** (voir ci-dessus), et quiconque peut la joindre peut
-    essayer des mots de passe, lentement. Choisissez un mot de passe qui ne
-    sert nulle part ailleurs. Si des gens en qui vous n'avez pas confiance
-    peuvent joindre l'application, placez-la quand même derrière un RPV ou
-    un proxy inverse avec authentification.
-  - Utilisez une **adresse de courriel dédiée qui ne sert à rien d'autre** —
-    un compte ou un alias créé seulement pour ça, avec un mot de passe
-    propre à l'application. Pas votre compte personnel principal, ni un
-    compte familial partagé. L'application n'a besoin que de lire une boîte
-    et d'envoyer des avis; lui donner les identifiants d'un compte qui
-    contient autre chose est une exposition inutile. La vérification se
-    limite strictement aux messages dont l'objet contient le mot-clé
-    configuré — les autres ne sont jamais analysés — mais l'identifiant
-    lui-même donnerait un accès complet à cette boîte s'il était compromis;
-    la bonne approche est donc de s'assurer que cette boîte ne contient
-    rien qui vaille la peine d'être pris.
-- **La limitation du débit** est active par défaut (120 requêtes d'API par
-  minute par adresse IP, réglable avec `RECIPE_APP_RATE_LIMIT`) comme
-  protection de base contre les abus. Les photos et les fichiers de
-  l'application ne sont pas comptés — ils l'étaient, et faire défiler une
-  grosse bibliothèque atteignait la limite. Le port de la page On mange
-  quoi? compte dans la même limite de requêtes par adresse que le port
-  principal (un seul budget par adresse pour les deux, pas un chacun).
-  Derrière un proxy inverse, tous
-  les clients partagent l'adresse du proxy. Elle est en mémoire et propre à
-  chaque processus — utile pour la conception à instance unique de cette
-  application, mais pas un substitut à une vraie limitation au niveau de
-  l'infrastructure si vous attendez du vrai trafic.
-- **Une seule instance à la fois** : l'application prend un verrou
-  exclusif sur son dossier de données au démarrage et refuse de démarrer
-  une deuxième instance sur le même `./data` — SQLite ne gère pas de façon
-  sûre plusieurs écrivains en même temps, et ça transforme un risque de
-  corruption silencieuse (p. ex. un déploiement en plusieurs répliques par
-  erreur) en un échec clair au démarrage.
-- **Pas de jetons CSRF; les requêtes intersites sont bloquées autrement.**
-  Les jetons CSRF empêchent un site malveillant de profiter de la session
-  ouverte d'une victime, et cette application n'a ni session ni témoin
-  (cookie) dont profiter. Le risque qui s'applique — une page d'un autre
-  site qui envoie des requêtes au serveur à partir d'un navigateur de votre
-  réseau — est réglé par la vérification des noms d'hôte et l'en-tête
-  `X-Requested-With` obligatoire décrits ci-dessus, pas par des jetons.
-- **Traitement des téléversements** : taille plafonnée (20 Mo) et signature
-  validée avant que l'analyse ou l'OCR touche le fichier; les fichiers sont
-  écrits sur le disque au fur et à mesure plutôt que gardés au complet en
-  mémoire; les noms de fichiers enregistrés utilisent une extension tirée
-  du contenu validé, jamais du nom envoyé par le client. Les images
-  téléversées sont en plus réencodées par Pillow après la validation, ce
-  qui élimine tout ce qui n'est pas de vraies données de pixels (contenu
-  EXIF, octets en trop à la fin, autre contenu « polyglotte ») — passer la
-  vérification de signature prouve seulement qu'un fichier *commence* par
-  une signature valide, pas que rien n'y est ajouté. L'orientation EXIF est
-  appliquée aux pixels avant que ces métadonnées soient retirées, pour
-  qu'une photo en portrait ne sorte pas de côté. Les PDF sont plafonnés à
-  60 pages pour borner le pire temps d'OCR, et les traitements OCR/PDF
-  simultanés sont plafonnés à 3 pour éviter que des requêtes lourdes se
-  disputent le processeur. Les images vedettes capturées automatiquement
-  par l'ajout d'URL (téléchargées) ou de PDF (extraites du document) passent
-  par la même chaîne de plafond de taille, de vérification de signature et
-  de réencodage — elles sont exactement aussi peu fiables qu'un
-  téléversement direct, peu importe leur source.
-  Pillow n'ouvre jamais une image qu'avec ses décodeurs JPEG, PNG, GIF et
-  WEBP. Dans un PDF, seule la plus grande photo est décodée, et seulement
-  si elle est stockée en JPEG ou en pixels bruts compressés; une image
-  stockée sous une forme qui passerait par les analyseurs TIFF, JPEG 2000
-  ou autres de Pillow est ignorée.
-- **Le texte de recherche** est traité comme du texte littéral, pas comme
-  une syntaxe de requête — les termes de recherche ne peuvent pas changer
-  les colonnes ou les champs cherchés.
-- **Les champs de noms de fichiers enregistrés sont sur liste blanche.**
-  Tout champ de l'API qui nomme une image enregistrée (`image_path` à la
-  création ou à la mise à jour d'une recette) doit avoir exactement la
-  forme que l'application génère (`<préfixe>-<uuid32>.<ext>`); les chemins
-  absolus, les remontées de dossiers et les composants de dossier sont
-  refusés à la couche du schéma, puis de nouveau dans les fonctions qui
-  manipulent les fichiers. C'est important parce que `os.path.join()`
-  ignore sans rien dire son dossier de base quand on lui donne un chemin
-  absolu — sans cette vérification, un champ d'image permettrait de lire
-  un fichier arbitraire (l'exportation inclut la cible comme URI de
-  données) et d'en supprimer un (la suppression d'une recette efface le
-  fichier), y compris la base de données de l'application. Trouvé en
-  révision et corrigé; couvert par des tests de régression dans
-  `test_security.py`.
-- **Une route `/tmp-preview` sert les fichiers brouillons** (l'aperçu
-  d'image de l'écran de révision avant l'enregistrement d'une recette), à
-  côté de la route `/uploads` habituelle pour les recettes enregistrées.
-  Les noms de fichiers sont des UUID impossibles à deviner dans les deux
-  cas, et le contenu d'un brouillon a déjà passé la même validation que
-  tout ce qui est dans `/uploads` au moment où il peut être servi — pas une
-  frontière de confiance différente, juste un deuxième dossier. Ça veut
-  aussi dire qu'un PDF en cours d'ajout peut techniquement être récupéré à
-  ce chemin (signature validée, servi comme `application/pdf`) même si
-  l'interface n'y fait jamais de lien — seule l'image extraite est
-  référencée par l'interface.
-- **L'ajout par URL est protégé contre le SSRF** : l'adresse résolue d'une
-  URL soumise est comparée aux plages d'adresses privées, de bouclage,
-  locales au lien et réservées avant toute requête, et les redirections
-  sont suivies à la main avec la même vérification à chaque saut (plutôt
-  que laissées au suivi automatique de `requests`, qui contournerait la
-  vérification initiale par une 302 vers une adresse interne). C'est une
-  vérification au moment de la résolution DNS, pas au moment de la
-  connexion, donc elle ne protège pas contre le DNS rebinding. Chaque
-  récupération de page passe par ce client protégé. `recipe_scrapers`
-  récupérait les pages lui-même avec `scrape_me(url)`, hors de la
-  protection; il ne fait maintenant qu'analyser le HTML que l'application a
-  déjà récupéré (`scrape_html`), et un test vérifie qu'il ne fait jamais sa
-  propre requête. Le DNS rebinding reste une lacune acceptée pour un outil
-  de réseau local.
-- **Le contenu des recettes est échappé en HTML à l'exportation.** Les
-  titres, ingrédients et étapes peuvent venir de pages Web quelconques ou
-  de l'OCR — le gabarit d'exportation HTML/PDF échappe tout (échappement
-  automatique de Jinja2), donc du balisage injecté dans une page source ne
-  peut pas s'exécuter quand vous ouvrez le fichier téléchargé.
+- **Anglais ou français (Québec)**, choisi par appareil. Cela couvre
+  l'interface, les exportations, les courriels de résultats et les
+  étiquettes intégrées. Vos recettes et vos propres étiquettes restent
+  telles qu'écrites.
+- **Installable** comme une application (PWA). Tirez la liste vers le bas
+  pour l'actualiser et passer à une nouvelle version.
+- **Thème clair ou sombre.** Le sombre est un vrai noir.
+- **Taille du texte** jusqu'à 26 px.
+  - Le zoom par pincement est désactivé sur les téléphones et tablettes,
+    exprès : il poussait les boutons hors de l'écran.
+  - Sur un ordinateur, le zoom du navigateur fonctionne comme d'habitude.
+- Sur un grand écran, une recette affiche les ingrédients à côté des
+  étapes.
+- **Accessibilité** : commandes étiquetées, prise en charge du clavier et
+  des lecteurs d'écran. Un balayage automatique vérifie chaque écran (voir
+  [Développement](#développement)).
 
-- **SQLite fonctionne en mode WAL**, donc les lectures (liste, recherche,
-  consultation) ne sont pas bloquées pendant une écriture. Deux fichiers
-  auxiliaires (`recipes.db-wal`, `recipes.db-shm`) se trouvent donc à côté
-  de `recipes.db` dans `./data` — ils font partie du même montage, donc les
-  sauvegardes habituelles du volume les incluent déjà, mais un simple
-  `cp recipes.db` pendant que l'application fonctionne peut manquer des
-  données pas encore reportées dans le fichier principal; arrêtez le
-  conteneur (ou utilisez `sqlite3 recipes.db "PRAGMA wal_checkpoint(FULL);"`)
-  avant de copier ce seul fichier. Le WAL repose sur un verrouillage de
-  fichiers en mémoire partagée qui n'est pas fiable sur certains systèmes
-  de fichiers réseau (notamment NFS) — sans problème sur un disque local,
-  la plupart des configurations de NAS (SMB, montages de blocs locaux) et
-  les montages Docker habituels, ce qui couvre les déploiements documentés
-  de cette application.
+## Sécurité
+
+### Mot de passe des paramètres
+
+Il protège tout ce qui utilise des identifiants extérieurs :
+- la réception par courriel, HTTPS et le journal;
+- Partager → Envoyer le PDF par courriel;
+- la restauration d'une sauvegarde, et les changements à l'horaire des
+  sauvegardes automatiques.
+
+Son fonctionnement :
+- **Le créer.** La première fois qu'une de ces sections est ouverte, vous
+  le créez (8 caractères ou plus). Faites-le juste après l'installation.
+- **Déverrouiller.** L'entrer déverrouille ce navigateur pendant 15
+  minutes, avec un témoin HttpOnly. **Verrouiller maintenant** et **Changer
+  le mot de passe** sont dans les paramètres. Redémarrer le conteneur
+  verrouille tous les navigateurs.
+- **Mauvais mots de passe.** Après 5 mauvais essais depuis une adresse, ou
+  20 depuis toutes les adresses ensemble, chaque nouvel essai doit attendre
+  (jusqu'à 15 minutes). Redémarrer le conteneur remet cela à zéro.
+- **Une fois HTTPS activé**, le mot de passe ne fonctionne qu'à l'adresse
+  `https://`.
+- **Stockage.** Il est gardé sous forme de hachage scrypt salé dans
+  `admin-password.json`.
+- **Oublié?** Supprimez `admin-password.json`, puis créez un nouveau mot de
+  passe. Le créer efface le mot de passe de courriel et le jeton cPanel
+  enregistrés, et désactive HTTPS. Tout le reste est gardé.
+
+### Tout le reste
+
+- **Le reste de l'application est ouvert à quiconque peut la joindre.**
+  `RECIPE_APP_API_KEY` exige un en-tête `X-API-Key` sur chaque requête. Les
+  pages n'envoient pas cet en-tête : il n'est donc utile que derrière un
+  mandataire qui l'ajoute. Un mandataire qui authentifie, ou un RPV, est la
+  meilleure solution.
+- **Les autres sites Web ne peuvent pas utiliser l'application par votre
+  navigateur.**
+  - Les requêtes doivent utiliser une adresse IP, `localhost`, ou un nom
+    local (`.local`, `.lan`, `.home.arpa`, `.internal`, ou sans point). Tout
+    autre nom (un domaine de mandataire, un nom Tailscale) doit être listé
+    dans `RECIPE_APP_ALLOWED_HOSTS`.
+  - Les requêtes qui modifient des données doivent porter un en-tête
+    `X-Requested-With`.
+  - Les pages ne peuvent pas être affichées dans un autre site.
+  - Une Content-Security-Policy ne permet que les scripts et connexions de
+    l'application. HSTS n'est pas envoyé, parce qu'il briserait les ports
+    en `http://`.
+- **Tout ce qui entre est traité comme hostile.**
+  - **Téléversements** : au plus 20 Mo, vérifiés par leur contenu plutôt
+    que leur extension.
+  - **Images** : elles sont réencodées, ce qui retire les métadonnées et
+    tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
+    sont utilisés, et toute image de plus de 50 mégapixels est refusée.
+  - **PDF** : au plus 60 pages, et au plus 3 tâches d'OCR à la fois. Parmi
+    les photos d'un PDF, seule la plus grande est décodée.
+  - **Pages téléchargées** : au plus 10 Mo et 30 secondes, depuis des
+    adresses publiques seulement. Chaque redirection est vérifiée de
+    nouveau.
+  - **Exportations** : tout le texte des recettes y est échappé.
+  - **Noms de fichiers enregistrés** : ils doivent avoir exactement la forme
+    que l'application génère.
+- **Identifiants.** Le mot de passe de courriel et le jeton cPanel sont
+  chiffrés (Fernet) avec `encryption.key`, ou avec
+  `RECIPE_APP_ENCRYPTION_KEY` si vous la réglez. Le réglage garde la clé
+  hors du dossier de données. Pour générer une clé :
+  `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+  - L'API ne renvoie jamais le mot de passe.
+  - Changer le serveur ou le nom d'utilisateur de courriel efface le mot de
+    passe enregistré, sauf s'il est entré de nouveau dans le même
+    enregistrement.
+  - La sauvegarde laisse la clé de côté.
+- **Le jeton cPanel ne peut faire qu'une chose par l'application** : gérer
+  le seul nom enregistré. Mais quiconque ferait tourner du code dans le
+  conteneur aurait le jeton lui-même. Donnez-lui donc une date
+  d'expiration et, là où cPanel le permet, un accès DNS seulement.
+- **Limite de requêtes** : 120 requêtes d'API par minute par adresse
+  (`RECIPE_APP_RATE_LIMIT` pour la changer). Le port d'On mange quoi?
+  partage la même limite de requêtes par adresse. Derrière un mandataire,
+  tous les clients partagent l'adresse du mandataire.
+- **Une seule instance.** L'application verrouille son dossier de données :
+  une deuxième copie qui pointe vers le même dossier refuse de démarrer.
+- **Dossiers en réseau.** SQLite tourne en mode WAL, qui n'est pas fiable
+  sur NFS. Utilisez un disque local, ou un volume local du NAS.
 
 ## Limites connues
 
-- **Paramètres → HTTPS ne gère que cPanel.** Les autres hébergeurs DNS
-  peuvent utiliser le fichier Traefik à la place (voir *Facultatif : HTTPS
-  sur votre réseau*).
-- **Le réglage de langue traduit l'application, pas vos recettes.** Une
-  recette ajoutée en anglais reste en anglais dans l'interface française,
-  et l'inverse. Les noms d'étiquettes et de groupes que vous créez sont
-  affichés tels que tapés.
-- **« Choisir dans les contacts » ne fonctionne que sur Android pour
-  l'instant.** L'API Contact Picker existe dans Chrome sur Android; Safari
-  sur iOS ne l'offre pas aux applications Web, donc sur un iPhone, vous
-  tapez l'adresse une fois puis la choisissez ensuite dans la liste des
-  destinataires récents.
+- **Paramètres → HTTPS ne prend en charge que cPanel.** Les autres
+  hébergeurs DNS peuvent utiliser le fichier Traefik.
+- **Certains sites refusent les requêtes automatisées.** C'est le cas des
+  sites derrière la vérification anti-robots de Cloudflare, et des sites
+  payants. Enregistrez plutôt la page en PDF, prenez des captures d'écran
+  ou collez le texte.
+- **Les longues captures d'écran enregistrées en PDF peuvent être
+  coupées.** iOS arrête une page à 200 pouces. Utilisez Imprimer → PDF, ou
+  le bouton d'impression du site.
+- **La lecture des PDF et des photos suit des règles** jusqu'à ce que
+  l'apprentissage ait assez de vos corrections. Vérifiez les recettes à
+  l'écran de vérification, ou dans *À vérifier*.
+- **La photo tirée d'un PDF** est sa plus grande image, qui n'est peut-être
+  pas celle que vous voulez. Vous pouvez la remplacer.
+- **Pas de reconnaissance de l'écriture à la main.** Tapez ces recettes.
+- **La réception par courriel exige un certificat reconnu par le système.**
+  Utilisez le nom d'hôte pour lequel le certificat de votre fournisseur est
+  émis. Elle est aussi lente sur une boîte partagée avec des centaines de
+  messages non lus : une raison de plus d'utiliser une adresse dédiée.
 
-- **La réception par courriel exige un certificat reconnu par le
-  système.** Les connexions vérifient le certificat et le nom d'hôte du
-  serveur de courriel. Un certificat autosigné, ou un nom d'hôte qui ne
-  correspond pas au certificat (fréquent en hébergement mutualisé, où
-  `mail.votredomaine` pointe vers le serveur du fournisseur), échoue avec
-  `CERTIFICATE_VERIFY_FAILED`. Utilisez le nom d'hôte pour lequel le
-  certificat de votre fournisseur est émis.
-- **Les vérifications de courriel récupèrent l'en-tête de chaque message
-  non lu séparément.** Ça va pour une boîte dédiée; c'est lent pour une
-  boîte partagée avec des centaines de messages non lus. C'est pour ça que
-  ce document recommande une adresse dédiée.
+## Journaux
 
-- **Certains sites de recettes refusent les requêtes automatisées.** Les
-  sites derrière la vérification anti-robots de Cloudflare (et les sites
-  payants comme NYT Cooking) répondent à l'application par une erreur HTTP
-  403 et une page « Just a moment... »; l'application dit que le site a
-  refusé et quoi faire à la place, et le journal l'inscrit en une ligne
-  (`otp.url`). L'application n'essaie pas de contourner ça. Enregistrez la
-  page en PDF (Safari sur iPhone : Partager → Options → PDF; ailleurs
-  Imprimer → Enregistrer en PDF), faites des captures d'écran ou collez le
-  texte, et ajoutez ou envoyez ça par courriel à la place.
-- **Les captures pleine page enregistrées en PDF peuvent être coupées.**
-  Une page PDF ne peut pas dépasser 200 pouces de haut, et iOS arrête une
-  longue page là, donc la fin de la fiche recette d'un long article de
-  blogue peut tout simplement ne pas être dans le fichier. Utilisez
-  Imprimer → PDF, qui découpe la page, ou le bouton d'impression du site.
-  Un PDF coupé avant les étapes est refusé avec ce conseil (voir Ajout de
-  recettes).
-- Les recettes en plusieurs parties sans titres Ingrédients/Préparation,
-  comme on les tape dans un traitement de texte (les ingrédients et la
-  préparation du plat, puis « Sauce tartare » avec les siens, etc.), sont
-  lues partie par partie : les ingrédients ensemble et les étapes ensemble,
-  le nom de chaque partie gardé comme petit titre dans les deux listes. Une
-  ligne de rendement (« Donne environ 10 croquettes », « Pour 4
-  personnes », « Makes 12 ») remplit Portions au lieu de devenir un
-  ingrédient. À la main : une ligne courte (six mots au plus) terminée par
-  « : » dans la boîte Ingrédients ou Étapes commence une section
-  (« Sauce : »); les boîtes l'indiquent. Un ingrédient qui se termine
-  par « : » (« Sel et poivre au goût : ») reste un ingrédient.
-- L'analyse heuristique (URL sans JSON-LD, découpage des PDF et de l'OCR)
-  repose sur des expressions régulières et des règles tant que Paramètres →
-  Apprentissage n'a pas assez de vos importations corrigées pour faire
-  mieux, et même alors il n'apprend que de ce que vous avez enregistré —
-  attendez-vous à corriger des champs sur des
-  mises en page désordonnées ou inhabituelles, avec l'écran de révision
-  affiché après l'ajout d'un seul élément. L'ajout par lot saute cette
-  révision; ces recettes attendent sous *À vérifier*.
-- La fiabilité de l'OCR des captures est affichée par une pastille
-  (« Qualité de la reconnaissance : faible », etc.) d'après la fiabilité mot par mot de
-  Tesseract; traitez une extraction peu fiable comme un brouillon de
-  départ, pas comme une recette finie.
-- Pas de reconnaissance de l'écriture à la main. C'est une limite connue
-  de Tesseract, pas un bogue — utilisez plutôt la saisie manuelle.
-- L'extraction de l'image vedette d'un PDF choisit la plus grande image
-  incluse au-dessus d'une taille minimale — une heuristique, pas une
-  compréhension de la mise en page. Un PDF avec plusieurs photos de taille
-  semblable peut ne pas choisir celle que vous attendez; utilisez l'option
-  « Ne pas utiliser cette image » de l'écran de révision, ou remplacez-la
-  ensuite à partir de la page de la recette.
+**Paramètres → Journal** (qui demande le mot de passe des paramètres)
+affiche les entrées les plus récentes, toutes ou seulement les
+avertissements. On peut télécharger tout le journal, ou le vider. Le
+journal est aussi dans `docker logs open-the-pantry` et dans
+`data/logs/app.log` (rotation à 1 Mo, 3 anciens fichiers gardés).
 
-## Journal
+Il consigne :
+- chaque étape des importations par lien et par courriel;
+- chaque erreur, avec sa trace;
+- les erreurs des pages.
 
-**Paramètres → Journal** (demande le mot de passe des paramètres) affiche le journal dans l'application : les 500
-entrées les plus récentes, tout ou seulement les avertissements et les
-erreurs (une trace d'appels reste avec son entrée), plus **Télécharger**
-(tout le journal, tous les fichiers en rotation, en un seul `.txt`) et
-**Vider le journal** (le vide, après confirmation). Gardé à environ 4 Mo :
-les entrées les plus anciennes disparaissent d'elles-mêmes, donc le vider
-n'est jamais nécessaire.
+Il ne contient jamais de mots de passe, de clés, de corps de courriels ni
+de contenu de pages. Les objets, les expéditeurs et les URL des courriels
+sont consignés.
 
-L'application journalise chaque étape de l'ajout par courriel et par lien,
-chaque erreur interceptée n'importe où dans le serveur (avec la trace
-d'appels), chaque requête qui échoue, et les erreurs non interceptées du
-navigateur. Elle écrit à deux endroits :
+Pour trouver un type d'entrée, filtrez avec `grep` :
+`docker logs open-the-pantry 2>&1 | grep otp.scan`. Les autres étiquettes
+sont `otp.email`, `otp.url`, `otp.ocr` et `otp.client`. Réglez
+`RECIPE_APP_LOG_LEVEL` à `DEBUG` pour plus de détails, ou à `WARNING` pour
+moins.
 
-```bash
-docker logs open-the-pantry                 # since the container started
-tail -f /path/to/data/logs/app.log          # survives container restarts
-```
-
-(`docker logs` couvre depuis le démarrage du conteneur; `app.log` survit
-aux redémarrages.) `app.log` est dans le dossier de données à côté de
-`recipes.db`, en rotation à 1 Mo avec trois anciens fichiers conservés. Il
-n'est pas inclus dans la sauvegarde .zip.
-
-Filtres utiles :
-
-```bash
-docker logs open-the-pantry 2>&1 | grep otp.scan    # what each scan found and did
-docker logs open-the-pantry 2>&1 | grep otp.email   # how each email was read
-docker logs open-the-pantry 2>&1 | grep otp.url     # page fetches: status, redirects, blocks
-docker logs open-the-pantry 2>&1 | grep otp.ocr     # photo orientation, OCR confidence
-docker logs open-the-pantry 2>&1 | grep otp.client  # errors from the app in your browser
-docker logs open-the-pantry 2>&1 | grep -A20 WARNING   # failures, with tracebacks
-```
-
-Dans l'ordre : ce que chaque vérification a trouvé et fait; comment chaque
-courriel a été lu; les récupérations de pages (statut, redirections,
-blocages); l'orientation des photos et la fiabilité de l'OCR; les erreurs
-de l'application dans votre navigateur; les échecs, avec leur trace
-d'appels.
-
-Mettez `RECIPE_APP_LOG_LEVEL: DEBUG` dans la section `environment:` du
-fichier compose pour plus de détails, ou `WARNING` pour moins. Au niveau
-par défaut, les erreurs dont l'application se remet couramment (nettoyage
-d'un fichier déjà disparu, champ facultatif absent d'une page de recette)
-ne sont pas affichées; DEBUG les montre aussi. Les mots de passe, la clé de
-chiffrement, le corps des courriels et le HTML des pages ne sont jamais
-journalisés. Les objets, les expéditeurs, les noms et tailles des pièces
-jointes et les URL le sont.
-
-## Notes de déploiement
-
-**Limites de ressources.** L'application limite son propre travail (au
-plus trois traitements OCR/PDF à la fois — l'entraînement de Paramètres →
-Apprentissage occupe l'une de ces places —, 35 Mpx par page, plafonds de
-taille des lots), mais Docker ne plafonne pas le conteneur. Le pire cas
-mesuré est d'environ 3,4 Go (trois grosses numérisations à la fois); au
-repos, environ 160 Mo. Les fichiers compose ont des lignes `mem_limit`,
-`cpus` et `pids_limit` en commentaire si vous voulez un plafond strict.
-
-- L'image publiée est une image Docker ordinaire — elle fonctionne partout
-  où Docker fonctionne : un NAS à la maison, un serveur privé virtuel, un
-  Raspberry Pi, derrière un proxy inverse (Apache, Nginx, Caddy) avec un
-  domaine, ou par un RPV vers un réseau domestique. Elle ne fonctionne
-  **pas** sur un hébergement PHP mutualisé sans Docker ni accès root — ça
-  demanderait une réécriture, pas un changement de configuration.
-- Image multi-architecture (`linux/amd64`, `linux/arm64`) produite par le
-  flux GitHub Actions inclus, donc elle fonctionne aussi bien sur des
-  serveurs x86 que sur des cartes ARM (p. ex. Raspberry Pi).
-- Les migrations de la base se font automatiquement au démarrage
-  (`app/init_db.py`) et ne font qu'ajouter — mettre l'image à jour sur un
-  volume `./data` existant ajoute les nouvelles colonnes et index sans
-  toucher aux recettes existantes.
-- Le processus de l'application tourne sous un utilisateur non root dans
-  le conteneur (UID 1000 fixe par défaut, ou les variables `PUID`/`PGID`
-  pour correspondre à un utilisateur existant de l'hôte). Le conteneur
-  démarre quand même brièvement en root pour corriger les propriétaires de
-  `./data` au premier démarrage — nécessaire parce que c'est un dossier de
-  l'hôte monté dans le conteneur, donc rien dans l'image ne peut en régler
-  les permissions à l'avance — puis abandonne ses privilèges avant de
-  lancer l'application. Aucun `chown` manuel sur l'hôte n'est nécessaire
-  dans le cas par défaut.
-- `docker-compose.yml` tel quel suit `:main`, qui suit la branche
-  principale et est l'étiquette toujours publiée. `:latest` suit les mêmes
-  versions et est interchangeable. Les deux sont pratiques, mais vous
-  obtenez ce vers quoi l'étiquette pointe au prochain `docker compose
-  pull`. Pour des mises à jour reproductibles (et pour décider exactement
-  quand une nouvelle version s'applique), fixez plutôt l'image par son
-  empreinte (digest), p. ex. `image: djerodek/open-the-pantry@sha256:<empreinte>`
-  (`docker image inspect --format '{{index .RepoDigests 0}}'
-  djerodek/open-the-pantry:main` donne celle que vous utilisez), et
-  changez-la volontairement. L'image de base (`python:3.12-slim`) n'est
-  volontairement pas fixée : chaque construction intègre les mises à jour
-  de sécurité de Debian, et l'audit des dépendances de l'intégration
-  continue fait échouer la construction en cas de vulnérabilité connue.
-- Un `HEALTHCHECK` est inclus (sur un point d'accès `/healthz` dédié, pas
-  sur des données réelles), pour que `docker ps` et les outils
-  d'orchestration distinguent un processus bloqué qui écoute encore d'un
-  processus vraiment en bonne santé.
-
-## Tests
+## Développement
 
 ```bash
 cd backend
 pip install -r requirements-test.txt
-python -m pytest
-```
-
-`pytest.ini` définit `pythonpath = .`, donc les modules de test importent
-le paquet de l'application directement, sans manipuler `sys.path` dans
-chaque fichier. `tests/README.md` indique quels fichiers couvrent quelle
-fonction.
-
-Les pages ont leurs propres tests, dans Chromium sans interface contre un
-vrai serveur (`tests_browser/`) : chacun échoue aussi sur une erreur
-JavaScript ou une violation de la Content-Security-Policy. L'intégration
-continue les exécute dans une tâche séparée.
-`test_accessibility.py` passe axe-core (WCAG 2.0 à 2.2 A/AA et bonnes
-pratiques) sur chaque écran des deux pages, en anglais/clair et
-français/sombre, et échoue sur toute constatation sérieuse ou critique;
-la seule règle désactivée est celle du zoom (le pincement est désactivé
-sur les téléphones, exprès; Paramètres → Taille du texte le remplace). Un
-balayage automatique trouve environ le tiers des problèmes
-d'accessibilité : il ne peut juger ni l'ordre de lecture ni la
-formulation.
-
-```bash
+python -m pytest                       # tests du serveur
 pip install -r requirements-browser.txt
 python -m playwright install --with-deps chromium
-python -m pytest tests_browser
+python -m pytest tests_browser         # les pages, dans Chromium sans interface
 ```
 
-Nécessite les mêmes paquets système que l'image Docker (`tesseract-ocr`
-plus les bibliothèques de polices et de rendu de WeasyPrint — voir le
-Dockerfile), puisque les tests de PDF et d'OCR utilisent les vraies
-bibliothèques, pas des simulations. `requirements-test.txt` est séparé de
-`requirements.txt` pour que l'image déployée ne contienne pas de
-dépendances propres aux tests.
+Les tests demandent les mêmes paquets système que l'image Docker
+(`tesseract-ocr` et les bibliothèques de WeasyPrint; voir le `Dockerfile`),
+et chaque exécution utilise un dossier de données temporaire.
 
-La suite s'exécute sur un dossier de données temporaire isolé pour chaque
-session (pas votre vrai `./data`), et couvre : la gestion de base des
-recettes, le filtrage cumulatif par étiquettes (logique ET), la recherche
-avec l'indication de la source de la correspondance, le filtre de temps
-imbriqué, les contraintes des notes, la validation des téléversements
-(taille, signature, extension falsifiée, retrait du contenu polyglotte),
-l'échappement XSS à l'exportation, la protection SSRF (y compris le cas
-des redirections), le cycle de vie des fichiers brouillons, les
-heuristiques d'ajout (détection de la couche de texte des PDF, découpage
-en sections, analyse des ingrédients, suggestion d'étiquettes), le
-découpage et les étiquettes appris (contre un ensemble généré
-d'importations en cinq mises en page : ils doivent battre les règles là où
-elles peinent et rester inactifs ailleurs), la
-couverture du français (chaque texte de l'interface a une version
-française) et Paramètres → HTTPS de bout en bout contre une fausse API
-cPanel et une autorité de certification de test.
+- `tests/README.md` indique quels fichiers de test couvrent quelle
+  fonction.
+- Chaque test de navigateur échoue aussi sur une erreur JavaScript ou une
+  violation de la Content-Security-Policy.
+- `test_accessibility.py` passe axe-core sur chaque écran, en
+  anglais/clair et en français/sombre, et échoue sur toute constatation
+  sérieuse ou critique. La règle du zoom est désactivée, puisque le zoom
+  l'est exprès. Un balayage automatique trouve environ le tiers des
+  problèmes d'accessibilité.
 
-Les tests de la réception par courriel simulent la couche IMAP/SMTP
-(`unittest.mock`) plutôt que de monter un serveur de courriel — ils
-couvrent l'aller-retour du chiffrement des identifiants et l'échec sûr, le
-fait que le mot de passe n'est jamais renvoyé par l'API, chaque méthode
-d'extraction (pièce jointe PDF, pièce jointe image, lien dans le corps,
-texte du corps), le refus des pièces jointes malveillantes, une
-vérification complète, le marquage des courriels impossibles à analyser
-comme lus pour ne pas les réessayer sans fin, et les avis qui restent en
-file d'attente quand l'envoi échoue. La livraison réelle chez un vrai
-fournisseur est la seule chose que ça ne peut pas vérifier — utilisez le
-bouton « Envoyer un courriel de test » pour ça.
+L'intégration continue (`.github/workflows/ci.yml`) s'exécute à chaque
+envoi. Elle lance les deux suites de tests, un audit des dépendances (qui
+échoue sur toute vulnérabilité connue) et une construction Docker. L'image
+publiée n'est construite qu'une fois ces étapes réussies.
 
-L'intégration continue (`.github/workflows/ci.yml`) exécute la suite plus
-un audit des dépendances et une vérification de la construction Docker à
-chaque push ou pull request.
-
-## Organisation du projet
-
-Voir la section *Project layout* de [README.md](README.md) : les noms de
-fichiers et de dossiers sont les mêmes, et les descriptions courtes y sont
-en anglais, comme le code.
+```
+backend/app/        application FastAPI (main.py), modèles, sauvegarde, HTTPS, On mange quoi?
+  ingestion/        lecture des liens, PDF, photos et courriels; étiquetage
+  ml/               Paramètres -> Apprentissage (numpy seulement)
+  templates/        le gabarit d'impression/PDF/HTML
+backend/tests/      tests du serveur; tests_browser/ : tests des pages
+frontend/           l'application : index.html, js/app.js, js/i18n.js, css/
+frontend-picker/    la page On mange quoi? (port 8091)
+docker-compose*.yml image publiée, construction depuis les sources, HTTPS par Traefik
+```
