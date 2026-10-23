@@ -96,7 +96,7 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   showcase images; duplicate a recipe to make a variant
 - Recipes saved without review (batch links, batch PDFs, email) are marked
   "To review", with a list of what to check, until you've looked at them
-- Print, PDF, and self-contained HTML export; email the PDF to someone
+- Print, PDF, self-contained HTML, or a JPG image to share; email the PDF to someone
   straight from the Share menu
 - English or French (Quebec) interface, chosen per device, including
   exports and notification emails

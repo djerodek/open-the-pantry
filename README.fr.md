@@ -996,6 +996,14 @@ ouvert la page>:8090`.
   imprime les quantités ajustées.
 
 **Partager / imprimer**
+- **Partager → Image (JPG)** dessine la recette en une grande image
+  (1080 px de large) : sa photo, le titre, les portions et les temps, les
+  ingrédients et la préparation (avec les parties), et le site d'où elle
+  vient; les notes personnelles sont laissées de côté. L'image est faite
+  dans votre navigateur, sans travail pour le serveur. Un aperçu s'ouvre
+  avec **Télécharger** et, sur un téléphone en HTTPS, **Partager…** pour
+  la feuille de partage du téléphone (Messages, courriel…). Une très
+  longue recette est dessinée plus petite plutôt que coupée.
 - Un seul gabarit HTML sert à la vue d'impression de l'application, à un
   PDF téléchargeable (WeasyPrint) et à un fichier HTML autonome (images
   incluses en base64) pour partager hors de votre réseau.

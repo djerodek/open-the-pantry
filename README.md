@@ -841,6 +841,13 @@ at>:8090`.
   scaled amounts.
 
 **Share/print**
+- **Share → Image (JPG)** draws the recipe as one tall picture (1080 px
+  wide): its photo, title, servings and times, ingredients and
+  instructions (part names kept), and the site it came from; notes are
+  left out. It's drawn in your browser, so the server does no work for
+  it. A preview opens with **Download** and, on a phone over HTTPS,
+  **Share…** for the phone's share sheet (Messages, mail…). A very long
+  recipe is drawn smaller rather than cut off.
 - One shared HTML template renders as the in-app print view, a downloadable
   PDF (WeasyPrint), and a self-contained HTML file (images inlined as
   base64) for sharing outside your network.

@@ -116,6 +116,13 @@
     "Same link, or same title. To combine two, select them in the list and use Merge….": "Même lien ou même titre. Pour en combiner deux, sélectionnez-les dans la liste et utilisez Fusionner….",
     "Nothing to report: every recipe has ingredients, steps, tags and a photo, and none look the same.": "Rien à signaler : chaque recette a des ingrédients, des étapes, des étiquettes et une photo, et aucune ne semble en double.",
     "Selected recipes": "Recettes sélectionnées",
+    // Share -> Image
+    "Image (JPG)": "Image (JPG)",
+    "Recipe image": "Image de la recette",
+    "Share…": "Partager…",
+    "Image of {1}": "Image de {1}",
+    "Couldn't open the share sheet; use Download.": "Impossible d'ouvrir le partage; utilisez Télécharger.",
+    "Couldn't make the image.": "Impossible de créer l'image.",
     // Select mode -> Merge
     "Merge…": "Fusionner…",
     "Merge two recipes": "Fusionner deux recettes",

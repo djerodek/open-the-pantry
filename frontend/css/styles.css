@@ -1912,6 +1912,11 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 .library-check-group ul { margin: 0.3rem 0 0.2rem 1.1rem; padding: 0; }
 .library-check-group li { margin: 0.2rem 0; overflow-wrap: anywhere; }
 
+/* Share -> Image */
+.image-sheet-preview { margin: 0.5rem 0 0.9rem; max-height: 50vh; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius); }
+.image-sheet-preview img { display: block; width: 100%; height: auto; }
+.image-sheet-preview p { margin: 0.75rem; }
+
 /* Select mode -> Merge */
 .merge-pair { margin: 0.5rem 0 0.25rem 1.2rem; padding: 0; font-weight: 600; }
 .merge-row { border: 1px solid var(--color-border); border-radius: var(--radius); margin: 0.6rem 0; padding: 0.4rem 0.75rem 0.6rem; }

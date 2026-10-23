@@ -313,3 +313,33 @@ def test_library_check(server, api, page):
     dup = pg.locator("#library-check-result details", has_text="Look like the same recipe")
     dup.locator("summary").click()
     assert f"Check twin {sfx}" in dup.inner_text() and f"CHECK TWIN {sfx}" in dup.inner_text()
+
+
+def test_share_as_image(server, api, page, tmp_path):
+    """0113: Share -> Image (JPG) draws the recipe in the page; Download
+    saves a 1080 px wide JPEG."""
+    from PIL import Image
+    r = add_recipe(api, f"Image soup {uuid.uuid4().hex[:6]}", servings="4",
+                   steps=["Mix everything in a large bowl until smooth and glossy, about two minutes.", "Bake 20 minutes."])
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click(".share-toggle")
+    pg.click("#share-menu button:has-text('Image (JPG)')")
+    pg.wait_for_selector("#image-sheet-preview img")
+    wait_until(pg, "document.querySelector('#image-sheet-preview img').naturalWidth > 0")
+    with pg.expect_download() as dl:
+        pg.click("#image-sheet-download")
+    path = tmp_path / dl.value.suggested_filename
+    dl.value.save_as(path)
+    assert path.name.endswith(".jpg")
+    with Image.open(path) as im:
+        assert im.format == "JPEG" and im.width == 1080 and 600 < im.height < 3000
+    # From a card in the list too (its recipe has no ingredients loaded).
+    pg.click("#image-sheet-close")
+    pg.click("#recipe-detail-close")
+    pg.click(f".recipe-card:has-text('{r['title']}') .card-share-btn")
+    pg.click("#share-sheet-actions button:has-text('Image (JPG)')")
+    wait_until(pg, "document.querySelector('#image-sheet-preview img')?.naturalWidth === 1080")

@@ -4647,6 +4647,10 @@
         },
       }),
       el("button", {
+        type: "button", text: tx("Image (JPG)"),
+        onclick: () => { onDone(); openImageSheet(recipe); },
+      }),
+      el("button", {
         type: "button", text: tx("Copy as text"),
         onclick: async () => {
           onDone();
@@ -4658,6 +4662,186 @@
         },
       }),
     ];
+  }
+
+  // -------------------------------------------------------------------
+  // Share -> Image (JPG) (0113). Drawn on a canvas in the browser from the
+  // recipe as saved (1x): photo, title, servings and times, ingredients,
+  // instructions, and where it came from. No server work and nothing to
+  // install; notes are left out (they're yours). JPEG: a fraction of a
+  // PNG's size once there's a photo, and fine for text at quality 0.9.
+  // -------------------------------------------------------------------
+  const IMAGE_WIDTH = 1080;
+  const IMAGE_MAX_PIXELS = 16_000_000;     // under iOS Safari's canvas limit
+
+  function loadImage(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  // Lines of text no wider than maxWidth; a word too long for a line is cut.
+  function wrapText(ctx, text, maxWidth) {
+    const lines = [];
+    for (const para of String(text || "").split(/\n/)) {
+      let line = "";
+      for (let word of para.split(/\s+/).filter(Boolean)) {
+        while (ctx.measureText(word).width > maxWidth) {
+          let cut = word.length - 1;
+          while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxWidth) cut -= 1;
+          if (line) { lines.push(line); line = ""; }
+          lines.push(word.slice(0, cut));
+          word = word.slice(cut);
+        }
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; } else line = next;
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  async function recipeImageBlob(recipe) {
+    const css = getComputedStyle(document.documentElement);
+    const display = css.getPropertyValue("--font-display").trim() || "serif";
+    const body = css.getPropertyValue("--font-body").trim() || "sans-serif";
+    const C = { bg: "#FFFFFF", ink: "#22201B", muted: "#6B675C", accent: "#8F6218", rule: "#E4DFD3" };
+    const W = IMAGE_WIDTH, PAD = 72, TEXT_W = W - 2 * PAD;
+    const photo = recipe.image_path ? await loadImage(`/uploads/${recipe.image_path}`) : null;
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+    // Pass 1 lays out every line on a scratch canvas (for measuring); pass
+    // 2 draws them once the height is known.
+    const ops = [];
+    const measure = document.createElement("canvas").getContext("2d");
+    let y = 0;
+    const photoH = photo ? Math.round(W * 0.62) : 0;
+    if (photo) ops.push({ photo: true, y: 0, h: photoH });
+    y = photoH + PAD;
+    const block = (text, font, color, size, opts = {}) => {
+      measure.font = font;
+      const indent = opts.indent || 0;
+      wrapText(measure, text, TEXT_W - indent).forEach((line, i) => {
+        y += size * (opts.lead || 1.32);
+        ops.push({ text: line, font, color, x: PAD + indent, y });
+        if (i === 0 && opts.marker) ops.push({ text: opts.marker, font, color: opts.markerColor || color, x: PAD, y });
+      });
+      y += opts.after || 0;
+    };
+    block(recipe.title, `bold 64px ${display}`, C.ink, 64, { lead: 1.18, after: 18 });
+    const facts = [recipe.servings ? tx("Servings: {1}", { 1: recipe.servings }) : null,
+      recipe.prep_time ? `${tx("Prep time")}: ${recipe.prep_time}` : null,
+      recipe.cook_time ? `${tx("Cook time")}: ${recipe.cook_time}` : null,
+      recipe.total_time ? `${tx("Total time")}: ${recipe.total_time}` : null].filter(Boolean);
+    if (facts.length) block(facts.join("  ·  "), `30px ${body}`, C.muted, 30, { after: 10 });
+
+    const heading = (text) => { y += 34; block(text, `bold 42px ${display}`, C.accent, 42, { after: 8 }); };
+    if (recipe.ingredients.length) {
+      heading(tx("Ingredients"));
+      for (const ing of recipe.ingredients) {
+        const t = ingredientText(ing);
+        if (isPartName(t)) block(t, `bold 32px ${body}`, C.ink, 32, { after: 4 });
+        else block(t, `32px ${body}`, C.ink, 32, { indent: 40, marker: "•", markerColor: C.accent, after: 6 });
+      }
+    }
+    if (recipe.steps.length) {
+      heading(tx("Instructions"));
+      let n = 0;
+      for (const step of recipe.steps) {
+        if (isPartName(step.text)) { block(step.text, `bold 32px ${body}`, C.ink, 32, { after: 4 }); continue; }
+        n += 1;
+        block(step.text, `32px ${body}`, C.ink, 32, { indent: 58, marker: `${n}.`, markerColor: C.accent, after: 14 });
+      }
+    }
+    let source = null;
+    try { source = recipe.source_url ? new URL(recipe.source_url).host.replace(/^www\./, "") : null; } catch { source = null; }
+    y += 40;
+    ops.push({ rule: true, y });
+    y += 8;
+    block(source ? `Open the Pantry · ${source}` : "Open the Pantry", `26px ${body}`, C.muted, 26);
+    const H = Math.ceil(y + PAD * 0.75);
+
+    // A very long recipe is drawn smaller rather than not at all.
+    const scale = Math.min(1, Math.sqrt(IMAGE_MAX_PIXELS / (W * H)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(W * scale);
+    canvas.height = Math.floor(H * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "alphabetic";
+    for (const op of ops) {
+      if (op.photo) {
+        // Cover: fill the band, cropping the photo's longer side.
+        const r = Math.max(W / photo.naturalWidth, op.h / photo.naturalHeight);
+        const sw = W / r, sh = op.h / r;
+        ctx.drawImage(photo, (photo.naturalWidth - sw) / 2, (photo.naturalHeight - sh) / 2, sw, sh, 0, 0, W, op.h);
+      } else if (op.rule) {
+        ctx.fillStyle = C.rule;
+        ctx.fillRect(PAD, op.y, TEXT_W, 2);
+      } else {
+        ctx.font = op.font;
+        ctx.fillStyle = op.color;
+        ctx.fillText(op.text, op.x, op.y);
+      }
+    }
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  }
+
+  const imageSheetOverlay = $("#image-sheet-overlay");
+  $("#image-sheet-close").addEventListener("click", () => closeModal(imageSheetOverlay));
+  imageSheetOverlay.addEventListener("click", (e) => { if (e.target === imageSheetOverlay) closeModal(imageSheetOverlay); });
+
+  async function openImageSheet(recipe) {
+    const preview = $("#image-sheet-preview");
+    const status = $("#image-sheet-status");
+    const shareBtn = $("#image-sheet-share");
+    const saveBtn = $("#image-sheet-download");
+    preview.replaceChildren(el("p", { class: "field-hint", text: tx("Preparing…") }));
+    status.textContent = "";
+    shareBtn.hidden = true;
+    saveBtn.disabled = true;
+    openModal(imageSheetOverlay);
+    let url = null;
+    imageSheetOverlay._onClose = () => { if (url) URL.revokeObjectURL(url); };
+    try {
+      // A card's recipe can be the list's short form, without ingredients.
+      if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) {
+        const res = await fetch(`${API}/recipes/${recipe.id}`);
+        if (!res.ok) throw new Error(String(res.status));
+        recipe = await res.json();
+      }
+      const blob = await recipeImageBlob(recipe);
+      if (!blob || imageSheetOverlay.hidden) return;
+      const name = safeFilename(recipe.title, "jpg");
+      const file = new File([blob], name, { type: "image/jpeg" });
+      url = URL.createObjectURL(blob);
+      preview.replaceChildren(el("img", { src: url, alt: tx("Image of {1}", { 1: recipe.title }) }));
+      saveBtn.disabled = false;
+      saveBtn.onclick = () => {
+        const a = el("a", { href: url, download: name });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        status.textContent = tx("Download started.");
+      };
+      // The phone's share sheet (Messages, mail...), where the browser
+      // allows sharing files: on a phone, over HTTPS.
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        shareBtn.hidden = false;
+        shareBtn.onclick = async () => {
+          try { await navigator.share({ files: [file], title: recipe.title }); }
+          catch (err) { if (!err || err.name !== "AbortError") status.textContent = tx("Couldn't open the share sheet; use Download."); }
+        };
+      }
+    } catch {
+      preview.replaceChildren();
+      status.textContent = tx("Couldn't make the image.");
+    }
   }
 
   // Share from a recipe card in the list. Cards clip their own overflow, so
