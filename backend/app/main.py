@@ -2083,6 +2083,82 @@ def duplicate_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     return copy
 
 
+NOTES_MAX = 50_000   # schemas.NotesUpdate
+
+
+@app.post("/api/recipes/merge", response_model=schemas.RecipeOut)
+def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
+    """Two recipes into one (0110). The "keep" recipe is updated in place
+    with the part chosen from each; the other goes to Recently deleted, so
+    it can be put back. Tags: both sets (keep's first, up to the 50 a
+    recipe holds). A photo taken from the other recipe is copied, since
+    the other keeps its own while it waits. The result counts as checked
+    (not "To review")."""
+    if payload.keep_id == payload.other_id:
+        raise HTTPException(status_code=400, detail="Pick two different recipes.")
+    keep, other = db.get(models.Recipe, payload.keep_id), db.get(models.Recipe, payload.other_id)
+    if keep is None or other is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    take = payload.take
+    pick = lambda part: other if getattr(take, part) == "other" else keep    # noqa: E731
+
+    new_image, dropped_image = keep.image_path, None
+    if take.photo == "other" and other.image_path:
+        src = safe_join(UPLOADS_DIR, other.image_path)
+        if src and os.path.isfile(src):
+            new_image = f"merge-{uuid.uuid4().hex}{os.path.splitext(other.image_path)[1]}"
+            shutil.copyfile(src, os.path.join(UPLOADS_DIR, new_image))
+    elif take.photo == "other" or take.photo == "none":
+        new_image = None
+    if new_image != keep.image_path:
+        dropped_image = keep.image_path
+
+    notes = {"keep": keep.notes, "other": other.notes,
+             "both": "\n\n".join(n.strip() for n in (keep.notes, other.notes) if n and n.strip())}[take.notes]
+    try:
+        keep.title = pick("title").title
+        keep.image_path = new_image
+        if take.content == "other":
+            db.query(models.Ingredient).filter_by(recipe_id=keep.id).delete()
+            db.query(models.Step).filter_by(recipe_id=keep.id).delete()
+            for ing in other.ingredients:
+                db.add(models.Ingredient(recipe_id=keep.id, position=ing.position, raw_line=ing.raw_line,
+                                         quantity=ing.quantity, unit=ing.unit, name=ing.name))
+            for step in other.steps:
+                db.add(models.Step(recipe_id=keep.id, position=step.position, text=step.text))
+            keep.raw_text, keep.source_type, keep.ocr_confidence = other.raw_text, other.source_type, other.ocr_confidence
+        d = pick("details")
+        keep.servings, keep.prep_time, keep.cook_time, keep.total_time = d.servings, d.prep_time, d.cook_time, d.total_time
+        keep.source_url = pick("source").source_url
+        r = pick("ratings")
+        (keep.favorite, keep.tastiness_rating, keep.cook_time_rating, keep.difficulty_rating,
+         keep.actual_cook_time_minutes) = (r.favorite, r.tastiness_rating, r.cook_time_rating,
+                                           r.difficulty_rating, r.actual_cook_time_minutes)
+        keep.notes = (notes or None) and notes[:NOTES_MAX]
+        tags = list(keep.tags) + [t for t in other.tags if t not in keep.tags]
+        keep.tags = tags[:MAX_TAGS_PER_RECIPE]
+        keep.tags_text = " ".join(t.name for t in keep.tags)
+        keep.needs_review = False
+        other.deleted_at = _utc_now()
+        db.commit()
+    except Exception:
+        log.warning("merge_recipes: %s + %s not saved", keep.id, other.id, exc_info=True)
+        db.rollback()
+        if new_image and new_image != keep.image_path and new_image.startswith("merge-"):
+            remove_upload_file(os.path.join(UPLOADS_DIR, new_image))
+        raise
+    if dropped_image:
+        path = safe_join(UPLOADS_DIR, dropped_image)
+        if path and os.path.isfile(path):
+            try:
+                remove_upload_file(path)
+            except OSError:
+                log.debug("merge_recipes: old photo not removed", exc_info=True)
+    db.refresh(keep)
+    log.info("Recipes merged: %s kept, %s to Recently deleted", keep.id, other.id)
+    return keep
+
+
 @app.get("/api/recipes/{recipe_id}", response_model=schemas.RecipeOut)
 def get_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
     recipe = db.get(models.Recipe, recipe_id)

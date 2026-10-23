@@ -278,6 +278,28 @@ class BatchDeleteRequest(BaseModel):
     ids: list[DbInt]
 
 
+Pick = Literal["keep", "other"]
+
+
+class MergeChoices(BaseModel):
+    """Which recipe each part of the merged one comes from. "keep" is the
+    recipe that stays (updated in place), "other" the one that goes to
+    Recently deleted. Tags are always both."""
+    title: Pick = "keep"
+    photo: Literal["keep", "other", "none"] = "keep"
+    content: Pick = "keep"         # ingredients, steps, original text (and how it came in)
+    details: Pick = "keep"         # servings, prep / cook / total time
+    source: Pick = "keep"          # the link
+    ratings: Pick = "keep"         # favourite, the three ratings, real-world time
+    notes: Literal["keep", "other", "both"] = "both"
+
+
+class MergeRequest(BaseModel):
+    keep_id: DbInt
+    other_id: DbInt
+    take: MergeChoices = Field(default_factory=MergeChoices)
+
+
 class BatchTagRequest(BaseModel):
     """Select mode -> Tags: one existing tag added to, or removed from,
     every selected recipe."""

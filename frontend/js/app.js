@@ -2147,6 +2147,7 @@
     $("#batch-count").textContent = tx("{1} selected", { 1: state.selectedIds.size });
     const barVisible = state.selectMode && state.selectedIds.size > 0;
     $("#batch-bar").hidden = !barVisible;
+    $("#batch-merge-btn").hidden = state.selectedIds.size !== 2;
     // The bar and the + button share the bottom edge; on a phone the bar is
     // wide enough to run underneath it. Adding a recipe mid-selection isn't
     // a thing anyone needs, so the + steps aside while the bar is up.
@@ -2739,6 +2740,150 @@
   }
   $("#batch-tags-add").addEventListener("click", () => batchTags("add"));
   $("#batch-tags-remove").addEventListener("click", () => batchTags("remove"));
+
+  // Select mode -> Merge… (exactly two selected): each part of the merged
+  // recipe from one or the other (POST /api/recipes/merge). The recipe
+  // whose ingredients and steps are kept stays; the other goes to
+  // Recently deleted. A part both have the same is not asked about.
+  const mergeOverlay = $("#merge-overlay");
+  $("#merge-close").addEventListener("click", () => closeModal(mergeOverlay));
+  mergeOverlay.addEventListener("click", (e) => { if (e.target === mergeOverlay) closeModal(mergeOverlay); });
+  let mergePair = null;
+
+  function mergeSummaries(r) {
+    const stars = r.tastiness_rating ? "★".repeat(r.tastiness_rating) + "☆".repeat(5 - r.tastiness_rating) : null;
+    const ratings = [r.favorite ? tx("Favorite") : null, stars,
+      r.cook_time_rating ? valueLabel(r.cook_time_rating) : null, r.difficulty_rating ? valueLabel(r.difficulty_rating) : null,
+      r.actual_cook_time ? tx("Real-world cook time: {1}", { 1: cookTimeLabel(r.actual_cook_time) }) : null].filter(Boolean);
+    const details = [r.servings ? tx("Servings: {1}", { 1: r.servings }) : null,
+      r.prep_time ? `${tx("Prep time")}: ${r.prep_time}` : null, r.cook_time ? `${tx("Cook time")}: ${r.cook_time}` : null,
+      r.total_time ? `${tx("Total time")}: ${r.total_time}` : null].filter(Boolean);
+    let host = null;
+    try { host = r.source_url ? new URL(r.source_url).host.replace(/^www\./, "") : null; } catch { host = r.source_url; }
+    const first = r.ingredients.length ? ingredientText(r.ingredients[0]) : "";
+    return {
+      title: r.title,
+      photo: r.image_path,
+      content: `${txn(r.ingredients.length, "{n} ingredient", "{n} ingredients")}, ${txn(r.steps.length, "{n} step", "{n} steps")}`
+        + (first ? ` (${first.length > 40 ? first.slice(0, 40) + "…" : first}…)` : ""),
+      contentSize: r.ingredients.length + r.steps.length,
+      details: details.join(" · "), detailsSize: details.length,
+      source: host, ratings: ratings.join(" · "), ratingsSize: ratings.length,
+      notes: (r.notes || "").trim(),
+    };
+  }
+
+  function mergeRow(name, legend, options, chosen) {
+    return el("fieldset", { class: "merge-row" }, [
+      el("legend", { text: legend }),
+      ...options.map(([value, content]) => el("label", { class: "merge-option" }, [
+        el("input", { type: "radio", name: `merge-${name}`, value, ...(value === chosen ? { checked: "" } : {}) }),
+        el("span", { class: "merge-option-text" },
+          [].concat(content).map((c) => (typeof c === "string" ? document.createTextNode(c) : c))),
+      ])),
+    ]);
+  }
+
+  $("#batch-merge-btn").addEventListener("click", async () => {
+    if (state.selectedIds.size !== 2) return;
+    const ids = [...state.selectedIds];
+    let recipes;
+    try {
+      recipes = await Promise.all(ids.map(async (id) => {
+        const res = await fetch(`${API}/recipes/${id}`);
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json();
+      }));
+    } catch {
+      announceError(tx("Couldn't load the two recipes. The list has been refreshed."));
+      loadRecipes();
+      return;
+    }
+    mergePair = recipes;
+    const [s1, s2] = recipes.map(mergeSummaries);
+    const pickBigger = (a, b, tie) => (a > b ? "1" : b > a ? "2" : tie);
+    const content = pickBigger(s1.contentSize, s2.contentSize, "1");
+    const other = content === "1" ? "2" : "1";
+    const has = (s, k) => !!s[k];
+    const prefer = (k) => (has(content === "1" ? s1 : s2, k) ? content : has(content === "1" ? s2 : s1, k) ? other : content);
+    const opt = (n, text) => [n, [el("strong", { text: `${n}. ` }), document.createTextNode(text || tx("None"))]];
+    const rows = [
+      el("ol", { class: "merge-pair" }, recipes.map((r) => el("li", { text: r.title }))),
+    ];
+    if (s1.title !== s2.title) rows.push(mergeRow("title", tx("Title"), [opt("1", s1.title), opt("2", s2.title)], content));
+    if (s1.photo || s2.photo) {
+      // Only a recipe that has one is offered, then "No photo".
+      const photo = (n, s) => [n, [el("strong", { text: `${n}. ` }),
+        el("img", { class: "merge-thumb", src: `/uploads/${s.photo}`, alt: tx("Photo of recipe {1}", { 1: n }) })]];
+      const options = [s1.photo ? photo("1", s1) : null, s2.photo ? photo("2", s2) : null, ["none", tx("No photo")]].filter(Boolean);
+      rows.push(mergeRow("photo", tx("Photo"), options, prefer("photo")));
+    }
+    rows.push(mergeRow("content", tx("Ingredients and steps"), [opt("1", s1.content), opt("2", s2.content)], content));
+    if (s1.details !== s2.details) {
+      rows.push(mergeRow("details", tx("Servings and times"), [opt("1", s1.details), opt("2", s2.details)],
+        pickBigger(s1.detailsSize, s2.detailsSize, content)));
+    }
+    if (s1.source !== s2.source) rows.push(mergeRow("source", tx("Link"), [opt("1", s1.source), opt("2", s2.source)], prefer("source")));
+    if (s1.ratings !== s2.ratings) {
+      rows.push(mergeRow("ratings", tx("Favorite, ratings and real-world time"), [opt("1", s1.ratings), opt("2", s2.ratings)],
+        pickBigger(s1.ratingsSize, s2.ratingsSize, content)));
+    }
+    if (s1.notes && s2.notes && s1.notes !== s2.notes) {
+      const cut = (t) => (t.length > 80 ? t.slice(0, 80) + "…" : t);
+      rows.push(mergeRow("notes", tx("Notes"), [["both", tx("Both, one after the other")], opt("1", cut(s1.notes)), opt("2", cut(s2.notes))], "both"));
+    }
+    $("#merge-body").replaceChildren(...rows);
+    $("#merge-status").textContent = "";
+    $("#merge-submit").disabled = false;
+    openModal(mergeOverlay);
+  });
+
+  $("#merge-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!mergePair) return;
+    const form = $("#merge-form");
+    const val = (name, fallback) => (form.querySelector(`input[name="merge-${name}"]:checked`) || {}).value || fallback;
+    const keepN = val("content", "1");
+    const [keep, other] = keepN === "1" ? mergePair : [mergePair[1], mergePair[0]];
+    const rel = (n) => (n === keepN ? "keep" : "other");
+    const pickOr = (name, fallback) => { const v = val(name, null); return v === null ? fallback : rel(v); };
+    const photoChoice = val("photo", null);
+    const notesChoice = val("notes", null);
+    const take = {
+      title: pickOr("title", "keep"),
+      photo: photoChoice === "none" ? "none" : photoChoice ? rel(photoChoice) : "keep",
+      content: "keep",
+      details: pickOr("details", "keep"),
+      source: pickOr("source", "keep"),
+      ratings: pickOr("ratings", "keep"),
+      // Not asked (only one has notes, or both the same): those notes.
+      notes: notesChoice === "both" ? "both" : notesChoice ? rel(notesChoice) : ((keep.notes || "").trim() ? "keep" : "other"),
+    };
+    const btn = $("#merge-submit");
+    btn.disabled = true;
+    $("#merge-status").textContent = tx("Working...");
+    const result = await fetchWithTimeout(`${API}/recipes/merge`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keep_id: keep.id, other_id: other.id, take }),
+    });
+    btn.disabled = false;
+    if (!result.ok) {
+      $("#merge-status").textContent = writeFailureMessage(result, tx("The selected recipes"));
+      if (result.status === 404) loadRecipes();
+      return;
+    }
+    const merged = await result.res.json();
+    closeModal(mergeOverlay);
+    mergePair = null;
+    state.selectedIds.clear();
+    state.selectMode = false;
+    $("#select-mode-toggle").setAttribute("aria-pressed", "false");
+    updateBatchBar();
+    announce(tx("Merged into “{1}”. The other recipe is in Recently deleted.", { 1: merged.title }));
+    await loadTags();
+    await loadTimeBuckets();
+    loadRecipes();
+  });
 
   $("#batch-delete-btn").addEventListener("click", async () => {
     if (!state.selectedIds.size) return;

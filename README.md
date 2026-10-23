@@ -790,6 +790,15 @@ at>:8090`.
   already had it (or didn't), and any recipe that already has the most
   tags allowed (50). The selection stays, so another tag can follow. New
   tags are made on a recipe (Edit) or in Settings → Tags.
+- **Merge…** shows in the selection bar when exactly two recipes are
+  selected. It asks, part by part, which recipe each comes from: title,
+  photo (or none), ingredients and steps (with the original text),
+  servings and times, link, favorite/ratings/real-world time, and notes
+  (either, or both one after the other). Parts that are the same in both
+  aren't asked about; the defaults lean to the recipe with more filled
+  in. Tags from both are kept. The recipe whose ingredients and steps are
+  kept becomes the merged one; the other goes to Recently deleted, from
+  where it can be put back as it was.
 - Deleting asks first. If it fails, the app says why (server error, can't
   reach the server, already deleted) and gives up after 10 seconds rather
   than leaving the dialog stuck. A batch delete reports how many were

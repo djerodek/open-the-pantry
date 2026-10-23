@@ -112,7 +112,7 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
 - Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×),
   units included ("1 cup" → "2 cups")
 - Select several recipes to delete them, or to add or remove a tag on all
-  of them at once
+  of them at once; merge two into one, choosing each part
 - Deleted recipes wait 30 days in Recently deleted, where they can be put
   back
 - Warns when a recipe being added is already in the library (same link or

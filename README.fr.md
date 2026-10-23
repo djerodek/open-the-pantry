@@ -936,6 +936,16 @@ ouvert la page>:8090`.
   sélection reste, pour enchaîner avec une autre étiquette. Les nouvelles
   étiquettes se créent sur une recette (Modifier) ou dans Paramètres →
   Étiquettes.
+- **Fusionner…** apparaît dans la barre de sélection quand exactement deux
+  recettes sont sélectionnées. Pour chaque partie, on choisit de quelle
+  recette elle vient : titre, photo (ou aucune), ingrédients et étapes
+  (avec le texte d'origine), portions et temps, lien, favori/notes/temps
+  réel, et notes personnelles (l'une, l'autre, ou les deux à la suite).
+  Les parties identiques ne sont pas demandées; par défaut, c'est la
+  recette la plus remplie. Les étiquettes des deux sont gardées. La
+  recette dont on garde les ingrédients et les étapes devient la recette
+  fusionnée; l'autre va dans Récemment supprimées, d'où on peut la
+  remettre telle quelle.
 - La suppression demande d'abord une confirmation. Si elle échoue,
   l'application dit pourquoi (erreur du serveur, serveur injoignable, déjà
   supprimée) et abandonne après 10 secondes plutôt que de laisser la boîte

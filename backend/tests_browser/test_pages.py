@@ -256,3 +256,32 @@ def test_delete_and_put_back(server, api, page):
     assert api.get(f"/api/recipes/{r['id']}").status_code == 200
     pg.click("#bin-close")
     pg.wait_for_selector(f".recipe-card:has-text('{r['title']}')")
+
+
+def test_merge_two_recipes(server, api, page):
+    """0110: Merge… shows only with two selected; the parts chosen end up
+    in one recipe and the other goes to Recently deleted."""
+    sfx = uuid.uuid4().hex[:6]
+    small = add_recipe(api, f"Merge small {sfx}", servings="2")
+    big = add_recipe(api, f"Merge big {sfx}", ingredients=[{"raw_line": "1 cup rice"}, {"raw_line": "2 cups water"},
+                                                          {"raw_line": "1 pinch salt"}])
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector(f"text={big['title']}")
+    pg.click("#select-mode-toggle")
+    pg.click(f".recipe-card:has-text('{small['title']}')")
+    assert pg.is_hidden("#batch-merge-btn")
+    pg.click(f".recipe-card:has-text('{big['title']}')")
+    pg.click("#batch-merge-btn")
+    pg.wait_for_selector("#merge-overlay:not([hidden])")
+    # The bigger recipe's ingredients are the default; take the small one's title.
+    assert pg.is_checked("input[name=merge-content][value='2']")
+    pg.check("input[name=merge-title][value='1']")
+    pg.check("input[name=merge-details][value='1']")
+    pg.click("#merge-submit")
+    pg.wait_for_selector("#merge-overlay", state="hidden")
+    merged = api.get(f"/api/recipes/{big['id']}").json()
+    assert merged["title"] == small["title"] and merged["servings"] == "2" and len(merged["ingredients"]) == 3
+    assert api.get(f"/api/recipes/{small['id']}").status_code == 404
+    assert pg.is_hidden("#batch-bar")
