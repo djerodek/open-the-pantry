@@ -1,5 +1,5 @@
 """Import corpus (app/corpus.py): every checked case read again by the
-import code, no field more than corpus.TOLERANCE below its baseline.
+import code, with a baseline, no field more than corpus.TOLERANCE below it.
 
 Runs the self-written cases in tests/corpus/ (CI) and, when
 RECIPE_APP_CORPUS_DIR is set, a private corpus too. Accept new scores
@@ -24,10 +24,9 @@ def test_no_case_got_worse(case):
     meta = corpus.load_meta(case)
     if corpus.needs_ocr(case, meta) and not corpus.ocr_available():
         pytest.skip("needs Tesseract")
-    if case.parent == PUBLIC:
-        assert case.name in corpus.load_baseline(PUBLIC), "a public case needs a baseline: report --save-baseline"
-    r = corpus.evaluate(case)
-    assert not r["dropped"], "; ".join(f"{f} {was:.2f} -> {now:.2f}" for f, (was, now) in r["dropped"].items())
+    # Public and private alike: a checked case without a baseline would pass
+    # whatever the import gives (GPT review of 0123).
+    assert not (found := corpus.problems(corpus.evaluate(case))), "; ".join(found)
 
 
 def test_scoring():
@@ -134,3 +133,26 @@ def test_add_makes_a_draft(tmp_path):
 def test_command_line(capsys):
     assert corpus.main(["report", str(PUBLIC)]) == 0
     assert "Fields right without edits" in capsys.readouterr().out
+
+
+def test_a_checked_case_needs_a_baseline(tmp_path):
+    """GPT review of 0123: in a private corpus, a checked case with no
+    baseline passed whatever the import gave."""
+    import shutil
+    shutil.copytree(PUBLIC / "p003-fr-email", tmp_path / "p003-fr-email")
+    r = corpus.evaluate(tmp_path / "p003-fr-email")
+    assert corpus.problems(r) == ["no baseline yet: accept its scores with report --save-baseline"]
+    out = io.StringIO()
+    corpus.report(tmp_path, out=out)
+    assert "1 case(s) without a baseline, not yet guarded" in out.getvalue()
+    corpus.report(tmp_path, save_baseline=True, out=io.StringIO())
+    assert corpus.problems(corpus.evaluate(tmp_path / "p003-fr-email")) == []
+
+
+def test_export_refuses_an_oversized_database(tmp_path, monkeypatch):
+    backup = tmp_path / "b.zip"
+    with zipfile.ZipFile(backup, "w") as zf:
+        zf.writestr("recipes.db", b"x" * 5000)
+    monkeypatch.setattr(corpus, "MAX_DB_BYTES", 1000)
+    with pytest.raises(ValueError, match="larger than"):
+        corpus.export_library(backup, tmp_path / "c")

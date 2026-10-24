@@ -2230,17 +2230,6 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
     take = payload.take
     pick = lambda part: other if getattr(take, part) == "other" else keep    # noqa: E731
 
-    new_image, dropped_image = keep.image_path, None
-    if take.photo == "other" and other.image_path:
-        src = safe_join(UPLOADS_DIR, other.image_path)
-        if src and os.path.isfile(src):
-            new_image = f"merge-{uuid.uuid4().hex}{os.path.splitext(other.image_path)[1]}"
-            shutil.copyfile(src, os.path.join(UPLOADS_DIR, new_image))
-    elif take.photo == "other" or take.photo == "none":
-        new_image = None
-    if new_image != keep.image_path:
-        dropped_image = keep.image_path
-
     notes = {"keep": keep.notes, "other": other.notes,
              "both": "\n\n".join(n.strip() for n in (keep.notes, other.notes) if n and n.strip())}[take.notes]
     # Nothing is cut off without saying so (GPT review of 0119): the merge
@@ -2252,6 +2241,19 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
     if tag_count > MAX_TAGS_PER_RECIPE:
         raise HTTPException(status_code=400, detail=f"Together these recipes have {tag_count} tags; a recipe "
                             f"can have at most {MAX_TAGS_PER_RECIPE}. Remove some tags first.")
+
+    # The photo is copied only once the merge can go ahead: a refusal above
+    # left the copy behind with nothing pointing at it (GPT review of 0123).
+    new_image, dropped_image = keep.image_path, None
+    if take.photo == "other" and other.image_path:
+        src = safe_join(UPLOADS_DIR, other.image_path)
+        if src and os.path.isfile(src):
+            new_image = f"merge-{uuid.uuid4().hex}{os.path.splitext(other.image_path)[1]}"
+            shutil.copyfile(src, os.path.join(UPLOADS_DIR, new_image))
+    elif take.photo == "other" or take.photo == "none":
+        new_image = None
+    if new_image != keep.image_path:
+        dropped_image = keep.image_path
     try:
         keep.title = pick("title").title
         keep.image_path = new_image

@@ -64,6 +64,7 @@ from .logging_setup import get_logger
 log = get_logger("corpus")
 
 TOLERANCE = 0.02
+MAX_DB_BYTES = 4 * 1024 ** 3      # as restore.MAX_DB_BYTES: a backup's database, unpacked
 TEXT_FIELDS = ("title", "ingredients", "steps", "servings")
 URL_FIELDS = TEXT_FIELDS + ("prep_time", "cook_time", "total_time")
 LIST_FIELDS = ("ingredients", "steps")
@@ -217,6 +218,15 @@ def evaluate(case: Path) -> dict:
             "dropped": dropped, "new": case.name not in load_baseline(case.parent)}
 
 
+def problems(result: dict) -> list[str]:
+    """Why a scored case fails the regression check: a field dropped, or no
+    baseline yet (a checked case is only a guard once its scores are
+    accepted with report --save-baseline)."""
+    if result["new"]:
+        return ["no baseline yet: accept its scores with report --save-baseline"]
+    return [f"{f} {was:.2f} -> {now:.2f}" for f, (was, now) in result["dropped"].items()]
+
+
 def ocr_available() -> bool:
     try:
         import pytesseract
@@ -251,8 +261,17 @@ def _open_library(path: Path, tmp: str) -> sqlite3.Connection:
         with zipfile.ZipFile(path) as zf:
             if "recipes.db" not in zf.namelist():
                 raise ValueError(f"{path}: not a full backup (no recipes.db inside)")
+            if zf.getinfo("recipes.db").file_size > MAX_DB_BYTES:
+                raise ValueError(f"{path}: its recipes.db is larger than {MAX_DB_BYTES // 1024 ** 3} GB")
+            # Copied with a ceiling as well: the size a zip declares is
+            # what zipfile checks against, but nothing here trusts it alone.
+            copied = 0
             with zf.open("recipes.db") as src, open(os.path.join(tmp, "recipes.db"), "wb") as dst:
-                shutil.copyfileobj(src, dst)
+                while chunk := src.read(1024 * 1024):
+                    copied += len(chunk)
+                    if copied > MAX_DB_BYTES:
+                        raise ValueError(f"{path}: its recipes.db is larger than {MAX_DB_BYTES // 1024 ** 3} GB")
+                    dst.write(chunk)
         path = Path(tmp) / "recipes.db"
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
@@ -434,6 +453,10 @@ def report(corpus: Path, save_baseline=False, show=None, out=None) -> int:
     if checked:
         print(f"Fields right without edits: {exact} of {len(checked)} ({100 * exact / len(checked):.0f}%). "
               f"Cases right without edits: {whole} of {len(results)}.", file=out)
+    new = [r["case"] for r in results if r["new"]]
+    if new and not save_baseline:
+        print(f"{len(new)} case(s) without a baseline, not yet guarded: {', '.join(new)}. "
+              "Check them, then accept with --save-baseline.", file=out)
     if drafts:
         print(f"{len(drafts)} draft case(s) not scored until checked: {', '.join(c.name for c in drafts)}", file=out)
     if skipped:
