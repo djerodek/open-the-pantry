@@ -206,6 +206,10 @@ def unpack_uploads(zip_path: str, dest_dir: str) -> tuple[int, int]:
             if info.is_dir() or not info.filename.startswith("uploads/"):
                 continue
             name = info.filename[len("uploads/"):]
+            # file_size is the zip's own claim, but it's also where reading
+            # stops: zipfile reads an entry only up to its stated size and
+            # raises BadZipFile (bad CRC) if more data follows, so a zip
+            # can't unpack bigger than it says (test_deepseek_review_0114.py).
             if not is_safe_stored_filename(name) or info.file_size > MAX_FILE_BYTES:
                 skipped += 1
                 continue

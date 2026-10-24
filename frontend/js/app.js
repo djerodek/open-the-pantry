@@ -5562,7 +5562,7 @@
     if (isBusy) {
       announce(msg || tx("Working..."));
       const scope = topOverlay() || document;
-      $$(".modal button, .modal input", scope).forEach((n) => {
+      $$(".modal button, .modal input, .modal textarea, .modal select", scope).forEach((n) => {
         if (!n.disabled) { n.disabled = true; busyDisabled.add(n); }
       });
     } else {

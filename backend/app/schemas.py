@@ -139,8 +139,8 @@ class AutoTagChange(BaseModel):
 
 
 class AutoTagSelection(BaseModel):
-    id: int
-    tags: list[str] = Field(default_factory=list, max_length=50)
+    id: DbInt
+    tags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=50)
 
 
 class AutoTagApply(BaseModel):
@@ -187,9 +187,9 @@ class TagSuggestionOut(TagIn):
 class TagSuggestRequest(BaseModel):
     """What's in the edit form right now, saved or not."""
     title: str = Field("", max_length=500)
-    ingredients: list[str] = Field(default_factory=list, max_length=500)
-    steps: list[str] = Field(default_factory=list, max_length=500)
-    current_tags: list[str] = Field(default_factory=list, max_length=200)
+    ingredients: list[Annotated[str, Field(max_length=2000)]] = Field(default_factory=list, max_length=500)
+    steps: list[Annotated[str, Field(max_length=20_000)]] = Field(default_factory=list, max_length=500)
+    current_tags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=200)
 
 
 class AutoTagResult(BaseModel):
@@ -275,7 +275,7 @@ class ImageUpdate(BaseModel):
 
 
 class BatchDeleteRequest(BaseModel):
-    ids: list[DbInt]
+    ids: list[DbInt] = Field(..., max_length=10_000)
 
 
 Pick = Literal["keep", "other"]
@@ -309,7 +309,8 @@ class BatchTagRequest(BaseModel):
 
 
 class BatchUrlIngestRequest(BaseModel):
-    urls: list[str]
+    # The endpoint says "max 50" itself; this only bounds what's parsed.
+    urls: list[Annotated[str, Field(max_length=2000)]] = Field(..., max_length=1000)
 
 
 class EmailSettingsIn(BaseModel):
@@ -317,16 +318,16 @@ class EmailSettingsIn(BaseModel):
     credential unchanged (standard 'leave blank to keep current' pattern
     for a secret field that's never sent back to the client to prefill)."""
     enabled: bool = False
-    imap_host: Optional[str] = None
+    imap_host: Optional[str] = Field(default=None, max_length=253)
     imap_port: int = Field(default=993, ge=1, le=65535)
     imap_use_ssl: bool = True
-    smtp_host: Optional[str] = None
+    smtp_host: Optional[str] = Field(default=None, max_length=253)
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_use_tls: bool = True
-    username: Optional[str] = None
-    password: Optional[str] = None
-    notify_email: Optional[str] = None
-    subject_keyword: str = "[RECIPE]"
+    username: Optional[str] = Field(default=None, max_length=320)
+    password: Optional[str] = Field(default=None, max_length=1024)
+    notify_email: Optional[str] = Field(default=None, max_length=1000)
+    subject_keyword: str = Field(default="[RECIPE]", max_length=100)
     allowed_senders: str = Field(default="", max_length=2000)
     daily_scan_hour: int = Field(default=3, ge=0, le=23)
     cooldown_minutes: int = Field(default=30, ge=0, le=7 * 24 * 60)  # timedelta overflowed on huge values

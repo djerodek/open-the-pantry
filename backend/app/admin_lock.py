@@ -243,9 +243,13 @@ def change(current: str, new: str, client: str) -> str | None:
     """Replaces the password; every other unlocked browser is locked."""
     if not _checked(current, client):
         return None
-    _write(new)
+    # Sessions cleared before the new password is written: one opened with
+    # the new password in between would otherwise be wiped too (DeepSeek
+    # review of 0114). One opened with the old password meanwhile carries
+    # the old fingerprint and ends when the file changes.
     with _lock:
         _sessions.clear()
+    _write(new)
     return _new_session()
 
 

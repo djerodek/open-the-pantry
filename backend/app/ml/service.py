@@ -203,6 +203,12 @@ def load():
     except Exception:   # a truncated file is a BadZipFile, among others
         log.warning("Couldn't read the saved learning models; they'll be retrained", exc_info=True)
         seg = tag = None
+    # Settings shows _report: it mustn't say a model is in use when its
+    # file couldn't be read (DeepSeek review of 0114). The start-up retrain
+    # writes a new one.
+    if (report.get("segmenter", {}).get("status") == "active" and seg is None) or \
+            (report.get("tags", {}).get("status") == "active" and tag is None):
+        _report = {}
     _apply(seg, tag)
 
 

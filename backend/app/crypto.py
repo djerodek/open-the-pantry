@@ -41,6 +41,24 @@ def _read_key_file() -> str:
         return ""
 
 
+_warned_invalid_file: tuple | None = None
+
+
+def _warn_invalid_key_file():
+    """Once per state of the file, not on every request that asks where
+    the key comes from (DeepSeek review of 0114)."""
+    global _warned_invalid_file
+    try:
+        st = os.stat(key_file_path())
+        state = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        log.debug("_warn_invalid_key_file: key file unreadable", exc_info=True)
+        state = None
+    if state != _warned_invalid_file:
+        _warned_invalid_file = state
+        log.warning("key_source: %s exists but doesn't hold a valid key", key_file_path())
+
+
 def key_source() -> str | None:
     """Where the active key comes from: "env", "file", "env_invalid",
     "file_invalid", or None.
@@ -65,7 +83,8 @@ def key_source() -> str | None:
             Fernet(file_key.encode())
             return "file"
         except Exception:
-            log.warning("key_source: %s exists but doesn't hold a valid key", key_file_path())
+            log.debug("key_source: key file rejected by Fernet", exc_info=True)
+            _warn_invalid_key_file()
             return "file_invalid"
     # A key file that is there but empty, unreadable or not text is not the
     # same as no key file: "Set up encryption" refuses to replace it, so

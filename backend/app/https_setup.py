@@ -197,7 +197,8 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
             raise HttpsError("Enter the cPanel username.")
         new["username"] = username
     if not _value("base_url")[1]:
-        if not re.match(r"^https://[^\s/:]+(:\d{1,5})?$", base_url):
+        m = re.match(r"^https://[^\s/:]+(?::(\d{1,5}))?$", base_url)
+        if not m or (m.group(1) and not 1 <= int(m.group(1)) <= 65535):
             raise HttpsError("Enter the cPanel address as https://host:port, e.g. https://cpanel.example.com:2083.")
         new["base_url"] = base_url
     if not _value("domain")[1]:

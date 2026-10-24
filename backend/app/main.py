@@ -292,6 +292,67 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Recipe App", lifespan=lifespan)
 
+# Request bodies that aren't file uploads (JSON: recipes, settings, batch
+# lists) are read whole into memory before validation, and uvicorn sets no
+# limit. 32 MB is far above any real recipe (DeepSeek review of 0114).
+# Uploads (multipart) stream to disk under their own limits.
+MAX_JSON_BODY_BYTES = 32 * 1024 * 1024
+
+
+class BodySizeLimit:
+    """ASGI middleware: 413 for a non-multipart body over the limit, by its
+    Content-Length or, without one, as it arrives."""
+
+    def __init__(self, app, limit: int = MAX_JSON_BODY_BYTES):
+        self.app, self.limit = app, limit
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers") or [])
+        if headers.get(b"content-type", b"").lower().startswith(b"multipart/form-data"):
+            return await self.app(scope, receive, send)
+        declared = headers.get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > self.limit:
+            return await self._too_large(send)
+        seen, over, answered = 0, False, False
+
+        # Past the limit, reading stops (the app sees the client go away)
+        # and whatever the app answers to that is replaced by the 413. An
+        # exception raised here would be turned into FastAPI's own 400.
+        async def counted():
+            nonlocal seen, over
+            if over:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.limit:
+                    over = True
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def tracked(message):
+            nonlocal answered
+            if not over:
+                await send(message)
+            elif not answered:
+                answered = True
+                await self._too_large(send)
+
+        await self.app(scope, counted, tracked)
+        if over and not answered:
+            await self._too_large(send)
+
+    async def _too_large(self, send):
+        body = json.dumps({"detail": "Request too large."}).encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(BodySizeLimit)
+
 
 # ---------------------------------------------------------------------------
 # Optional API key auth. Off by default (RECIPE_APP_API_KEY unset), matching
@@ -810,7 +871,15 @@ def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, ex
         raise HTTPException(status_code=400, detail="Unknown expected file type.")
 
     final_name = f"{name_prefix}{ext}"
-    os.rename(tmp_write_path, os.path.join(dest_dir, final_name))
+    try:
+        os.rename(tmp_write_path, os.path.join(dest_dir, final_name))
+    except OSError:
+        log.warning("_save_upload_streaming: couldn't keep %s", final_name, exc_info=True)
+        try:
+            os.remove(tmp_write_path)
+        except OSError:
+            log.debug("_save_upload_streaming: .partial already gone", exc_info=True)
+        raise HTTPException(status_code=500, detail="The file couldn't be saved on the server.")
     return final_name
 
 
@@ -1112,17 +1181,23 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
     """Persists a successfully-parsed emailed recipe. Mirrors the
     auto-save batch endpoints (no manual review stage) since there's no
     one at the keyboard during a 3am scan."""
+    # result["image_path"] is a name process_tagged_email generated, never
+    # one from the email itself.
     image_path = _promote_temp_file(result.get("image_path")) if result.get("image_path") else None
+    # Held to RecipeCreate's limits, as a recipe saved through the API is
+    # (DeepSeek review of 0114): a page's heading or a link can be longer.
+    cap = lambda v, n: (v[:n] if isinstance(v, str) else v)       # noqa: E731
+    url = result.get("source_url")
     try:
         recipe = models.Recipe(
-            title=result["title"],
+            title=cap(result["title"], 500),
             source_type="email",
-            source_url=result.get("source_url"),
-            servings=result.get("servings"),
-            prep_time=result.get("prep_time"),
-            cook_time=result.get("cook_time"),
-            total_time=result.get("total_time"),
-            raw_text=result.get("raw_text"),
+            source_url=url if isinstance(url, str) and len(url) <= 2000 else None,
+            servings=cap(result.get("servings"), schemas.SERVINGS_MAX),
+            prep_time=cap(result.get("prep_time"), 200),
+            cook_time=cap(result.get("cook_time"), 200),
+            total_time=cap(result.get("total_time"), 200),
+            raw_text=cap(result.get("raw_text"), 1_000_000),
             ocr_confidence=result.get("ocr_confidence"),
             image_path=image_path,
             needs_review=True,
