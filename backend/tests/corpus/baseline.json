@@ -1,0 +1,44 @@
+{
+  "p001-en-blog-json-ld": {
+    "cook_time": 0.0,
+    "ingredients": 1.0,
+    "prep_time": 0.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0,
+    "total_time": 1.0
+  },
+  "p002-fr-page-without-markup": {
+    "cook_time": 1.0,
+    "ingredients": 0.0,
+    "prep_time": 1.0,
+    "servings": 1.0,
+    "steps": 0.0,
+    "title": 0.0,
+    "total_time": 1.0
+  },
+  "p003-fr-email": {
+    "ingredients": 1.0,
+    "servings": 1.0,
+    "steps": 0.9434,
+    "title": 0.1176
+  },
+  "p004-en-two-parts": {
+    "ingredients": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0
+  },
+  "p005-en-pdf-text-layer": {
+    "ingredients": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0
+  },
+  "p006-en-screenshot": {
+    "ingredients": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0
+  }
+}

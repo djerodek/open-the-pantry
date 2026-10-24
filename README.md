@@ -531,6 +531,9 @@ The tests need the same system packages as the Docker image
 run uses a temporary data folder.
 
 - `tests/README.md` lists which test files cover which feature.
+- The import corpus re-reads real inputs (your own checked recipes, or
+  files you add) after a change and reports any that come out worse:
+  `python -m app.corpus`, described in `tests/README.md`.
 - Every browser test also fails on a JavaScript error or a
   Content-Security-Policy violation.
 - `test_accessibility.py` runs axe-core on every screen, in English/light
@@ -547,7 +550,7 @@ backend/app/        FastAPI app (main.py), models, backup, HTTPS, picker
   ingestion/        link, PDF, photo and email reading; tagging
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template
-backend/tests/      server tests; tests_browser/: page tests
+backend/tests/      server tests; corpus/: import corpus cases; tests_browser/: page tests
 frontend/           the app: index.html, js/app.js, js/i18n.js, css/
 frontend-picker/    the What to eat? page (port 8091)
 docker-compose*.yml published image, build from source, HTTPS via Traefik

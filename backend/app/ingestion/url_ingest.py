@@ -447,19 +447,29 @@ def _collect_after_heading(soup, pattern):
 
 def ingest_url(url: str) -> UrlIngestResult:
     """
-    Three-tier ingestion, no LLM:
-      1. recipe-scrapers (100+ site-specific parsers)
-      2. schema.org JSON-LD (covers most other sites with structured data)
-      3. heuristic HTML scrape (best-effort fallback, needs manual review)
-    Raises NoRecipeFoundError if none succeed. Doesn't check completeness:
-    see require_complete().
+    Fetches the page through the guarded client, then parse_html().
+    Raises NoRecipeFoundError if no tier finds a recipe. Doesn't check
+    completeness: see require_complete().
     """
     validate_public_url(url)  # SSRF guard -- must run before any fetch, see above
 
     # One fetch, through the guarded client, shared by all three tiers.
     resp = safe_get(url)
-    html = resp.text
+    result = parse_html(resp.text, url, status=resp.status_code)
+    result.final_url = resp.url or url
+    return result
 
+
+def parse_html(html: str, url: str, status=None) -> UrlIngestResult:
+    """
+    The recipe in a page already fetched, three tiers, no LLM:
+      1. recipe-scrapers (100+ site-specific parsers)
+      2. schema.org JSON-LD (covers most other sites with structured data)
+      3. heuristic HTML scrape (best-effort fallback, needs manual review)
+    url is the page's address (recipe-scrapers picks its parser by domain);
+    nothing is fetched. Separate from ingest_url so a saved page can be
+    read again (the import corpus, app/corpus.py).
+    """
     for name, attempt in (("recipe-scrapers", lambda: _try_recipe_scrapers(url, html)),
                           ("json-ld", lambda: _try_json_ld(html)),
                           ("heuristic", lambda: _try_heuristic_html(html))):
@@ -471,7 +481,6 @@ def ingest_url(url: str) -> UrlIngestResult:
         if result:
             log.info("%s: got %r from %s (%d ingredients, %d steps)", name, result.title, url,
                      len(result.ingredients or []), len(result.steps or []))
-            result.final_url = resp.url or url
             return result
         log.info("%s: nothing usable on %s", name, url)
 
@@ -481,7 +490,7 @@ def ingest_url(url: str) -> UrlIngestResult:
     log.warning(
         "No recipe extracted from %s: HTTP %s, %d bytes, title %r, %d ld+json blocks, "
         "@types seen %s, 'Recipe' in page: %s",
-        url, resp.status_code, len(html), _page_title(html),
+        url, status, len(html), _page_title(html),
         html.count("application/ld+json"), sorted(set(ld_types))[:12], "Recipe" in html,
     )
     raise NoRecipeFoundError(

@@ -606,6 +606,10 @@ et chaque exécution utilise un dossier de données temporaire.
 
 - `tests/README.md` indique quels fichiers de test couvrent quelle
   fonction.
+- Le corpus d'importation relit de vraies sources (vos recettes vérifiées,
+  ou des fichiers que vous ajoutez) après un changement et signale celles
+  qui sortent moins bien : `python -m app.corpus`, décrit dans
+  `tests/README.md`.
 - Chaque test de navigateur échoue aussi sur une erreur JavaScript ou une
   violation de la Content-Security-Policy.
 - `test_accessibility.py` passe axe-core sur chaque écran, en
@@ -624,7 +628,7 @@ backend/app/        application FastAPI (main.py), modèles, sauvegarde, HTTPS, 
   ingestion/        lecture des liens, PDF, photos et courriels; étiquetage
   ml/               Paramètres -> Apprentissage (numpy seulement)
   templates/        le gabarit d'impression/PDF/HTML
-backend/tests/      tests du serveur; tests_browser/ : tests des pages
+backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation; tests_browser/ : tests des pages
 frontend/           l'application : index.html, js/app.js, js/i18n.js, css/
 frontend-picker/    la page On mange quoi? (port 8091)
 docker-compose*.yml image publiée, construction depuis les sources, HTTPS par Traefik

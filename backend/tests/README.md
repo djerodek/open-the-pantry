@@ -23,6 +23,7 @@ New tests go in the feature file when there is one.
 | French | `test_french.py`, `test_i18n_catalog.py` | `test_friday_batch.py` (server messages), `test_deepseek_0073.py` |
 | Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py`, `test_batch_tags.py` | `test_deepseek_round.py` |
 | Learning | `test_learning.py`, `test_learning_explained.py` | |
+| Import corpus (real inputs read again) | `test_corpus.py` | |
 | Already in your library? | `test_duplicates.py`, `test_library_check.py` | `test_claude_review_round9.py`, `test_gpt_review_0093.py` |
 | Duplicate a recipe | `test_duplicate_recipe.py` | |
 | Review queue (To review) | `test_review_queue.py` | |
@@ -39,3 +40,31 @@ New tests go in the feature file when there is one.
 
 The "also in" column lists where to look, not every file that touches a
 feature: a review file often covers several.
+
+## Import corpus
+
+`test_corpus.py` reads every case in `tests/corpus/` again with the import
+code and fails when a field scores more than 0.02 below its baseline
+(`baseline.json`). Those six cases are written for this repository, so CI
+can run them. Real recipes are other people's text: keep them in a private
+corpus outside the repository (the data folder is git-ignored and isn't in
+backups) and point `RECIPE_APP_CORPUS_DIR` at it to run it too. How cases
+are made, scored and run is at the top of `app/corpus.py`; in short:
+
+```bash
+# Inside the container, for production's Tesseract:
+docker exec open-the-pantry python -m app.corpus export /app/data/recipes.db /app/data/corpus
+docker exec open-the-pantry python -m app.corpus report /app/data/corpus --save-baseline
+# After an update, or before pushing a change:
+docker exec open-the-pantry python -m app.corpus report /app/data/corpus
+docker exec open-the-pantry python -m app.corpus report /app/data/corpus --show 00012-chicken-curry
+# A file or link that imported badly, as a draft to correct:
+docker exec open-the-pantry python -m app.corpus add /app/data/corpus --pdf /app/data/some.pdf
+```
+
+`export` turns your checked recipes into cases: the text the import read
+(PDF, photo, email) or the page fetched again (a link), with what you saved
+as the expected result. `report` exits 1 when a case got worse, and
+`--save-baseline` accepts the scores as they are now. The scores measure
+the rules and link readers without Learning, which scores itself in
+Settings.
