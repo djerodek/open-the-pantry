@@ -94,6 +94,9 @@ def _quote(term: str) -> str:
 def parse(q: str) -> tuple[list[str], list[str]]:
     """(words to find, words to leave out), as typed."""
     include, exclude = [], []
+    # Control characters out: FTS5 stops reading a quoted term at a NUL
+    # ("unterminated string", a 500), and none belongs in a search.
+    q = "".join(" " if unicodedata.category(c) == "Cc" else c for c in q)
     for w in [w for w in re.split(r"\s+", q.strip()) if w][:MAX_WORDS]:
         if w.startswith("-") and len(w) > 1:
             exclude.append(w[1:])

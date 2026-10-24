@@ -63,24 +63,43 @@ _OLD = ", ".join("old." + c for c in FTS_COLUMNS)
 FTS_CREATE_SQL = f"CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5({_COLS}, content='recipes', content_rowid='id')"
 FTS_VOCAB_SQL = "CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts_vocab USING fts5vocab('recipes_fts', 'row')"
 
+# The index holds live recipes only (0119): one in Recently deleted leaves
+# it and comes back on Put back. Otherwise its words were still offered as
+# typo corrections, and it still counted in ranking. A trigger can't branch,
+# so each statement carries the condition as INSERT ... SELECT ... WHERE.
+# PRAGMA integrity_check and FTS5's own integrity-check pass; only
+# integrity-check with rank 1, which compares against every row of the
+# recipes table, reports the binned ones as missing.
+_LIVE_MARK = "-- live recipes only (0119)"
 FTS_TRIGGER_SQL = [
     f"""
-    CREATE TRIGGER IF NOT EXISTS recipes_ai AFTER INSERT ON recipes BEGIN
-        INSERT INTO recipes_fts(rowid, {_COLS}) VALUES (new.id, {_NEW});
+    CREATE TRIGGER IF NOT EXISTS recipes_ai AFTER INSERT ON recipes BEGIN {_LIVE_MARK}
+        INSERT INTO recipes_fts(rowid, {_COLS}) SELECT new.id, {_NEW} WHERE new.deleted_at IS NULL;
     END;
     """,
     f"""
-    CREATE TRIGGER IF NOT EXISTS recipes_ad AFTER DELETE ON recipes BEGIN
-        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS}) VALUES ('delete', old.id, {_OLD});
+    CREATE TRIGGER IF NOT EXISTS recipes_ad AFTER DELETE ON recipes BEGIN {_LIVE_MARK}
+        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS})
+            SELECT 'delete', old.id, {_OLD} WHERE old.deleted_at IS NULL;
     END;
     """,
     f"""
-    CREATE TRIGGER IF NOT EXISTS recipes_au AFTER UPDATE ON recipes BEGIN
-        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS}) VALUES ('delete', old.id, {_OLD});
-        INSERT INTO recipes_fts(rowid, {_COLS}) VALUES (new.id, {_NEW});
+    CREATE TRIGGER IF NOT EXISTS recipes_au AFTER UPDATE ON recipes BEGIN {_LIVE_MARK}
+        INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS})
+            SELECT 'delete', old.id, {_OLD} WHERE old.deleted_at IS NULL;
+        INSERT INTO recipes_fts(rowid, {_COLS}) SELECT new.id, {_NEW} WHERE new.deleted_at IS NULL;
     END;
     """,
 ]
+
+
+def _rebuild_fts(cur):
+    """Refill the index from the recipes table, then take out the ones in
+    Recently deleted ('rebuild' reads every row of the content table)."""
+    cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
+    cur.execute(f"INSERT INTO recipes_fts(recipes_fts, rowid, {_COLS}) "
+                f"SELECT 'delete', id, {_COLS} FROM recipes WHERE deleted_at IS NOT NULL")
+
 
 # recipes.content_text = all ingredient lines and step texts, in order.
 _CONTENT_SQL = """
@@ -172,7 +191,7 @@ def _migrate_and_setup_schema():
                     """)
                 cur.execute(f"UPDATE recipes SET content_text = {_CONTENT_SQL.format(rid='recipes.id')}")
                 cur.execute(FTS_CREATE_SQL)
-                cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
+                _rebuild_fts(cur)
                 for stmt in FTS_TRIGGER_SQL:
                     cur.execute(stmt)
             elif not fts_cols:
@@ -181,7 +200,20 @@ def _migrate_and_setup_schema():
                 cur.execute(FTS_CREATE_SQL)
                 for stmt in FTS_TRIGGER_SQL:
                     cur.execute(stmt)
-                cur.execute("INSERT INTO recipes_fts(recipes_fts) VALUES('rebuild')")
+                _rebuild_fts(cur)
+
+            else:
+                # Triggers from before 0119 index recipes in Recently deleted
+                # too: replace them, and take the binned ones out.
+                current = [r[0] or "" for r in cur.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name IN ('recipes_ai', 'recipes_ad', 'recipes_au')")]
+                if current and not all(_LIVE_MARK in sql for sql in current):
+                    for name in ("recipes_ai", "recipes_ad", "recipes_au"):
+                        cur.execute(f"DROP TRIGGER IF EXISTS {name}")
+                    _rebuild_fts(cur)
+                    for stmt in FTS_TRIGGER_SQL:
+                        cur.execute(stmt)
 
             for stmt in CONTENT_TRIGGER_SQL:
                 cur.execute(stmt)

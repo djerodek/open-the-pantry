@@ -75,10 +75,12 @@ _LOCKED = [
     re.compile(r"^/api/https(/.*)?$"),
     re.compile(r"^/api/logs(/.*)?$"),
     re.compile(r"^/api/recipes/[^/]+/email$"),
+    # Replaces the whole library. /api/backup/restore/check stays open here
+    # (an import uses it) and asks for the password itself for a full backup.
     re.compile(r"^/api/backup/restore$"),
     # Automatic backups: changing the schedule or running one. Turning them
     # off quietly is the risk; the status (GET /api/backups/status) is open.
-    re.compile(r"^/api/backups/(schedule|run)$"),   # replaces the whole library (/check only reads the file)
+    re.compile(r"^/api/backups/(schedule|run)$"),
 ]
 _OPEN = {
     "/api/email-settings/scan",   # reads only the recipe inbox; left open on purpose
