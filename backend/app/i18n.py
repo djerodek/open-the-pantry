@@ -226,6 +226,12 @@ _FR_PATTERNS = [
     _p(r"Restored from a backup: enter the email password again \(this server's encryption key can't read the one in the backup\)\.",
        "Restauré à partir d'une sauvegarde : entrez de nouveau le mot de passe du courriel (la clé de chiffrement de ce serveur ne peut pas lire celui de la sauvegarde)."),
     _p(r"^File too large\.$", "Fichier trop volumineux."),
+    _p(r"^Request too large\.$", "Requête trop volumineuse."),
+    _p(r"The two recipes' notes together are longer than ([\d,]+) characters\. Keep one recipe's notes, or shorten them first\.",
+       lambda m: f"Les notes des deux recettes dépassent ensemble {m.group(1).replace(',', ' ')} caractères. "
+                 "Gardez les notes d'une seule recette, ou raccourcissez-les d'abord."),
+    _p(r"Together these recipes have (\d+) tags; a recipe can have at most (\d+)\. Remove some tags first\.",
+       r"Ensemble, ces recettes ont \1 étiquettes; une recette peut en avoir au plus \2. Retirez-en d'abord quelques-unes."),
     _p(r"This file is damaged or isn't a zip\.", "Ce fichier est endommagé ou n'est pas un zip."),
     _p(r"This JSON file is larger than 25 MB\.", "Ce fichier JSON dépasse 25 Mo."),
     _p(r"This file isn't JSON, a zip or a Paprika export\.", "Ce fichier n'est ni du JSON, ni un zip, ni une exportation Paprika."),

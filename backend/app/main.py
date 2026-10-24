@@ -296,13 +296,42 @@ app = FastAPI(title="Recipe App", lifespan=lifespan)
 # Request bodies that aren't file uploads (JSON: recipes, settings, batch
 # lists) are read whole into memory before validation, and uvicorn sets no
 # limit. 32 MB is far above any real recipe (DeepSeek review of 0114).
-# Uploads (multipart) stream to disk under their own limits.
 MAX_JSON_BODY_BYTES = 32 * 1024 * 1024
+# Uploads (multipart): Starlette parses the whole body, spooling files to
+# the temporary folder, before the route sees it, so the routes' own limits
+# came too late to stop a larger upload filling the disk (GPT review of
+# 0119). Each upload route's limit is applied here as the body arrives;
+# the routes keep theirs per file. The margin is for the form's own
+# headers and boundaries.
+MULTIPART_MARGIN_BYTES = 1024 * 1024
+
+
+def _multipart_limit(scope):
+    """(limit in bytes, response to send past it, or None for the 413)."""
+    path = scope.get("path", "")
+    if path == "/api/backup/restore/check":
+        # A full backup can be up to 16 GB unpacked, but only with the
+        # settings password; without it the box only imports (1 GB), and
+        # past that the page is told to ask for the password and resend.
+        refusal = _settings_lock_refusal(Request(scope))
+        if refusal is None:
+            return restore_mod.MAX_TOTAL_BYTES + MULTIPART_MARGIN_BYTES, None
+        return MAX_IMPORT_BYTES + MULTIPART_MARGIN_BYTES, refusal
+    limit = {
+        "/api/ingest/pdf": MAX_UPLOAD_BYTES,
+        "/api/ingest/image": MAX_UPLOAD_BYTES,
+        "/api/upload-image": MAX_UPLOAD_BYTES,
+        "/api/ingest/images": MAX_COMBINED_IMAGES * MAX_UPLOAD_BYTES,
+        "/api/ingest/pdf/batch": MAX_BATCH_PDF_BYTES,
+        "/api/import/recipes": MAX_IMPORT_BYTES,
+    }.get(path, MAX_JSON_BODY_BYTES)
+    return limit + MULTIPART_MARGIN_BYTES, None
 
 
 class BodySizeLimit:
-    """ASGI middleware: 413 for a non-multipart body over the limit, by its
-    Content-Length or, without one, as it arrives."""
+    """ASGI middleware: refuses a body over its limit, by its Content-Length
+    or, without one, as it arrives: 32 MB for JSON and other bodies, the
+    route's own limit for an upload."""
 
     def __init__(self, app, limit: int = MAX_JSON_BODY_BYTES):
         self.app, self.limit = app, limit
@@ -311,16 +340,17 @@ class BodySizeLimit:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         headers = dict(scope.get("headers") or [])
+        limit, refusal = self.limit, None
         if headers.get(b"content-type", b"").lower().startswith(b"multipart/form-data"):
-            return await self.app(scope, receive, send)
+            limit, refusal = _multipart_limit(scope)
         declared = headers.get(b"content-length", b"")
-        if declared.isdigit() and int(declared) > self.limit:
-            return await self._too_large(send)
+        if declared.isdigit() and int(declared) > limit:
+            return await self._refuse(scope, receive, send, refusal, limit)
         seen, over, answered = 0, False, False
 
         # Past the limit, reading stops (the app sees the client go away)
-        # and whatever the app answers to that is replaced by the 413. An
-        # exception raised here would be turned into FastAPI's own 400.
+        # and whatever the app answers to that is replaced by the refusal.
+        # An exception raised here would be turned into FastAPI's own 400.
         async def counted():
             nonlocal seen, over
             if over:
@@ -328,7 +358,7 @@ class BodySizeLimit:
             message = await receive()
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
-                if seen > self.limit:
+                if seen > limit:
                     over = True
                     return {"type": "http.disconnect"}
             return message
@@ -339,14 +369,20 @@ class BodySizeLimit:
                 await send(message)
             elif not answered:
                 answered = True
-                await self._too_large(send)
+                await self._refuse(scope, receive, send, refusal, limit)
 
         await self.app(scope, counted, tracked)
         if over and not answered:
-            await self._too_large(send)
+            await self._refuse(scope, receive, send, refusal, limit)
 
-    async def _too_large(self, send):
-        body = json.dumps({"detail": "Request too large."}).encode()
+    async def _refuse(self, scope, receive, send, refusal, limit):
+        if refusal is not None:
+            return await refusal(scope, receive, send)
+        if limit == self.limit:
+            detail = "Request too large."
+        else:
+            detail = f"File too large (max {(limit - MULTIPART_MARGIN_BYTES) // (1024 * 1024)} MB)."
+        body = json.dumps({"detail": detail}).encode()
         await send({"type": "http.response.start", "status": 413,
                     "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
         await send({"type": "http.response.body", "body": body})
@@ -1944,7 +1980,8 @@ def list_recipes(
         if found["matched"] is not None:
             matched_via = found["matched"]
             if not matched_via:
-                response.headers["X-Search-Corrected"] = json.dumps(found["corrected"])
+                if found["corrected"]:
+                    response.headers["X-Search-Corrected"] = json.dumps(found["corrected"])
                 return []
             query = query.filter(models.Recipe.id.in_(matched_via.keys()))
         if found["excluded"]:
@@ -2181,8 +2218,8 @@ NOTES_MAX = 50_000   # schemas.NotesUpdate
 def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
     """Two recipes into one (0110). The "keep" recipe is updated in place
     with the part chosen from each; the other goes to Recently deleted, so
-    it can be put back. Tags: both sets (keep's first, up to the 50 a
-    recipe holds). A photo taken from the other recipe is copied, since
+    it can be put back. Tags: both sets. Notes or tags that together go
+    over a recipe's limits refuse the merge rather than being cut. A photo taken from the other recipe is copied, since
     the other keeps its own while it waits. The result counts as checked
     (not "To review")."""
     if payload.keep_id == payload.other_id:
@@ -2206,6 +2243,15 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
 
     notes = {"keep": keep.notes, "other": other.notes,
              "both": "\n\n".join(n.strip() for n in (keep.notes, other.notes) if n and n.strip())}[take.notes]
+    # Nothing is cut off without saying so (GPT review of 0119): the merge
+    # is refused and the page shows why.
+    if notes and len(notes) > NOTES_MAX:
+        raise HTTPException(status_code=400, detail=f"The two recipes' notes together are longer than "
+                            f"{NOTES_MAX:,} characters. Keep one recipe's notes, or shorten them first.")
+    tag_count = len(keep.tags) + len([t for t in other.tags if t not in keep.tags])
+    if tag_count > MAX_TAGS_PER_RECIPE:
+        raise HTTPException(status_code=400, detail=f"Together these recipes have {tag_count} tags; a recipe "
+                            f"can have at most {MAX_TAGS_PER_RECIPE}. Remove some tags first.")
     try:
         keep.title = pick("title").title
         keep.image_path = new_image
@@ -2225,9 +2271,8 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         (keep.favorite, keep.tastiness_rating, keep.cook_time_rating, keep.difficulty_rating,
          keep.actual_cook_time_minutes) = (r.favorite, r.tastiness_rating, r.cook_time_rating,
                                            r.difficulty_rating, r.actual_cook_time_minutes)
-        keep.notes = (notes or None) and notes[:NOTES_MAX]
-        tags = list(keep.tags) + [t for t in other.tags if t not in keep.tags]
-        keep.tags = tags[:MAX_TAGS_PER_RECIPE]
+        keep.notes = notes or None
+        keep.tags = list(keep.tags) + [t for t in other.tags if t not in keep.tags]
         keep.tags_text = " ".join(t.name for t in keep.tags)
         keep.needs_review = False
         other.deleted_at = _utc_now()
@@ -4076,6 +4121,10 @@ def restore_backup(payload: schemas.RestoreRequest):
         raise HTTPException(status_code=500, detail="The restore failed; Settings -> Logs has the details. "
                                                     "The data from before it is in the safety backup in the data folder.")
     finally:
+        # Search's word list belongs to the library just replaced (GPT
+        # review of 0119); also after a failed restore, which may have
+        # changed it part way.
+        search.forget_vocabulary()
         for lock in reversed(held):
             lock.release()
         _restoring.clear()

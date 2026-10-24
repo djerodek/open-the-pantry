@@ -15,7 +15,7 @@ New tests go in the feature file when there is one.
 
 | Feature | Feature files | Also in review files |
 |---|---|---|
-| Recipes: create, edit, delete, list, sort | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py`, `test_recently_deleted.py`, `test_merge.py` | `test_stability.py`, `test_friday_batch.py`, `test_claude_review_round8.py` |
+| Recipes: create, edit, delete, list, sort | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py`, `test_recently_deleted.py`, `test_merge.py` | `test_stability.py`, `test_friday_batch.py`, `test_claude_review_round8.py`, `test_gpt_review_0119.py` (merge limits) |
 | Search | `test_search_and_parsing.py`, `test_search_typos.py` | `test_claude_review_round11.py` (control characters, Recently deleted out of the index) |
 | Import from a link | `test_incomplete_sources.py` | `test_security.py`, `test_security_round2.py` (address and size checks), `test_review_round2_followup.py` (slow downloads), `test_claude_review_round9.py` |
 | Import from a PDF or photo (reading the text) | `test_pdf_ingest.py`, `test_component_recipes.py`, `test_deskew.py`, `test_incomplete_sources.py` | `test_review_round2_followup.py` (OCR limits), `test_sept27_fixes.py`, `test_deepseek_0073.py`, `test_deepseek_review_0096.py` |
@@ -31,7 +31,7 @@ New tests go in the feature file when there is one.
 | Restore | `test_restore.py` | `test_gpt_review_0093.py` |
 | Settings password | `test_settings_password.py` | |
 | HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` | |
-| Security (uploads, paths, cross-site, headers) | `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits) |
+| Security (uploads, paths, cross-site, headers) | `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive) |
 | Logs | `test_log_review.py` | `test_claude_review_round7.py` |
 | What to eat? | `test_picker.py` | `test_gpt_review_0078.py`, `test_claude_review_round7.py`, `test_claude_review_round8.py` |
 | Things kept in two places (French text, page vs server rules) | `test_ui_consistency.py`, `test_i18n_catalog.py` | `test_deepseek_review_0096.py` (part names) |

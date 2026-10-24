@@ -2915,7 +2915,10 @@
     });
     btn.disabled = false;
     if (!result.ok) {
-      $("#merge-status").textContent = writeFailureMessage(result, tx("The selected recipes"));
+      // A 400 says why (notes or tags over a recipe's limits); show it.
+      const err = result.status === 400 ? await result.res.json().catch(() => ({})) : {};
+      $("#merge-status").textContent = typeof err.detail === "string" ? err.detail
+        : writeFailureMessage(result, tx("The selected recipes"));
       if (result.status === 404) loadRecipes();
       return;
     }

@@ -321,7 +321,8 @@ Mail without the keyword is never read.
   - with exactly two selected, **Merge…**. You choose where each part comes
     from: title, photo, ingredients and steps, servings and times, link,
     ratings, notes. Tags from both are kept. The other recipe goes to
-    Recently deleted.
+    Recently deleted. A merge that would give more than 50 tags, or notes
+    over 50,000 characters, is refused with the reason.
 - **Recently deleted.** A deleted recipe disappears everywhere and waits 30
   days under **Recently deleted** in the side menu. From there you can put
   it back, or delete it now. After 30 days it is deleted for good, with its
@@ -441,7 +442,9 @@ How it works:
     ports.
 - **Everything that comes in is treated as hostile.**
   - **Uploads**: at most 20 MB, checked by their content rather than their
-    file extension.
+    file extension. A request is cut off as soon as it passes its limit
+    (20 MB a file, 1 GB an import, 16 GB a full backup with the settings
+    password, 32 MB anything else), so no more than that reaches the disk.
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused.

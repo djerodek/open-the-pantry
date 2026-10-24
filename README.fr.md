@@ -368,7 +368,9 @@ Le courriel sans le mot-clé n'est jamais lu.
     choisissez d'où vient chaque partie : titre, photo, ingrédients et
     étapes, portions et temps, lien, notes, notes personnelles. Les
     étiquettes des deux sont gardées. L'autre recette va dans Récemment
-    supprimées.
+    supprimées. Une fusion qui donnerait plus de 50 étiquettes, ou des
+    notes personnelles de plus de 50 000 caractères, est refusée avec la
+    raison.
 - **Récemment supprimées.** Une recette supprimée disparaît partout et
   attend 30 jours dans **Récemment supprimées**, au menu latéral. De là, on
   peut la remettre, ou la supprimer tout de suite. Après 30 jours, elle est
@@ -504,7 +506,10 @@ Son fonctionnement :
     en `http://`.
 - **Tout ce qui entre est traité comme hostile.**
   - **Téléversements** : au plus 20 Mo, vérifiés par leur contenu plutôt
-    que leur extension.
+    que leur extension. Une requête est coupée dès qu'elle dépasse sa
+    limite (20 Mo par fichier, 1 Go pour un fichier de recettes à ajouter,
+    16 Go pour une sauvegarde complète avec le mot de passe des paramètres,
+    32 Mo pour le reste) : rien de plus n'atteint le disque.
   - **Images** : elles sont réencodées, ce qui retire les métadonnées et
     tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
     sont utilisés, et toute image de plus de 50 mégapixels est refusée.
