@@ -61,6 +61,30 @@ def test_plurals_and_stems(client, library):
     assert search.stem("berries") == "berr" and search.stem("tomatoes") == "tomato" and search.stem("eggs") == "eggs"
 
 
+def test_a_corrected_word_next_to_other_words(client, library):
+    """ "11 sauxe" gave a 500: a plain word next to a group of alternatives
+    is an FTS5 syntax error without an explicit AND."""
+    for q in ("4 zelmns", "zelmns sugar", "zelmns 4 squeze", "zelmonade zelmns", "-curry zelmns sugar"):
+        found, corrected = _search(client, q)
+        assert "Zelmonade" in _titles(found), q
+    found, corrected = _search(client, "brambsh tart")
+    assert _titles(found) == ["Brambish tart"] and "brambsh" in corrected
+
+
+def test_a_word_just_added_isnt_taken_for_a_typo(client, library):
+    """The word list was cached for 30 s, so a new recipe's words could be
+    "corrected" into others; saving a recipe now refreshes it."""
+    client.get("/api/recipes", params={"q": "zelmonade"})        # list cached
+    r = _recipe(client, "Zelmonads fizz")
+    try:
+        found = client.get("/api/recipes", params={"q": "zelmonads"})
+        assert "X-Search-Corrected" not in found.headers
+        assert [x["title"] for x in found.json()] == ["Zelmonads fizz"]
+    finally:
+        client.delete(f"/api/recipes/{r['id']}")
+        client.delete(f"/api/recently-deleted/{r['id']}")
+
+
 def test_a_word_that_matches_isnt_corrected(client, library):
     found, corrected = _search(client, "zelm")                   # the start of zelmons
     assert "Zelmonade" in _titles(found) and corrected == {}

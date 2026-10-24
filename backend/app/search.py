@@ -213,7 +213,10 @@ def build(q: str, db: Session) -> dict:
         forms = dict.fromkeys([w, n, n + "s", n + "es", n + "x"])
         leave_out.append(" OR ".join(_quote(f) for f in forms))
     return {
-        "include": " ".join(parts),
+        # Explicit AND: FTS5 joins plain words implicitly, but a word next
+        # to a bracketed group of alternatives ("11"* ("sauce"* OR ...)) is
+        # a syntax error without it (a 500 on "11 sauxe", 0117).
+        "include": " AND ".join(parts),
         "exclude": " OR ".join(f"({x})" for x in leave_out),
         "corrected": corrected,
     }

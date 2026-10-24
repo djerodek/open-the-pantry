@@ -410,6 +410,9 @@ async def retrain_after_changes(request: Request, call_next):
             and not request.url.path.endswith(("/rating", "/notes", "/email", "/suggest"))
             and request.query_params.get("dry_run", "").lower() not in ("1", "true")):
         learning.schedule_retrain()
+        # Search's cached word list: a word just added mustn't be taken for
+        # a typo and "corrected" into another one.
+        search.forget_vocabulary()
     return response
 
 
