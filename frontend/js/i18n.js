@@ -103,7 +103,7 @@
     // Settings -> Library check
     "Library check": "Vérification de la bibliothèque",
     "Check the library": "Vérifier la bibliothèque",
-    "Lists recipes missing ingredients, steps, tags or a photo, and ones that look like the same recipe.": "Liste les recettes sans ingrédients, étapes, étiquettes ou photo, et celles qui semblent être la même recette.",
+    "Finds incomplete recipes and likely duplicates.": "Trouve les recettes incomplètes et les doublons probables.",
     "{n} recipe checked.": "{n} recette vérifiée.",
     "{n} recipes checked.": "{n} recettes vérifiées.",
     "Without ingredients": "Sans ingrédients",
@@ -113,8 +113,8 @@
     "Photo file missing": "Fichier de photo manquant",
     "Still to review": "Encore à vérifier",
     "Look like the same recipe": "Semblent être la même recette",
-    "Same link, or same title. To combine two, select them in the list and use Merge….": "Même lien ou même titre. Pour en combiner deux, sélectionnez-les dans la liste et utilisez Fusionner….",
-    "Nothing to report: every recipe has ingredients, steps, tags and a photo, and none look the same.": "Rien à signaler : chaque recette a des ingrédients, des étapes, des étiquettes et une photo, et aucune ne semble en double.",
+    "Same link or title. To combine two, select them and use Merge….": "Même lien ou même titre. Pour en combiner deux, sélectionnez-les et utilisez Fusionner….",
+    "Nothing to report.": "Rien à signaler.",
     "Selected recipes": "Recettes sélectionnées",
     // Share -> Image
     "Image (JPG)": "Image (JPG)",
@@ -130,7 +130,7 @@
     // Select mode -> Merge
     "Merge…": "Fusionner…",
     "Merge two recipes": "Fusionner deux recettes",
-    "Choose where each part comes from. Tags from both are kept. The other recipe goes to Recently deleted, where it can be put back.": "Choisissez d'où vient chaque partie. Les étiquettes des deux sont gardées. L'autre recette va dans Récemment supprimées, d'où on peut la remettre.",
+    "Tags from both are kept. The other recipe goes to Recently deleted.": "Les étiquettes des deux sont gardées. L'autre recette va dans Récemment supprimées.",
     "Merge": "Fusionner",
     "Couldn't load the two recipes. The list has been refreshed.": "Impossible de charger les deux recettes. La liste a été actualisée.",
     "None": "Aucun",
@@ -156,7 +156,7 @@
     "{n} recipes moved to Recently deleted (in the side menu) for 30 days": "{n} recettes placées dans Récemment supprimées (menu latéral) pour 30 jours",
     "Recently deleted": "Récemment supprimées",
     "Recently deleted ({1})": "Récemment supprimées ({1})",
-    "Deleted recipes wait here for 30 days, then they and their photos are deleted for good.": "Les recettes supprimées attendent ici 30 jours, puis elles et leurs photos sont supprimées pour de bon.",
+    "Kept 30 days, then deleted for good.": "Gardées 30 jours, puis supprimées pour de bon.",
     "Delete all now": "Tout supprimer maintenant",
     "Nothing here.": "Rien ici.",
     "Put back": "Remettre",

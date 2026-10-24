@@ -90,14 +90,15 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   service): how your photo, PDF and email imports are laid out, and how you
   tag; used only where it beats the built-in rules on your recipes, and
   each suggested tag says where it came from (a keyword, or learned)
-- Full-text search across recipes and tags, forgiving typos, with `-word` to leave words out; stacked filters; pace and
+- Full-text search across recipes and tags, forgiving typos, best match
+  first, with `-word` to leave words out; stacked filters; pace and
   cook-time filters; sort by date, title, rating, cook time or difficulty
 - Ratings, favorites, per-recipe notes (marked on the recipe cards),
   showcase images; duplicate a recipe to make a variant
 - Recipes saved without review (batch links, batch PDFs, email) are marked
   "To review", with a list of what to check, until you've looked at them
-- Print, PDF, self-contained HTML, or a JPG image to share; email the PDF to someone
-  straight from the Share menu
+- Print, PDF, self-contained HTML, or a JPG image to share; email the PDF
+  to someone straight from the Share menu
 - English or French (Quebec) interface, chosen per device, including
   exports and notification emails
 - PWA: installable, offline shell, pull down to refresh (and pick up a new

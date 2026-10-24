@@ -228,7 +228,7 @@
     aria-labelledby="merge-heading">
     <button class="modal-close" id="merge-close" type="button" aria-label="Close dialog">&times;</button>
     <h2 id="merge-heading">Merge two recipes</h2>
-    <p class="field-hint">Choose where each part comes from. Tags from both are kept. The other recipe goes to Recently deleted, where it can be put back.</p>
+    <p class="field-hint">Tags from both are kept. The other recipe goes to Recently deleted.</p>
     <form id="merge-form">
       <div id="merge-body"><!-- populated by app.js --></div>
       <p id="merge-status" class="field-hint" role="status"></p>
@@ -249,7 +249,7 @@
     aria-labelledby="bin-heading">
     <button class="modal-close" id="bin-close" type="button" aria-label="Close dialog">&times;</button>
     <h2 id="bin-heading">Recently deleted</h2>
-    <p class="field-hint">Deleted recipes wait here for 30 days, then they and their photos are deleted for good.</p>
+    <p class="field-hint">Kept 30 days, then deleted for good.</p>
     <ul id="bin-list" class="bin-list"><!-- populated by app.js --></ul>
     <p id="bin-status" class="field-hint" role="status"></p>
     <button type="button" id="bin-empty" class="btn-secondary btn-danger">Delete all now</button>
@@ -379,7 +379,7 @@
       <div class="filter-section" id="library-check-section">
         <div class="filter-section-title">Library check</div>
         <button type="button" id="library-check-btn" class="btn-secondary">Check the library</button>
-        <div class="field-hint">Lists recipes missing ingredients, steps, tags or a photo, and ones that look like the same recipe.</div>
+        <div class="field-hint">Finds incomplete recipes and likely duplicates.</div>
         <div id="library-check-result" role="status"></div>
       </div>
 

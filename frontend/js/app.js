@@ -2230,12 +2230,12 @@
     if (data.duplicates.length) {
       parts.push(el("details", { class: "library-check-group" }, [
         el("summary", { text: `${tx("Look like the same recipe")} (${data.duplicates.length})` }),
-        el("p", { class: "field-hint", text: tx("Same link, or same title. To combine two, select them in the list and use Merge….") }),
+        el("p", { class: "field-hint", text: tx("Same link or title. To combine two, select them and use Merge….") }),
         el("ul", {}, data.duplicates.map((set) => el("li", { class: "library-check-set" },
           set.flatMap((r, i) => (i ? [document.createTextNode(" · "), link(r)] : [link(r)]))))),
       ]));
     }
-    if (parts.length === 1) parts.push(el("p", { text: tx("Nothing to report: every recipe has ingredients, steps, tags and a photo, and none look the same.") }));
+    if (parts.length === 1) parts.push(el("p", { text: tx("Nothing to report.") }));
     out.replaceChildren(...parts);
   });
 
