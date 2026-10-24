@@ -123,6 +123,10 @@
     "Image of {1}": "Image de {1}",
     "Couldn't open the share sheet; use Download.": "Impossible d'ouvrir le partage; utilisez Télécharger.",
     "Couldn't make the image.": "Impossible de créer l'image.",
+    // Search
+    "Best match": "Pertinence",
+    "Showing results for {1} (you typed {2}).": "Résultats pour {1} (vous avez tapé {2}).",
+    "Search recipes (-word leaves it out)": "Rechercher des recettes (-mot pour l'exclure)",
     // Select mode -> Merge
     "Merge…": "Fusionner…",
     "Merge two recipes": "Fusionner deux recettes",
@@ -244,7 +248,7 @@
     "OCR quality: low": "Qualité de la reconnaissance : faible",
     "OCR quality: fair": "Qualité de la reconnaissance : passable",
     "OCR quality: good": "Qualité de la reconnaissance : bonne",
-    "matched: {1}": "correspondance : {1}",
+    "Matched a tag": "Trouvée par une étiquette",
     "Has notes": "Contient des notes",
     "Remove from favorites": "Retirer des favoris",
     "Add to favorites": "Ajouter aux favoris",

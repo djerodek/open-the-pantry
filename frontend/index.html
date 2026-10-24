@@ -35,6 +35,7 @@
         type="search"
         id="search-input"
         name="q"
+        title="Search recipes (-word leaves it out)"
         placeholder="Search recipes...">
       <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -104,6 +105,7 @@
 
     <div id="filter-panel" class="filter-panel" hidden aria-label="Filter recipes"></div>
 
+    <p id="search-note" class="search-note" hidden></p>
     <div id="recipe-list-region" aria-live="polite">
       <!-- populated by app.js -->
     </div>

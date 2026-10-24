@@ -80,6 +80,12 @@ def test_main_page(server, page, library, lang, scheme):
     pg.goto(server["url"])
     pg.wait_for_selector(f"text={soup['title']}")
     s.scan("recipe list")
+    pg.fill("#search-input", "flourr")                      # a typo, matched in the ingredients
+    pg.press("#search-input", "Enter")
+    wait_until(pg, "!document.querySelector('#search-note').hidden && !!document.querySelector('.card-snippet mark')")
+    s.scan("search with a typo")
+    pg.click("#search-clear")
+    wait_until(pg, "document.querySelector('#search-note').hidden")
     pg.click("#sidebar-toggle")
     pg.wait_for_selector(".review-filter[aria-controls=bin-overlay]")
     s.scan("side menu")

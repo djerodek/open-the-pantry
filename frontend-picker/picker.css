@@ -35,7 +35,7 @@
   --badge-conf-high-bg: #E3EEE0; --badge-conf-high-fg: #3D6B32;
   --badge-conf-med-bg: #FBF0D9;  --badge-conf-med-fg: #8A6410;
   --badge-conf-low-bg: #F6DEDA;  --badge-conf-low-fg: #A8443A;
-  --badge-matched-bg: #EAF1E8;   --badge-matched-fg: #6B7A5E;
+  --badge-matched-bg: #EAF1E8;   --badge-matched-fg: #4E5B43;   /* 6.29:1 (was 3.99; found by the 0117 scan) */
 
   --overlay-scrim: rgba(34, 32, 27, 0.5);
   --shadow-color: rgba(0, 0, 0, 0.25);

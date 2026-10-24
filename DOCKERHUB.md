@@ -90,7 +90,7 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   service): how your photo, PDF and email imports are laid out, and how you
   tag; used only where it beats the built-in rules on your recipes, and
   each suggested tag says where it came from (a keyword, or learned)
-- Full-text search across recipes and tags; stacked filters; pace and
+- Full-text search across recipes and tags, forgiving typos, with `-word` to leave words out; stacked filters; pace and
   cook-time filters; sort by date, title, rating, cook time or difficulty
 - Ratings, favorites, per-recipe notes (marked on the recipe cards),
   showcase images; duplicate a recipe to make a variant

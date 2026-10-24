@@ -245,6 +245,9 @@ class RecipeSummaryOut(BaseModel):
     needs_review: bool = False
     matched_via: list[str] = []  # 'text' and/or 'tag', only populated on search
     has_notes: bool = False      # for the card's notes icon; the notes themselves aren't in the list
+    # Searching: where the words matched, when not in the title, with
+    # \u0002 and \u0003 around them (search.py).
+    match_snippet: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

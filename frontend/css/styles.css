@@ -35,7 +35,7 @@
   --badge-conf-high-bg: #E3EEE0; --badge-conf-high-fg: #3D6B32;
   --badge-conf-med-bg: #FBF0D9;  --badge-conf-med-fg: #8A6410;
   --badge-conf-low-bg: #F6DEDA;  --badge-conf-low-fg: #A8443A;
-  --badge-matched-bg: #EAF1E8;   --badge-matched-fg: #6B7A5E;
+  --badge-matched-bg: #EAF1E8;   --badge-matched-fg: #4E5B43;   /* 6.29:1 (was 3.99; found by the 0117 scan) */
 
   --overlay-scrim: rgba(34, 32, 27, 0.5);
   --shadow-color: rgba(0, 0, 0, 0.25);
@@ -1905,6 +1905,12 @@ a.btn-primary { display: inline-block; text-decoration: none; }
   border-bottom: 1px solid var(--color-border);
 }
 .sidebar-review-region .review-filter { width: 100%; text-align: left; }
+/* Search: what was corrected, and where a recipe matched */
+.search-note { margin: 0 0 0.6rem; font-size: 0.9rem; color: var(--color-ink-muted); }
+.card-snippet { margin: 0.2rem 0 0.4rem; font-size: 0.85rem; color: var(--color-ink-muted); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-snippet mark { background: var(--badge-conf-med-bg); color: var(--color-ink); border-radius: 2px; padding: 0 1px; }
+
 /* Settings -> Library check */
 #library-check-result { margin-top: 0.5rem; }
 .library-check-group { border-top: 1px solid var(--color-border); padding: 0.4rem 0; }

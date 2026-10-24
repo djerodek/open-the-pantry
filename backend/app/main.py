@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 import anyio
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Request, Response
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
@@ -48,6 +48,7 @@ from . import i18n
 from . import https_setup
 from . import admin_lock
 from . import picker
+from . import search
 from . import duplicates
 from . import interchange
 from . import restore as restore_mod
@@ -799,23 +800,6 @@ def healthz():
     used by the Dockerfile HEALTHCHECK. Deliberately separate from any
     endpoint that returns real data."""
     return {"status": "ok"}
-
-
-def _fts_phrase(q: str) -> str:
-    """Turn arbitrary user search text into a safe FTS5 phrase-query literal.
-    Without this, raw user input is parsed as FTS5 query syntax (not just a
-    plain bound value) -- a stray unmatched quote raises a SQLite
-    OperationalError, and characters like `-`, `:`, `{}` have special
-    meaning (NOT, column filters) that could change which column is
-    searched. Wrapping as an escaped phrase neutralizes all of that."""
-    # Each word becomes a quoted prefix term ("chick"* matches "chicken"),
-    # all required (FTS5 ANDs adjacent terms). It used to be one phrase, so
-    # "chick" missed "Chicken soup" and word order mattered. Quoting each
-    # word still neutralizes FTS5 syntax: only the * is ours.
-    words = [w for w in re.split(r"\s+", q.strip()) if w]
-    if not words:
-        return '""'
-    return " ".join('"' + w.replace('"', '""') + '"*' for w in words)
 
 
 def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, expect: str,
@@ -1932,7 +1916,8 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/recipes", response_model=list[schemas.RecipeSummaryOut])
 def list_recipes(
-    q: str | None = None,
+    response: Response,
+    q: str | None = Query(default=None, max_length=500),
     tags: list[str] | None = Query(default=None),        # repeated ?tags=A&tags=B, AND logic
     max_minutes: Optional[schemas.DbInt] = None,   # actual_cook_time_minutes <= max_minutes
     # Pace rating: repeated ?pace=quick&pace=moderate, OR logic (a recipe has
@@ -1940,38 +1925,30 @@ def list_recipes(
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
     favorite: bool | None = None,
     to_review: bool | None = None,
-    sort: Literal["created", "title", "rating", "cook_time", "difficulty"] = "created",
+    sort: Literal["created", "title", "rating", "cook_time", "difficulty", "relevance"] = "created",
     direction: Literal["asc", "desc"] = "desc",
     db: Session = Depends(get_db),
 ):
     matched_via: dict[int, set[str]] = {}
+    found = None
 
-    if q:
-        # SECURITY NOTE: the `{title raw_text content_text notes}` / `{tags_text}` column-set
-        # prefixes below are fixed string literals, never derived from user
-        # input -- only `phrase` (the escaped, quoted user query) varies.
-        # If this ever changes to accept a caller-supplied column name,
-        # that name must be validated against an allow-list first; column
-        # names can't be parameterized via SQL bind parameters the way
-        # values can.
-        phrase = _fts_phrase(q)
-        text_rows = db.execute(
-            text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{{title raw_text content_text notes}} : ({phrase})"},
-        ).fetchall()
-        for r in text_rows:
-            matched_via.setdefault(r[0], set()).add("text")
-
-        tag_rows = db.execute(
-            text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{{tags_text}} : ({phrase})"},
-        ).fetchall()
-        for r in tag_rows:
-            matched_via.setdefault(r[0], set()).add("tag")
-
-        if not matched_via:
-            return []
-        query = db.query(models.Recipe).filter(models.Recipe.id.in_(matched_via.keys()))
+    if q and q.strip():
+        # search.py: words to find (typos corrected when nothing matches),
+        # "-word" to leave out, best-match ranks and excerpts. Every word
+        # reaches FTS5 quoted; column sets are fixed literals there.
+        found = search.run(db, q)
+        query = db.query(models.Recipe)
+        if found["matched"] is not None:
+            matched_via = found["matched"]
+            if not matched_via:
+                response.headers["X-Search-Corrected"] = json.dumps(found["corrected"])
+                return []
+            query = query.filter(models.Recipe.id.in_(matched_via.keys()))
+        if found["excluded"]:
+            query = query.filter(models.Recipe.id.notin_(found["excluded"]))
+        if found["corrected"]:
+            # ASCII JSON, so it fits a header; the page shows "Showing results for".
+            response.headers["X-Search-Corrected"] = json.dumps(found["corrected"])
     else:
         query = db.query(models.Recipe)
 
@@ -2003,7 +1980,13 @@ def list_recipes(
 
     # selectinload: the summaries below read each recipe's tags, which
     # otherwise costs one extra query per recipe in the list.
-    results = query.options(selectinload(models.Recipe.tags)).order_by(*_sort_clauses(sort, direction)).all()
+    # "relevance" is best match first, while searching for words; without
+    # any it's the default order.
+    by_rank = sort == "relevance" and found is not None and found["matched"] is not None
+    results = query.options(selectinload(models.Recipe.tags)).order_by(
+        *_sort_clauses("created" if sort == "relevance" else sort, "desc" if sort == "relevance" else direction)).all()
+    if by_rank:
+        results.sort(key=lambda r: found["rank"].get(r.id, 0.0))     # stable: ties keep newest first
 
     summaries = []
     for r in results:
@@ -2011,6 +1994,8 @@ def list_recipes(
         summary.has_notes = bool((r.notes or "").strip())
         if r.id in matched_via:
             summary.matched_via = sorted(matched_via[r.id])
+        if found and r.id in found["snippets"]:
+            summary.match_snippet = found["snippets"][r.id][:300]
         summaries.append(summary)
     return summaries
 

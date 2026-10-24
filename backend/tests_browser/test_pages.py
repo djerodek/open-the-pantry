@@ -375,3 +375,29 @@ def test_share_as_image_with_notes(server, api, page, tmp_path):
     dl.value.save_as(path)
     with Image.open(path) as im:
         assert im.height > without
+
+
+def test_search_with_a_typo(server, api, page):
+    """0117: a misspelt word finds the recipe, the page says what it
+    searched for, best match comes first, and an ingredient match shows
+    where it was."""
+    sfx = uuid.uuid4().hex[:4]
+    add_recipe(api, f"Plain loaf {sfx}", ingredients=[{"raw_line": "2 cups quorkleberries"}])
+    best = add_recipe(api, f"Quorkleberry crumble {sfx}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector(".recipe-card")
+    assert pg.input_value("#sort-select") == "created|desc"
+    pg.fill("#search-input", "quorkelbery")
+    pg.press("#search-input", "Enter")
+    wait_until(pg, "!document.querySelector('#search-note').hidden")
+    assert "Showing results for" in pg.inner_text("#search-note") and "quorkelbery" in pg.inner_text("#search-note")
+    assert pg.input_value("#sort-select") == "relevance|desc"
+    titles = pg.locator(".recipe-card-title").all_inner_texts()
+    assert titles[0].startswith(best["title"]) and len(titles) == 2
+    assert pg.locator(".card-snippet mark").first.inner_text().lower().startswith("quorkleberr")
+    pg.click("#search-clear")
+    wait_until(pg, "document.querySelector('#search-note').hidden")
+    assert pg.input_value("#sort-select") == "created|desc"
+    assert pg.locator("#sort-select option[value='relevance|desc']").count() == 0

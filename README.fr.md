@@ -313,6 +313,19 @@ Le courriel sans le mot-clé n'est jamais lu.
 - **La recherche** couvre les titres, les ingrédients, les étapes, les
   notes, le texte d'origine et les étiquettes. Les mots correspondent à
   partir du début (« poul » trouve poulet), et chaque mot doit correspondre.
+  Les accents et les majuscules ne comptent pas.
+  - **Les fautes de frappe sont pardonnées.** Un mot par lequel rien ne
+    commence dans votre bibliothèque est associé aux mots les plus proches
+    qui s'y trouvent : « pouelt » trouve poulet, « tomates » trouve tomate.
+    La page indique ce qu'elle a cherché. Les mots de moins de quatre
+    lettres ne sont pas corrigés.
+  - **Excluez des mots** avec un moins : `poulet -cari`, ou `-noix` seul.
+    Le mot et ses pluriels sont exclus.
+  - **La pertinence d'abord** pendant une recherche : un mot dans le titre
+    compte le plus, puis les étiquettes et les ingrédients. Choisissez un
+    autre tri pour changer cela.
+  - Quand la correspondance n'est pas dans le titre, la fiche montre où
+    elle se trouve, avec les mots surlignés.
 - **Les filtres** : cumulez les étiquettes (une recette doit les avoir
   toutes), le rythme et le temps de cuisson noté. **Triez** par date, titre,
   note, temps de cuisson ou difficulté. **Effacer les filtres** remet tout à

@@ -273,7 +273,17 @@ Mail without the keyword is never read.
     and aren't in backups.
 - **Search** covers titles, ingredients, steps, notes, original text and
   tags. Words match from their start ("chick" finds chicken), and every word
-  must match.
+  must match. Accents and capitals don't matter.
+  - **Typos are forgiven.** A word nothing in your library starts with is
+    matched to the closest words that are in it: "chiken" finds chicken,
+    "berries" finds berry. The page says what it searched for. Words under
+    four letters aren't corrected.
+  - **Leave words out** with a minus: `chicken -curry`, or `-nuts` on its
+    own. The word and its plurals are left out ("-egg" keeps eggplant).
+  - **Best match first** while searching: a word in the title counts most,
+    then tags and ingredients. Pick another sort to change that.
+  - When the match isn't in the title, the card shows where it was, with
+    the words highlighted.
 - **Filters**: stack tags (a recipe must have all of them), pace, and the
   cook time you logged. **Sort** by date, title, rating, cook time or
   difficulty. **Clear filters** resets everything.

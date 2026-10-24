@@ -2174,6 +2174,8 @@
     state.sort = "created"; state.direction = "desc";
   }
   sortSelect.addEventListener("change", () => {
+    state.bestMatch = sortSelect.value === "relevance|desc";
+    if (state.bestMatch) { loadRecipes(); return; }
     const [sort, direction] = sortSelect.value.split("|");
     state.sort = sort;
     state.direction = direction;
@@ -2995,14 +2997,47 @@
   // -------------------------------------------------------------------
   let currentRecipes = [];
 
+  // While searching, "Best match" is offered first in the sort list and
+  // used when the sort was the default (newest first); it isn't saved,
+  // and clearing the search goes back to the saved sort.
+  function syncBestMatch() {
+    const select = $("#sort-select");
+    const searching = !!state.query;
+    let opt = select.querySelector('option[value="relevance|desc"]');
+    if (searching && !opt) {
+      opt = el("option", { value: "relevance|desc", text: tx("Best match") });
+      select.prepend(opt);
+    }
+    if (searching && !state.wasSearching) state.bestMatch = state.sort === "created" && state.direction === "desc";
+    if (!searching) {
+      state.bestMatch = false;
+      if (opt) opt.remove();
+    }
+    state.wasSearching = searching;
+    select.value = state.bestMatch ? "relevance|desc" : `${state.sort}|${state.direction}`;
+  }
+
+  // "Showing results for chicken (you typed chiken)", from the server's
+  // X-Search-Corrected header.
+  function showSearchNote(res) {
+    const note = $("#search-note");
+    let corrected = {};
+    try { corrected = JSON.parse(res.headers.get("X-Search-Corrected") || "{}"); } catch { corrected = {}; }
+    const words = Object.entries(corrected);
+    note.hidden = !words.length;
+    note.textContent = words.length ? words.map(([typed, used]) =>
+      tx("Showing results for {1} (you typed {2}).", { 1: used.join(", "), 2: typed })).join(" ") : "";
+  }
+
   async function loadRecipes() {
+    syncBestMatch();
     const params = new URLSearchParams();
     if (state.query) params.set("q", state.query);
     for (const t of state.filterTags) params.append("tags", t);
     if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
     for (const p of state.pace) params.append("pace", p);
     if (state.toReview) params.set("to_review", "true");
-    params.set("sort", state.sort);
+    params.set("sort", state.query && state.bestMatch ? "relevance" : state.sort);
     params.set("direction", state.direction);
     // An error used to be parsed as the recipe list, which came out empty
     // and read "No recipes match" -- e.g. a 429 from the rate limiter.
@@ -3020,6 +3055,7 @@
         : tx("Couldn't load recipes ({1}).", { 1: typeof err.detail === "string" ? err.detail : tx("error {1}", { 1: res.status }) }));
       return;
     }
+    showSearchNote(res);
     currentRecipes = await res.json();
     renderRecipeList(currentRecipes);
     announce(txn(currentRecipes.length, "{n} recipe found", "{n} recipes found"));
@@ -3456,9 +3492,25 @@
     return el("span", { class: `badge badge-confidence-${tier}`, text: label });
   }
 
+  // Searching: where the words matched when it isn't the title ("…1 cup
+  // buttermilk…"), matches marked. The server puts \u0002 / \u0003 around
+  // them; the text goes in as text nodes, never as markup.
+  function matchSnippet(recipe) {
+    const s = recipe.match_snippet;
+    if (!s) return null;
+    const parts = [];
+    for (const [i, piece] of s.split(/[\u0002\u0003]/).entries()) {
+      if (piece) parts.push(i % 2 ? el("mark", { text: piece }) : document.createTextNode(piece));
+    }
+    return el("p", { class: "card-snippet" }, parts);
+  }
+
+  // Only for a recipe found by a tag alone: a match in the text shows in
+  // the title or the excerpt (matchSnippet).
   function matchedViaBadge(recipe) {
-    if (!recipe.matched_via || !recipe.matched_via.length) return null;
-    return el("span", { class: "badge badge-matched", text: tx("matched: {1}", { 1: recipe.matched_via.join(", ") }) });
+    const via = recipe.matched_via || [];
+    if (!via.includes("tag") || via.includes("text")) return null;
+    return el("span", { class: "badge badge-matched", text: tx("Matched a tag") });
   }
 
   // -------------------------------------------------------------------
@@ -3771,6 +3823,7 @@
         recipe.needs_review ? el("span", { class: "badge badge-review", text: tx("To review") }) : null,
         matched,
       ]) : null,
+      matchSnippet(recipe),
       state.selectMode ? null : cardQuickControls(recipe),
     ]));
     return card;

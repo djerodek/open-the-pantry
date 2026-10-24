@@ -61,6 +61,7 @@ _COLS = ", ".join(FTS_COLUMNS)
 _NEW = ", ".join("new." + c for c in FTS_COLUMNS)
 _OLD = ", ".join("old." + c for c in FTS_COLUMNS)
 FTS_CREATE_SQL = f"CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5({_COLS}, content='recipes', content_rowid='id')"
+FTS_VOCAB_SQL = "CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts_vocab USING fts5vocab('recipes_fts', 'row')"
 
 FTS_TRIGGER_SQL = [
     f"""
@@ -204,6 +205,8 @@ def init_db():
     # handled it.
     with engine.connect() as conn:
         conn.execute(text(FTS_CREATE_SQL))
+        # The index's own word list, for search's typo tolerance (search.py).
+        conn.execute(text(FTS_VOCAB_SQL))
         for stmt in FTS_TRIGGER_SQL + CONTENT_TRIGGER_SQL:
             conn.execute(text(stmt))
         # Recipes added from a page with no yield before that was fixed in
