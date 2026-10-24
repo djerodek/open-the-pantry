@@ -76,6 +76,17 @@ Updating:
 Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
 `main` if you want to control exactly when updates apply.
 
+## How it differs
+
+Compared with Mealie and Tandoor (their documentation, October 2026):
+photos, screenshots and PDFs are read with OCR and rules on your server, no
+AI model, API key or GPU (Mealie's photo import needs an image-capable AI
+provider; Tandoor reads photos and PDFs through an AI model). It learns
+from your corrections, reads English and Quebec French, takes recipes by
+email, and picks a random one for you. **Not for you if** you want meal
+planning, shopping lists, nutrition or several user accounts: Mealie and
+Tandoor have those.
+
 ## Features
 
 - Ingest from URL (100+ site parsers, JSON-LD, heuristic fallback), PDF
@@ -83,13 +94,20 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   combined multi-screenshot), or manual entry
 - Reads English and French recipes: headings, units, and English + French
   OCR
-- Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
-  plus your own groups and keywords; automatic tag suggestions (English and
-  French words), applied to new recipes or, after a review, to all of them
 - Learns from your own saved recipes, on the server (no LLM, no outside
   service): how your photo, PDF and email imports are laid out, and how you
   tag; used only where it beats the built-in rules on your recipes, and
   each suggested tag says where it came from (a keyword, or learned)
+- Optional email ingest (off by default): email a link, PDF, photo or the
+  recipe text to a dedicated inbox
+- Optional "What to eat?" page (off by default): a second, read-only page on
+  port 8091 that picks a random recipe by meal type, cooking style, main
+  ingredient or pace, shuffles through titles and stops on one to read and
+  print right there (read-only; edit in the main app); no login, so anyone
+  who can reach the port can read your recipes; switched on in Settings
+- Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
+  plus your own groups and keywords; automatic tag suggestions (English and
+  French words), applied to new recipes or, after a review, to all of them
 - Full-text search across recipes and tags, forgiving typos, best match
   first, with `-word` to leave words out; stacked filters; pace and
   cook-time filters; sort by date, title, rating, cook time or difficulty
@@ -108,8 +126,6 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   below)
 - Optional HTTPS on your LAN with a real Let's Encrypt certificate, set up
   from Settings (cPanel-managed domains; see the README)
-- Optional email ingest (off by default): email a link, PDF, photo or the
-  recipe text to a dedicated inbox
 - Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×),
   units included ("1 cup" → "2 cups")
 - Select several recipes to delete them, or to add or remove a tag on all
@@ -122,11 +138,6 @@ Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
   title); batch and emailed links already saved are skipped
 - Share a page's link to the app (Android share sheet, or an iPhone
   Shortcut) to import it
-- Optional "What to eat?" page (off by default): a second, read-only page on
-  port 8091 that picks a random recipe by meal type, cooking style, main
-  ingredient or pace, shuffles through titles and stops on one to read and
-  print right there (read-only; edit in the main app); no login, so anyone
-  who can reach the port can read your recipes; switched on in Settings
 - Automatic daily backups (optional), kept to the newest N, in the data
   folder or on another disk (`RECIPE_APP_BACKUP_DIR`)
 - Full backup (restore it from Settings), every recipe as PDFs, or every recipe as schema.org

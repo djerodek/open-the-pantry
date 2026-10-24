@@ -121,3 +121,21 @@ def test_email_reason_is_translated():
     fr = i18n.translate(msg, "fr")
     assert "seulement une partie d'une recette (aucune étape trouvée)" in fr
     assert "only part" not in fr and "stops before" not in fr
+
+
+def test_a_page_without_markup_in_french_or_english():
+    """0123: "Ingrédients" / "Préparation" / "Étapes" weren't headings to the
+    last-resort link reader, so a French page with no recipe markup gave
+    nothing. A time heading ("Temps de préparation : 15 min") isn't the
+    steps; a heading with a number that isn't a time still counts."""
+    from app.ingestion.url_ingest import parse_html
+    page = ("<h1>Soupe</h1><h3>Temps de préparation : 15 min</h3><p>Cuisson : 40 min</p>"
+            "<h2>Ingrédients (pour 4)</h2><ul><li>1 oignon</li><li>2 tasses de bouillon</li></ul>"
+            "<h2>{steps}</h2><ol><li>Faire revenir l'oignon.</li><li>Ajouter le bouillon.</li></ol>")
+    for heading in ("Préparation", "Étapes", "Mode de préparation", "Méthode", "Marche à suivre"):
+        r = parse_html(page.format(steps=heading), "https://example.com/soupe")
+        assert r.ingredients == ["1 oignon", "2 tasses de bouillon"], heading
+        assert r.steps == ["Faire revenir l'oignon.", "Ajouter le bouillon."], heading
+    en = parse_html("<h1>Soup</h1><h4>Prep time 15 minutes</h4><p>Serves 4</p><h2>Ingredients</h2><ul><li>1 onion</li></ul>"
+                    "<h2>Method</h2><p>Soften the onion.</p>", "https://example.com/soup")
+    assert en.ingredients == ["1 onion"] and en.steps == ["Soften the onion."]

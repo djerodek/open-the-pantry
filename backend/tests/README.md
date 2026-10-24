@@ -45,7 +45,7 @@ feature: a review file often covers several.
 
 `test_corpus.py` reads every case in `tests/corpus/` again with the import
 code and fails when a field scores more than 0.02 below its baseline
-(`baseline.json`). Those six cases are written for this repository, so CI
+(`baseline.json`). Those cases are written for this repository, so CI
 can run them. Real recipes are other people's text: keep them in a private
 corpus outside the repository (the data folder is git-ignored and isn't in
 backups) and point `RECIPE_APP_CORPUS_DIR` at it to run it too. How cases

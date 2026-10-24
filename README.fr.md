@@ -25,6 +25,35 @@ Un gestionnaire de recettes auto-hébergé. On peut ajouter une recette à parti
 > engagement à corriger quoi que ce soit. Les copies (forks) sont les
 > bienvenues.
 
+## Ce qui la distingue
+
+Par rapport à Mealie et Tandoor, d'après leur documentation en octobre
+2026 :
+
+- **Les photos, captures d'écran et PDF sont lus sans modèle d'IA** : OCR
+  et règles sur votre serveur, sans clé d'API ni carte graphique.
+  L'importation de photos de Mealie demande un fournisseur d'IA qui lit les
+  images; Tandoor lit les photos et les PDF par un modèle d'IA que vous
+  branchez. Un modèle peut mieux lire une photo difficile; le
+  [corpus d'importation](backend/tests/README.md#import-corpus) mesure ce
+  que fait cette application sur vos propres recettes.
+- **Elle apprend de vos corrections** (Paramètres → Apprentissage) : la
+  mise en page de vos importations et votre façon d'étiqueter, utilisées
+  seulement là où c'est mieux que les règles intégrées sur vos recettes.
+- **Anglais et français du Québec**, dans l'interface et dans ce qu'elle
+  lit.
+- **Recettes par courriel**, envoyées à une boîte que l'application
+  vérifie.
+- **On mange quoi?**, une page en lecture seule qui choisit une recette au
+  hasard parmi vos choix.
+- **Vos propres mesures** : goût, rythme, difficulté et le vrai temps de
+  cuisson noté, tous utilisables comme filtres.
+- **Un seul conteneur**, SQLite, aucun compte.
+
+**Pas pour vous si** vous voulez planifier des repas, faire des listes
+d'épicerie, calculer la valeur nutritive ou avoir plusieurs utilisateurs
+avec leur propre compte. Mealie et Tandoor offrent tout cela.
+
 ## La lancer
 
 Il faut Docker avec Compose 2.24 ou plus récent (`docker compose version`).

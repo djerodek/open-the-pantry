@@ -10,11 +10,11 @@
   },
   "p002-fr-page-without-markup": {
     "cook_time": 1.0,
-    "ingredients": 0.0,
+    "ingredients": 1.0,
     "prep_time": 1.0,
     "servings": 1.0,
-    "steps": 0.0,
-    "title": 0.0,
+    "steps": 1.0,
+    "title": 1.0,
     "total_time": 1.0
   },
   "p003-fr-email": {
@@ -40,5 +40,23 @@
     "servings": 1.0,
     "steps": 1.0,
     "title": 1.0
+  },
+  "p007-fr-page-time-heading": {
+    "cook_time": 1.0,
+    "ingredients": 1.0,
+    "prep_time": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0,
+    "total_time": 1.0
+  },
+  "p008-en-page-without-markup": {
+    "cook_time": 1.0,
+    "ingredients": 1.0,
+    "prep_time": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0,
+    "total_time": 1.0
   }
 }

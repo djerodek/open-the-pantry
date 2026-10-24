@@ -20,6 +20,31 @@ A self-hosted recipe manager. You can add recipes from a link, a PDF, a photo or
 > **Unmaintained.** Built with AI coding tools for personal use and
 > published as-is: no support, no commitment to fixes. Forks are welcome.
 
+## How it differs
+
+Compared with Mealie and Tandoor, as their documentation stood in October
+2026:
+
+- **Photos, screenshots and PDFs are read without an AI model**: OCR and
+  rules on your server, with no API key and no GPU. Mealie's photo import
+  needs an image-capable AI provider; Tandoor reads photos and PDFs through
+  an AI model you connect. A model may read a messy photo better; the
+  [import corpus](backend/tests/README.md#import-corpus) measures how this
+  app does on your own recipes.
+- **It learns from your corrections** (Settings → Learning): how your
+  imports are laid out and how you tag, used only where that beats the
+  built-in rules on your recipes.
+- **English and Quebec French**, in the interface and in what it reads.
+- **Recipes by email**, sent to an inbox the app checks.
+- **What to eat?**, a read-only page that picks a random recipe from your
+  choices.
+- **Your own measures**: tastiness, pace, difficulty, and the real cook
+  time you logged, all usable as filters.
+- **One container**, SQLite, no accounts.
+
+**Not for you if** you want meal planning, shopping lists, nutrition, or
+several users with their own accounts. Mealie and Tandoor have those.
+
 ## Run it
 
 You need Docker with Compose 2.24 or later (`docker compose version`).

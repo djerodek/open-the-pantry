@@ -405,8 +405,8 @@ def _try_heuristic_html(html: str):
     title_tag = soup.find("h1") or soup.find("title")
     title = title_tag.get_text(strip=True) if title_tag else "Untitled Recipe"
 
-    ingredients = _collect_after_heading(soup, r"ingredients?")
-    steps = _collect_after_heading(soup, r"instructions?|directions?|method|steps?")
+    ingredients = _collect_after_heading(soup, HTML_INGREDIENTS_HEADING)
+    steps = _collect_after_heading(soup, HTML_STEPS_HEADING)
 
     if not ingredients and not steps:
         return None
@@ -424,11 +424,24 @@ def _try_heuristic_html(html: str):
     )
 
 
+# Section headings on a page without structured data, English and French
+# (the same words the PDF/photo rules know, pdf_ingest.HEADING_STEPS).
+# "Ingrédients" and "Préparation" weren't recognised: a French page with
+# no recipe markup gave nothing at all (import corpus case p002, 0123).
+HTML_INGREDIENTS_HEADING = r"\bingr[eé]dients?\b"
+HTML_STEPS_HEADING = (r"\b(?:instructions?|directions?|method|steps?|preparation|pr[eé]paration|[eé]tapes?|"
+                      r"m[eé]thode|marche\s+[aà]\s+suivre|directives?)\b")
+# "Temps de préparation : 20 min", "Prep time 15 minutes": a time, not
+# the section ("Ingredients (for 4)" still is one).
+_NOT_A_SECTION = re.compile(r"\b(?:temps|times?|min|minutes?|h|hrs?|hours?|heures?)\b", re.IGNORECASE)
+
+
 def _collect_after_heading(soup, pattern):
     heading_re = re.compile(pattern, re.IGNORECASE)
     results = []
     for heading in soup.find_all(re.compile("^h[1-6]$")):
-        if heading_re.search(heading.get_text()):
+        text = heading.get_text(" ", strip=True)
+        if heading_re.search(text) and not _NOT_A_SECTION.search(text) and len(text) <= 60:
             sib = heading.find_next_sibling()
             while sib and sib.name in ("ul", "ol", "p", "div"):
                 if sib.name in ("ul", "ol"):
