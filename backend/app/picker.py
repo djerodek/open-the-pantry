@@ -380,8 +380,10 @@ def picker_options(request: Request, db: Session = Depends(get_db)):
 # slower (2 s at 5,000 recipes). A recipe is guessed again only when its
 # title or text (ingredients and steps, content_text, kept by the database's
 # triggers) changes length, which SQLite reports without reading the text
-# out; so an edit costs one guess, not the whole library's. A restore
-# replaces every recipe: forget_languages().
+# out; so an edit costs one guess, not the whole library's. Saving a
+# recipe's text (Edit, Merge) also forgets its guess, for an edit that
+# keeps the same lengths: forget_language(). A restore replaces every
+# recipe: forget_languages().
 _guessed: dict[int, tuple[tuple, str]] = {}
 _guessed_lock = threading.Lock()
 
@@ -392,6 +394,13 @@ _background: set = set()     # tasks kept referenced until they finish
 def forget_languages():
     with _guessed_lock:
         _guessed.clear()
+
+
+def forget_language(recipe_id: int):
+    """One recipe's text was saved (Edit, Merge): guess it again even if its
+    lengths came out the same (GPT review of 0129)."""
+    with _guessed_lock:
+        _guessed.pop(recipe_id, None)
 
 
 def warm_languages():

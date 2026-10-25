@@ -227,6 +227,7 @@ _FR_PATTERNS = [
        "Restauré à partir d'une sauvegarde : entrez de nouveau le mot de passe du courriel (la clé de chiffrement de ce serveur ne peut pas lire celui de la sauvegarde)."),
     _p(r"^File too large\.$", "Fichier trop volumineux."),
     _p(r"^Request too large\.$", "Requête trop volumineuse."),
+    _p(r"^The photo couldn't be copied\. Nothing was changed\.$", "La photo n'a pas pu être copiée. Rien n'a été modifié."),
     _p(r"The two recipes' notes together are longer than ([\d,]+) characters\. Keep one recipe's notes, or shorten them first\.",
        lambda m: f"Les notes des deux recettes dépassent ensemble {m.group(1).replace(',', ' ')} caractères. "
                  "Gardez les notes d'une seule recette, ou raccourcissez-les d'abord."),

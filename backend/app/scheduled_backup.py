@@ -145,6 +145,12 @@ def due(enabled: bool, hour: int, last_success_at: datetime | None, now: datetim
     last_success_at, failed_at = _aware(last_success_at), _aware(failed_at)
     if failed_at is not None and now - failed_at < RETRY_AFTER:
         return False
+    # A failure after the last success is tried again, whatever the time:
+    # a success earlier in the day mustn't hold the retries back until
+    # tomorrow (GPT review of 0129: success at 3:00, Back up now failing at
+    # 4:00, nothing more that day).
+    if failed_at is not None and (last_success_at is None or failed_at > last_success_at):
+        return True
     if last_success_at is None or now - last_success_at > CATCH_UP_AFTER:
         return True
     slot = now.replace(hour=hour, minute=0, second=0, microsecond=0)

@@ -11,6 +11,10 @@ Go and rustls answered by refusing any chain containing those keys; this
 does the same, by the SHA-256 of each certificate's SubjectPublicKeyInfo,
 after the usual verification (SSLSocket.get_verified_chain, Python 3.13).
 
+Not covered: requests sent through an https:// proxy (HTTPS_PROXY), where
+urllib3 wraps the connection itself; the usual verification still applies
+there. The container sets no proxy (Claude review 14, GPT review of 0129).
+
 Used for every outgoing TLS connection the app makes with a secret or
 content at stake: the inbox and email sending (email_client), recipe links
 (url_ingest.safe_get), cPanel's DNS API and Let's Encrypt (https_setup).

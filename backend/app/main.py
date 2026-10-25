@@ -2250,7 +2250,16 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         src = safe_join(UPLOADS_DIR, other.image_path)
         if src and os.path.isfile(src):
             new_image = f"merge-{uuid.uuid4().hex}{os.path.splitext(other.image_path)[1]}"
-            shutil.copyfile(src, os.path.join(UPLOADS_DIR, new_image))
+            dest = os.path.join(UPLOADS_DIR, new_image)
+            try:
+                shutil.copyfile(src, dest)
+            except OSError:
+                # A copy that fails part way (disk full) leaves nothing
+                # behind (GPT review of 0129).
+                log.warning("merge_recipes: photo not copied", exc_info=True)
+                if os.path.exists(dest):
+                    remove_upload_file(dest)
+                raise HTTPException(status_code=500, detail="The photo couldn't be copied. Nothing was changed.")
     elif take.photo == "other" or take.photo == "none":
         new_image = None
     if new_image != keep.image_path:
@@ -2282,6 +2291,7 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         keep.needs_review = False
         other.deleted_at = _utc_now()
         db.commit()
+        picker.forget_language(keep.id)
     except Exception:
         log.warning("merge_recipes: %s + %s not saved", keep.id, other.id, exc_info=True)
         db.rollback()
@@ -2493,6 +2503,7 @@ def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Se
         _apply_tags(db, recipe, payload.tags)
 
         db.commit()
+        picker.forget_language(recipe.id)          # its text may have changed
     except Exception:
         log.debug("update_recipe: caught error, continuing", exc_info=True)
         db.rollback()
