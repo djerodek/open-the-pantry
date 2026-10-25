@@ -233,6 +233,7 @@ def uncertain_lines(raw_text: str) -> set[str] | None:
 
 
 def _examples(db):
+    from ..text_rules import is_steps_only
     from .. import models
     from sqlalchemy.orm import selectinload
     # Recipes still to review are the parser's own output, unchecked:
@@ -249,6 +250,11 @@ def _examples(db):
         ings = [i for i in ings if i.strip()]
         steps = [s.text for s in r.steps if (s.text or "").strip()]
         raw = r.raw_text if r.source_type in ("pdf", "screenshot", "email") else None
+        # An emailed link's stored text is the page's steps (with the link's
+        # address since 0047, without it before): nothing to learn layouts
+        # from.
+        if raw and r.source_type == "email" and (r.source_url or is_steps_only(raw, steps)):
+            raw = None
         seg_ex.append(segmenter.Example(r.id, r.title or "", ings, steps, raw))
         names = [i.name or i.raw_line or "" for i in r.ingredients]
         step_text = " ".join(steps)

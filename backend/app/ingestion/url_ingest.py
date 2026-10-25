@@ -431,7 +431,7 @@ def _try_heuristic_html(html: str):
 # no recipe markup gave nothing at all (import corpus case p002, 0123).
 HTML_INGREDIENTS_HEADING = r"\bingr[eé]dients?\b"
 HTML_STEPS_HEADING = (r"\b(?:instructions?|directions?|method|steps?|preparation|pr[eé]paration|[eé]tapes?|"
-                      r"m[eé]thode|marche\s+[aà]\s+suivre|directives?)\b")
+                      r"m[eé]thode|marche\s+[aà]\s+suivre|directives?|proc[eé]dure)\b")
 # "Temps de préparation : 20 min", "Prep time 15 minutes": a time, not
 # the section ("Ingredients (for 4)" still is one).
 _NOT_A_SECTION = re.compile(r"\b(?:temps|times?|min|minutes?|h|hrs?|hours?|heures?)\b", re.IGNORECASE)

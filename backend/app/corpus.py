@@ -61,6 +61,7 @@ from pathlib import Path
 
 from .logging_setup import get_logger
 from .language import guess_language
+from .text_rules import is_steps_only
 
 log = get_logger("corpus")
 
@@ -325,6 +326,10 @@ def export_library(library: Path, corpus: Path, ids=None, fetch=True, overwrite=
         try:
             for recipe, ings, steps in list(library_examples(con, ids)):
                 kind = case_kind(recipe)
+                if kind == "text" and is_steps_only(recipe["raw_text"], steps):
+                    out["skipped"].append((recipe["id"], "its original text is only its steps (an emailed link "
+                                                         "saved before the app kept links)"))
+                    continue
                 if kind is None:
                     out["skipped"].append((recipe["id"], f"{recipe['source_type']}: no original input kept"))
                     continue

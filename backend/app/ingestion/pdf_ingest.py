@@ -342,7 +342,9 @@ HEADING_INGREDIENTS = re.compile(
 HEADING_STEPS = re.compile(
     # (?!step N): "Step 1" / "Étape 1" is a step's label, not the section heading.
     r"^(?!\s*(?:step|[ée]tape)\s*\d)\s*(instructions?|directions?|method|steps?|preparation|"
-    r"pr[ée]paration|[ée]tapes?|m[ée]thode|mode\s+de\s+pr[ée]paration|marche\s+[àa]\s+suivre|directives?)"
+    r"pr[ée]paration|[ée]tapes?|m[ée]thode|mode\s+de\s+pr[ée]paration|marche\s+[àa]\s+suivre|directives?|"
+    # "Procedure": Chef Michael Smith's pages (import corpus, 2026-10-25).
+    r"proc[ée]dure)"
     r"\s*:?\s*" + _HEADING_COUNT + r"\s*$",
     re.IGNORECASE | re.MULTILINE
 )
@@ -375,7 +377,8 @@ _JUNK_LINE = re.compile(
     r"|https?://\S+"
     r"|(\d+(\.\d+)?\s*[x×]\s*)+"                               # 1X 2X 3X
     r"|us customary(\s+metric)?|metric"
-    r"|(save|pin|print|rate|share|jump to recipe)(\s+(save|pin|print|rate|recipe|share))*\s*↓?"
+    r"|(save|pin|print|rate|share|jump to recipe)(\s+(save|pin|print|rate|recipe|share|this))*\s*↓?"
+    r"|subscribe|sign\s+(in|up)|log\s*in"
     r")\s*$",
     re.IGNORECASE,
 )
@@ -386,9 +389,23 @@ _STEPS_END = re.compile(
     r"(ratings?|reviews?|comments?)(\s*\(\d+\))?|\d+\s+(ratings?|reviews?|comments?)|"
     # French: "Notes" is the same word; "Valeur nutritive", "Commentaires (12)", "Avis".
     r"valeurs?\s+nutritives?|informations?\s+nutritionnelles?|astuces?|conseils?|"
-    r"(commentaires?|avis|[ée]valuations?)(\s*\(\d+\))?)\s*:?\s*$",
+    r"(commentaires?|avis|[ée]valuations?)(\s*\(\d+\))?|"
+    # Chef Michael Smith's pages (import corpus, 2026-10-25): "Kitchen Tips>",
+    # "Variation", then the copyright line and the site's category list.
+    r"(kitchen\s+)?tips?\s*>?|variations?|recipe\s+types)\s*:?\s*$",
     re.IGNORECASE,
 )
+# "© Chef Michael Smith", "© COPYRIGHT 2026": the page's footer. But OCR
+# reads a circled step number as "©" too ("© Return the beef…"), so a line
+# whose next word is a cooking verb is a step.
+_COPYRIGHT = re.compile(r"^\s*(?:©|copyright\b)\s*(.*)$", re.IGNORECASE)
+
+
+def _ends_steps(line: str) -> bool:
+    if _STEPS_END.match(line) or re.match(r"\s*((kitchen\s+)?tips?\s*>|recipe\s+types\b)", line, re.IGNORECASE):
+        return True
+    m = _COPYRIGHT.match(line)
+    return bool(m) and _first_word(m.group(1)) not in _STEP_VERBS
 _BYLINE = re.compile(r"^\s*by[:\s]", re.IGNORECASE)
 _BREADCRUMB = re.compile(r"\S\s+/\s+\S.*\s+/\s+\S")
 
@@ -409,6 +426,10 @@ def _looks_like_section_label(line: str) -> bool:
     return line.isupper() or line.rstrip().endswith(":") or low.startswith(_SECTION_STARTS)
 
 
+_OCR_BULLET = re.compile(r"^\s*[«»¢•·*+~]+\s+")
+_LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*$")
+
+
 def _clean_ingredients(lines):
     """Drop page furniture, join wrapped lines, and label sub-headings.
 
@@ -420,7 +441,12 @@ def _clean_ingredients(lines):
     """
     out = []
     for line in lines:
-        if _is_junk(line):
+        # Phone screenshots of a recipe card (import corpus, 2026-10-25):
+        # bullet dots read as « » ¢ + * •, and a cost after each line
+        # ("$0.02", "$1.85", "SO.94").
+        line = _OCR_BULLET.sub("", line)
+        line = _LINE_PRICE.sub("", line).strip()
+        if not line or _is_junk(line):
             continue
         m = _LABELLED_QTY.match(line)
         if m:
@@ -463,7 +489,7 @@ def _clean_steps(lines):
     """
     kept = []
     for line in lines:
-        if _STEPS_END.match(line):
+        if _ends_steps(line):
             break
         if not _is_junk(line):
             kept.append(line)
@@ -492,6 +518,50 @@ def _clean_steps(lines):
     return [s for s in steps if s]
 
 
+def _title_like(l: str) -> bool:
+    """Could be a recipe name at all: enough letters (OCR specks such as
+    "e ° j" aren't), no address, not a parenthetical ("(thawed if
+    frozen)"), not a breadcrumb trail ("Recipes » Meat » Seafood")."""
+    letters = sum(c.isalpha() for c in l)
+    return (letters >= 3 and letters >= 0.5 * len(l.replace(" ", ""))
+            and not re.match(r"\s*(step|[ée]tape)\s*\d+\s*:?\s*$", l, re.IGNORECASE)
+            and "http" not in l.lower() and "www." not in l.lower()
+            and not l.lstrip().startswith("(") and not re.search(r"\S\s*[»›]\s*\S", l))
+
+
+def _tidy_title(title: str) -> str:
+    """"Pulled Pork Sandwich by Samuel Fortier, …" -> "Pulled Pork Sandwich";
+    "Cowboy Butter Recipe" -> "Cowboy Butter"; ALL CAPS -> Each Word
+    Capitalised (printed pages set the name in capitals)."""
+    t = re.sub(r"\s+by\s+[A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*)?\b.*$", "", title).strip() or title
+    shorter = re.sub(r"(?<=\w)\s+recipe$", "", t, flags=re.IGNORECASE).strip()
+    if len(shorter.split()) >= 2:          # "Attached Recipe" stays as it is
+        t = shorter
+    if any(c.isalpha() for c in t) and t == t.upper():
+        t = " ".join(w[:1].upper() + w[1:].lower() for w in t.split())
+    return t
+
+
+def _whole_title(lines, i) -> str:
+    """The name at lines[i], with the line it was broken from: "Sheet-Pan
+    Shawarma-" + "Spiced Chicken", "Pork Chops with Apples" + "and Bacon",
+    "WARM MULLED" + "CIDER" (import corpus, 2026-10-25)."""
+    t = lines[i]
+    nxt = lines[i + 1] if i + 1 < len(lines) else ""
+    prev = lines[i - 1] if i > 0 else ""
+    if t.endswith("-") and nxt and _title_like(nxt) and len(nxt.split()) <= 6:
+        return t + nxt
+    if nxt and re.match(r"(and|with|&|et|avec)\b", nxt) and _title_like(nxt) and len(nxt.split()) <= 5:
+        return f"{t} {nxt}"
+    if re.match(r"(and|with|&|et|avec)\b", t) and prev and _title_like(prev) and len(prev.split()) <= 6:
+        return f"{prev} {t}"
+    caps = lambda l: l == l.upper() and any(c.isalpha() for c in l)   # noqa: E731
+    if (prev and caps(t) and caps(prev) and len(t.split()) <= 2 and len(prev.split()) <= 3
+            and _title_like(prev) and not _is_junk(prev)):
+        return f"{prev} {t}"
+    return t
+
+
 def _guess_title(lines, ing_line_index):
     """The recipe's name, not whatever happens to be the first line.
 
@@ -502,31 +572,59 @@ def _guess_title(lines, ing_line_index):
       2. a short line that appears more than once (the name is repeated in
          the article heading, the card, and often the print header);
       3. the first line that isn't page furniture.
+    A name broken over two lines is joined (_whole_title), and tidied
+    (_tidy_title).
     """
     def ok(l):
         return (not _is_junk(l) and not _BYLINE.match(l) and not _BREADCRUMB.search(l)
                 and 2 <= len(l) <= 80 and not HEADING_INGREDIENTS.match(l) and not HEADING_STEPS.match(l)
-                and not re.search(r"\$\d", l)
+                and not re.search(r"\$\d", l) and _title_like(l) and not l.rstrip().endswith(",")
                 # "Sel et poivre au goût" under two sub-recipes is repeated,
                 # but it's an ingredient, not the name.
                 and not _QTY_START.match(l) and not _INGREDIENT_TAIL.search(l) and not _YIELD.match(l))
 
+    # A printed web page carries its address, and the address its name:
+    # ".../garlic-butter-baked-cod/" points at "EASY GARLIC BUTTER BAKED COD"
+    # (import corpus, 2026-10-25: the other rules took "Share This" or a
+    # newsletter box there).
+    slug_words = set()
+    for l in lines:
+        for m in re.finditer(r"https?://[^/\s]+/(?:[^\s]*/)?([a-z0-9]+(?:-[a-z0-9]+)+)/?(?:\s|$)", l, re.IGNORECASE):
+            slug_words |= {w for w in m.group(1).lower().split("-") if len(w) >= 3 and not w.isdigit()}
+    slug_words -= {"recipe", "recipes", "easy", "best", "the", "and", "with"}
+    if len(slug_words) >= 2:
+        best, best_n = None, 0
+        for n, l in enumerate(lines):
+            if ok(l) and len(l.split()) <= 12:
+                words = {w.lower() for w in re.findall(r"[^\W\d_]+", l)}
+                hit = len(words & slug_words)
+                if hit > best_n:
+                    best, best_n = n, hit
+        if best is not None and best_n >= max(2, (len(slug_words) + 1) // 2):
+            return _tidy_title(_whole_title(lines, best))
+
     limit = ing_line_index if ing_line_index is not None else len(lines)
     for i in range(limit - 1, 0, -1):
-        if _BYLINE.match(lines[i]) and ok(lines[i - 1]):
-            return lines[i - 1]
+        # The line above "By Anna …" can be the end of a description
+        # ("…brightened with mustard and herbs."), not the name.
+        prev = lines[i - 1]
+        if (_BYLINE.match(lines[i]) and ok(prev) and not prev.rstrip().endswith(".")
+                and not prev[:1].islower()):
+            return _tidy_title(_whole_title(lines, i - 1))
 
     counts = {}
     for l in lines:
-        if ok(l) and 1 <= len(l.split()) <= 8 and not l.endswith("."):
+        # A word of four letters or more: OCR repeats specks too ("Gga Aaa").
+        if (ok(l) and 1 <= len(l.split()) <= 8 and not l.endswith(".")
+                and any(sum(c.isalpha() for c in w) >= 4 for w in l.split())):
             counts[l.lower()] = counts.get(l.lower(), 0) + 1
-    repeated = [l for l in lines if counts.get(l.lower(), 0) >= 2]
+    repeated = [n for n, l in enumerate(lines) if counts.get(l.lower(), 0) >= 2]
     if repeated:
-        return repeated[0]
+        return _tidy_title(_whole_title(lines, repeated[0]))
 
-    for l in lines:
+    for n, l in enumerate(lines):
         if ok(l):
-            return l
+            return _tidy_title(_whole_title(lines, n))
     return "Untitled Recipe"
 
 
@@ -612,7 +710,7 @@ def _short_step(line: str) -> bool:
 def _prose_steps(lines):
     steps = []
     for line in lines:
-        if _STEPS_END.match(line):
+        if _ends_steps(line):
             break
         line = _MARKER_GARBAGE.sub("", line).strip()
         if not line:
