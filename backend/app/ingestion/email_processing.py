@@ -55,10 +55,13 @@ def _decode(payload: bytes, charset: str | None) -> str:
     UTF-8 rather than failing the whole email (Claude review round 13)."""
     try:
         codecs.lookup(charset or "utf-8")
+        return payload.decode(charset or "utf-8", errors="replace")
     except LookupError:
-        log.info("Email: unknown charset %r, read as UTF-8", charset)
-        charset = "utf-8"
-    return payload.decode(charset or "utf-8", errors="replace")
+        # Unknown, or a codec that isn't a text encoding ("base64", "hex",
+        # "rot13": codecs.lookup knows them, bytes.decode refuses them;
+        # Claude review round 14).
+        log.info("Email: charset %r isn't a text encoding Python knows, read as UTF-8", charset)
+        return payload.decode("utf-8", errors="replace")
 
 
 def _leaf_parts(msg):

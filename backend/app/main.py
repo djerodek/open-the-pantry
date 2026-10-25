@@ -4136,6 +4136,8 @@ def restore_backup(payload: schemas.RestoreRequest):
         # review of 0119); also after a failed restore, which may have
         # changed it part way.
         search.forget_vocabulary()
+        picker.forget_languages()
+        threading.Thread(target=picker.warm_languages, daemon=True, name="picker-languages").start()
         for lock in reversed(held):
             lock.release()
         _restoring.clear()

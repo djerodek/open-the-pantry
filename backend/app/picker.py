@@ -38,6 +38,7 @@ import asyncio
 import contextlib
 import os
 import random
+import threading
 from collections import Counter
 from typing import Literal, Optional
 from urllib.parse import urlsplit
@@ -302,6 +303,11 @@ async def start_server():
         await asyncio.sleep(0.1)
     if server.started:
         log.info("What to eat?: listening on port %s", LISTEN_PORT)
+        # Guess every recipe's language now, in the background, so the
+        # first visitor doesn't wait for it (a few seconds at 5,000 recipes).
+        _warm_task = asyncio.create_task(asyncio.to_thread(warm_languages))
+        _background.add(_warm_task)
+        _warm_task.add_done_callback(_background.discard)
 
 
 async def stop_server():
@@ -368,13 +374,58 @@ def picker_options(request: Request, db: Session = Depends(get_db)):
     return out
 
 
+# The guessed language of each recipe, by id, with the length of its title
+# and text when guessed (Claude review round 14): guessing reads the whole
+# text, which made the options and every language-filtered pick 35-50 times
+# slower (2 s at 5,000 recipes). A recipe is guessed again only when its
+# title or text (ingredients and steps, content_text, kept by the database's
+# triggers) changes length, which SQLite reports without reading the text
+# out; so an edit costs one guess, not the whole library's. A restore
+# replaces every recipe: forget_languages().
+_guessed: dict[int, tuple[tuple, str]] = {}
+_guessed_lock = threading.Lock()
+
+
+_background: set = set()     # tasks kept referenced until they finish
+
+
+def forget_languages():
+    with _guessed_lock:
+        _guessed.clear()
+
+
+def warm_languages():
+    """Fill the guesses ahead of the first request (picker start)."""
+    db = SessionLocal()
+    try:
+        _recipe_languages(db)
+    except Exception:
+        log.warning("What to eat?: couldn't guess the recipes' languages ahead of time", exc_info=True)
+    finally:
+        db.close()
+
+
 def _recipe_languages(db: Session) -> dict:
     """{recipe id: 'en' | 'fr'} for every pickable recipe: the Language
     set in Edit recipe, otherwise the guess from the text
     (app/language.py)."""
-    query = db.query(models.Recipe.id, models.Recipe.language, models.Recipe.title,
-                     models.Recipe.content_text).filter(models.Recipe.id.notin_(_drink_recipe_ids()))
-    return {rid: recipe_language(lang, title, text) for rid, lang, title, text in query.all()}
+    rows = (db.query(models.Recipe.id, models.Recipe.language,
+                     func.length(models.Recipe.title), func.length(models.Recipe.content_text))
+            .filter(models.Recipe.id.notin_(_drink_recipe_ids())).all())
+    with _guessed_lock:
+        stale = {rid: (tl, cl) for rid, lang, tl, cl in rows
+                 if lang not in LANGUAGES and _guessed.get(rid, (None,))[0] != (tl, cl)}
+    if stale:
+        ids, guessed = list(stale), {}
+        for start in range(0, len(ids), 500):
+            for rid, title, text in (db.query(models.Recipe.id, models.Recipe.title, models.Recipe.content_text)
+                                     .filter(models.Recipe.id.in_(ids[start:start + 500])).all()):
+                guessed[rid] = ((len(title) if title is not None else None,
+                                 len(text) if text is not None else None), recipe_language(None, title, text))
+        with _guessed_lock:
+            _guessed.update(guessed)
+    with _guessed_lock:
+        return {rid: lang if lang in LANGUAGES else _guessed.get(rid, (None, "en"))[1] for rid, lang, _, _ in rows}
 
 
 def weighted_choice(candidates: list, rng: random.Random = None) -> int:
