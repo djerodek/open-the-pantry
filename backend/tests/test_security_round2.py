@@ -78,7 +78,7 @@ def test_downloads_stop_at_the_size_limit():
     from app.ingestion import url_ingest
     chunks = [b"x" * 65536] * 40            # 2.5 MB, no Content-Length
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=_streaming_response(chunks)):
+         patch.object(url_ingest, "http_get", return_value=_streaming_response(chunks)):
         with pytest.raises(url_ingest.FetchTooLargeError):
             url_ingest.safe_get("https://big.example/", max_bytes=1024 * 1024)
 
@@ -87,7 +87,7 @@ def test_downloads_stop_at_the_time_limit(monkeypatch):
     from app.ingestion import url_ingest
     monkeypatch.setattr(url_ingest, "TOTAL_FETCH_SECONDS", 0)
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=_streaming_response([b"a", b"b"])):
+         patch.object(url_ingest, "http_get", return_value=_streaming_response([b"a", b"b"])):
         with pytest.raises(url_ingest.UrlValidationError, match="longer than"):
             url_ingest.safe_get("https://slow.example/")
 
@@ -95,7 +95,7 @@ def test_downloads_stop_at_the_time_limit(monkeypatch):
 def test_normal_page_still_downloads():
     from app.ingestion import url_ingest
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=_streaming_response([b"<html>ok</html>"])):
+         patch.object(url_ingest, "http_get", return_value=_streaming_response([b"<html>ok</html>"])):
         assert url_ingest.safe_get("https://fine.example/").text == "<html>ok</html>"
 
 

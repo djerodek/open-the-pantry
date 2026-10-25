@@ -7,6 +7,7 @@ import ssl
 from email.header import decode_header
 from email.mime.text import MIMEText
 from .logging_setup import get_logger
+from . import tls
 
 log = get_logger("mail")
 
@@ -73,10 +74,10 @@ def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bo
             # The certificate and host name checked, as for SMTP and
             # STARTTLS: IMAP4_SSL's own default checks neither, so anyone in
             # between could be handed the password (Claude review round 13).
-            conn = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=20)
+            conn = imaplib.IMAP4_SSL(host, port, ssl_context=tls.client_context(), timeout=20)
         else:
             conn = imaplib.IMAP4(host, port, timeout=20)
-            conn.starttls(ssl.create_default_context())
+            conn.starttls(tls.client_context())
         conn.login(username, password)
         conn.select("INBOX")
         return conn
@@ -94,10 +95,10 @@ def connect_smtp(host: str, port: int, username: str, password: str, use_tls: bo
     implicit = smtp_uses_implicit_tls(port, use_tls)
     try:
         if implicit:
-            conn = smtplib.SMTP_SSL(host, port, timeout=20, context=ssl.create_default_context())
+            conn = smtplib.SMTP_SSL(host, port, timeout=20, context=tls.client_context())
         else:
             conn = smtplib.SMTP(host, port, timeout=20)
-            conn.starttls(context=ssl.create_default_context())
+            conn.starttls(context=tls.client_context())
         conn.login(username, password)
         return conn
     except Exception as e:
@@ -139,7 +140,7 @@ def probe_port(host: str, port: int, timeout: float = 8.0) -> str:
     tls_failed = False
     try:
         raw.settimeout(timeout)
-        ctx = ssl.create_default_context()
+        ctx = tls.client_context()
         try:
             with ctx.wrap_socket(raw, server_hostname=host):
                 return "implicit_tls"

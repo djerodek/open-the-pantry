@@ -32,7 +32,7 @@ New tests go in the feature file when there is one.
 | Restore | `test_restore.py` | `test_gpt_review_0093.py` |
 | Settings password | `test_settings_password.py` | |
 | HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` | |
-| Security (uploads, paths, cross-site, headers) | `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive), `test_claude_review_round13.py` (trusted roots in the image, publishing after CI) |
+| Security (uploads, paths, cross-site, headers, outgoing TLS) | `test_tls_distrust.py` (compromised CA keys), `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive), `test_claude_review_round13.py` (trusted roots in the image, publishing after CI) |
 | Logs | `test_log_review.py` | `test_claude_review_round7.py` |
 | What to eat? | `test_picker.py` | `test_gpt_review_0078.py`, `test_claude_review_round7.py`, `test_claude_review_round8.py` |
 | Things kept in two places (French text, page vs server rules) | `test_ui_consistency.py`, `test_i18n_catalog.py` | `test_deepseek_review_0096.py` (part names) |

@@ -95,7 +95,7 @@ def test_bot_check_refusal_is_explained(caplog):
     resp.raw = io.BytesIO(b"<html><title>Just a moment...</title></html>")
     resp.encoding = "utf-8"
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=resp):
+         patch.object(url_ingest, "http_get", return_value=resp):
         with pytest.raises(url_ingest.SiteRefusedError, match=r"heygrillhey\.com refused the request \(HTTP 403\)"):
             url_ingest.safe_get("https://heygrillhey.com/homemade-smoked-bacon/")
 

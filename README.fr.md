@@ -553,6 +553,10 @@ Son fonctionnement :
   - **Pages téléchargées** : au plus 10 Mo et 30 secondes, depuis des
     adresses publiques seulement. Chaque redirection est vérifiée de
     nouveau.
+  - **Connexions sortantes** (serveur de courriel, liens de recettes,
+    cPanel, Let's Encrypt) : le certificat est vérifié d'après la liste de
+    racines à jour de l'image, et toute chaîne passant par une clé d'autorité
+    connue comme compromise est refusée (les clés d'eMudhra, octobre 2026).
   - **Exportations** : tout le texte des recettes y est échappé.
   - **Noms de fichiers enregistrés** : ils doivent avoir exactement la forme
     que l'application génère.

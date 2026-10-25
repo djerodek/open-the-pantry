@@ -45,6 +45,8 @@ import requests
 from .database import DATA_DIR, SessionLocal
 from . import models
 from . import crypto
+from . import tls
+from .tls import get as http_get   # chains through compromised CA keys refused (tls.py)
 from .logging_setup import get_logger
 
 log = get_logger("https")
@@ -354,7 +356,7 @@ class CpanelDns:
     def _call(self, func: str, **params):
         url = f"{self.base}/execute/DNS/{func}"
         try:
-            r = requests.get(url, params=params, timeout=self.timeout,
+            r = http_get(url, params=params, timeout=self.timeout,
                              headers={"Authorization": self.auth, "Accept": "application/json"})
         except requests.RequestException as e:
             raise HttpsError(f"Couldn't reach cPanel at {self.base}: {e}")
@@ -584,6 +586,7 @@ def _acme_client(email: str):
     from acme import client, errors, messages
     key = _account_key()
     net = client.ClientNetwork(key, user_agent="open-the-pantry", verify_ssl=ACME_CA_BUNDLE)
+    tls.guard_session(net.session)      # chains through compromised CA keys refused (tls.py)
     directory = client.ClientV2.get_directory(ACME_DIRECTORY, net)
     acme = client.ClientV2(directory, net=net)
     try:

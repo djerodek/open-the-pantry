@@ -481,6 +481,10 @@ How it works:
     photos, only the largest is decoded.
   - **Downloaded pages**: at most 10 MB and 30 seconds, from public
     addresses only. Every redirect is checked again.
+  - **Outgoing connections** (mail server, recipe links, cPanel, Let's
+    Encrypt) check the certificate against the image's current root list,
+    and refuse any chain through a CA key known to be compromised (the
+    eMudhra keys of October 2026).
   - **Exports** escape all recipe text.
   - **Stored file names** must have the exact shape the app generates.
 - **Credentials.** The email password and cPanel token are encrypted (Fernet)

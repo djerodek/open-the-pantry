@@ -187,7 +187,7 @@ def test_ssrf_guard_blocks_redirect_to_private_address():
             return [(2, 1, 6, "", ("93.184.216.34", 0))]
         return real_getaddrinfo(host, *args, **kwargs)
 
-    with patch("app.ingestion.url_ingest.requests.get", side_effect=fake_get), \
+    with patch("app.ingestion.url_ingest.http_get", side_effect=fake_get), \
          patch("app.ingestion.url_ingest.socket.getaddrinfo", side_effect=fake_dns):
         try:
             safe_get("http://evil-redirect.example.com/recipe")

@@ -452,7 +452,7 @@ def test_blocked_page_is_diagnosable_from_the_log(client, data_dir, tmp_path):
     m["Subject"] = "[RECIPE]"
     m.set_content("https://blocked.example/recipe\n\nGet Outlook for iOS<https://aka.ms/o0ukef>")
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=blocked):
+         patch.object(url_ingest, "http_get", return_value=blocked):
         result = process_tagged_email(m, str(tmp_path))
 
     assert result["success"] is False

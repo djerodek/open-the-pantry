@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from ..logging_setup import get_logger
+from ..tls import get as http_get   # chains through compromised CA keys refused (tls.py)
 
 log = get_logger("url")
 
@@ -173,7 +174,7 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
             # stream=True: the body is read by _read_limited, which stops at
             # max_bytes and at the overall deadline, instead of requests
             # loading the whole response into memory first.
-            resp = requests.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
+            resp = http_get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
                                 allow_redirects=False, stream=True)
             # The body read so far becomes the response's content (requests
             # keeps it in _content; .text and .content read it from there).

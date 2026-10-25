@@ -4,8 +4,8 @@
 # "libgdk-pixbuf2.0-0" was dropped in Trixie. The name below
 # ("libgdk-pixbuf-2.0-0") is the real package in BOTH releases, so it works
 # either way. If a future base-image move breaks apt again, pin the suite
-# explicitly (e.g. python:3.12-slim-trixie) rather than chasing names.
-FROM python:3.12-slim
+# explicitly (e.g. python:3.13-slim-trixie) rather than chasing names.
+FROM python:3.13-slim
 
 # System dependencies:
 # - tesseract-ocr: OCR for screenshots / scanned PDF pages; -osd is the

@@ -86,7 +86,7 @@ def _isolated_data_dir(data_dir):
 def cpanel(monkeypatch):
     from app import https_setup
     fake = FakeCpanel()
-    monkeypatch.setattr(https_setup.requests, "get", fake.get)
+    monkeypatch.setattr(https_setup, "http_get", fake.get)
     return fake, https_setup.CpanelDns("https://cp.example.test:2083", "marc", "tok")
 
 

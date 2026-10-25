@@ -104,7 +104,7 @@ def test_time_limit_stops_a_byte_at_a_time_download(monkeypatch):
     monkeypatch.setattr(url_ingest, "TOTAL_FETCH_SECONDS", 0.2)
     data = b"x" * 10_000
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=_trickling_response(data, delay=0.05)):
+         patch.object(url_ingest, "http_get", return_value=_trickling_response(data, delay=0.05)):
         with pytest.raises(url_ingest.UrlValidationError, match="longer than"):
             url_ingest.safe_get("https://slow.example/")
 
@@ -115,7 +115,7 @@ def test_normal_page_still_downloads_via_read1():
     from app.ingestion import url_ingest
 
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest.requests, "get", return_value=_trickling_response(b"<html>ok</html>")):
+         patch.object(url_ingest, "http_get", return_value=_trickling_response(b"<html>ok</html>")):
         assert url_ingest.safe_get("https://fine.example/").text == "<html>ok</html>"
 
 
