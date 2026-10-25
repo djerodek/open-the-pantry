@@ -94,7 +94,9 @@ def test_a_reading_failure_leaves_no_attachment_behind(tmp_path, monkeypatch):
     ("ingredients", [{"raw_line": "x" * 2001}]),
     ("steps", ["x" * 20_001]),
     ("steps", ["Mix."] * 501),
-])
+], ids=["title-501", "raw_text-1000001", "ingredient-2001", "step-20001", "steps-501"])
+# Short ids: pytest -v prints each test's id, and the values themselves
+# made one line a megabyte long, which stalled GitHub's live log view.
 def test_recipe_fields_are_capped(client, sample_recipe_payload, field, value):
     r = client.post("/api/recipes", json={**sample_recipe_payload, field: value})
     assert r.status_code == 422
