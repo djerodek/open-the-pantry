@@ -60,6 +60,7 @@ import zipfile
 from pathlib import Path
 
 from .logging_setup import get_logger
+from .language import guess_language
 
 log = get_logger("corpus")
 
@@ -238,16 +239,6 @@ def ocr_available() -> bool:
 
 
 # ---------------------------------------------------------------- export (your library)
-
-_FR_WORDS = re.compile(r"\b(?:et|de|du|des|la|le|les|une|avec|tasse|tasses|cuillère|cuillères|c\. à|pincée|"
-                       r"faire|ajouter|mélanger|cuire|four|minutes? environ)\b", re.IGNORECASE)
-_EN_WORDS = re.compile(r"\b(?:and|the|of|with|cup|cups|tablespoons?|teaspoons?|tbsp|tsp|pinch|add|mix|stir|"
-                       r"bake|oven|until)\b", re.IGNORECASE)
-
-
-def guess_language(text: str) -> str:
-    return "fr" if len(_FR_WORDS.findall(text)) > len(_EN_WORDS.findall(text)) else "en"
-
 
 def slug(title: str) -> str:
     s = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode().lower()

@@ -401,3 +401,46 @@ def test_search_with_a_typo(server, api, page):
     wait_until(pg, "document.querySelector('#search-note').hidden")
     assert pg.input_value("#sort-select") == "created|desc"
     assert pg.locator("#sort-select option[value='relevance|desc']").count() == 0
+
+
+_FR = {"ingredients": [{"raw_line": "1 tasse de farine"}, {"raw_line": "2 cuillères de beurre"}],
+       "steps": ["Faire fondre le beurre dans une poêle.", "Ajouter la farine et cuire 10 minutes environ."]}
+
+
+def test_edit_recipe_language(server, api, page):
+    """0125: Language in Edit recipe shows the guess, and a choice is saved."""
+    r = add_recipe(api, f"Crêpes {uuid.uuid4().hex[:6]}", **_FR)
+    p = page()
+    p.page.goto(server["url"] + f"/#recipe-{r['id']}")
+    p.page.locator(".recipe-record-actions button", has_text="Edit recipe").click()
+    p.page.wait_for_selector("#edit-language")
+    assert p.page.input_value("#edit-language") == ""
+    assert p.page.locator("#edit-language option").all_inner_texts() == ["Automatic (Français)", "English", "Français"]
+    p.page.select_option("#edit-language", "en")
+    p.page.locator("button", has_text="Save changes").click()
+    p.page.wait_for_selector("#edit-language", state="detached")
+    assert api.get(f"/api/recipes/{r['id']}").json()["language"] == "en"
+
+
+def test_picker_language_choice(server, api, page):
+    """0125: the Language group appears with both languages in the library
+    and narrows the pick."""
+    sfx = uuid.uuid4().hex[:6]
+    tag = {"name": f"Lang{sfx}", "category": "main_ingredient"}
+    fr = add_recipe(api, f"Crêpes {sfx}", tags=[tag], **_FR)
+    add_recipe(api, f"Pancakes {sfx}", tags=[tag])
+    assert api.put("/api/picker/settings", json={"enabled": True}).status_code == 200
+    try:
+        p = page()
+        p.page.goto(server["picker_url"])
+        p.page.wait_for_selector("#choices .chip")
+        groups = p.page.locator(".chip-group-label").all_inner_texts()
+        assert groups[-1] == "Language"
+        p.page.locator(".chip", has_text=tag["name"]).click()
+        p.page.locator(".chip[lang=fr]", has_text="Français").click()
+        for _ in range(3):
+            p.page.click("#pick-button")
+            p.page.wait_for_selector(".stage-card--result")
+            assert fr["title"] in p.page.inner_text("#result-card-slot")
+    finally:
+        api.put("/api/picker/settings", json={"enabled": False})

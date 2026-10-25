@@ -162,6 +162,8 @@ def recipe_to_jsonld(recipe, image: str | None = None) -> dict:
         "tastiness_rating": recipe.tastiness_rating,
         "cook_time_rating": recipe.cook_time_rating,
         "difficulty_rating": recipe.difficulty_rating,
+        # Set by hand only; null means guessed from the text (0125).
+        "language": getattr(recipe, "language", None),
         "actual_cook_time": _ddhhmm(recipe.actual_cook_time_minutes),
         # As stored: schema.org's times above are ISO, these are what the
         # recipe page shows.
@@ -238,6 +240,7 @@ class ImportedRecipe:
     tastiness_rating: int | None = None
     cook_time_rating: str | None = None
     difficulty_rating: str | None = None
+    language: str | None = None   # 'en' | 'fr' set by hand; None = guessed
     actual_cook_time: str | None = None
     tags: list[dict] = field(default_factory=list)       # {name, category, subgroup}: kept as they are
     tag_names: list[str] = field(default_factory=list)   # labels from another app: matched to existing tags
@@ -343,6 +346,7 @@ def from_jsonld(item: dict, origin: str, read_member=None) -> ImportedRecipe:
         r.tastiness_rating = _rating(ext.get("tastiness_rating"))
         r.cook_time_rating = ext.get("cook_time_rating") if ext.get("cook_time_rating") in ("quick", "moderate", "long") else None
         r.difficulty_rating = ext.get("difficulty_rating") if ext.get("difficulty_rating") in ("easy", "medium", "hard") else None
+        r.language = ext.get("language") if ext.get("language") in ("en", "fr") else None
         act = ext.get("actual_cook_time")
         r.actual_cook_time = act if isinstance(act, str) and re.fullmatch(r"\d{2}:\d{2}:\d{2}", act) else None
         r.tags = [{"name": _text(t.get("name"), 100), "category": _text(t.get("category"), 60) or "custom",

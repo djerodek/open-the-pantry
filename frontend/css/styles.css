@@ -1233,6 +1233,15 @@ main {
   font-size: 0.9rem;
 }
 .field textarea { min-height: 6rem; resize: vertical; }
+/* Edit recipe -> Language (0125): the boxes' padding and corners, sized to
+   its options rather than the full width. */
+#edit-language {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  max-width: 100%;
+}
 /* Ingredients and Steps (Add manually, the review screen, Edit recipe):
    twice the other boxes' height, so a recipe can be checked without
    scrolling inside a four-line box. */

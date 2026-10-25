@@ -1929,6 +1929,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
             tastiness_rating=payload.tastiness_rating,
             cook_time_rating=payload.cook_time_rating,
             difficulty_rating=payload.difficulty_rating,
+            language=payload.language,
             actual_cook_time_minutes=_logged_minutes(payload.actual_cook_time),
         )
         db.add(recipe)
@@ -2189,7 +2190,7 @@ def duplicate_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
             image_path=image, raw_text=src.raw_text, notes=src.notes, ocr_confidence=src.ocr_confidence,
             autotag_ignored=src.autotag_ignored, tastiness_rating=src.tastiness_rating,
             cook_time_rating=src.cook_time_rating, difficulty_rating=src.difficulty_rating,
-            actual_cook_time_minutes=src.actual_cook_time_minutes,
+            language=src.language, actual_cook_time_minutes=src.actual_cook_time_minutes,
         )
         db.add(copy)
         db.flush()
@@ -2266,6 +2267,8 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
             for step in other.steps:
                 db.add(models.Step(recipe_id=keep.id, position=step.position, text=step.text))
             keep.raw_text, keep.source_type, keep.ocr_confidence = other.raw_text, other.source_type, other.ocr_confidence
+            # A language set by hand describes the text it came with.
+            keep.language = other.language
         d = pick("details")
         keep.servings, keep.prep_time, keep.cook_time, keep.total_time = d.servings, d.prep_time, d.cook_time, d.total_time
         keep.source_url = pick("source").source_url
@@ -2473,6 +2476,9 @@ def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Se
         recipe.tastiness_rating = payload.tastiness_rating
         recipe.cook_time_rating = payload.cook_time_rating
         recipe.difficulty_rating = payload.difficulty_rating
+        # Left out of the request: unchanged (schemas.RecipeCreate).
+        if "language" in payload.model_fields_set:
+            recipe.language = payload.language
         recipe.actual_cook_time_minutes = _logged_minutes(payload.actual_cook_time)
         # Saved from Edit: someone has looked at it.
         recipe.needs_review = False
@@ -3721,7 +3727,7 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, O
             image_path=image, ingredients=[schemas.IngredientIn(**i) for i in parsed], steps=r.steps,
             tags=unique_tags[:50], favorite=r.favorite, tastiness_rating=r.tastiness_rating,
             cook_time_rating=r.cook_time_rating, difficulty_rating=r.difficulty_rating,
-            actual_cook_time=r.actual_cook_time,
+            language=r.language, actual_cook_time=r.actual_cook_time,
         )
         recipe = create_recipe(payload, db)
     except Exception:

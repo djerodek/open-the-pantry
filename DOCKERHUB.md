@@ -102,7 +102,8 @@ Tandoor have those.
   recipe text to a dedicated inbox
 - Optional "What to eat?" page (off by default): a second, read-only page on
   port 8091 that picks a random recipe by meal type, cooking style, main
-  ingredient or pace, shuffles through titles and stops on one to read and
+  ingredient, pace or language (English/French, guessed from the recipe and
+  correctable in Edit recipe), shuffles through titles and stops on one to read and
   print right there (read-only; edit in the main app); no login, so anyone
   who can reach the port can read your recipes; switched on in Settings
 - Tag groups: meal type, cooking style (incl. cocktails), main ingredient,

@@ -3,7 +3,7 @@
 //
 // The stage comes first: one big card, the shuffle rolling through titles
 // in it, and the picked recipe landing there. The choices (meal types,
-// cooking styles, main ingredients, paces) sit below it, all visible but
+// cooking styles, main ingredients, paces, languages) sit below it, all visible but
 // quieter. Tapping the card opens the recipe right here, read-only;
 // editing stays in the main app. Something else picks another without
 // repeating any recipe shown since the round started; Clear resets.
@@ -20,14 +20,19 @@
   // The reel slows down as it stops: about 0.8 s in all.
   const REEL_STEPS_MS = [45, 50, 55, 60, 70, 80, 95, 115, 140];
 
-  // The four chip groups. Tag names stay as stored (English) and are shown
+  // The chip groups. Tag names stay as stored (English) and are shown
   // through tagLabel(); pace values through the main app's pace strings.
+  // Language shows only when the library has recipes in both: one chip
+  // would choose nothing.
   const GROUPS = [
     { key: "meal_type", label: () => groupLabel("meal_type", "Meal type") },
     { key: "cooking_style", label: () => groupLabel("cooking_style", "Cooking style") },
     { key: "main_ingredient", label: () => groupLabel("main_ingredient", "Main ingredient") },
     { key: "pace", label: () => tx("Pace") },
+    { key: "language", label: () => tx("Language") },
   ];
+  // Each language in its own name, in both interfaces.
+  const LANGUAGE_NAMES = { en: "English", fr: "Français" };
 
   const state = {
     options: null,
@@ -122,6 +127,10 @@
     const o = state.options;
     if (!o) return [];
     if (key === "pace") return (o.pace || []).map((p) => ({ value: p.value, label: valueLabel(p.value) }));
+    if (key === "language") {
+      const langs = (o.language || []).filter((l) => LANGUAGE_NAMES[l.value]);
+      return langs.length > 1 ? langs.map((l) => ({ value: l.value, label: LANGUAGE_NAMES[l.value], lang: l.value })) : [];
+    }
     return (o[key] || []).map((t) => ({ value: t.id, label: tagLabel({ name: t.name, category: key }) }));
   }
 
@@ -137,6 +146,7 @@
       const chips = items.map((item) => el("button", {
         type: "button", class: "chip",
         "aria-pressed": String(state.chosen[g.key].has(item.value)),
+        lang: item.lang,
         text: item.label,
         onclick: (e) => toggleChip(g.key, item.value, e.currentTarget, any),
       }));

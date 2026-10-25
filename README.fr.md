@@ -202,8 +202,8 @@ cPanel.
 
 C'est désactivé par défaut. **On mange quoi?** est une petite page en
 lecture seule, sur son propre port, le 8091. Vous choisissez des critères si
-vous voulez (type de repas, mode de cuisson, ingrédient principal, rythme)
-et vous appuyez sur **Choisis pour moi**. Des titres défilent et s'arrêtent sur une
+vous voulez (type de repas, mode de cuisson, ingrédient principal, rythme,
+langue) et vous appuyez sur **Choisis pour moi**. Des titres défilent et s'arrêtent sur une
 recette qui correspond. **Autre chose** en choisit une autre, sans
 répétition tant que toutes ne sont pas sorties; au-delà de 500
 correspondances, seules les 500 dernières montrées sont retenues. Touchez la
@@ -214,6 +214,10 @@ Pantry** l'ouvre dans l'application principale.
   à l'autre, tous doivent correspondre.
 - Les recettes mieux notées sortent un peu plus souvent (5★ a une fois et
   demie plus de chances que 1★). Les cocktails ne sont jamais choisis.
+- Langue (English ou Français) s'affiche quand vous avez des recettes dans
+  les deux. La langue de chaque recette est devinée d'après ses ingrédients
+  et ses étapes; si c'est faux, changez-la sous Langue dans Modifier la
+  recette.
 - Elle retient vos choix sur chaque appareil, et a son propre sélecteur de
   langue.
 

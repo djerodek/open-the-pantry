@@ -991,6 +991,10 @@
     "Yes": "Oui",
     "On, but this device can't reach port {1}. Your compose file may be missing the {2} line under ports:.":
       "Activée, mais cet appareil ne joint pas le port {1}. Il manque peut-être la ligne {2} sous ports: dans votre fichier compose.",
+    // A recipe's language (Edit recipe; What to eat?'s Language choice)
+    "Automatic ({1})": "Automatique ({1})",
+    "Automatic guesses from the ingredients and steps. Used by What to eat?":
+      "Automatique devine d'après les ingrédients et les étapes. Sert à On mange quoi?",
   };
 
   // Built-in tags: the stored name stays English (the tagger, filters and

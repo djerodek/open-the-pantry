@@ -56,6 +56,9 @@ class Recipe(Base):
     tastiness_rating = Column(Integer, nullable=True)  # 1-5
     cook_time_rating = Column(String, nullable=True)  # 'quick' | 'moderate' | 'long'
     difficulty_rating = Column(String, nullable=True)  # 'easy' | 'medium' | 'hard'
+    # 'en' | 'fr' set by hand in Edit recipe; empty means "guess from the
+    # text" (app/language.py). Read by What to eat?'s Language filter.
+    language = Column(String, nullable=True)
     # Real-world time the user logged actually making it (distinct from any
     # prep/cook/total time pulled from a source). Stored as total minutes for
     # simple bucket filtering; dd:hh:mm is a display/input concern only.
@@ -77,6 +80,14 @@ class Recipe(Base):
     def actual_cook_time(self):
         from .time_utils import minutes_to_ddhhmm
         return minutes_to_ddhhmm(self.actual_cook_time_minutes)
+
+    @property
+    def detected_language(self):
+        """The language guessed from the title, ingredients and steps, as
+        loaded (content_text can lag the rows until the session commits)."""
+        from .language import guess_language
+        return guess_language(" ".join([self.title or "", *(i.raw_line or "" for i in self.ingredients),
+                                        *(s.text or "" for s in self.steps)]))
 
 
 class Ingredient(Base):

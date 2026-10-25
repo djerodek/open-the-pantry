@@ -1,6 +1,7 @@
 """What to eat? / On mange quoi?: a second, read-only page on its own port.
 
-Choose a meal type, cooking style, main ingredient and/or pace (or none),
+Choose a meal type, cooking style, main ingredient, pace and/or language
+(or none),
 press one button, get one random recipe that matches, and read it right
 there (read-only; editing stays in the main app). specs/dinner-picker-spec.md has the full design.
 
@@ -28,11 +29,16 @@ categories all must hold. A category with nothing chosen restricts nothing.
 Cocktails are never offered and never picked: any recipe tagged with the
 Cocktails meal type or a cocktail cooking style is a drink, even if it also
 carries a food tag.
+
+Language (0125) is English or French: the Language set in Edit recipe, or
+else guessed from the title, ingredients and steps (app/language.py). The
+page shows the choice only when the library has recipes in both.
 """
 import asyncio
 import contextlib
 import os
 import random
+from collections import Counter
 from typing import Literal, Optional
 from urllib.parse import urlsplit
 
@@ -45,6 +51,7 @@ from sqlalchemy.orm import Session, selectinload
 from . import https_setup, models, schemas
 from .database import SessionLocal, UPLOADS_DIR, get_db
 from .file_validation import safe_join
+from .language import LANGUAGES, recipe_language
 from .init_db import SEED_TAGS
 from .logging_setup import get_logger
 
@@ -354,9 +361,20 @@ def picker_options(request: Request, db: Session = Depends(get_db)):
                        .filter(models.Recipe.id.notin_(drinks), models.Recipe.cook_time_rating.in_(PACES))
                        .group_by(models.Recipe.cook_time_rating).all())
     out["pace"] = [{"value": p, "count": pace_counts[p]} for p in PACES if pace_counts.get(p)]
+    lang_counts = Counter(_recipe_languages(db).values())
+    out["language"] = [{"value": lang, "count": lang_counts[lang]} for lang in LANGUAGES if lang_counts.get(lang)]
     out["total"] = db.query(func.count(models.Recipe.id)).filter(models.Recipe.id.notin_(drinks)).scalar() or 0
     out["main_url"] = main_url(request)
     return out
+
+
+def _recipe_languages(db: Session) -> dict:
+    """{recipe id: 'en' | 'fr'} for every pickable recipe: the Language
+    set in Edit recipe, otherwise the guess from the text
+    (app/language.py)."""
+    query = db.query(models.Recipe.id, models.Recipe.language, models.Recipe.title,
+                     models.Recipe.content_text).filter(models.Recipe.id.notin_(_drink_recipe_ids()))
+    return {rid: recipe_language(lang, title, text) for rid, lang, title, text in query.all()}
 
 
 def weighted_choice(candidates: list, rng: random.Random = None) -> int:
@@ -404,6 +422,7 @@ def picker_random(
     cooking_style: list[schemas.DbInt] | None = Query(default=None),
     main_ingredient: list[schemas.DbInt] | None = Query(default=None),
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
+    language: list[Literal["en", "fr"]] | None = Query(default=None),
     exclude: list[schemas.DbInt] | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
@@ -421,6 +440,9 @@ def picker_random(
     if pace:
         query = query.filter(models.Recipe.cook_time_rating.in_(set(pace)))
     matches = query.all()
+    if language:
+        langs = _recipe_languages(db) if matches else {}
+        matches = [(rid, rating) for rid, rating in matches if langs.get(rid) in set(language)]
 
     shown = set((exclude or [])[:MAX_EXCLUDE])
     left = [(rid, rating) for rid, rating in matches if rid not in shown]

@@ -54,6 +54,8 @@ NEW_RECIPE_COLUMNS = {
     "needs_review": "INTEGER NOT NULL DEFAULT 0",
     # Recently deleted (0109): none deleted before it existed.
     "deleted_at": "DATETIME",
+    # Language (0125): empty means guessed from the text.
+    "language": "TEXT",
 }
 
 FTS_COLUMNS = ("title", "raw_text", "tags_text", "content_text", "notes")

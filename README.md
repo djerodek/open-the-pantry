@@ -175,7 +175,7 @@ does the same job with Traefik. Don't use it alongside the cPanel route.
 
 This is off by default. **What to eat?** is a small read-only page on its
 own port, 8091. You pick choices if you want (meal type, cooking style, main
-ingredient, pace) and press **Pick one**. Titles roll past and it stops on a
+ingredient, pace, language) and press **Pick one**. Titles roll past and it stops on a
 matching recipe. **Something else** picks again, with no repeats until every
 match has been shown; with more than 500 matches, only the latest 500 shown
 are remembered. Tap the card to read the recipe, or print it. **Edit in Open
@@ -185,6 +185,9 @@ the Pantry** opens it in the main app.
   groups, all must match.
 - Better-rated recipes come up a little more often (5★ is 1.5 times as
   likely as 1★). Cocktails are never picked.
+- Language (English or Français) shows when your recipes are in both. Each
+  recipe's language is guessed from its ingredients and steps; if a guess is
+  wrong, change it under Language in Edit recipe.
 - It remembers your choices on each device, and has its own language switch.
 
 **Turn it on** in Settings → What to eat?. It starts at once, and a link

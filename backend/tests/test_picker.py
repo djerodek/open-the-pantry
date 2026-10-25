@@ -108,7 +108,7 @@ def test_options_list_only_tags_and_paces_on_pickable_recipes(client, pk):
     assert "Cocktails" not in by["meal_type"]
     assert not any(t["subgroup"] == "cocktail" for t in o["cooking_style"])
     assert {"Shaken", "Stirred", "Built", "Blended"}.isdisjoint(by["cooking_style"])
-    assert set(o) == {"meal_type", "cooking_style", "main_ingredient", "pace", "total", "main_url"}
+    assert set(o) == {"meal_type", "cooking_style", "main_ingredient", "pace", "language", "total", "main_url"}
     assert all(t["count"] > 0 for cat in by.values() for t in cat.values())
     assert [p["value"] for p in o["pace"]] == [v for v in ("quick", "moderate", "long")
                                                if v in {p["value"] for p in o["pace"]}]

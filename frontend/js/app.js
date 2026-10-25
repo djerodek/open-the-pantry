@@ -4233,6 +4233,15 @@
     const includeScan = el("input", { type: "checkbox", id: "edit-autotag-include" });
     includeScan.checked = !recipe.autotag_ignored;
 
+    // Language (0125), for What to eat?'s Language choice. Automatic is the
+    // guess from the text as last saved; each language is named in itself.
+    const LANGUAGE_NAMES = { en: "English", fr: "Français" };
+    const languageSelect = el("select", { id: "edit-language", "aria-describedby": "edit-language-hint" }, [
+      el("option", { value: "", text: tx("Automatic ({1})", { 1: LANGUAGE_NAMES[recipe.detected_language] || LANGUAGE_NAMES.en }) }),
+      ...Object.entries(LANGUAGE_NAMES).map(([code, name]) => el("option", { value: code, lang: code, text: name })),
+    ]);
+    languageSelect.value = LANGUAGE_NAMES[recipe.language] ? recipe.language : "";
+
     // pre-line: the test result puts sending and reading on separate lines.
     const statusLine = el("div", { class: "field-hint", role: "status", style: "margin-top:0.5rem;white-space:pre-line;" });
 
@@ -4266,6 +4275,7 @@
           tastiness_rating: recipe.tastiness_rating != null ? recipe.tastiness_rating : null,
           cook_time_rating: recipe.cook_time_rating || null,
           difficulty_rating: recipe.difficulty_rating || null,
+          language: languageSelect.value || null,
           actual_cook_time: recipe.actual_cook_time || null,
           ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim())
             .map((line) => ({ raw_line: line, name: line })),
@@ -4343,6 +4353,11 @@
       el("div", { class: "field" }, [el("label", { for: "edit-prep", text: tx("Prep time") }), prepInput]),
       el("div", { class: "field" }, [el("label", { for: "edit-cook", text: tx("Cook time") }), cookInput]),
       el("div", { class: "field" }, [el("label", { for: "edit-total", text: tx("Total time") }), totalInput]),
+      el("div", { class: "field" }, [
+        el("label", { for: "edit-language", text: tx("Language") }), languageSelect,
+        el("div", { class: "field-hint", id: "edit-language-hint",
+          text: tx("Automatic guesses from the ingredients and steps. Used by What to eat?") }),
+      ]),
     ]);
 
     // Raw source text as a read-only reference pane. For a low-confidence

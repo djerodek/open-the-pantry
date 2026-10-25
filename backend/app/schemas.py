@@ -86,6 +86,10 @@ class RecipeCreate(BaseModel):
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
+    # 'en' or 'fr' set by hand; null means "guess from the text". On PUT,
+    # left out means unchanged: a client that doesn't know the field
+    # doesn't clear a correction.
+    language: Optional[Literal["en", "fr"]] = None
     ingredients: list[IngredientIn] = Field(default_factory=list, max_length=500)
     steps: list[Annotated[str, Field(max_length=20_000)]] = Field(default_factory=list, max_length=500)
     tags: list[TagIn] = Field(default_factory=list, max_length=50)
@@ -221,6 +225,10 @@ class RecipeOut(BaseModel):
     tastiness_rating: Optional[int] = Field(default=None, ge=1, le=5)
     cook_time_rating: Optional[Literal["quick", "moderate", "long"]] = None
     difficulty_rating: Optional[Literal["easy", "medium", "hard"]] = None
+    # Set by hand ('en'/'fr') or null; detected_language is the guess from
+    # the text, shown next to "Automatic" in Edit recipe.
+    language: Optional[str] = None
+    detected_language: Optional[str] = None
     ingredients: list[IngredientOut] = []
     steps: list[StepOut] = []
     tags: list[TagOut] = []
@@ -290,7 +298,7 @@ class MergeChoices(BaseModel):
     Recently deleted. Tags are always both."""
     title: Pick = "keep"
     photo: Literal["keep", "other", "none"] = "keep"
-    content: Pick = "keep"         # ingredients, steps, original text (and how it came in)
+    content: Pick = "keep"         # ingredients, steps, original text (and how it came in), Language
     details: Pick = "keep"         # servings, prep / cook / total time
     source: Pick = "keep"          # the link
     ratings: Pick = "keep"         # favourite, the three ratings, real-world time
