@@ -689,7 +689,10 @@ def _is_prose(line: str) -> bool:
 
 def _first_word(text: str) -> str:
     import unicodedata
-    first = unicodedata.normalize("NFKD", text.split()[0].lower())
+    words = text.split()
+    if not words:                    # a bare "©" line (GPT review of 0132)
+        return ""
+    first = unicodedata.normalize("NFKD", words[0].lower())
     return "".join(c for c in first if not unicodedata.combining(c)).strip(",.;:!")
 
 

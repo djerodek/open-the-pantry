@@ -2181,7 +2181,7 @@ def duplicate_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
         old_path = safe_join(UPLOADS_DIR, src.image_path)
         if old_path and os.path.isfile(old_path):
             image = f"copy-{uuid.uuid4().hex}{os.path.splitext(src.image_path)[1]}"
-            shutil.copyfile(old_path, os.path.join(UPLOADS_DIR, image))
+            _copy_upload(old_path, image, "duplicate_recipe")
     try:
         copy = models.Recipe(
             title=(src.title or "")[:500 - len(suffix)] + suffix,
@@ -2213,6 +2213,20 @@ def duplicate_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
 
 
 NOTES_MAX = 50_000   # schemas.NotesUpdate
+
+
+def _copy_upload(src: str, name: str, who: str):
+    """A recipe photo copied to uploads/<name> for Merge or Duplicate. A copy
+    that fails part way (disk full) leaves nothing behind, and nothing is
+    changed (GPT reviews of 0129 and 0132)."""
+    dest = os.path.join(UPLOADS_DIR, name)
+    try:
+        shutil.copyfile(src, dest)
+    except OSError:
+        log.warning("%s: photo not copied", who, exc_info=True)
+        if os.path.exists(dest):
+            remove_upload_file(dest)
+        raise HTTPException(status_code=500, detail="The photo couldn't be copied. Nothing was changed.")
 
 
 @app.post("/api/recipes/merge", response_model=schemas.RecipeOut)
@@ -2250,16 +2264,7 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         src = safe_join(UPLOADS_DIR, other.image_path)
         if src and os.path.isfile(src):
             new_image = f"merge-{uuid.uuid4().hex}{os.path.splitext(other.image_path)[1]}"
-            dest = os.path.join(UPLOADS_DIR, new_image)
-            try:
-                shutil.copyfile(src, dest)
-            except OSError:
-                # A copy that fails part way (disk full) leaves nothing
-                # behind (GPT review of 0129).
-                log.warning("merge_recipes: photo not copied", exc_info=True)
-                if os.path.exists(dest):
-                    remove_upload_file(dest)
-                raise HTTPException(status_code=500, detail="The photo couldn't be copied. Nothing was changed.")
+            _copy_upload(src, new_image, "merge_recipes")
     elif take.photo == "other" or take.photo == "none":
         new_image = None
     if new_image != keep.image_path:
