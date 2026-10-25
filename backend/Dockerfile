@@ -19,6 +19,12 @@ FROM python:3.12-slim
 #   docker-entrypoint.sh) -- needed because a Dockerfile-time chown can't
 #   fix ownership of a bind-mounted host directory, only a runtime one can
 # - curl: container healthcheck
+# - ca-certificates: the trusted roots the inbox login and email sending
+#   check certificates against (Python doesn't check revocation, so a root
+#   removed upstream is the only block). Named here so every build installs
+#   Debian's newest list, not whatever the base image was built with: the
+#   eMudhra key compromise (October 2026) was answered by removing roots
+#   (DSA-6572-1), which an older base image doesn't have.
 # - tzdata: so TZ in the compose file takes effect (the daily scan hour is
 #   container-local time; without zone data the container is always UTC)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -36,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     gosu \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

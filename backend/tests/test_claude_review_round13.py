@@ -125,3 +125,14 @@ def test_the_image_is_published_only_after_ci():
     for name, text in workflows.items():
         for ref in re.findall(r"uses:\s*\S+@(\S+)", text):
             assert re.fullmatch(r"[0-9a-f]{40}", ref), (name, ref)
+
+
+def test_the_image_installs_the_newest_trusted_roots():
+    """Follow-up (0127): the roots the inbox login checks against come from
+    Debian's ca-certificates. Named in the install line, every build takes
+    the newest (the eMudhra roots removed in October 2026), not the copy the
+    base image happened to be built with."""
+    dockerfile = (ROOT / "backend/Dockerfile").read_text(encoding="utf-8")
+    install = dockerfile[dockerfile.index("apt-get install"):dockerfile.index("rm -rf /var/lib/apt/lists/*")]
+    assert re.search(r"^\s*ca-certificates \\$", install, re.M)
+    assert "apt-get update" in dockerfile[:dockerfile.index("apt-get install")]
