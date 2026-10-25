@@ -158,6 +158,13 @@ def _migrate_and_setup_schema():
             if tag_cols and col not in tag_cols:
                 cur.execute(f"ALTER TABLE tags ADD COLUMN {col} {decl}")
 
+        # Automatic backups (0101): the last one that worked, from round 13.
+        # Filled in from the last attempt when that one worked.
+        backup_cols = {row[1] for row in cur.execute("PRAGMA table_info(backup_schedule)")}
+        if backup_cols and "last_success_at" not in backup_cols:
+            cur.execute("ALTER TABLE backup_schedule ADD COLUMN last_success_at DATETIME")
+            cur.execute("UPDATE backup_schedule SET last_success_at = last_run_at WHERE last_ok = 1")
+
         if table_exists:
             for col, decl in NEW_RECIPE_COLUMNS.items():
                 if col not in existing_cols:

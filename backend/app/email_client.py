@@ -70,7 +70,10 @@ def connect_imap(host: str, port: int, username: str, password: str, use_ssl: bo
     implicit = imap_uses_implicit_tls(port, use_ssl)
     try:
         if implicit:
-            conn = imaplib.IMAP4_SSL(host, port, timeout=20)
+            # The certificate and host name checked, as for SMTP and
+            # STARTTLS: IMAP4_SSL's own default checks neither, so anyone in
+            # between could be handed the password (Claude review round 13).
+            conn = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=20)
         else:
             conn = imaplib.IMAP4(host, port, timeout=20)
             conn.starttls(ssl.create_default_context())

@@ -258,6 +258,9 @@ class BackupSchedule(Base):
     keep = Column(Integer, nullable=False, default=7)      # newest backups kept
     last_run_at = Column(DateTime(timezone=True), nullable=True)
     last_ok = Column(Boolean, nullable=True)
+    # The last backup that worked: the schedule counts from it (a failure
+    # is tried again, scheduled_backup.due). Claude review round 13.
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
     last_message = Column(Text, nullable=True)
 
 

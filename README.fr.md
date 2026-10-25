@@ -453,7 +453,8 @@ Dans Paramètres → Sauvegarde et exportation :
   application sont gardés : réimporter le fichier ici ne perd rien.
 - **Sauvegardes automatiques** : une sauvegarde complète chaque jour à
   l'heure choisie. Les plus récentes sont gardées (7 par défaut);
-  **Sauvegarder maintenant** en fait une tout de suite.
+  **Sauvegarder maintenant** en fait une tout de suite. Une sauvegarde
+  ratée est retentée chaque heure jusqu'à ce qu'une réussisse.
   - Elles vont dans `data/backups/`. Pour une vraie deuxième copie, montez
     un dossier sur un autre disque et réglez `RECIPE_APP_BACKUP_DIR`; le
     fichier compose a les lignes, en commentaire.

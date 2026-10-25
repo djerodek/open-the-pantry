@@ -1473,9 +1473,9 @@ async def _daily_email_scan_loop():
             learning.schedule_retrain()
         except Exception:
             # A scheduled scan failing must never kill the loop -- the
-            # next day's attempt should still happen.
-            log.debug("_daily_email_scan_loop: caught error, continuing", exc_info=True)
-            pass
+            # next day's attempt should still happen. Logged in full, so it
+            # shows in Settings -> Logs (it was at DEBUG; Claude review 13).
+            log.exception("Scheduled email scan failed; trying again tomorrow")
 
 
 # ---------------------------------------------------------------------------
@@ -3867,6 +3867,8 @@ def run_scheduled_backup() -> dict:
         try:
             row = _backup_schedule(db)
             row.last_run_at, row.last_ok, row.last_message = _utc_now(), ok, message
+            if ok:
+                row.last_success_at = row.last_run_at
             db.commit()
         finally:
             db.close()
@@ -3887,7 +3889,8 @@ async def _scheduled_backup_loop():
                 db = SessionLocal()
                 try:
                     row = _backup_schedule(db)
-                    return scheduled_backup.due(bool(row.enabled), row.hour, row.last_run_at)
+                    return scheduled_backup.due(bool(row.enabled), row.hour, row.last_success_at,
+                                                failed_at=row.last_run_at if row.last_ok is False else None)
                 finally:
                     db.close()
             if await anyio.to_thread.run_sync(_check):

@@ -28,7 +28,7 @@ def test_due():
     assert not due(False, 3, None, at3)
     assert due(True, 3, None, at3)                                   # never made: now
     assert due(True, 3, at3 - timedelta(days=1), at3)                # the set hour, not yet today
-    assert not due(True, 3, at3 - timedelta(minutes=10), at3)        # already today
+    assert not due(True, 3, at3 - timedelta(minutes=4), at3)         # made at 3:01: already today
     assert not due(True, 3, at3 - timedelta(hours=20), at3.replace(hour=14))   # not the hour
     assert due(True, 3, at3 - timedelta(hours=40), at3.replace(hour=14))       # missed: catch up
     naive_utc = (at3 - timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)

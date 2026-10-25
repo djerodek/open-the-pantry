@@ -1,5 +1,12 @@
 name: CI
 
+# Tests, dependency audit, a test build, then (pushes to main only) the
+# published image. The image used to be built by a separate workflow that
+# ran on every push whatever these jobs gave (Claude review round 13; a
+# failing push still published :main and :latest). Actions are pinned to a
+# commit, with the tag in a comment: the Docker Hub token passes through
+# them.
+
 on:
   push:
     branches: [main]
@@ -9,10 +16,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -44,10 +51,10 @@ jobs:
     # the server tests can't see.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -70,14 +77,75 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, browser]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build image (not pushed -- just confirms it builds)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: backend/Dockerfile
           push: false
+
+  publish:
+    # Only once the tests, the audit, the browser tests and the test build
+    # have passed, and only for main.
+    runs-on: ubuntu-latest
+    needs: [test, browser, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/open-the-pantry
+          # Without an explicit tag list, metadata-action's defaults only
+          # publish "latest" on a git TAG push (flavor.latest=auto), never on
+          # a push to main -- so the image had a :main tag and no :latest at
+          # all, and any compose file saying :latest failed to pull. These
+          # rules publish both: :latest and :main track the default branch.
+          # (Version tags aren't published: the workflow runs on main only.)
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      # Docker Hub's Overview doesn't follow the repository on its own. This
+      # copies DOCKERHUB.md into it on pushes to main. Docker Hub only accepts
+      # description updates from a token with the Read, Write, Delete scope;
+      # with a narrower DOCKERHUB_TOKEN this step fails by itself and the image
+      # above is still published (see README, "Publishing your own build").
+      - name: Update Docker Hub overview
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/open-the-pantry
+          readme-filepath: ./DOCKERHUB.md
+          short-description: "Self-hosted recipe manager PWA: URL, PDF, photo and email ingest; English/French."

@@ -4,7 +4,8 @@ Once a day, at the hour set (the container's local time, TZ), a full
 backup -- the same zip as Settings -> Backup & export -> Full backup
 (backup.build_database_backup) -- is written to the backup folder, and
 only the newest `keep` are kept. A backup missed because the server was
-off (none for 36 hours while switched on) is made at the next check.
+off (none for 36 hours while switched on) is made at the next check. A
+failed one is tried again every hour until one works.
 
 The folder is data/backups/ by default. Since a disk that dies takes
 data/ and data/backups/ with it, RECIPE_APP_BACKUP_DIR can point to a
@@ -38,6 +39,7 @@ def _order(name: str):
     return (m.group(1), int(m.group(2) or 1))
 CHECK_EVERY = 10 * 60           # seconds between checks of the schedule
 CATCH_UP_AFTER = timedelta(hours=36)
+RETRY_AFTER = timedelta(hours=1)  # after a failed backup
 MIN_FREE_BYTES = 200 * 1024 ** 2
 
 
@@ -122,15 +124,32 @@ def make(keep: int, build) -> dict:
     return {"name": name, "size": size, "removed": removed}
 
 
-def due(enabled: bool, hour: int, last_run_at: datetime | None, now: datetime | None = None) -> bool:
-    """Whether a scheduled backup should run now (local time). At the set
-    hour once a day; or, if none has been made for 36 hours (the server
-    was off at that hour), at once."""
+def _aware(t: datetime | None) -> datetime | None:
+    """SQLite gives the times back without a zone; they're stored in UTC."""
+    return t.replace(tzinfo=timezone.utc) if t is not None and t.tzinfo is None else t
+
+
+def due(enabled: bool, hour: int, last_success_at: datetime | None, now: datetime | None = None,
+        failed_at: datetime | None = None) -> bool:
+    """Whether a scheduled backup should run now (local time).
+
+    Counted from the last backup that worked, not the last attempt
+    (Claude review round 13): at the set hour when none has been made
+    since that hour today (a "Back up now" earlier in the day doesn't
+    count for it); at once if none has worked for 36 hours (the server was
+    off at that hour); and after a failure (failed_at, the last attempt
+    when it failed), again every hour until one works."""
     if not enabled:
         return False
     now = now or datetime.now().astimezone()
-    if last_run_at is not None and last_run_at.tzinfo is None:
-        last_run_at = last_run_at.replace(tzinfo=timezone.utc)
-    if last_run_at is None or now - last_run_at > CATCH_UP_AFTER:
+    last_success_at, failed_at = _aware(last_success_at), _aware(failed_at)
+    if failed_at is not None and now - failed_at < RETRY_AFTER:
+        return False
+    if last_success_at is None or now - last_success_at > CATCH_UP_AFTER:
         return True
-    return now.hour == hour and last_run_at.astimezone(now.tzinfo).date() != now.date()
+    slot = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if slot > now:
+        slot -= timedelta(days=1)
+    if last_success_at >= slot:
+        return False                       # made since the latest set hour
+    return now.hour == hour or failed_at is not None

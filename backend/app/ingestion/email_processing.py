@@ -1,3 +1,4 @@
+import codecs
 import os
 import re
 import uuid
@@ -46,6 +47,18 @@ def strip_client_boilerplate(text: str) -> str:
 MIN_INLINE_PHOTO_EDGE = 640
 
 SUPPORTED_IMAGE_NOTE = "JPEG, PNG, GIF or WebP"
+
+
+def _decode(payload: bytes, charset: str | None) -> str:
+    """A text part's bytes as text. A charset Python doesn't know
+    ("unknown-8bit", "x-user-defined", both seen in real mail) is read as
+    UTF-8 rather than failing the whole email (Claude review round 13)."""
+    try:
+        codecs.lookup(charset or "utf-8")
+    except LookupError:
+        log.info("Email: unknown charset %r, read as UTF-8", charset)
+        charset = "utf-8"
+    return payload.decode(charset or "utf-8", errors="replace")
 
 
 def _leaf_parts(msg):
@@ -168,11 +181,11 @@ def extract_email_parts(msg) -> dict:
         if content_type == "text/plain" and not body_text:
             payload = part.get_payload(decode=True)
             if payload:
-                body_text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                body_text = _decode(payload, part.get_content_charset())
         elif content_type == "text/html" and not html_text:
             payload = part.get_payload(decode=True)
             if payload:
-                html_text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                html_text = _decode(payload, part.get_content_charset())
 
     if image_bytes is None and inline_images:
         inline_images.sort(key=lambda t: t[0], reverse=True)

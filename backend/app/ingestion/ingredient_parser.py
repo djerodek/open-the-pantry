@@ -48,14 +48,16 @@ UNIT_CANONICAL = {
 
 # Quantity: integer, decimal, simple fraction, unicode fraction, or a range ("1-2", "1 to 2")
 _UFRAC = r"[\u00BC-\u00BE\u2150-\u215E]"   # ¼ ½ ¾ ⅓ ⅔ ⅛ ...
+MAX_LINE = 2000
+
 QTY_PATTERN = (
     r"(\d+\s*" + _UFRAC +      # "1½", "1 ½" -- before plain "\d+", or "1 ½" parsed as 1
-    r"|\d+\s*\d*/\d+"       # "1 1/2"
+    r"|\d+\s+\d+/\d+|\d+/\d+"  # "1 1/2", "3/4" (not \d+\s*\d*/\d+: every split of a digit run was tried)
     r"|\d+[\.,]\d+"         # "1.5", French "1,5"
     r"|\d+"                 # "2"
     r"|[\u00BC-\u00BE\u2150-\u215E]"  # unicode fraction chars e.g. ¼ ½ ¾
     r")"
-    r"(?:\s*(?:-|–|to)\s*\d+\s*(?:\d*/\d+|" + _UFRAC + r")?)?"  # optional range "-2" / "to 2" / "–2½"
+    r"(?:\s*(?:-|–|to)\s*\d+(?:\s+\d+/\d+|/\d+|\s*" + _UFRAC + r")?)?"  # optional range "-2" / "to 2" / "–2½" / "-1 1/2"
 )
 
 LINE_RE = re.compile(
@@ -103,7 +105,12 @@ def parse_ingredient_line(raw_line: str) -> dict:
     parsing); it just stops "(15 oz)" from preventing "can" from being
     recognized as the unit.
     """
-    line = raw_line.strip().lstrip("-*\u2022").strip()  # strip leading bullet chars
+    # Only the first MAX_LINE characters are read for the amount: a saved
+    # line holds no more (schemas.IngredientIn), and lines from a link,
+    # PDF, email or import file had no cap before parsing (Claude review
+    # round 13). raw_line stays whole, so a longer one is still refused on
+    # save rather than cut short without a word.
+    line = raw_line[:MAX_LINE].strip().lstrip("-*\u2022").strip()  # strip leading bullet chars
     if not line:
         return {"raw_line": raw_line, "quantity": None, "unit": None, "name": ""}
 

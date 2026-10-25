@@ -397,7 +397,7 @@ In Settings → Backup & export:
   here loses nothing.
 - **Automatic backups**: a full backup every day at the hour you choose.
   The newest ones are kept (7 by default); **Back up now** makes one
-  immediately.
+  immediately. A failed one is tried again every hour until one works.
   - They go to `data/backups/`. For a real second copy, mount a folder on
     another disk and set `RECIPE_APP_BACKUP_DIR`; the compose file has the
     lines, commented out.
