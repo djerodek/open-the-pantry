@@ -474,6 +474,16 @@ _FR_PATTERNS = [
        r"\1 a refusé la demande (HTTP \2). Les sites protégés contre les robots font ça; enregistrez la page en "
        r"PDF ou faites une capture d'écran, et ajoutez-la plutôt."),
     _p(r"(\S+) answered with HTTP (\d+)\.", r"\1 a répondu avec le code HTTP \2."),
+    # A site that couldn't be reached (url_ingest.SiteUnreachableError)
+    _p(r"(\S+) didn't answer within (\d+) seconds; some sites only answer web browsers\. Save the page as a PDF "
+       r"or take a screenshot, and add that instead\.",
+       r"\1 n'a pas répondu en \2 secondes; certains sites ne répondent qu'aux navigateurs web. Enregistrez la page "
+       r"en PDF ou faites une capture d'écran, et ajoutez-la plutôt."),
+    _p(r"(\S+)'s security certificate couldn't be verified, so the page wasn't fetched\.",
+       r"Le certificat de sécurité de \1 n'a pas pu être vérifié; la page n'a pas été récupérée."),
+    _p(r"Couldn't connect to (\S+)\. Check the address, or try again later\.",
+       r"Impossible de se connecter à \1. Vérifiez l'adresse, ou réessayez plus tard."),
+    _p(r"(\S+) couldn't be reached\. Try again later\.", r"\1 est injoignable. Réessayez plus tard."),
     _p(r" -- no steps were found; check the recipe", " -- aucune étape trouvée; vérifiez la recette"),
     _p(r" -- already in your library; not saved again", " -- déjà dans votre bibliothèque; pas enregistrée de nouveau"),
     _p(r" -- a recipe with this title was already in your library",

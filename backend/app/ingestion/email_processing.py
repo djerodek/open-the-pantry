@@ -6,7 +6,8 @@ import uuid
 from .completeness import missing_parts as missing_sections
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
-from .url_ingest import ingest_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError
+from .url_ingest import ingest_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
+    SiteUnreachableError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
 from ..file_validation import validate_and_save_pdf_bytes, validate_and_save_image_bytes
@@ -425,7 +426,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 # Full traceback for the unexpected; the URL checks and a
                 # site's refusal are already explained in one line.
                 log.warning("Link %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
-                if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError)):
+                if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, SiteUnreachableError)):
                     pdf_hint = True
                     # The "add that instead" advice is for the app's own
                     # screens; the email gets its own version below.

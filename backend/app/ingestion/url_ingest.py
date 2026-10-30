@@ -114,6 +114,24 @@ class FetchTooLargeError(UrlValidationError):
     pass
 
 
+class SiteUnreachableError(UrlValidationError):
+    """The site couldn't be reached or didn't answer: a plain sentence for
+    the screen, the requests error kept as __cause__ and in the log. Was
+    requests' own text ("HTTPSConnectionPool(host=...): Read timed out.")."""
+
+
+def _unreachable(host: str, e: requests.RequestException, timeout) -> SiteUnreachableError:
+    if isinstance(e, requests.Timeout):            # ConnectTimeout and ReadTimeout
+        return SiteUnreachableError(
+            f"{host} didn't answer within {timeout} seconds; some sites only answer web browsers. "
+            "Save the page as a PDF or take a screenshot, and add that instead.")
+    if isinstance(e, requests.exceptions.SSLError):
+        return SiteUnreachableError(f"{host}'s security certificate couldn't be verified, so the page wasn't fetched.")
+    if isinstance(e, requests.ConnectionError):
+        return SiteUnreachableError(f"Couldn't connect to {host}. Check the address, or try again later.")
+    return SiteUnreachableError(f"{host} couldn't be reached. Try again later.")
+
+
 def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
     import time as _time
     declared = resp.headers.get("Content-Length")
@@ -186,7 +204,8 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
                 resp.close()
         except requests.RequestException as e:
             log.warning("GET %s failed: %s: %s", current_url, type(e).__name__, e)
-            raise
+            host = requests.compat.urlparse(current_url).hostname or current_url
+            raise _unreachable(host, e, timeout) from e
         except UrlValidationError as e:
             log.warning("GET %s stopped: %s", current_url, e)
             raise
