@@ -1,7 +1,8 @@
 """GPT review of 0134 (2026-10-30): "moules de bouchot", "moules en sauce"
 still read as a baking tin; run_setup checked that someone held the HTTPS
 job lock, not that its caller did; the hour repeated when clocks go back
-made a second scheduled backup."""
+made a second scheduled backup. GPT review of 0135: progress left
+shown as running when the setup failed before its own clean-up."""
 import threading
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -79,3 +80,38 @@ def test_one_backup_when_clocks_go_back():
     made = datetime(2026, 3, 7, 2, 5, tzinfo=tz).astimezone(timezone.utc).replace(tzinfo=None)
     assert not due(True, 2, made, datetime(2026, 3, 8, 15, 0, tzinfo=tz))
     assert due(True, 2, made, datetime(2026, 3, 8, 15, 10, tzinfo=tz))
+
+
+@pytest.mark.parametrize("via", ["run_setup", "start_job"])
+def test_progress_cleared_when_setup_fails_early(monkeypatch, via):
+    """GPT review of 0135: _setup failing before its own clean-up (no
+    database session) left the progress shown as running."""
+    from app import https_setup
+    done = threading.Event()
+
+    def boom(*a):
+        done.set()
+        raise RuntimeError("no database")
+    monkeypatch.setattr(https_setup, "SessionLocal", boom)
+    if via == "run_setup":
+        with pytest.raises(RuntimeError):
+            https_setup.run_setup(None, None, {})
+    else:
+        assert https_setup.start_job(None, None, {})
+        assert done.wait(5)
+    for _ in range(100):
+        if not https_setup._job_lock.locked():
+            break
+        threading.Event().wait(0.01)
+    assert not https_setup._job_lock.locked() and https_setup._progress["running"] is False
+
+
+def test_dnspython_has_the_name_decompression_fix():
+    """CVE-2026-114605 (fixed in 2.9.0): a crafted DNS reply could take
+    excessive CPU. https_setup resolves the domain's DNS records with it.
+    The CI dependency audit failed on 2.8.0 (2026-10-30)."""
+    import dns.version
+    from pathlib import Path
+    assert (dns.version.MAJOR, dns.version.MINOR) >= (2, 9)
+    req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    assert "\ndnspython==2.9.1\n" in req

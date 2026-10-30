@@ -23,4 +23,4 @@ acme==5.8.0
 # acme's own dependency, imported directly by https_setup: pinned so an
 # acme release can't change it underneath (DeepSeek review of 0132).
 josepy==2.2.0
-dnspython==2.8.0
+dnspython==2.9.1

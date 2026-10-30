@@ -761,8 +761,17 @@ def run_setup(main_loop=None, app=None, request: dict | None = None) -> bool:
     try:
         _setup(main_loop, app, request)
     finally:
-        _job_lock.release()
+        _end_job()
     return True
+
+
+def _end_job():
+    """Progress cleared and the lock released, even when _setup failed
+    before its own clean-up (GPT review of 0135: the database session not
+    opening left "running" shown)."""
+    _progress["running"] = False
+    _progress["step"] = ""
+    _job_lock.release()
 
 
 def _run_owned(main_loop, app, request):
@@ -770,7 +779,7 @@ def _run_owned(main_loop, app, request):
     try:
         _setup(main_loop, app, request)
     finally:
-        _job_lock.release()
+        _end_job()
 
 
 def start_job(main_loop, app, request: dict | None = None) -> bool:
@@ -785,9 +794,7 @@ def start_job(main_loop, app, request: dict | None = None) -> bool:
     except RuntimeError:
         # No thread could be started: nothing will release the lock but this.
         log.exception("HTTPS: setup thread not started")
-        _progress["running"] = False
-        _progress["step"] = ""
-        _job_lock.release()
+        _end_job()
         raise
     return True
 
