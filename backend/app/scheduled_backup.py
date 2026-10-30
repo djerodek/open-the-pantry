@@ -138,9 +138,16 @@ def due(enabled: bool, hour: int, last_success_at: datetime | None, now: datetim
     since that hour today (a "Back up now" earlier in the day doesn't
     count for it); at once if none has worked for 36 hours (the server was
     off at that hour); and after a failure (failed_at, the last attempt
-    when it failed), again every hour until one works."""
+    when it failed), again every hour until one works.
+
+    Once a day: the set hour is compared on the clock, not as an instant,
+    so the hour repeated when clocks go back doesn't make a second one
+    (GPT review of 0134: 1:00 set, made at the first 1:30, due again at the
+    second). The last success is read in local time with that day's
+    offset: the system's zone, or now's zone when now is given."""
     if not enabled:
         return False
+    to_local = (lambda d: d.astimezone(now.tzinfo)) if now is not None else (lambda d: d.astimezone())
     now = now or datetime.now().astimezone()
     last_success_at, failed_at = _aware(last_success_at), _aware(failed_at)
     if failed_at is not None and now - failed_at < RETRY_AFTER:
@@ -153,9 +160,10 @@ def due(enabled: bool, hour: int, last_success_at: datetime | None, now: datetim
         return True
     if last_success_at is None or now - last_success_at > CATCH_UP_AFTER:
         return True
-    slot = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-    if slot > now:
+    wall_now = now.replace(tzinfo=None)
+    slot = wall_now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if slot > wall_now:
         slot -= timedelta(days=1)
-    if last_success_at >= slot:
-        return False                       # made since the latest set hour
+    if to_local(last_success_at).replace(tzinfo=None) >= slot:
+        return False                       # made since the latest set hour, on the clock
     return now.hour == hour or failed_at is not None

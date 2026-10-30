@@ -679,19 +679,18 @@ def _issue(dns: CpanelDns, zone: str, domain: str, email: str) -> datetime:
     return expires
 
 
-def run_setup(main_loop=None, app=None, request: dict | None = None):
-    """The whole job, in a worker thread. request holds the values from the
-    form (domain, lan_address, email, port); None renews with the saved
-    ones. The saved settings change only when it succeeds, so a failed
-    attempt with a new name leaves a working setup as it was. Progress goes
-    to _progress; errors to last_error.
+def _setup(main_loop, app, request: dict | None):
+    """The whole job. request holds the values from the form (domain,
+    lan_address, email, port); None renews with the saved ones. The saved
+    settings change only when it succeeds, so a failed attempt with a new
+    name leaves a working setup as it was. Progress goes to _progress;
+    errors to last_error.
 
-    Runs with _job_lock held, taken by start_job, and releases it at the end
-    (DeepSeek review of 0132: a caller without it would have had the
-    release fail in the finally block and hide the real error)."""
+    Called only by run_setup and start_job's thread, which took _job_lock
+    and release it themselves (DeepSeek and GPT reviews of 0132/0134: this
+    released a lock it might not hold, then checked only that someone held
+    it, which reserved() also does)."""
     global _active_domain
-    if not _job_lock.locked():
-        raise RuntimeError("run_setup runs from start_job, which holds _job_lock")
     db = SessionLocal()
     try:
         s = _settings(db)
@@ -751,16 +750,45 @@ def run_setup(main_loop=None, app=None, request: dict | None = None):
         db.close()
         _progress["running"] = False
         _progress["step"] = ""
+
+
+def run_setup(main_loop=None, app=None, request: dict | None = None) -> bool:
+    """Runs the job in this thread; False, without running, while another
+    job or reserved() holds _job_lock."""
+    if not _job_lock.acquire(blocking=False):
+        return False
+    _progress["running"] = True
+    try:
+        _setup(main_loop, app, request)
+    finally:
+        _job_lock.release()
+    return True
+
+
+def _run_owned(main_loop, app, request):
+    """start_job's thread: the lock start_job took is released here."""
+    try:
+        _setup(main_loop, app, request)
+    finally:
         _job_lock.release()
 
 
 def start_job(main_loop, app, request: dict | None = None) -> bool:
-    """Starts run_setup in a thread unless one is already running."""
+    """Starts the job in a thread unless one is already running."""
     if not _job_lock.acquire(blocking=False):
         return False
     _progress["running"] = True
     _progress["step"] = "Starting…"
-    threading.Thread(target=run_setup, args=(main_loop, app, request), name="https-setup", daemon=True).start()
+    try:
+        threading.Thread(target=_run_owned, args=(main_loop, app, request), name="https-setup",
+                         daemon=True).start()
+    except RuntimeError:
+        # No thread could be started: nothing will release the lock but this.
+        log.exception("HTTPS: setup thread not started")
+        _progress["running"] = False
+        _progress["step"] = ""
+        _job_lock.release()
+        raise
     return True
 
 

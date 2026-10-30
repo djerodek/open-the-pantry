@@ -201,9 +201,8 @@ def test_validation(domain, lan, email, ok):
 # ---------------------------------------------------------------------------
 
 def _run(https_setup, request=None):
-    assert https_setup._job_lock.acquire(blocking=False)
-    https_setup._progress["running"] = True
-    https_setup.run_setup(None, None, request)
+    assert https_setup.run_setup(None, None, request)
+    assert not https_setup._job_lock.locked()
 
 
 def test_setup_saves_only_on_success(monkeypatch, cpanel, creds, fresh_settings):

@@ -1239,8 +1239,9 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
             try:
                 tag_ins.append(schemas.TagIn(**t))
             except ValueError:
-                log.warning("Email: suggested tag %r left off: not a valid tag", str(t.get("name"))[:60],
-                            exc_info=True)
+                # Expected for such a tag: the name is enough, no traceback
+                # (GPT review of 0134).
+                log.warning("Email: suggested tag %r left off: not a valid tag", str(t.get("name"))[:60])
         _apply_tags(db, recipe, tag_ins)
         db.commit()
     except Exception:

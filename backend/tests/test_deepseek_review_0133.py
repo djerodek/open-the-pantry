@@ -1,7 +1,7 @@
 """DeepSeek review of 0132 (2026-10-25): "Moules à la marinière" tagged
 Vegetarian (read as a baking tin); one invalid suggested tag failed an
 emailed recipe whole; run_setup released a lock it might not hold; a Recipe
-under mainEntity was missed; the HTTPS port was unbounded; _copy_upload
+under mainEntity was missed; the HTTPS port was unbounded (the lock: test_gpt_review_0134.py); _copy_upload
 joined names without safe_join; josepy unpinned."""
 import json
 from pathlib import Path
@@ -49,14 +49,6 @@ def test_an_invalid_suggested_tag_is_left_off_not_the_recipe(client, monkeypatch
     finally:
         client.delete(f"/api/recipes/{rid}")
         client.delete(f"/api/recently-deleted/{rid}")
-
-
-def test_run_setup_needs_the_lock():
-    from app import https_setup
-    assert not https_setup._job_lock.locked()
-    with pytest.raises(RuntimeError, match="_job_lock"):
-        https_setup.run_setup(None, None, {})
-    assert not https_setup._job_lock.locked()
 
 
 def test_a_recipe_under_main_entity_is_found():
