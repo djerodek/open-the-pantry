@@ -684,8 +684,14 @@ def run_setup(main_loop=None, app=None, request: dict | None = None):
     form (domain, lan_address, email, port); None renews with the saved
     ones. The saved settings change only when it succeeds, so a failed
     attempt with a new name leaves a working setup as it was. Progress goes
-    to _progress; errors to last_error."""
+    to _progress; errors to last_error.
+
+    Runs with _job_lock held, taken by start_job, and releases it at the end
+    (DeepSeek review of 0132: a caller without it would have had the
+    release fail in the finally block and hide the real error)."""
     global _active_domain
+    if not _job_lock.locked():
+        raise RuntimeError("run_setup runs from start_job, which holds _job_lock")
     db = SessionLocal()
     try:
         s = _settings(db)

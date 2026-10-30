@@ -1231,7 +1231,16 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
             db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
         for pos, step in enumerate(result["steps"]):
             db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
-        tag_ins = [schemas.TagIn(**t) for t in result["tags"]]
+        # A suggested tag that doesn't fit TagIn (a name over 100 characters
+        # from a restored library) is left off, not the whole recipe
+        # (DeepSeek review of 0132).
+        tag_ins = []
+        for t in result["tags"]:
+            try:
+                tag_ins.append(schemas.TagIn(**t))
+            except ValueError:
+                log.warning("Email: suggested tag %r left off: not a valid tag", str(t.get("name"))[:60],
+                            exc_info=True)
         _apply_tags(db, recipe, tag_ins)
         db.commit()
     except Exception:
@@ -2219,7 +2228,9 @@ def _copy_upload(src: str, name: str, who: str):
     """A recipe photo copied to uploads/<name> for Merge or Duplicate. A copy
     that fails part way (disk full) leaves nothing behind, and nothing is
     changed (GPT reviews of 0129 and 0132)."""
-    dest = os.path.join(UPLOADS_DIR, name)
+    dest = safe_join(UPLOADS_DIR, name)
+    if not dest:
+        raise HTTPException(status_code=500, detail="The photo couldn't be copied. Nothing was changed.")
     try:
         shutil.copyfile(src, dest)
     except OSError:

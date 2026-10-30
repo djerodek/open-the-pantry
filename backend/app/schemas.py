@@ -412,7 +412,7 @@ class HttpsSetupIn(BaseModel):
     domain: str = Field(default="", max_length=253)  # empty = PANTRY_DOMAIN
     lan_address: str = Field(max_length=45)
     email: str = Field(max_length=254)
-    port: int = 8443
+    port: int = Field(default=8443, ge=1, le=65535)
 
 
 class AdminPasswordIn(BaseModel):

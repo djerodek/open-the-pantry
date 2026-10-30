@@ -343,10 +343,17 @@ def _try_json_ld(html: str):
         # Some sites nest the Recipe inside an @graph array.
         expanded = []
         for c in candidates:
-            if isinstance(c, dict) and "@graph" in c:
+            if isinstance(c, dict) and isinstance(c.get("@graph"), list):
                 expanded.extend(c["@graph"])
             else:
                 expanded.append(c)
+        # Or under a WebPage's mainEntity / mainEntityOfPage (some CMSes;
+        # DeepSeek review of 0132).
+        for c in list(expanded):
+            if isinstance(c, dict):
+                for key in ("mainEntity", "mainEntityOfPage"):
+                    inner = c.get(key)
+                    expanded.extend(inner if isinstance(inner, list) else [inner])
 
         for item in expanded:
             if not isinstance(item, dict):

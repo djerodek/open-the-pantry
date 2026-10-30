@@ -20,4 +20,7 @@ cryptography==50.0.1
 # Settings -> HTTPS: Let's Encrypt (the ACME client certbot is built on) and
 # the DNS check that waits for the challenge record.
 acme==5.8.0
+# acme's own dependency, imported directly by https_setup: pinned so an
+# acme release can't change it underneath (DeepSeek review of 0132).
+josepy==2.2.0
 dnspython==2.8.0

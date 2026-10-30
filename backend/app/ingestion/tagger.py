@@ -90,7 +90,10 @@ _FLAVOURING = re.compile(
 
 # "un moule a gateau", "deux moules a muffins": in French a moule is also a
 # baking tin. Removed before looking for Fish.
-_BAKING_TIN = re.compile(r"\bmoules?\s+(?:a|de|en)\s+\w+")
+# "moule à gâteau", "moule à tarte": a baking tin, not mussels. Not when an
+# article follows: "moules à la marinière", "moules à la crème" are mussels
+# (DeepSeek review of 0132: the title alone came out Vegetarian).
+_BAKING_TIN = re.compile(r"\bmoules?\s+(?:a|de|en)\s+(?!(?:la|le|les|l)\b)\w+")
 
 
 def _fold(text: str) -> str:
