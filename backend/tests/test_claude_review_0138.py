@@ -119,3 +119,20 @@ def test_long_unbroken_text_wraps_in_the_pdf():
     template = (ROOT / "backend/app/templates/recipe_export.html").read_text(encoding="utf-8")
     body = template[template.index("  body {"):template.index("}", template.index("  body {"))]
     assert "overflow-wrap: anywhere" in body
+
+
+@pytest.mark.parametrize("message,code,busy", [
+    ("database is locked", None, True), ("database table is locked", None, True),
+    ("database schema is locked", None, True), ("disk I/O error", None, False),
+    ("anything", "SQLITE_BUSY", True), ("anything", "SQLITE_LOCKED_SHAREDCACHE", True),
+    ("anything", "SQLITE_BUSY_SNAPSHOT", True), ("no such table: x", "SQLITE_ERROR", False),
+])
+def test_both_sqlite_busy_results_are_a_503(message, code, busy):
+    """GPT review of 0140: only "database is locked" was recognised;
+    SQLITE_LOCKED ("database table is locked") gave a 500."""
+    import sqlalchemy.exc
+    from app import main
+    orig = sqlite3.OperationalError(message)
+    if code:
+        orig.sqlite_errorname = code
+    assert main._database_busy(sqlalchemy.exc.OperationalError("SELECT 1", {}, orig)) is busy

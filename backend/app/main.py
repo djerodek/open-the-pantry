@@ -446,12 +446,27 @@ def _host_allowed(host_header: str) -> bool:
     return "." not in host or host.endswith(_LOCAL_SUFFIXES)
 
 
+# SQLite's two "try again" results: SQLITE_BUSY ("database is locked",
+# another connection's write) and SQLITE_LOCKED ("database table is
+# locked", "database schema is locked": a conflict on the same
+# connection). Read from the error's code, with the message as the
+# fallback for an error without one (GPT review of 0140).
+_BUSY_CODES = ("SQLITE_BUSY", "SQLITE_LOCKED")      # and their extended codes (_SNAPSHOT, _SHAREDCACHE, ...)
+_BUSY_MESSAGES = ("database is locked", "database table is locked", "database schema is locked")
+
+
+def _database_busy(exc: sqlalchemy.exc.OperationalError) -> bool:
+    orig = exc.orig if exc.orig is not None else exc
+    name = getattr(orig, "sqlite_errorname", "") or ""
+    return name.startswith(_BUSY_CODES) or any(m in str(orig) for m in _BUSY_MESSAGES)
+
+
 @app.exception_handler(sqlalchemy.exc.OperationalError)
 async def _database_busy_handler(request: Request, exc: sqlalchemy.exc.OperationalError):
     """"database is locked" after BUSY_TIMEOUT_SECONDS: busy, not broken,
     so a 503 that says to try again instead of a bare 500. Any other
     OperationalError is still a 500."""
-    if "database is locked" not in str(exc.orig if exc.orig is not None else exc):
+    if not _database_busy(exc):
         log.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     log.warning("Database busy on %s %s: %s", request.method, request.url.path, exc.orig)
