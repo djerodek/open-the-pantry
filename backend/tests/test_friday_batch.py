@@ -104,7 +104,9 @@ def test_export_labels_follow_the_app_language(client):
     fr = client.get(f"/api/recipes/{rid}/export.html?include_notes=true", headers=FR).text
     assert "<h2>Ingredients</h2>" in en and "Servings:" in en
     assert "<h2>Ingrédients</h2>" in fr and "<h2>Préparation</h2>" in fr
-    assert "Portions : 4" in fr and 'lang="fr-CA"' in fr
+    # lang= is the recipe's language from 0138 (this one is English); the
+    # labels follow the app (Claude review of 0138).
+    assert "Portions\u00a0: 4" in fr and 'lang="en"' in fr
     assert "saisie manuelle" in fr
 
 

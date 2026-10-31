@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ 'fr-CA' if lang == 'fr' else 'en' }}">
+<html lang="{{ 'fr-CA' if content_lang == 'fr' else 'en' }}">
 <head>
 <meta charset="utf-8">
 <title>{{ recipe.title }}</title>
@@ -11,6 +11,9 @@
     max-width: 680px;
     margin: 0 auto;
     line-height: 1.5;
+    /* A long word or a link without hyphens breaks instead of running off
+       the page (Claude review of 0138: up to 51 characters past the edge). */
+    overflow-wrap: anywhere;
   }
   h1 {
     font-size: 28px;
@@ -112,7 +115,7 @@
     {% elif recipe.source_type == 'manual' %}
       {{ t("Source") }}{{ colon }} {{ t("handwritten / manual entry") }}
     {% else %}
-      {{ t("Source") }}{{ colon }} {{ t(recipe.source_type) }}
+      {{ t("Source") }}{{ colon }} {{ t(source_label) }}
     {% endif %}
   </div>
 </body>

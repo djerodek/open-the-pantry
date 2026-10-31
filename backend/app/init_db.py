@@ -122,6 +122,19 @@ for _table in ("ingredients", "steps"):
         """)
 
 
+# The columns every recipe save, edit, delete and load looks rows up by.
+# Without them each content trigger above read the whole ingredients and
+# steps tables: saving one recipe took 104 ms at 4,000 recipes (21 ms at
+# 260), and emptying 1,000 from Recently deleted held the write lock for
+# 6 s (Claude review of 0138). recipe_tags' key starts with recipe_id, so
+# only tag_id needs its own.
+INDEX_SQL = [
+    "CREATE INDEX IF NOT EXISTS ix_ingredients_recipe_id ON ingredients (recipe_id)",
+    "CREATE INDEX IF NOT EXISTS ix_steps_recipe_id ON steps (recipe_id)",
+    "CREATE INDEX IF NOT EXISTS ix_recipe_tags_tag_id ON recipe_tags (tag_id)",
+]
+
+
 def _migrate_and_setup_schema():
     """
     Runs entirely on a single, isolated sqlite3 connection (not the
@@ -249,6 +262,8 @@ def init_db():
         # The index's own word list, for search's typo tolerance (search.py).
         conn.execute(text(FTS_VOCAB_SQL))
         for stmt in FTS_TRIGGER_SQL + CONTENT_TRIGGER_SQL:
+            conn.execute(text(stmt))
+        for stmt in INDEX_SQL:
             conn.execute(text(stmt))
         # Recipes added from a page with no yield before that was fixed in
         # url_ingest hold the text "None" as their servings.

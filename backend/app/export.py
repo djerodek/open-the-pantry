@@ -57,6 +57,13 @@ def render_recipe_html(recipe, absolute_image_path: str | None = None, include_n
     endpoint always passes False: the showcase image isn't meant to be
     part of the shared PDF."""
     template = _env.get_template("recipe_export.html")
+    # The recipe's own language (set, or guessed from its text as What to
+    # eat? does), so a French recipe exported from the English interface is
+    # marked French (screen readers, translation); the labels stay in the
+    # interface's (Claude review of 0138).
+    from .language import recipe_language
+    content_lang = recipe_language(getattr(recipe, "language", None), recipe.title,
+                                   getattr(recipe, "content_text", None))
     image_data_uri = _image_to_data_uri(absolute_image_path) if (absolute_image_path and include_image) else None
     show_notes = include_notes and bool(recipe.notes)
     # Labels in the language of the request that asked for the export.
@@ -64,7 +71,13 @@ def render_recipe_html(recipe, absolute_image_path: str | None = None, include_n
     return template.render(recipe=recipe, image_data_uri=image_data_uri, show_notes=show_notes,
                            cook_time_label=cook_time_label(getattr(recipe, "actual_cook_time_minutes", None), lang),
                            lang=lang, t=lambda text: i18n.t(text, lang),
+                           content_lang=content_lang,
+                           source_label=SOURCE_LABELS.get(recipe.source_type, recipe.source_type),
                            colon="\u00a0:" if lang == "fr" else ":")
+
+
+# The recipe page's labels (frontend sourceBadge), not the stored codes.
+SOURCE_LABELS = {"url": "Web", "pdf": "PDF", "screenshot": "Screenshot", "email": "Email", "import": "Imported"}
 
 
 def render_recipe_pdf(recipe, absolute_image_path: str | None = None, include_notes: bool = False,

@@ -3931,6 +3931,7 @@
     // Always release on close -- otherwise the screen stays on
     // indefinitely after you've walked away from the recipe.
     releaseWakeLock();
+    detailRecipeId = null;
     closeModal(detailOverlay);
     if (listStale) { listStale = false; renderRecipeList(currentRecipes); }
   }
@@ -3944,8 +3945,11 @@
   // tap seemed to do nothing and people tapped again. Only the latest tap
   // counts, and closing the dialog while it loads cancels the open.
   let detailTicket = 0;
+  // The recipe the dialog shows, for Print (null while loading or closed).
+  let detailRecipeId = null;
   async function openRecipeDetail(id) {
     const ticket = ++detailTicket;
+    detailRecipeId = null;
     const body = $("#recipe-detail-body");
     wakeLockListeners.clear();
     body.replaceChildren(el("p", { class: "detail-loading", role: "status", text: tx("Loading...") }));
@@ -4148,7 +4152,7 @@
           },
         }));
       }
-      container.appendChild(el("div", { style: "display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;" }, controls));
+      container.appendChild(el("div", { class: "photo-controls", style: "display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;" }, controls));
     }
 
     render();
@@ -4402,6 +4406,7 @@
   function renderRecipeDetail(recipe) {
     const body = $("#recipe-detail-body");
     body.innerHTML = "";
+    detailRecipeId = recipe.id;
     // The previous detail view's toggle is about to be destroyed; drop
     // its listener so callbacks don't accumulate one per recipe opened.
     wakeLockListeners.clear();
@@ -4682,9 +4687,17 @@
   // The four share actions, built once and reused by both presentations:
   // the dropdown on the recipe detail page and the centred sheet opened from
   // a card in the list. onDone() closes whichever container invoked them.
+  // Print prints the open recipe (the print styles hide the list while one
+  // is open). From a list card, that recipe is opened first: printing used
+  // to give the list, or the recipe last viewed (Claude review of 0138).
+  async function printRecipe(id) {
+    if (detailOverlay.hidden || detailRecipeId !== id) await openRecipeDetail(id);
+    if (detailRecipeId === id) window.print();
+  }
+
   function shareActionButtons(recipe, onDone) {
     return [
-      el("button", { type: "button", text: tx("Print"), onclick: () => { onDone(); window.print(); } }),
+      el("button", { type: "button", text: tx("Print"), onclick: () => { onDone(); printRecipe(recipe.id); } }),
       el("button", {
         type: "button", text: tx("Download PDF"),
         onclick: () => {

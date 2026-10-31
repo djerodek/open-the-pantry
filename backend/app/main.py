@@ -18,6 +18,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Re
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
+import sqlalchemy.exc
 from sqlalchemy import text, case, asc, desc, func
 from sqlalchemy.orm import Session, selectinload
 
@@ -548,6 +549,20 @@ class _HttpsOnly(Exception):
 def _https_only_response(url: str) -> JSONResponse:
     return JSONResponse(status_code=403, content={
         "detail": f"HTTPS is on, so this opens only at the secure address: {url}", "https_url": url})
+
+
+@app.exception_handler(sqlalchemy.exc.OperationalError)
+async def _database_busy_handler(request: Request, exc: sqlalchemy.exc.OperationalError):
+    """"database is locked" after BUSY_TIMEOUT_SECONDS: busy, not broken,
+    so a 503 that says to try again instead of a bare 500. Any other
+    OperationalError is still a 500."""
+    if "database is locked" not in str(exc.orig if exc.orig is not None else exc):
+        log.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+    log.warning("Database busy on %s %s: %s", request.method, request.url.path, exc.orig)
+    # In French through the response translation, like any detail.
+    return JSONResponse(status_code=503, content={"detail": "The app is busy with another change. Try again in a moment."},
+                        headers={"Retry-After": "5"})
 
 
 @app.exception_handler(_HttpsOnly)
@@ -2384,15 +2399,25 @@ def _binned(db: Session):
             .filter(models.Recipe.deleted_at.isnot(None)))
 
 
+# Recipes deleted for good per commit: other writes get the lock between
+# chunks instead of waiting for the whole batch (Claude review of 0138).
+DELETE_CHUNK = 100
+
+
 def _delete_for_good(db: Session, recipes: list) -> int:
     """Rows first, files once the commit has landed (a file deleted before
-    a failed commit would leave a row pointing at nothing)."""
-    for r in recipes:
-        db.delete(r)
-    db.commit()
-    for r in recipes:
-        _delete_recipe_files(r)
-    return len(recipes)
+    a failed commit would leave a row pointing at nothing), a chunk at a
+    time."""
+    done = 0
+    for start in range(0, len(recipes), DELETE_CHUNK):
+        chunk = recipes[start:start + DELETE_CHUNK]
+        for r in chunk:
+            db.delete(r)
+        db.commit()
+        for r in chunk:
+            _delete_recipe_files(r)
+        done += len(chunk)
+    return done
 
 
 def purge_recently_deleted() -> int:

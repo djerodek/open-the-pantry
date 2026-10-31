@@ -39,7 +39,9 @@ _FR_PHRASES = {
     "Notes": "Notes",
     "Source": "Source",
     "handwritten / manual entry": "saisie manuelle ou manuscrite",
-    "url": "Web", "pdf": "PDF", "screenshot": "capture d'écran", "manual": "saisie manuelle", "email": "courriel",
+    # How the recipe came in, as the recipe page's badge says it (frontend
+    # sourceBadge); the export showed the stored code ("import", "url").
+    "Web": "Web", "PDF": "PDF", "Screenshot": "Capture d'écran", "Email": "Courriel", "Imported": "Importée",
     "Ingested:": "Reçues :",
     "Failed:": "En échec :",
     "(unknown subject)": "(objet inconnu)",
@@ -474,6 +476,8 @@ _FR_PATTERNS = [
        r"\1 a refusé la demande (HTTP \2). Les sites protégés contre les robots font ça; enregistrez la page en "
        r"PDF ou faites une capture d'écran, et ajoutez-la plutôt."),
     _p(r"(\S+) answered with HTTP (\d+)\.", r"\1 a répondu avec le code HTTP \2."),
+    _p(r"The app is busy with another change\. Try again in a moment\.",
+       "L'application est occupée par une autre modification. Réessayez dans un instant."),
     # A site that couldn't be reached (url_ingest.SiteUnreachableError)
     _p(r"(\S+) didn't answer within (\d+) seconds; some sites only answer web browsers\. Save the page as a PDF "
        r"or take a screenshot, and add that instead\.",

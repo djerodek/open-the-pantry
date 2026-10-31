@@ -444,3 +444,36 @@ def test_picker_language_choice(server, api, page):
             assert fr["title"] in p.page.inner_text("#result-card-slot")
     finally:
         api.put("/api/picker/settings", json={"enabled": False})
+
+
+def test_print_gives_only_the_chosen_recipe(server, api, page):
+    """Claude review of 0138: Print put the whole list before the recipe,
+    and from a card printed the recipe last viewed (or only the list)."""
+    a = add_recipe(api, f"Print apple {uuid.uuid4().hex[:6]}")
+    z = add_recipe(api, f"Print zebra {uuid.uuid4().hex[:6]}")
+    pg = page().page
+    pg.goto(server["url"])
+    pg.wait_for_selector(f"text={a['title']}")
+    # Ends in null: an expression that evaluates to a function is called by
+    # Playwright's evaluate.
+    pg.evaluate("window.__printed = []; window.print = () => window.__printed.push("
+                "document.querySelector('#recipe-detail-heading')?.textContent || null); null")
+    # View zebra, close it, then Print from apple's card.
+    pg.click(f"text={z['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click("#recipe-detail-close")
+    pg.wait_for_selector("#recipe-detail-overlay", state="hidden")
+    pg.click(f".recipe-card:has-text('{a['title']}') .card-share-btn")
+    pg.click("#share-sheet-actions button:has-text('Print')")
+    wait_until(pg, "window.__printed.length === 1")
+    assert pg.evaluate("window.__printed") == [a["title"]]
+    # What the print styles show: the recipe, no list, no controls.
+    pg.emulate_media(media="print")
+    assert not pg.is_visible("#recipe-list-region") and pg.is_visible("#recipe-detail-heading")
+    for sel in ("#recipe-detail-body .card-quick-controls", ".recipe-record-actions", ".photo-controls"):
+        assert pg.locator(sel).count() and not pg.is_visible(sel), sel
+    # No recipe open: the list prints, the closed dialog's last recipe doesn't.
+    pg.emulate_media(media="screen")
+    pg.click("#recipe-detail-close")
+    pg.emulate_media(media="print")
+    assert pg.is_visible("#recipe-list-region") and not pg.is_visible("#recipe-detail-heading")

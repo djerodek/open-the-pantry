@@ -11,9 +11,16 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(TMP_DIR, exist_ok=True)
 
+# How long a write waits for another to finish before "database is
+# locked": sqlite3's default is 5 s, and emptying Recently deleted or the
+# daily clean-up could hold the lock longer, failing a favourite tap or an
+# emailed recipe's save with a 500 (Claude review of 0138). Deletes now go
+# in chunks; this is the margin for anything else.
+BUSY_TIMEOUT_SECONDS = 30
+
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": BUSY_TIMEOUT_SECONDS},
 )
 
 

@@ -1638,13 +1638,18 @@ main {
 @media print {
   .topbar, .sidebar, .fab, .toolbar-row, .filter-panel, .batch-bar, .share-menu-wrap, .skip-link,
   .notes-section, .wakelock-row, .recipe-facts-editor, .meta-edit,
-  #add-recipe-overlay, .modal-close {
+  #add-recipe-overlay, .modal-close,
+  /* Controls, not the recipe (Claude review of 0138). */
+  .photo-controls, .card-quick-controls, .recipe-record-actions, .review-banner {
     display: none !important;
   }
+  /* A recipe open: only it, not the list behind it (it printed first). */
+  body:has(#recipe-detail-overlay:not([hidden])) main { display: none !important; }
   .app-shell { display: block; }
   main { padding: 0; }
   body { background: #fff; }
-  #recipe-detail-overlay {
+  /* Only when open: a closed dialog still holds the last recipe viewed. */
+  #recipe-detail-overlay:not([hidden]) {
     position: static;
     background: none;
     padding: 0;
