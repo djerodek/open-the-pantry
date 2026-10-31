@@ -5,6 +5,10 @@ services:
       dockerfile: backend/Dockerfile
     container_name: open-the-pantry
     ports:
+      # Published on every address of this machine. On a machine with a
+      # public address (a VPS), firewall them or bind to the LAN/VPN
+      # address, e.g. "192.168.1.10:8090:8090": the app has no login, and
+      # Docker's published ports bypass ufw/firewalld.
       - "8090:8090"
       - "8443:8443"   # HTTPS, once set up in Settings -> HTTPS
       # What to eat?, once switched on in Settings. If 8091 is taken on this

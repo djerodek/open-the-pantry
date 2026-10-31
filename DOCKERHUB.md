@@ -41,7 +41,7 @@ Save as `docker-compose.yml`:
       open-the-pantry:
         image: djerodek/open-the-pantry:main
         container_name: open-the-pantry
-        ports:
+        ports:           # every address of the machine: firewall them on a VPS
           - "8090:8090"
           - "8443:8443"   # HTTPS, once set up in Settings
           - "8091:8091"   # What to eat?, once switched on in Settings
@@ -141,7 +141,8 @@ Tandoor have those.
   Shortcut) to import it
 - Automatic daily backups (optional), kept to the newest N, in the data
   folder or on another disk (`RECIPE_APP_BACKUP_DIR`)
-- Full backup (restore it from Settings), every recipe as PDFs, or every recipe as schema.org
+- Full backup (restore it from Settings; email login, keyword, allowed senders and HTTPS
+  details are left out), every recipe as PDFs, or every recipe as schema.org
   JSON for other recipe apps; import schema.org JSON or a Paprika export
 - Logs: Settings → Logs (view, download, clear), `docker logs
   open-the-pantry`, or `data/logs/app.log`

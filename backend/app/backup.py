@@ -55,6 +55,54 @@ def safe_pdf_filename(title: str, recipe_id: int) -> str:
     return f"{recipe_id:05d} - {cleaned}.pdf"
 
 
+# Never written into a backup, downloaded or automatic (owner's decision
+# after the Claude security audit of 0140: the backup download needs no
+# password, and held what the settings password guards): the email login
+# and its encrypted password, the subject keyword and allowed senders that
+# decide which emails are read, the notification address and the people
+# recipes were emailed to, and the HTTPS name and addresses. A restore
+# keeps the server's own (routes.backup); a new server needs them entered
+# again. Other settings (mail server names and ports, scan hour) stay.
+REDACTED_SETTINGS = {
+    "email_ingest_settings": {"enabled": 0, "username": None, "password_encrypted": None, "notify_email": None,
+                              "subject_keyword": "", "allowed_senders": "", "recent_recipients": "[]",
+                              "last_problem": None},
+    "https_settings": {"domain": None, "lan_address": None, "email": None, "a_record_value": None,
+                       "last_error": None},
+}
+
+
+def blank_settings(db_path: str) -> None:
+    """REDACTED_SETTINGS applied to a snapshot, then VACUUM, so the old
+    values aren't left in the file's free pages either."""
+    conn = sqlite3.connect(db_path)
+    try:
+        for table, values in REDACTED_SETTINGS.items():
+            cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            values = {k: v for k, v in values.items() if k in cols}
+            if values:
+                conn.execute(f"UPDATE {table} SET " + ", ".join(f"{k} = ?" for k in values), list(values.values()))
+        conn.commit()
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+
+
+def settings_blanked(db_path: str) -> bool:
+    """Whether a backup's email settings were blanked (a backup from 0143
+    on): an older backup still carries them, and a restore uses those."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT username, password_encrypted, subject_keyword, allowed_senders "
+                           "FROM email_ingest_settings LIMIT 1").fetchone()
+    except sqlite3.Error:
+        log.info("Restore: no email settings table in the backup", exc_info=True)
+        return True
+    finally:
+        conn.close()
+    return row is None or (row[0] is None and row[1] is None and row[2] == "" and row[3] == "")
+
+
 def snapshot_database(dest_path: str) -> None:
     """Write a consistent copy of the live database to dest_path.
 
@@ -108,6 +156,10 @@ This archive contains a complete copy of your recipe library:
   recipes.db    the database (recipes, tags, ratings, notes, settings)
   uploads/      every showcase photo and uploaded PDF
   manifest.json what was in it, and when it was taken
+
+Left out on purpose: the email login and password, subject keyword,
+allowed senders and recipients, and the HTTPS name. Restoring on this
+server keeps its own; on a new server, enter them again in Settings.
 
 To restore
 ----------
@@ -175,6 +227,11 @@ Cette archive contient une copie complète de votre bibliothèque de recettes :
   recipes.db    la base de données (recettes, étiquettes, notes, évaluations, paramètres)
   uploads/      toutes les photos et tous les PDF envoyés
   manifest.json son contenu, et la date de la sauvegarde
+
+Laissés de côté exprès : l'identifiant et le mot de passe de courriel, le
+mot-clé d'objet, les expéditeurs permis et destinataires, et le nom HTTPS.
+Une restauration sur ce serveur garde les siens; sur un nouveau serveur,
+entrez-les de nouveau dans les Paramètres.
 
 Pour restaurer
 --------------
@@ -276,6 +333,7 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
     from .file_validation import is_safe_stored_filename
 
     snapshot_database(tmp_db)
+    blank_settings(tmp_db)
     with sqlite3.connect(tmp_db) as snap:
         # Recipes in Recently deleted are in the backup (and come back there
         # on a restore) but aren't counted as the library's.

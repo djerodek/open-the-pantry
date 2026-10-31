@@ -67,6 +67,9 @@ those sections sets it.
     `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
     shows the digest of the image you're running.
 - **Images**: `linux/amd64` and `linux/arm64` (a NAS, a VPS, a Raspberry Pi).
+  The compose files publish the ports on every address of the machine; on
+  a VPS or any machine with a public address, put them behind a firewall
+  or VPN (Docker's published ports bypass ufw), since the app has no login.
   The app runs as a non-root user (UID 1000, or set `PUID`/`PGID`). On
   start the container fixes the data folder's ownership, so you don't need
   to `chown` anything.
@@ -407,8 +410,12 @@ In Settings → Backup & export:
   - **A full backup replaces the library**, after a check and a
     confirmation. It needs the settings password. A safety copy of the
     current library is written first (`restore-safety-<date>.zip`), and no
-    restart is needed. This server's HTTPS setup and email password are
+    restart is needed. This server's HTTPS setup and email settings are
     kept.
+  - **What a backup leaves out**: the email login and password, the subject
+    keyword, allowed senders, notification address and recent recipients,
+    and the HTTPS name and addresses. Anyone on your network can download a
+    backup, so these never go in one. On a new server, enter them again.
   - **Anything else adds its recipes**: schema.org `.json`, a `.zip` of
     them, or a Paprika export (`.paprikarecipes`). A recipe whose link is
     already saved is skipped. Archives are read with size limits.

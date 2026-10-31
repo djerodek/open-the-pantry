@@ -78,7 +78,10 @@ personne de votre réseau à ouvrir une de ces sections le choisit.
     `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
     affiche celle de l'image qui tourne.
 - **Images** : `linux/amd64` et `linux/arm64` (un NAS, un VPS, un Raspberry
-  Pi). L'application tourne sous un utilisateur non root (UID 1000, ou
+  Pi). Les fichiers compose publient les ports sur toutes les adresses de
+  la machine; sur un VPS ou toute machine ayant une adresse publique,
+  placez-les derrière un pare-feu ou un VPN (les ports publiés par Docker
+  contournent ufw), puisque l'application n'a pas de connexion. L'application tourne sous un utilisateur non root (UID 1000, ou
   `PUID`/`PGID`). Au démarrage, le conteneur corrige le propriétaire du
   dossier de données : aucun `chown` n'est nécessaire.
 - **Mémoire** : environ 160 Mo au repos, jusqu'à environ 3,4 Go au pire
@@ -465,8 +468,14 @@ Dans Paramètres → Sauvegarde et exportation :
     vérification et une confirmation. Elle demande le mot de passe des
     paramètres. Une copie de sécurité de la bibliothèque actuelle est
     d'abord écrite (`restore-safety-<date>.zip`), et aucun redémarrage
-    n'est nécessaire. La configuration HTTPS et le mot de passe de courriel
+    n'est nécessaire. La configuration HTTPS et les paramètres de courriel
     de ce serveur sont gardés.
+  - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
+    passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
+    de notification et les destinataires récents, ainsi que le nom et les
+    adresses HTTPS. N'importe qui sur votre réseau peut télécharger une
+    sauvegarde, alors ils n'y sont jamais. Sur un nouveau serveur,
+    entrez-les de nouveau.
   - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
     `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une
     recette dont le lien est déjà enregistré est sautée. Les archives sont

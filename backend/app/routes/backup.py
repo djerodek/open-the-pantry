@@ -19,7 +19,7 @@ from ..database import get_db, engine, SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_
 from ..init_db import init_db
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import suggest_tags
-from ..backup import build_database_backup, build_pdf_bundle, UPLOADS_LOCK
+from ..backup import build_database_backup, build_pdf_bundle, settings_blanked, UPLOADS_LOCK
 from .. import scheduled_backup
 from .. import crypto
 from .. import picker
@@ -518,20 +518,28 @@ def restore_check(request: Request, file: UploadFile = File(...), db: Session = 
     return info
 
 
-def _keep_https_rows() -> list[dict]:
+# Kept from the live database across a restore: HTTPS always (it belongs
+# to this server), and the email settings when the backup's were blanked
+# (backup.REDACTED_SETTINGS, from 0143); an older backup's are restored.
+_KEPT_TABLES = ("https_settings", "email_ingest_settings")
+
+
+def _keep_rows(table: str) -> list[dict]:
+    assert table in _KEPT_TABLES
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT * FROM https_settings")).mappings().all()
+        rows = conn.execute(text(f"SELECT * FROM {table}")).mappings().all()
     return [dict(r) for r in rows]
 
 
-def _put_back_https_rows(rows: list[dict]):
+def _put_back_rows(table: str, rows: list[dict]):
+    assert table in _KEPT_TABLES
     with engine.begin() as conn:
-        cols = {r[1] for r in conn.execute(text("PRAGMA table_info(https_settings)")).all()}
-        conn.execute(text("DELETE FROM https_settings"))
+        cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})")).all()}
+        conn.execute(text(f"DELETE FROM {table}"))
         for row in rows:
             row = {k: v for k, v in row.items() if k in cols}
             names = ", ".join(row)
-            conn.execute(text(f"INSERT INTO https_settings ({names}) VALUES ({', '.join(':' + k for k in row)})"), row)
+            conn.execute(text(f"INSERT INTO {table} ({names}) VALUES ({', '.join(':' + k for k in row)})"), row)
 
 
 def _clear_unusable_email_password() -> bool:
@@ -584,7 +592,9 @@ def restore_backup(payload: schemas.RestoreRequest):
         safety_name = f"restore-safety-{stamp}.zip"
         build_database_backup(os.path.join(DATA_DIR, safety_name))
         log.info("Restore: current data saved to %s", safety_name)
-        https_rows = _keep_https_rows()
+        kept_rows = {"https_settings": _keep_rows("https_settings")}
+        if settings_blanked(db_path):
+            kept_rows["email_ingest_settings"] = _keep_rows("email_ingest_settings")
 
         new_uploads = UPLOADS_DIR.rstrip("/") + ".restore-new"
         shutil.rmtree(new_uploads, ignore_errors=True)
@@ -594,7 +604,8 @@ def restore_backup(payload: schemas.RestoreRequest):
         restore_mod.copy_into_live(db_path, DB_PATH)
         engine.dispose()
         init_db()                                     # an older backup's schema brought up to date
-        _put_back_https_rows(https_rows)
+        for table, rows in kept_rows.items():
+            _put_back_rows(table, rows)
         old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
         shutil.rmtree(old_uploads, ignore_errors=True)
         email_cleared = _clear_unusable_email_password()
