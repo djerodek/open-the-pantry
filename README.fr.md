@@ -658,9 +658,13 @@ et chaque exécution utilise un dossier de données temporaire.
   problèmes d'accessibilité.
 
 L'intégration continue (`.github/workflows/ci.yml`) s'exécute à chaque
-envoi. Elle lance les deux suites de tests, un audit des dépendances (qui
-échoue sur toute vulnérabilité connue) et une construction Docker. L'image
-publiée n'est construite qu'une fois ces étapes réussies.
+envoi, chaque dimanche et sur demande (Actions -> CI -> Run workflow).
+Elle lance les deux suites de tests, un audit des dépendances (qui échoue
+sur toute vulnérabilité connue) et une construction Docker. L'image
+publiée n'est construite qu'une fois ces étapes réussies; l'exécution
+hebdomadaire la reconstruit donc avec l'image de base et les certificats
+racines les plus récents. GitHub suspend les exécutions planifiées après
+60 jours sans commit.
 
 ```
 backend/app/        application FastAPI (main.py), modèles, sauvegarde, HTTPS, On mange quoi?

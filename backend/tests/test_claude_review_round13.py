@@ -119,7 +119,7 @@ def test_the_image_is_published_only_after_ci():
     ci = workflows["ci.yml"]
     publish = ci[ci.index("\n  publish:"):]
     assert "needs: [test, browser, docker-build]" in publish
-    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in publish
+    assert "if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'" in publish
     assert publish.index("push: true") > publish.index("needs:")
     # Every action pinned to a commit.
     for name, text in workflows.items():

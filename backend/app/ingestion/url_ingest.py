@@ -297,19 +297,25 @@ def _try_recipe_scrapers(url: str, html: str):
         except Exception:
             log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
             pass
-        total_time = None
-        try:
-            total_time = str(scraper.total_time())
-        except Exception:
-            log.debug("_try_recipe_scrapers: caught error, continuing", exc_info=True)
-            pass
+        # Minutes, or None/0 when the page has none (str(None) stored
+        # "None"). Prep and cook were dropped, only the total kept (import
+        # corpus case p001).
+        def minutes(name):
+            try:
+                v = getattr(scraper, name)()
+            except Exception:
+                log.debug("_try_recipe_scrapers: no %s, continuing", name, exc_info=True)
+                return None
+            return str(v) if v else None
 
         return UrlIngestResult(
             title=scraper.title(),
             ingredients=ingredients,
             steps=steps,
             servings=servings,
-            total_time=total_time,
+            prep_time=minutes("prep_time"),
+            cook_time=minutes("cook_time"),
+            total_time=minutes("total_time"),
             image_url=image_url,
             raw_text=instructions,
             method="recipe-scrapers",

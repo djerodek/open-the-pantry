@@ -92,9 +92,10 @@ def test_export_from_your_library(client, tmp_path):
         assert (pdf_case / "input.txt").read_text(encoding="utf-8") == raw
         link_case = next(out.glob(f"{from_link:05d}-*"))
         assert corpus.load_meta(link_case)["url"] == "https://example.com/oat-pancakes"
-        # Scored like any case: the rules took the greeting for the title.
+        # Scored like any case (until 0138 the rules took the greeting for
+        # the title; now all right).
         scores = corpus.evaluate(pdf_case)["scores"]
-        assert scores["ingredients"] == 1.0 and scores["title"] < 0.5
+        assert scores["ingredients"] == 1.0 and scores["title"] == 1.0
         assert corpus.evaluate(link_case)["scores"]["total_time"] == 1.0
         # Run again: cases already there are kept (they may have been edited).
         again = corpus.export_library(backup, out, ids=ids, fetch=False)
@@ -123,7 +124,7 @@ def test_add_makes_a_draft(tmp_path):
     meta = corpus.load_meta(case)
     assert case.name == "a0001-pate" and meta["checked"] is False and meta["language"] == "fr"
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
-    assert expected["title"] == "Salut!" and len(expected["ingredients"]) == 4    # the import's own result
+    assert expected["title"] == "Pâte brisée" and len(expected["ingredients"]) == 4    # the import's own result
     out = io.StringIO()
     corpus.report(tmp_path / "c", out=out)
     assert "1 draft case(s) not scored" in out.getvalue()

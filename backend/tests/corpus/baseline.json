@@ -1,8 +1,8 @@
 {
   "p001-en-blog-json-ld": {
-    "cook_time": 0.0,
+    "cook_time": 1.0,
     "ingredients": 1.0,
-    "prep_time": 0.0,
+    "prep_time": 1.0,
     "servings": 1.0,
     "steps": 1.0,
     "title": 1.0,
@@ -20,8 +20,8 @@
   "p003-fr-email": {
     "ingredients": 1.0,
     "servings": 1.0,
-    "steps": 0.9434,
-    "title": 0.1176
+    "steps": 1.0,
+    "title": 1.0
   },
   "p004-en-two-parts": {
     "ingredients": 1.0,

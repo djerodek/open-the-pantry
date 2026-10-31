@@ -574,9 +574,12 @@ run uses a temporary data folder.
   rule is switched off, since zoom is off on purpose. An automated scan
   catches roughly a third of accessibility problems.
 
-CI (`.github/workflows/ci.yml`) runs on every push. It runs both test
-suites, a dependency audit (which fails on any known vulnerability) and a
-Docker build. The published image is built only once those pass.
+CI (`.github/workflows/ci.yml`) runs on every push, every Sunday, and on
+demand (Actions -> CI -> Run workflow). It runs both test suites, a
+dependency audit (which fails on any known vulnerability) and a Docker
+build. The published image is built only once those pass, so the weekly
+run also refreshes it with the newest base image and trusted roots.
+GitHub pauses scheduled runs after 60 days without a commit.
 
 ```
 backend/app/        FastAPI app (main.py), models, backup, HTTPS, picker

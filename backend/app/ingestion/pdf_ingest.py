@@ -401,7 +401,28 @@ _STEPS_END = re.compile(
 _COPYRIGHT = re.compile(r"^\s*(?:©|copyright\b)\s*(.*)$", re.IGNORECASE)
 
 
+# A letter's sign-off after the last step: "Bonne cuisine!", "Enjoy!",
+# "Cheers,". The whole line is the sign-off, so "Enjoy warm." and "Best
+# served cold." stay steps (import corpus case p003: "Bonne cuisine! Julie"
+# was joined to the last step).
+_SIGN_OFF = re.compile(
+    r"^\s*(?:bonne\s+(?:cuisine|d[ée]gustation|journ[ée]e|soir[ée]e)|bon\s+app[ée]tit|[àa]\s+bient[ôo]t|"
+    r"[àa]\s+la\s+prochaine|bises|bisous|gros\s+bisous|xoxo|amiti[ée]s|cordialement|merci|"
+    r"enjoy|happy\s+cooking|happy\s+baking|cheers|thanks|thank\s+you|love|best|(?:best|kind|warm)\s+regards|"
+    r"talk\s+soon|see\s+you)\s*[!.,]*\s*$",
+    re.IGNORECASE)
+# A letter's greeting before the recipe: "Salut!", "Bonjour à tous,", "Hi
+# Marc,". A greeting word, at most three more words, then ! or , (or the
+# word alone), so "Hello Fresh Chicken Bowl" is still a name.
+_GREETING = re.compile(
+    r"^\s*(?:salut|bonjour|bonsoir|coucou|all[ôo]|cher|ch[èe]re|chers|ch[èe]res|hi|hello|hey|dear|greetings)"
+    r"(?:(?:\s+[\w'’-]+){0,3}\s*[!,:]+|\s*[!,:]*)\s*$",
+    re.IGNORECASE)
+
+
 def _ends_steps(line: str) -> bool:
+    if _SIGN_OFF.match(line):
+        return True
     if _STEPS_END.match(line) or re.match(r"\s*((kitchen\s+)?tips?\s*>|recipe\s+types\b)", line, re.IGNORECASE):
         return True
     m = _COPYRIGHT.match(line)
@@ -581,7 +602,8 @@ def _guess_title(lines, ing_line_index):
                 and not re.search(r"\$\d", l) and _title_like(l) and not l.rstrip().endswith(",")
                 # "Sel et poivre au goût" under two sub-recipes is repeated,
                 # but it's an ingredient, not the name.
-                and not _QTY_START.match(l) and not _INGREDIENT_TAIL.search(l) and not _YIELD.match(l))
+                and not _QTY_START.match(l) and not _INGREDIENT_TAIL.search(l) and not _YIELD.match(l)
+                and not _GREETING.match(l) and not _SIGN_OFF.match(l))
 
     # A printed web page carries its address, and the address its name:
     # ".../garlic-butter-baked-cod/" points at "EASY GARLIC BUTTER BAKED COD"
@@ -622,9 +644,13 @@ def _guess_title(lines, ing_line_index):
     if repeated:
         return _tidy_title(_whole_title(lines, repeated[0]))
 
-    for n, l in enumerate(lines):
-        if ok(l):
-            return _tidy_title(_whole_title(lines, n))
+    # The first line that could be a name, preferring one that isn't a
+    # sentence: an email's "Voici la recette promise." comes before it
+    # (import corpus case p003).
+    for sentence_ok in (False, True):
+        for n, l in enumerate(lines[:limit] if not sentence_ok else lines):
+            if ok(l) and (sentence_ok or not re.search(r"[.!?]\s*$", l)):
+                return _tidy_title(_whole_title(lines, n))
     return "Untitled Recipe"
 
 
