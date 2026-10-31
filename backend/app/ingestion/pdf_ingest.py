@@ -292,6 +292,13 @@ def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
 
 _ocr_lang_cache = None
 
+# Each tesseract run is stopped after this long (pytesseract kills the
+# process and raises): a crafted image could otherwise hold one of the
+# three heavy-job slots indefinitely, and three would stop every import
+# and the email scan (Claude security audit of 0140). A full page takes
+# a few seconds.
+OCR_TIMEOUT_SECONDS = 120
+
 
 def ocr_lang() -> str:
     """"eng+fra" when the French language data is installed (it is in the
@@ -314,11 +321,12 @@ def _ocr_image(pil_image: Image.Image):
     if not pil_image.width or not pil_image.height:
         return "", None
     processed = _preprocess_for_ocr(pil_image)
-    text = pytesseract.image_to_string(processed, lang=ocr_lang())
+    text = pytesseract.image_to_string(processed, lang=ocr_lang(), timeout=OCR_TIMEOUT_SECONDS)
 
     # Per-word confidence average, used to drive the "OCR quality: low" badge.
     try:
-        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
+                                         timeout=OCR_TIMEOUT_SECONDS)
         confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
         avg_conf = sum(confidences) / len(confidences) if confidences else None
     except Exception:

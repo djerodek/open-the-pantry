@@ -149,6 +149,38 @@ class GuardedAdapter(HTTPAdapter):
         return host_params, pool_kwargs
 
 
+class PinnedAdapter(GuardedAdapter):
+    """Connects to one checked address for one host name, instead of
+    looking the name up again: url_ingest.validate_public_url resolves the
+    name, refuses private addresses and passes the address on, so a name
+    that answers differently the second time (DNS rebinding) can't send the
+    request to the LAN (Claude security audit of 0140). The certificate is
+    still checked against the name (SNI and hostname check), and the Host
+    header carries the name. A request for any other host is refused."""
+
+    def __init__(self, host: str, address: str, **kwargs):
+        self._host = host.strip("[]").lower()
+        self._address = address
+        super().__init__(**kwargs)
+
+    def build_connection_pool_key_attributes(self, request, verify, cert=None):
+        host_params, pool_kwargs = super().build_connection_pool_key_attributes(request, verify, cert)
+        if str(host_params.get("host", "")).strip("[]").lower() != self._host:
+            raise requests.exceptions.InvalidURL(
+                f"pinned to {self._host}, asked for {host_params.get('host')}")
+        host_params["host"] = self._address
+        if host_params.get("scheme") == "https":
+            # SNI and the context's own hostname check use this name.
+            # Not assert_hostname: urllib3 then turns check_hostname off
+            # on the context, which GuardedAdapter shares between sessions.
+            pool_kwargs["server_hostname"] = self._host
+        return host_params, pool_kwargs
+
+    def add_headers(self, request, **kwargs):
+        # Without it the Host header would be the address connected to.
+        request.headers["Host"] = requests.compat.urlparse(request.url).netloc.rsplit("@", 1)[-1]
+
+
 def guard_session(session: requests.Session) -> requests.Session:
     """The session's https:// requests through GuardedAdapter."""
     session.mount("https://", GuardedAdapter())
@@ -161,8 +193,18 @@ def session() -> requests.Session:
     return guard_session(requests.Session())
 
 
-def get(url, **kwargs) -> requests.Response:
+def get(url, pin: str | None = None, **kwargs) -> requests.Response:
     """requests.get through a guarded session (as requests.get does, one
-    session per call)."""
-    with session() as s:
+    session per call). pin: connect to this address for the URL's host
+    (PinnedAdapter), for both http and https; the session then ignores
+    proxy settings from the environment, which would look the name up
+    again on the proxy's side."""
+    if pin is None:
+        with session() as s:
+            return s.get(url, **kwargs)
+    with requests.Session() as s:
+        s.trust_env = False
+        host = requests.compat.urlparse(url).hostname or ""
+        s.mount("http://", PinnedAdapter(host, pin))
+        s.mount("https://", PinnedAdapter(host, pin))
         return s.get(url, **kwargs)

@@ -147,3 +147,17 @@ def test_every_outgoing_connection_uses_the_guard():
         assert "requests.get(" not in text.replace("requests.get()'s", ""), f
         assert "requests.post(" not in text, f
     assert "tls.guard_session(net.session)" in (app / "https_setup.py").read_text(encoding="utf-8")
+
+
+def test_a_pinned_connection_checks_the_certificate_against_the_name(pki, server):
+    """Claude security audit of 0140: url_ingest connects to the address it
+    checked (no second lookup). Over https the certificate is still checked
+    against the name, not the address."""
+    from app import tls
+    import requests
+    root = str(pki["dir"] / "root.pem")
+    assert tls.get(f"https://localhost:{server}/", pin="127.0.0.1", timeout=5, verify=root).text == "ok"
+    with pytest.raises(requests.exceptions.SSLError):          # the certificate is for localhost
+        tls.get(f"https://pinned.example:{server}/", pin="127.0.0.1", timeout=5, verify=root)
+    # The shared guarded context still checks names for unpinned requests.
+    assert tls._context_for_requests(root).check_hostname is True

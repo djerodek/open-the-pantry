@@ -649,6 +649,9 @@ def _security_headers(request: Request, response):
         f"connect-src {connect}; manifest-src 'self'; worker-src 'self'; "
         "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
     response.headers["X-Frame-Options"] = "DENY"
+    # Served as the type it's labelled, never sniffed into another (photos
+    # and drafts under /uploads and /tmp-preview; security audit of 0140).
+    response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
 

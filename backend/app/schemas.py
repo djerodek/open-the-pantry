@@ -19,10 +19,13 @@ from .file_validation import is_safe_stored_filename
 def _validate_stored_filename(v):
     """Filename fields accept only names this app generated. Without this,
     os.path.join() would let an absolute path or a traversal escape the
-    uploads directory -- see file_validation.is_safe_stored_filename."""
+    uploads directory -- see file_validation.is_safe_stored_filename.
+    These fields name a recipe's photo, so a PDF draft's name is refused
+    too (it was accepted and then served from /uploads; security audit of
+    0140)."""
     if v is None or v == "":
         return None
-    if not is_safe_stored_filename(v):
+    if not is_safe_stored_filename(v) or v.endswith(".pdf"):
         raise ValueError("invalid image reference")
     return v
 

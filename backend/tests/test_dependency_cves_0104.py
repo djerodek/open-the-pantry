@@ -196,4 +196,4 @@ def test_patched_library_versions():
         return tuple(int(p) for p in re.findall(r"\d+", s)[:3])
 
     assert v(PIL.__version__) >= (13, 0, 0)
-    assert v(pypdf.__version__) >= (6, 21, 2)
+    assert v(pypdf.__version__) >= (6, 21, 4)    # 7 advisories in 6.21.2 (security audit of 0140)

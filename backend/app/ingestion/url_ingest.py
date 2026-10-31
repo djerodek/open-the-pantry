@@ -24,31 +24,54 @@ class UrlValidationError(ValueError):
     pass
 
 
-def validate_public_url(url: str):
-    """Reject URLs that resolve to private/loopback/link-local/reserved
-    addresses. This endpoint has no auth in front of it, so without this
-    check it could be used as an SSRF proxy against internal network
-    services or cloud metadata endpoints (169.254.169.254 etc). Runs before
-    any fetch is attempted -- including recipe_scrapers' own internal
-    fetch, which this app doesn't otherwise control.
+# A backslash or a control character: browsers and parsers disagree on
+# where the host ends ("http://127.0.0.1:8099\\@example.com/": urlparse
+# reads example.com, requests connects to 127.0.0.1). Claude security
+# audit of 0140, confirmed against a local server.
+_UNSAFE_URL_CHARS = re.compile(r"[\\\x00-\x1f\x7f]")
 
-    This is a DNS-resolve-time check, not a connection-time one, so it
-    doesn't defend against DNS rebinding (a host resolving to a public IP
-    now and a private one at actual fetch time). That's a deliberate
-    scope/complexity tradeoff for a personal self-hosted tool, not an
-    oversight -- closing it fully would mean a custom requests transport
-    that re-validates the IP at connect time."""
+
+def _request_host(url: str) -> str | None:
+    """The host requests will connect to: read by urllib3 from the URL as
+    requests prepares it, not by urlparse."""
+    import urllib3
+    try:
+        return urllib3.util.parse_url(requests.Request("GET", url).prepare().url).host
+    except Exception:
+        log.info("URL not parsed by requests: %r", url[:200], exc_info=True)
+        return None
+
+
+def validate_public_url(url: str) -> str:
+    """Reject URLs that resolve to private/loopback/link-local/reserved
+    addresses, and return the checked address to connect to. This endpoint
+    has no auth in front of it, so without this check it could be used as
+    an SSRF proxy against internal network services or cloud metadata
+    endpoints (169.254.169.254 etc). Runs before any fetch is attempted.
+
+    The host is the one requests will connect to (both parsers must agree),
+    and safe_get connects to the address returned here rather than looking
+    the name up again: a name that answers with a public address for the
+    check and a private one for the connection (DNS rebinding) reaches
+    nothing (Claude security audit of 0140; the gap had been accepted as
+    a LAN-only risk, but the URLs come from emails and imported pages)."""
+    if _UNSAFE_URL_CHARS.search(url):
+        raise UrlValidationError("The address contains a backslash or a control character.")
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise UrlValidationError("Only http/https URLs are supported.")
     if not parsed.hostname:
         raise UrlValidationError("URL has no hostname.")
+    host = (_request_host(url) or "").strip("[]").lower()
+    if host != parsed.hostname.lower():
+        raise UrlValidationError("The address's host is ambiguous.")
 
     try:
         addrinfo = socket.getaddrinfo(parsed.hostname, None)
     except socket.gaierror:
         raise UrlValidationError("Could not resolve host.")
 
+    addresses = []
     for family, _, _, _, sockaddr in addrinfo:
         ip = ipaddress.ip_address(sockaddr[0].split("%")[0])
         if getattr(ip, "ipv4_mapped", None):
@@ -58,6 +81,10 @@ def validate_public_url(url: str):
         # uses, 100.100.100.100 included) and similar non-public ranges.
         if not ip.is_global or ip.is_multicast:
             raise UrlValidationError("URLs resolving to private/internal network addresses aren't allowed.")
+        addresses.append(str(ip))
+    if not addresses:
+        raise UrlValidationError("Could not resolve host.")
+    return addresses[0]
 
 
 MAX_REDIRECTS = 5
@@ -180,20 +207,19 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
     public URL redirecting to a LAN address would have been followed. It
     now gets the HTML this function already fetched (see ingest_url).
 
-    Residual gap, accepted for a LAN app: DNS is resolved once to validate
-    and again by requests to connect, so a hostname that changes its
-    answer in between (DNS rebinding) isn't caught."""
+    Each hop connects to the address validate_public_url checked (tls.get's
+    pin), so the name isn't looked up a second time (DNS rebinding)."""
     import time as _time
     deadline = _time.monotonic() + TOTAL_FETCH_SECONDS
     current_url = url
     for _ in range(MAX_REDIRECTS + 1):
-        validate_public_url(current_url)
+        address = validate_public_url(current_url)
         try:
             # stream=True: the body is read by _read_limited, which stops at
             # max_bytes and at the overall deadline, instead of requests
             # loading the whole response into memory first.
             resp = http_get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
-                                allow_redirects=False, stream=True)
+                            allow_redirects=False, stream=True, pin=address)
             # The body read so far becomes the response's content (requests
             # keeps it in _content; .text and .content read it from there).
             # Then the connection is closed here rather than left to garbage

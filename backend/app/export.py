@@ -3,7 +3,7 @@ import mimetypes
 import os
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
+from weasyprint import HTML, URLFetcher
 
 from . import i18n
 from .text_rules import is_part_name
@@ -83,4 +83,7 @@ SOURCE_LABELS = {"url": "Web", "pdf": "PDF", "screenshot": "Screenshot", "email"
 def render_recipe_pdf(recipe, absolute_image_path: str | None = None, include_notes: bool = False,
                        include_image: bool = True) -> bytes:
     html_str = render_recipe_html(recipe, absolute_image_path, include_notes=include_notes, include_image=include_image)
-    return HTML(string=html_str).write_pdf()
+    # Only data: URLs (the embedded photo): the template escapes recipe text,
+    # and this keeps file:// and http(s) out even if it someday doesn't
+    # (Claude security audit of 0140).
+    return HTML(string=html_str, url_fetcher=URLFetcher(allowed_protocols=["data"])).write_pdf()

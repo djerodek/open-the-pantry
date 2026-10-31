@@ -25,6 +25,18 @@ import re
 LOGGER_NAME = "otp"
 
 
+class OneLineFormatter(logging.Formatter):
+    """A message's line breaks written as \\n: a name or subject from an
+    email (an attachment's filename can hold a line break) could otherwise
+    add a line that reads as a separate entry in Settings -> Logs, such as
+    a fake "Settings password created" (Claude security audit of 0140).
+    A traceback still follows on its own lines."""
+
+    def formatMessage(self, record):
+        record.message = record.message.replace("\r", "\\r").replace("\n", "\\n")
+        return super().formatMessage(record)
+
+
 def setup_logging(data_dir: str) -> logging.Logger:
     log = logging.getLogger(LOGGER_NAME)
     if log.handlers:  # already configured (tests import the app repeatedly)
@@ -34,7 +46,7 @@ def setup_logging(data_dir: str) -> logging.Logger:
     log.setLevel(getattr(logging, level, logging.INFO))
     log.propagate = False  # don't double-print through uvicorn's root handler
 
-    fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+    fmt = OneLineFormatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
 
     stream = logging.StreamHandler()
     stream.setFormatter(fmt)
