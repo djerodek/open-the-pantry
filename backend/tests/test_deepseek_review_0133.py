@@ -34,6 +34,7 @@ def test_a_baking_tin_is_still_not_mussels():
 
 def test_an_invalid_suggested_tag_is_left_off_not_the_recipe(client, monkeypatch):
     from app import main, models
+    from app import routes
     warned = []
     monkeypatch.setattr(main.log, "warning", lambda msg, *a, **k: warned.append(msg))
     from app.database import SessionLocal
@@ -41,7 +42,7 @@ def test_an_invalid_suggested_tag_is_left_off_not_the_recipe(client, monkeypatch
               "steps": ["Steam the mussels."], "raw_text": "1 kg mussels\nSteam the mussels.",
               "tags": [{"name": "Fish", "category": "Diet"}, {"name": "x" * 150, "category": "Diet"}]}
     with SessionLocal() as db:
-        rid = main._save_email_recipe(db, result, "[RECIPE]")
+        rid = routes.email._save_email_recipe(db, result, "[RECIPE]")
     try:
         with SessionLocal() as db:
             assert [t.name for t in db.get(models.Recipe, rid).tags] == ["Fish"]
@@ -82,10 +83,11 @@ def test_the_https_port_is_a_port(port, ok):
 def test_copy_upload_refuses_a_name_outside_uploads(tmp_path):
     from fastapi import HTTPException
     from app import main
+    from app import routes
     src = tmp_path / "a.jpg"
     src.write_bytes(b"x")
     with pytest.raises(HTTPException):
-        main._copy_upload(str(src), "../escape.jpg", "test")
+        routes.common._copy_upload(str(src), "../escape.jpg", "test")
     assert not (Path(main.UPLOADS_DIR).parent / "escape.jpg").exists()
 
 

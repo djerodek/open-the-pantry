@@ -36,6 +36,7 @@ def test_a_zip_entry_never_unpacks_past_its_stated_size(tmp_path):
 
 def test_json_bodies_are_capped(client):
     from app import main
+    from app import routes
     big = b'{"ids": [' + b"1," * (main.MAX_JSON_BODY_BYTES // 2) + b'1]}'
     r = client.post("/api/recipes/batch-delete", content=big, headers={"Content-Type": "application/json"})
     assert r.status_code == 413
@@ -70,10 +71,11 @@ def test_email_settings_fields_are_bounded(client):
 
 def test_emailed_recipe_is_held_to_the_api_limits(client, data_dir):
     from app import main, models
+    from app import routes
     from app.database import SessionLocal
     db = SessionLocal()
     try:
-        rid = main._save_email_recipe(db, {
+        rid = routes.email._save_email_recipe(db, {
             "title": "T" * 900, "source_url": "https://example.com/" + "a" * 3000, "servings": "4" * 300,
             "raw_text": "x" * 1_100_000, "ingredients": [], "steps": [], "tags": []}, "subject")
         r = db.get(models.Recipe, rid)

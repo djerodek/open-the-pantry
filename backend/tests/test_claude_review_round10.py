@@ -42,34 +42,37 @@ def _check(c, data):
 
 def test_a_second_check_leaves_the_first_waiting(client):
     from app import main
+    from app import routes
     backup = client.get("/api/backup/database.zip").content
     first = _check(client, backup).json()["token"]
     second = _check(client, backup).json()["token"]
     for tok in (first, second):
-        assert all(os.path.isfile(p) for p in main._pending_restore_paths(tok))
+        assert all(os.path.isfile(p) for p in routes.backup._pending_restore_paths(tok))
     # A stale one (over 30 minutes) goes on the next check.
-    old = time.time() - main.PENDING_RESTORE_SECONDS - 60
-    for p in main._pending_restore_paths(first):
+    old = time.time() - routes.backup.PENDING_RESTORE_SECONDS - 60
+    for p in routes.backup._pending_restore_paths(first):
         os.utime(p, (old, old))
     _check(client, backup)
-    assert not any(os.path.isfile(p) for p in main._pending_restore_paths(first))
-    assert all(os.path.isfile(p) for p in main._pending_restore_paths(second))
-    main._clear_pending_restores(None)
+    assert not any(os.path.isfile(p) for p in routes.backup._pending_restore_paths(first))
+    assert all(os.path.isfile(p) for p in routes.backup._pending_restore_paths(second))
+    routes.backup._clear_pending_restores(None)
 
 
 def test_a_failed_check_removes_only_its_own_files(client):
     from app import main
+    from app import routes
     backup = client.get("/api/backup/database.zip").content
     waiting = _check(client, backup).json()["token"]
     assert _check(client, _zip({"recipes.db": b"not a database"})).status_code == 422
-    assert all(os.path.isfile(p) for p in main._pending_restore_paths(waiting))
-    main._clear_pending_restores(None)
+    assert all(os.path.isfile(p) for p in routes.backup._pending_restore_paths(waiting))
+    routes.backup._clear_pending_restores(None)
 
 
 def test_without_the_password_uploads_stop_at_the_import_limit(client, monkeypatch):
     from app import main
+    from app import routes
     stranger = TestClient(main.app)
-    monkeypatch.setattr(main, "MAX_IMPORT_BYTES", 1000)
+    monkeypatch.setattr(routes.backup, "MAX_IMPORT_BYTES", 1000)
     r = _check(stranger, b"PK" + b"\0" * 5000)
     assert r.status_code == 401 and r.json()["locked"]           # only a backup could be that big
     assert _check(client, b"PK" + b"\0" * 5000).status_code == 422  # with it: checked (and not a zip)

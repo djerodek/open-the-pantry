@@ -22,7 +22,8 @@ def _data_dir(data_dir):
 
 
 def _routes_with_int_path(app):
-    for route in app.routes:
+    from tests.conftest import app_routes
+    for route in app_routes(app):
         path = getattr(route, "path", "")
         if re.search(r"\{\w+_id\}", path):
             for method in sorted(getattr(route, "methods", None) or ()):

@@ -184,7 +184,7 @@ def test_password_cleared_flag_on_a_successful_save(client, key):
 
 
 def test_bare_domain_allowlist_entry_matches_its_addresses():
-    from app.main import _parse_allowed_senders, _sender_allowed
+    from app.routes.email import _parse_allowed_senders, _sender_allowed
 
     allowed = _parse_allowed_senders("example.com, someone@other.example")
     assert _sender_allowed("Person <cook@example.com>", allowed)

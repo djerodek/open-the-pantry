@@ -55,6 +55,7 @@ def test_a_same_length_edit_is_guessed_again(client):
 
 def test_a_failed_merge_photo_copy_leaves_nothing(client, monkeypatch):
     from app import main
+    from app import routes
     photo = client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).json()["stored_file"]
     a = client.post("/api/recipes", headers=H, json={"title": "Keep", "source_type": "manual"}).json()
     b = client.post("/api/recipes", headers=H, json={"title": "Other", "source_type": "manual",
@@ -66,7 +67,7 @@ def test_a_failed_merge_photo_copy_leaves_nothing(client, monkeypatch):
             with open(dst, "wb") as f:
                 f.write(b"partial")
             raise OSError(28, "No space left on device")
-        monkeypatch.setattr(main.shutil, "copyfile", half_copy)
+        monkeypatch.setattr(routes.common.shutil, "copyfile", half_copy)
         r = client.post("/api/recipes/merge", headers=H, json={"keep_id": a["id"], "other_id": b["id"],
                                                               "take": {"photo": "other"}})
         assert r.status_code == 500 and "Nothing was changed" in r.json()["detail"]

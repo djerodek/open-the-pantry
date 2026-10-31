@@ -88,3 +88,15 @@ TINY_PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108020000009077"
     "53de0000000c4944415478da6360000002000155075ce9c30000000049454e44ae426082"
 )
+
+
+def app_routes(app):
+    """Every route of the app, including those of included routers (app.routes
+    holds an included router as one entry in this FastAPI; the API's routes
+    are in routers from 0140, app/routes/)."""
+    for route in app.routes:
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            yield from app_routes(inner)
+        else:
+            yield route

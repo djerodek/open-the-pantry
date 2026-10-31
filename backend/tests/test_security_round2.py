@@ -130,6 +130,7 @@ def test_writes_need_the_custom_header(client):
     preflight). Writes now need a header only the app's own pages send."""
     from fastapi.testclient import TestClient
     import app.main as m
+    import app.routes.email as m_email
     bare = TestClient(m.app)   # no default X-Requested-With
     assert bare.post("/api/email-settings/scan").status_code == 403
     assert bare.delete("/api/recipes/999999").status_code == 403
@@ -138,10 +139,11 @@ def test_writes_need_the_custom_header(client):
 
 def test_sender_allowlist(client, key):
     import app.main as m
-    assert m._sender_allowed("Me <me@home.example>", ["me@home.example"])
-    assert m._sender_allowed("sis@family.example", ["@family.example"])
-    assert not m._sender_allowed("stranger@spam.example", ["me@home.example", "@family.example"])
-    assert m._sender_allowed("anyone@x.example", [])       # empty list: anyone, as before
+    import app.routes.email as m_email
+    assert m_email._sender_allowed("Me <me@home.example>", ["me@home.example"])
+    assert m_email._sender_allowed("sis@family.example", ["@family.example"])
+    assert not m_email._sender_allowed("stranger@spam.example", ["me@home.example", "@family.example"])
+    assert m_email._sender_allowed("anyone@x.example", [])       # empty list: anyone, as before
 
 
 def test_scan_ignores_senders_not_on_the_list(client, key):
@@ -152,11 +154,11 @@ def test_scan_ignores_senders_not_on_the_list(client, key):
     msg["Subject"] = "[RECIPE] Stranger Stew"
     msg["From"] = "stranger@spam.example"
     msg.set_content("Stew\nIngredients\n1 onion\nInstructions\n1. Cook")
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=msg), \
-         patch("app.main.email_client.mark_seen") as seen, \
-         patch("app.main._run_heavy") as processed:
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=msg), \
+         patch("app.routes.email.email_client.mark_seen") as seen, \
+         patch("app.routes.email._run_heavy") as processed:
         body = client.post("/api/email-settings/scan").json()
     processed.assert_not_called()
     seen.assert_called_once()

@@ -490,8 +490,9 @@ def test_training_takes_a_heavy_job_slot(learning_reset, monkeypatch):
 
 def test_main_hands_the_ocr_semaphore_to_learning(client):
     from app import main
+    from app import routes
     from app.ml import service
-    assert service._heavy_gate is main._heavy_job_semaphore
+    assert service._heavy_gate is routes.common._heavy_job_semaphore
 
 
 # ---------------------------------------------------------------------------
@@ -520,15 +521,16 @@ def test_a_tag_made_by_saving_a_recipe_can_be_suggested_after_training(client, s
 def test_a_deletion_drops_the_tag_before_it_commits(client, learning_reset, monkeypatch):
     service = learning_reset
     from app import main
+    from app import routes
     g = client.post("/api/tag-groups", json={"label": "Race group"}).json()
     t = client.post("/api/tags", json={"name": "Racy", "category": g["key"], "keywords": ""}).json()
     seen = []
-    real = main._remove_tags
+    real = routes.recipes._remove_tags
 
     def spy(db, tags):
         seen.append(("Racy", g["key"]) in service._known_tags)   # at this point nothing is committed
         return real(db, tags)
-    monkeypatch.setattr(main, "_remove_tags", spy)
+    monkeypatch.setattr(routes.recipes, "_remove_tags", spy)
     assert client.delete(f"/api/tags/{t['id']}").status_code == 200
     assert seen == [False]
     client.delete(f"/api/tag-groups/{g['key']}")

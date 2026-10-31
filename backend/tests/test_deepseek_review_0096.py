@@ -36,7 +36,8 @@ def test_emailed_link_keeps_its_times(client, monkeypatch, tmp_path):
     msg.set_content("https://example.com/timed-soup")
     out = email_processing.process_tagged_email(msg, str(tmp_path))
     assert out["success"] and (out["prep_time"], out["cook_time"], out["total_time"]) == ("10 min", "PT30M", "40 min")
-    from app.main import SessionLocal, _save_email_recipe
+    from app.main import SessionLocal
+    from app.routes.email import _save_email_recipe
     db = SessionLocal()
     try:
         rid = _save_email_recipe(db, out, "soup")

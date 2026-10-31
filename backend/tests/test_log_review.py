@@ -106,7 +106,7 @@ def test_url_refusal_logs_without_traceback(client, caplog):
     caplog.set_level(logging.WARNING, logger="otp")
     logging.getLogger("otp").propagate = True
     try:
-        with patch("app.main.ingest_url", side_effect=err):
+        with patch("app.routes.ingest.ingest_url", side_effect=err):
             r = client.post("/api/ingest/url", json={"url": "https://example.com/r"})
     finally:
         logging.getLogger("otp").propagate = False
@@ -163,7 +163,7 @@ def _url_result(ingredients, steps):
 
 
 def test_single_url_reports_an_incomplete_recipe_but_keeps_the_draft(client):
-    with patch("app.main.ingest_url", return_value=_url_result(["1 chicken", "vinegar"], [])):
+    with patch("app.routes.ingest.ingest_url", return_value=_url_result(["1 chicken", "vinegar"], [])):
         r = client.post("/api/ingest/url", json={"url": "https://example.com/poulet"})
         fr = client.post("/api/ingest/url", json={"url": "https://example.com/poulet"}, headers={"X-App-Lang": "fr"})
     d = r.json()
@@ -175,12 +175,12 @@ def test_single_url_reports_an_incomplete_recipe_but_keeps_the_draft(client):
 
 
 def test_complete_recipe_is_not_flagged(client):
-    with patch("app.main.ingest_url", return_value=_url_result(["1 chicken"], ["Roast it."])):
+    with patch("app.routes.ingest.ingest_url", return_value=_url_result(["1 chicken"], ["Roast it."])):
         assert client.post("/api/ingest/url", json={"url": "https://example.com/ok"}).json()["incomplete"] is None
 
 
 def test_batch_fails_an_incomplete_recipe(client):
-    with patch("app.main.ingest_url", return_value=_url_result([], ["Mix."])):
+    with patch("app.routes.ingest.ingest_url", return_value=_url_result([], ["Mix."])):
         r = client.post("/api/ingest/url/batch", json={"urls": ["https://example.com/half"]}).json()
     assert r["succeeded"] == [] and "no ingredients found" in r["failed"][0]["error"]
 

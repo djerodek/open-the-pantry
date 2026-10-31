@@ -582,7 +582,8 @@ run also refreshes it with the newest base image and trusted roots.
 GitHub pauses scheduled runs after 60 days without a commit.
 
 ```
-backend/app/        FastAPI app (main.py), models, backup, HTTPS, picker
+backend/app/        FastAPI app (main.py: start-up, middleware), models, backup, HTTPS, picker
+  routes/           the API by area: recipes, ingest, email, settings, backup; common.py shared
   ingestion/        link, PDF, photo and email reading; tagging
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template

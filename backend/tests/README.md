@@ -70,3 +70,14 @@ have a baseline: until it does, the report lists it as not yet guarded and
 `test_corpus.py` fails on it. The scores measure
 the rules and link readers without Learning, which scores itself in
 Settings.
+
+## Patching after the route split (0140)
+
+The API's routes are in `app/routes/` (`recipes`, `ingest`, `email`,
+`settings`, `backup`, and `common` for what they share); `app/main.py`
+keeps start-up and the middleware. Patch a name in the module that uses
+it: `monkeypatch.setattr(routes.ingest, "ingest_url", …)`, not `main`. A
+helper defined in `common` and imported by a route module is patched in
+that route module. `conftest.app_routes(app)` lists every route, including
+those of the included routers (`app.routes` shows each router as one
+entry).

@@ -25,18 +25,19 @@ def _count(client):
 
 def test_unattended_imports_are_flagged_and_reviewed_ones_are_not(client, monkeypatch):
     from app import main
+    from app import routes
     from app.database import SessionLocal
     from .test_duplicates import _Fetched
     from .test_incomplete_sources import WHOLE, _pdf
     before = _count(client)
-    monkeypatch.setattr(main, "ingest_url", lambda url: _Fetched("RQ link " + url[-6:]))
+    monkeypatch.setattr(routes.ingest, "ingest_url", lambda url: _Fetched("RQ link " + url[-6:]))
     sfx = uuid.uuid4().hex[:6]
     links = client.post("/api/ingest/url/batch", headers=H, json={"urls": [f"https://example.com/rq-{sfx}"]}).json()
     pdfs = client.post("/api/ingest/pdf/batch", headers=H,
                        files=[("files", ("whole.pdf", _pdf(WHOLE), "application/pdf"))]).json()
     db = SessionLocal()
     try:
-        emailed = main._save_email_recipe(db, {"title": f"RQ email {sfx}", "ingredients": [{"raw_line": "1 egg"}],
+        emailed = routes.email._save_email_recipe(db, {"title": f"RQ email {sfx}", "ingredients": [{"raw_line": "1 egg"}],
                                                "steps": ["Boil."], "tags": [], "raw_text": "RQ\n1 egg\nBoil.",
                                                "ocr_confidence": None, "image_path": None, "source_url": None},
                                           "subject")

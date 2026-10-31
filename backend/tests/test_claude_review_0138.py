@@ -47,10 +47,11 @@ def test_a_write_waits_longer_than_five_seconds():
 def test_a_locked_database_is_a_503_that_says_try_again(client, monkeypatch):
     import sqlalchemy.exc
     from app import main
+    from app import routes
 
     def locked(db):
         raise sqlalchemy.exc.OperationalError("SELECT 1", {}, sqlite3.OperationalError("database is locked"))
-    monkeypatch.setattr(main, "_binned", locked)
+    monkeypatch.setattr(routes.recipes, "_binned", locked)
     r = client.get("/api/recently-deleted", headers=H)
     assert r.status_code == 503 and r.headers["Retry-After"] == "5"
     assert r.json()["detail"] == "The app is busy with another change. Try again in a moment."
@@ -62,10 +63,11 @@ def test_another_database_error_is_still_a_500(monkeypatch):
     import sqlalchemy.exc
     from fastapi.testclient import TestClient
     from app import main
+    from app import routes
 
     def broken(db):
         raise sqlalchemy.exc.OperationalError("SELECT 1", {}, sqlite3.OperationalError("disk I/O error"))
-    monkeypatch.setattr(main, "_binned", broken)
+    monkeypatch.setattr(routes.recipes, "_binned", broken)
     c = TestClient(main.app, raise_server_exceptions=False)      # no lifespan: start-up sweeps too
     assert c.get("/api/recently-deleted", headers=H).status_code == 500
 
@@ -73,7 +75,8 @@ def test_another_database_error_is_still_a_500(monkeypatch):
 def test_emptying_recently_deleted_commits_in_chunks(client, monkeypatch):
     from sqlalchemy.orm import Session
     from app import main
-    monkeypatch.setattr(main, "DELETE_CHUNK", 2)
+    from app import routes
+    monkeypatch.setattr(routes.recipes, "DELETE_CHUNK", 2)
     ids = []
     for n in range(5):
         r = client.post("/api/recipes", headers=H, json={"title": f"Chunk {n}", "source_type": "manual",

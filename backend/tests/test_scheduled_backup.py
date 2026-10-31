@@ -74,10 +74,11 @@ def test_a_failed_backup_is_recorded_and_says_why(client, folder, monkeypatch):
 
 def test_a_half_written_backup_never_gets_a_real_name(client, folder, monkeypatch):
     from app import main
+    from app import routes
     def broken(dest):
         open(dest, "wb").write(b"half")
         raise OSError(28, "No space left on device")
-    monkeypatch.setattr(main, "build_database_backup", broken)
+    monkeypatch.setattr(routes.backup, "build_database_backup", broken)
     assert client.post("/api/backups/run", headers=H).status_code == 500
     assert os.listdir(folder) == []
 
@@ -94,9 +95,10 @@ def test_changing_the_schedule_needs_the_password(client, folder):
 
 def test_not_during_a_restore(client, folder):
     from app import main, scheduled_backup
+    from app import routes
     main._restoring.set()
     try:
         with pytest.raises(scheduled_backup.BackupError):
-            main.run_scheduled_backup()
+            routes.backup.run_scheduled_backup()
     finally:
         main._restoring.clear()

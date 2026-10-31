@@ -23,12 +23,13 @@ def _isolated_data_dir(data_dir):
 
 def test_failed_email_sends_do_not_use_up_the_hour(client, mail):
     from app import main
+    from app import routes
     rid = _recipe(client, "Quota Failure Test")
-    with patch("app.main.email_client.connect_smtp", side_effect=Exception("smtp down")):
-        for _ in range(main.MAX_RECIPE_EMAILS_PER_HOUR + 2):
+    with patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("smtp down")):
+        for _ in range(routes.email.MAX_RECIPE_EMAILS_PER_HOUR + 2):
             assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 502
-    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email_with_attachment"):
+    with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email_with_attachment"):
         assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 200
 
 
@@ -54,11 +55,12 @@ def test_image_bytes_over_the_cap_are_refused(tmp_path):
 
 def test_email_times_are_sent_with_their_time_zone(client, mail):
     from app import main
+    from app import routes
     from app.database import SessionLocal
     db = SessionLocal()
     try:
-        s = main._get_email_settings(db)
-        s.last_scan_at = main._utc_now()
+        s = routes.email._get_email_settings(db)
+        s.last_scan_at = routes.common._utc_now()
         db.commit()
     finally:
         db.close()

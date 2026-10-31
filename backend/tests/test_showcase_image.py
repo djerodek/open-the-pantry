@@ -87,8 +87,8 @@ def test_url_ingestion_downloads_showcase_image(client):
     fake_resp = MagicMock()
     fake_resp.content = TINY_PNG
 
-    with patch("app.main.ingest_url", return_value=FakeUrlResult()), \
-         patch("app.main.safe_get", return_value=fake_resp):
+    with patch("app.routes.ingest.ingest_url", return_value=FakeUrlResult()), \
+         patch("app.routes.common.safe_get", return_value=fake_resp):
         r = client.post("/api/ingest/url", json={"url": "https://example.com/recipe"})
         assert r.status_code == 200
         draft = r.json()
@@ -109,8 +109,8 @@ def test_url_ingestion_image_download_failure_does_not_fail_ingestion(client):
         raw_text = "Mix"
         method = "json-ld"
 
-    with patch("app.main.ingest_url", return_value=FakeUrlResult()), \
-         patch("app.main.safe_get", side_effect=Exception("network error")):
+    with patch("app.routes.ingest.ingest_url", return_value=FakeUrlResult()), \
+         patch("app.routes.common.safe_get", side_effect=Exception("network error")):
         r = client.post("/api/ingest/url", json={"url": "https://example.com/recipe"})
         assert r.status_code == 200
         assert r.json()["image_path"] is None

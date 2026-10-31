@@ -61,6 +61,7 @@ def _send_chunked(path, chunks, content_type, cookie=None):
 def test_an_upload_stops_at_its_routes_limit(client):
     """The reviewer's check: multipart went through whatever its size."""
     from app import main
+    from app import routes
     mb = 1024 * 1024
     body, ctype = _multipart("big.png", b"x" * (22 * mb))
     chunks = [body[i:i + mb] for i in range(0, len(body), mb)]
@@ -82,10 +83,11 @@ def test_a_declared_length_over_the_limit_is_refused_unread(client):
     assert fr.json()["detail"] == "Fichier trop volumineux (maximum 20 Mo)."
     # The limits per route, as the routes have them.
     from app import main
+    from app import routes
     m = main.MULTIPART_MARGIN_BYTES
-    assert main._multipart_limit({"path": "/api/import/recipes"})[0] == main.MAX_IMPORT_BYTES + m
-    assert main._multipart_limit({"path": "/api/ingest/pdf/batch"})[0] == main.MAX_BATCH_PDF_BYTES + m
-    assert main._multipart_limit({"path": "/api/ingest/images"})[0] == main.MAX_COMBINED_IMAGES * main.MAX_UPLOAD_BYTES + m
+    assert main._multipart_limit({"path": "/api/import/recipes"})[0] == routes.backup.MAX_IMPORT_BYTES + m
+    assert main._multipart_limit({"path": "/api/ingest/pdf/batch"})[0] == routes.ingest.MAX_BATCH_PDF_BYTES + m
+    assert main._multipart_limit({"path": "/api/ingest/images"})[0] == routes.ingest.MAX_COMBINED_IMAGES * main.MAX_UPLOAD_BYTES + m
     # Uploads under the limits still work.
     assert client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).status_code == 200
 
@@ -94,7 +96,8 @@ def test_restore_check_without_the_password_stops_at_the_import_limit(client, mo
     """Without the password the box only imports (1 GB); past that the page
     gets the locked answer, asks for the password and resends."""
     from app import main
-    monkeypatch.setattr(main, "MAX_IMPORT_BYTES", 2000)
+    from app import routes
+    monkeypatch.setattr(routes.backup, "MAX_IMPORT_BYTES", 2000)
     monkeypatch.setattr(main, "MULTIPART_MARGIN_BYTES", 0)
     body, ctype = _multipart("backup.zip", b"PK" + b"x" * 5000)
     chunks = [body[i:i + 1000] for i in range(0, len(body), 1000)]
@@ -123,7 +126,7 @@ def _cleanup(client, *ids):
 
 
 def test_a_merge_that_would_cut_notes_or_tags_is_refused(client):
-    from app.main import NOTES_MAX
+    from app.routes.recipes import NOTES_MAX
     sfx = uuid.uuid4().hex[:6]
     a, b = _recipe(client, f"Merge long A {sfx}"), _recipe(client, f"Merge long B {sfx}")
     try:

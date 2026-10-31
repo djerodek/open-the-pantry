@@ -126,8 +126,9 @@ def test_backup_instructions_follow_the_app_language(client):
 def mail(client, monkeypatch):
     from cryptography.fernet import Fernet
     from app import crypto, main
+    from app import routes
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
-    main._recipe_email_times.clear()
+    routes.email._recipe_email_times.clear()
     body = {"enabled": False, "imap_host": "mail.me.example", "imap_port": 993, "imap_use_ssl": True,
             "smtp_host": "mail.me.example", "smtp_port": 465, "smtp_use_tls": False,
             "username": "pantry@me.example", "password": "s3cret", "notify_email": "me@me.example",
@@ -137,19 +138,19 @@ def mail(client, monkeypatch):
     client.put("/api/email-settings/recipients", json={"recipients": []})
     client.put("/api/email-settings", json=body)  # back to English
     client.delete("/api/email-settings/password")
-    main._recipe_email_times.clear()
+    routes.email._recipe_email_times.clear()
 
 
 def test_notification_email_uses_the_saved_language(client, mail):
     from app.database import SessionLocal
-    from app.main import _queue_notification, _flush_notifications, _get_email_settings
+    from app.routes.email import _queue_notification, _flush_notifications, _get_email_settings
     client.put("/api/email-settings", json={**mail, "password": None}, headers=FR)
     db = SessionLocal()
     try:
         _queue_notification(db, True, 'Tarte (from "[RECIPE] tarte", via email body text)')
         db.commit()
-        with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-             patch("app.main.email_client.send_email") as send:
+        with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+             patch("app.routes.email.email_client.send_email") as send:
             assert _flush_notifications(db, _get_email_settings(db), force=True) is True
         subject, body = send.call_args.args[3], send.call_args.args[4]
         assert subject.startswith("[SUCCESS] Open the Pantry : 1 recette(s)")
@@ -167,8 +168,8 @@ def test_settings_say_whether_sending_can_work(client, mail):
 
 def test_email_pdf_sends_from_the_ingest_account(client, mail):
     rid = _recipe(client, "Tourtière\nBcc: x@evil.example", notes="secret note")
-    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email_with_attachment") as send:
+    with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email_with_attachment") as send:
         r = client.post(f"/api/recipes/{rid}/email",
                         json={"to": ["Ann@family.example", " ann@family.example ", "bob@family.example"],
                               "message": "Try this one."},
@@ -208,7 +209,7 @@ def test_a_real_send_builds_a_pdf_attachment():
 ])
 def test_email_pdf_validation(client, mail, to, status, fragment):
     rid = _recipe(client, "Validation Courriel")
-    with patch("app.main.email_client.connect_smtp") as smtp:
+    with patch("app.routes.email.email_client.connect_smtp") as smtp:
         r = client.post(f"/api/recipes/{rid}/email", json={"to": to}, headers=FR)
     assert r.status_code == status and fragment in r.json()["detail"]
     smtp.assert_not_called()
@@ -216,7 +217,7 @@ def test_email_pdf_validation(client, mail, to, status, fragment):
 
 def test_email_pdf_reports_the_smtp_problem(client, mail):
     rid = _recipe(client, "Erreur SMTP")
-    with patch("app.main.email_client.connect_smtp",
+    with patch("app.routes.email.email_client.connect_smtp",
                side_effect=Exception("Could not connect/login to SMTP (mail.me.example:465, implicit TLS): "
                                      "535 authentication failed")):
         r = client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]})
@@ -227,12 +228,13 @@ def test_email_pdf_reports_the_smtp_problem(client, mail):
 
 def test_email_pdf_is_rate_limited(client, mail):
     from app import main
+    from app import routes
     rid = _recipe(client, "Limite Courriel")
-    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email_with_attachment"):
+    with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email_with_attachment"):
         codes = [client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code
-                 for _ in range(main.MAX_RECIPE_EMAILS_PER_HOUR + 1)]
-    assert codes[:-1] == [200] * main.MAX_RECIPE_EMAILS_PER_HOUR and codes[-1] == 429
+                 for _ in range(routes.email.MAX_RECIPE_EMAILS_PER_HOUR + 1)]
+    assert codes[:-1] == [200] * routes.email.MAX_RECIPE_EMAILS_PER_HOUR and codes[-1] == 429
 
 
 def test_email_pdf_needs_sending_set_up(client, mail):
@@ -288,12 +290,13 @@ def test_stored_none_servings_are_cleared_at_startup(client):
 
 def test_failed_sends_do_not_use_up_the_hour(client, mail):
     from app import main
+    from app import routes
     rid = _recipe(client, "Quota Après Panne")
-    with patch("app.main.email_client.connect_smtp", side_effect=Exception("server down")):
-        for _ in range(main.MAX_RECIPE_EMAILS_PER_HOUR):
+    with patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("server down")):
+        for _ in range(routes.email.MAX_RECIPE_EMAILS_PER_HOUR):
             assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 502
-    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email_with_attachment"):
+    with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email_with_attachment"):
         assert client.post(f"/api/recipes/{rid}/email", json={"to": ["a@b.example"]}).status_code == 200
 
 

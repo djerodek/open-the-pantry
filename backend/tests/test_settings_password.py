@@ -35,7 +35,8 @@ def secure_stranger(client):
 
 def _routes():
     from app.main import app
-    for r in app.routes:
+    from tests.conftest import app_routes
+    for r in app_routes(app):
         path = getattr(r, "path", "")
         for m in sorted(getattr(r, "methods", None) or []):
             if m in ("HEAD", "OPTIONS"):
@@ -177,7 +178,7 @@ def credentials(own_file, client):
     from app import https_setup
     from app.database import SessionLocal
     from app import models
-    from app.main import _get_email_settings
+    from app.routes.email import _get_email_settings
 
     db = SessionLocal()
     em = _get_email_settings(db)
@@ -218,7 +219,7 @@ def _state():
     import os
     from app import https_setup
     from app.database import SessionLocal
-    from app.main import _get_email_settings
+    from app.routes.email import _get_email_settings
     db = SessionLocal()
     try:
         em = _get_email_settings(db)
@@ -377,7 +378,7 @@ def test_once_https_is_on_the_password_needs_the_secure_address(credentials, str
 
 def test_the_server_itself_may_use_plain_http():
     from types import SimpleNamespace
-    from app.main import _https_only_url
+    from app.routes.common import _https_only_url
     from unittest.mock import patch
     on = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": True}
     with patch("app.main.https_setup.status", return_value=on):
@@ -391,7 +392,7 @@ def test_https_that_isnt_listening_doesnt_lock_out_settings():
     use), the secure address doesn't answer, so plain http must still work."""
     from types import SimpleNamespace
     from unittest.mock import patch
-    from app.main import _https_only_url
+    from app.routes.common import _https_only_url
     req = SimpleNamespace(url=SimpleNamespace(scheme="http"), client=SimpleNamespace(host="192.168.1.30"))
     down = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": False}
     with patch("app.main.https_setup.status", return_value=down):
@@ -511,6 +512,7 @@ def test_simultaneous_guesses_are_counted_one_by_one(own_file):
 def test_credentials_without_a_settings_password_are_logged_at_startup(monkeypatch):
     import logging
     from app import main
+    from app import routes
     monkeypatch.setattr(main.admin_lock, "password_set", lambda: False)
     monkeypatch.setattr(main.https_setup, "status", lambda: {"enabled": True})
     msgs = []

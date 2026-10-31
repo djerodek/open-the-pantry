@@ -304,7 +304,8 @@ def test_only_a_link_recipe_has_a_source_url(tmp_path):
 def test_emailed_link_recipe_keeps_its_source_url(client):
     """The recipe page links to the original; for an emailed link that
     means the saved recipe has to carry the address."""
-    from app.main import _save_email_recipe, SessionLocal
+    from app.main import SessionLocal
+    from app.routes.email import _save_email_recipe
 
     base = {"title": "Source link test", "ingredients": [], "steps": ["Mix"], "tags": [],
             "raw_text": "Mix", "ocr_confidence": None, "image_path": None}
@@ -366,12 +367,12 @@ def test_full_scan_ingests_and_notifies(client, monkeypatch):
         sent["subject"] = subject
         sent["body"] = body
 
-    with patch("app.main.email_client.connect_imap", return_value=fake_imap), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=msg), \
-         patch("app.main.email_client.mark_seen") as mock_mark_seen, \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email", side_effect=fake_send_email):
+    with patch("app.routes.email.email_client.connect_imap", return_value=fake_imap), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=msg), \
+         patch("app.routes.email.email_client.mark_seen") as mock_mark_seen, \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email", side_effect=fake_send_email):
         r = client.post("/api/email-settings/scan")
 
     assert r.status_code == 200
@@ -402,12 +403,12 @@ def test_scan_marks_unparseable_email_seen(client, monkeypatch):
 
     msg = _make_email(subject="[RECIPE] junk", body="nothing useful here")
 
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=msg), \
-         patch("app.main.email_client.mark_seen") as mock_mark_seen, \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email"):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=msg), \
+         patch("app.routes.email.email_client.mark_seen") as mock_mark_seen, \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email"):
         r = client.post("/api/email-settings/scan")
 
     assert r.json()["failed"] == 1
@@ -432,7 +433,7 @@ def test_scan_handles_connection_failure_gracefully(client, monkeypatch):
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
     client.put("/api/email-settings", json=_settings_payload(enabled=True, password="pw"))
 
-    with patch("app.main.email_client.connect_imap", side_effect=Exception("connection refused")):
+    with patch("app.routes.email.email_client.connect_imap", side_effect=Exception("connection refused")):
         r = client.post("/api/email-settings/scan")
 
     assert r.status_code == 200, "a connection failure should report cleanly, not 500"
@@ -454,11 +455,11 @@ def test_notification_failure_keeps_items_queued(client, monkeypatch):
     msg = _make_email(subject="[RECIPE] Queue Test",
                       body="Queue Test\nIngredients\n1 cup sugar\nInstructions\n1. Stir")
 
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=msg), \
-         patch("app.main.email_client.mark_seen"), \
-         patch("app.main.email_client.connect_smtp", side_effect=Exception("smtp down")):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=msg), \
+         patch("app.routes.email.email_client.mark_seen"), \
+         patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("smtp down")):
         client.post("/api/email-settings/scan")
 
     db = SessionLocal()
@@ -489,7 +490,7 @@ def test_test_email_reports_smtp_failure(client, monkeypatch):
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
     client.put("/api/email-settings", json=_settings_payload(password="pw"))
 
-    with patch("app.main.email_client.connect_smtp", side_effect=Exception("auth failed")):
+    with patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("auth failed")):
         r = client.post("/api/email-settings/test")
 
     assert r.json()["success"] is False
@@ -509,9 +510,9 @@ def test_test_email_success_round_trip(client, monkeypatch):
     def fake_send_email(smtp_conn, from_addr, to_addr, subject, body):
         sent["subject"] = subject
 
-    with patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email", side_effect=fake_send_email), \
-         patch("app.main.email_client.connect_imap", return_value=MagicMock()):
+    with patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email", side_effect=fake_send_email), \
+         patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()):
         r = client.post("/api/email-settings/test")
 
     assert r.json()["success"] is True
@@ -715,14 +716,15 @@ def test_send_email_sets_date_and_utf8_body():
 
 def test_concurrent_scan_is_refused_not_duplicated(client):
     from app import main
+    from app import routes
 
-    assert main._email_scan_lock.acquire(blocking=False)
+    assert routes.email._email_scan_lock.acquire(blocking=False)
     try:
         r = client.post("/api/email-settings/scan")
         assert r.status_code == 200
         assert "already running" in r.json()["messages"][0]
     finally:
-        main._email_scan_lock.release()
+        routes.email._email_scan_lock.release()
     # And the lock is free again afterwards.
     r = client.post("/api/email-settings/scan")
     assert "already running" not in " ".join(r.json()["messages"])

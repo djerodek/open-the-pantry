@@ -282,8 +282,8 @@ def test_test_button_reports_imap_even_when_smtp_fails(client, monkeypatch):
         "username": "me@example.com", "password": "pw", "notify_email": "me@example.com",
         "subject_keyword": "[RECIPE]", "daily_scan_hour": 3, "cooldown_minutes": 30,
     })
-    with patch("app.main.email_client.connect_smtp", side_effect=Exception("timed out")), \
-         patch("app.main.email_client.connect_imap", return_value=MagicMock()):
+    with patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("timed out")), \
+         patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()):
         body = client.post("/api/email-settings/test").json()
     assert body["success"] is False
     assert "Sending (SMTP) failed: timed out" in body["message"]
@@ -313,11 +313,11 @@ def test_scan_shows_reason_and_unsent_notice(client, monkeypatch):
     m = EmailMessage()
     m["Subject"] = "[RECIPE]"
     m.set_content("Test\n\nTest test test")
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=m), \
-         patch("app.main.email_client.mark_seen") as seen, \
-         patch("app.main.email_client.connect_smtp", side_effect=Exception("timed out")):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=m), \
+         patch("app.routes.email.email_client.mark_seen") as seen, \
+         patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("timed out")):
         body = client.post("/api/email-settings/scan").json()
     assert body["failed"] == 1
     assert any("body text: no ingredient or step lines" in line for line in body["messages"])
@@ -330,12 +330,12 @@ def test_scan_leaves_email_unread_after_a_temporary_error(client, monkeypatch):
     """Something failing around the email (fetch, save, disk) can be
     temporary, so the email stays unread for the next scan."""
     _enable(client, monkeypatch)
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", side_effect=OSError("connection reset")), \
-         patch("app.main.email_client.mark_seen") as seen, \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email"):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", side_effect=OSError("connection reset")), \
+         patch("app.routes.email.email_client.mark_seen") as seen, \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email"):
         body = client.post("/api/email-settings/scan").json()
     assert body["failed"] == 1
     seen.assert_not_called()
@@ -475,8 +475,8 @@ def test_passwords_are_not_logged(client, data_dir, monkeypatch):
         "username": "me@example.com", "password": "s3cret-Pa55", "notify_email": "me@example.com",
         "subject_keyword": "[RECIPE]", "daily_scan_hour": 3, "cooldown_minutes": 0,
     })
-    with patch("app.main.email_client.connect_imap", side_effect=Exception("auth failed")), \
-         patch("app.main.email_client.connect_smtp", side_effect=Exception("nope")):
+    with patch("app.routes.email.email_client.connect_imap", side_effect=Exception("auth failed")), \
+         patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("nope")):
         client.post("/api/email-settings/scan")
         client.post("/api/email-settings/test")
     assert "s3cret-Pa55" not in _log_text(data_dir)

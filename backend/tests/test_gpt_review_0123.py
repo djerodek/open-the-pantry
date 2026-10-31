@@ -19,7 +19,8 @@ def _recipe(client, title, tags=(), photo=False):
 
 
 def test_a_refused_merge_leaves_no_photo_behind(client):
-    from app.main import NOTES_MAX, UPLOADS_DIR
+    from app.main import UPLOADS_DIR
+    from app.routes.recipes import NOTES_MAX
     sfx = uuid.uuid4().hex[:6]
     keep = _recipe(client, f"Leak keep {sfx}", tags=[f"LK{sfx}-{i}" for i in range(30)])
     other = _recipe(client, f"Leak other {sfx}", tags=[f"LO{sfx}-{i}" for i in range(30)], photo=True)

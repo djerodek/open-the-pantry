@@ -86,27 +86,28 @@ def test_a_failed_backup_is_tried_again():
 
 def test_a_failed_backup_keeps_the_last_good_one(client, monkeypatch, tmp_path):
     from app import main, scheduled_backup
+    from app import routes
     from app.database import SessionLocal
     monkeypatch.setattr(scheduled_backup, "BACKUP_DIR", str(tmp_path / "b"))
-    main.run_scheduled_backup()
+    routes.backup.run_scheduled_backup()
     with SessionLocal() as db:
-        good = main._backup_schedule(db).last_success_at
+        good = routes.backup._backup_schedule(db).last_success_at
     assert good is not None
 
     def fail(*a, **k):
         raise scheduled_backup.BackupError("disk full")
     monkeypatch.setattr(scheduled_backup, "make", fail)
     try:
-        main.run_scheduled_backup()
+        routes.backup.run_scheduled_backup()
     except scheduled_backup.BackupError:
         pass
     with SessionLocal() as db:
-        row = main._backup_schedule(db)
+        row = routes.backup._backup_schedule(db)
         assert row.last_ok is False and row.last_success_at == good and row.last_run_at > good
 
 
 def test_a_scheduled_scan_failure_is_logged_in_full():
-    tree = ast.parse((ROOT / "backend/app/main.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "backend/app/routes/email.py").read_text(encoding="utf-8"))
     loop = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "_daily_email_scan_loop")
     handlers = [h for h in ast.walk(loop) if isinstance(h, ast.ExceptHandler)]
     assert handlers and all("log.exception" in ast.unparse(h) for h in handlers)

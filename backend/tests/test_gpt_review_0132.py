@@ -25,6 +25,7 @@ def test_a_bare_copyright_line_ends_the_steps(footer):
 
 def test_a_failed_duplicate_photo_copy_leaves_nothing(client, monkeypatch):
     from app import main
+    from app import routes
     photo = client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).json()["stored_file"]
     r = client.post("/api/recipes", headers=H, json={"title": "With photo", "source_type": "manual",
                                                      "image_path": photo}).json()
@@ -36,7 +37,7 @@ def test_a_failed_duplicate_photo_copy_leaves_nothing(client, monkeypatch):
             with open(dst, "wb") as f:
                 f.write(b"partial")
             raise OSError(28, "No space left on device")
-        monkeypatch.setattr(main.shutil, "copyfile", half_copy)
+        monkeypatch.setattr(routes.common.shutil, "copyfile", half_copy)
         res = client.post(f"/api/recipes/{r['id']}/duplicate", headers=H)
         assert res.status_code == 500 and "Nothing was changed" in res.json()["detail"]
         assert set(os.listdir(main.UPLOADS_DIR)) == before

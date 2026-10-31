@@ -36,6 +36,7 @@ def test_bad_ports_are_not_addresses():
 
 def test_a_saved_recipe_with_a_bad_port_breaks_nothing(client, monkeypatch):
     from app import main, models
+    from app import routes
     from app.database import SessionLocal
     from .test_duplicates import _Fetched
     db = SessionLocal()
@@ -44,7 +45,7 @@ def test_a_saved_recipe_with_a_bad_port_breaks_nothing(client, monkeypatch):
     db.commit()
     rid = r.id
     db.close()
-    monkeypatch.setattr(main, "ingest_url", lambda url: _Fetched("R9 batch " + url[-1]))
+    monkeypatch.setattr(routes.ingest, "ingest_url", lambda url: _Fetched("R9 batch " + url[-1]))
     made = []
     try:
         assert client.get("/api/recipes/duplicates", params={"url": "https://example.com/stew"}).json() == []
@@ -61,8 +62,9 @@ def test_a_saved_recipe_with_a_bad_port_breaks_nothing(client, monkeypatch):
 
 def test_a_failure_in_the_link_check_is_that_links_failure(client, monkeypatch):
     from app import main, duplicates
+    from app import routes
     from .test_duplicates import _Fetched
-    monkeypatch.setattr(main, "ingest_url", lambda url: _Fetched("R9 second " + url[-1]))
+    monkeypatch.setattr(routes.ingest, "ingest_url", lambda url: _Fetched("R9 second " + url[-1]))
 
     def boom(db, url):
         if url.endswith("boom"):

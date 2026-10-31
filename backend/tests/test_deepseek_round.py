@@ -21,28 +21,29 @@ def _enable(client, monkeypatch):
 
 
 def _no_mail():
-    return (patch("app.main.email_client.search_unseen_by_subject", return_value=[]),
-            patch("app.main.email_client.mark_seen"))
+    return (patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[]),
+            patch("app.routes.email.email_client.mark_seen"))
 
 
 def test_broken_sending_is_shown_in_settings_after_a_scan(client, monkeypatch):
     """The 3 AM scan's only way to report was the email that couldn't be
     sent. Now Settings says what went wrong and how much is waiting."""
     _enable(client, monkeypatch)
-    from app.main import _queue_notification, SessionLocal
+    from app.main import SessionLocal
+    from app.routes.email import _queue_notification
     db = SessionLocal(); _queue_notification(db, True, "Pancakes"); db.commit(); db.close()
     s1, s2 = _no_mail()
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), s1, s2, \
-         patch("app.main.email_client.connect_smtp", side_effect=Exception("535 authentication failed")):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), s1, s2, \
+         patch("app.routes.email.email_client.connect_smtp", side_effect=Exception("535 authentication failed")):
         client.post("/api/email-settings/scan")
     got = client.get("/api/email-settings").json()
     assert "535 authentication failed" in got["last_problem"]
     assert got["last_problem_at"] and got["pending_notifications"] == 1
 
     # Next scan, sending works: queue goes out, warning clears.
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), s1, s2, \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email"):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), s1, s2, \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email"):
         client.post("/api/email-settings/scan")
     got = client.get("/api/email-settings").json()
     assert got["last_problem"] is None and got["pending_notifications"] == 0
@@ -51,14 +52,14 @@ def test_broken_sending_is_shown_in_settings_after_a_scan(client, monkeypatch):
 
 def test_inbox_connection_failure_is_shown_in_settings(client, monkeypatch):
     _enable(client, monkeypatch)
-    with patch("app.main.email_client.connect_imap", side_effect=Exception("timed out")):
+    with patch("app.routes.email.email_client.connect_imap", side_effect=Exception("timed out")):
         client.post("/api/email-settings/scan")
     assert "inbox" in client.get("/api/email-settings").json()["last_problem"]
 
     # A passing Send test email clears it.
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email"):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email"):
         assert client.post("/api/email-settings/test").json()["success"] is True
     assert client.get("/api/email-settings").json()["last_problem"] is None
     client.delete("/api/email-settings/password")

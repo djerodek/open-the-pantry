@@ -72,6 +72,7 @@ class _Fetched:
 
 def test_batch_links_skip_a_saved_link_and_note_a_saved_title(client, monkeypatch):
     from app import main
+    from app import routes
     a = _make(client, "Dup Batch Stew", "https://example.com/dup-batch-stew")
     fetched = []
 
@@ -79,7 +80,7 @@ def test_batch_links_skip_a_saved_link_and_note_a_saved_title(client, monkeypatc
         fetched.append(url)
         return _Fetched("Dup Batch Stew" if "other" in url else "Dup Batch Soup")
 
-    monkeypatch.setattr(main, "ingest_url", fake_ingest)
+    monkeypatch.setattr(routes.ingest, "ingest_url", fake_ingest)
     r = client.post("/api/ingest/url/batch", headers=H, json={"urls": [
         "https://www.example.com/dup-batch-stew/?utm_source=x",   # same link: skipped, never fetched
         "https://example.com/other-stew",                         # same title: saved, noted
@@ -101,15 +102,15 @@ def test_batch_links_skip_a_saved_link_and_note_a_saved_title(client, monkeypatc
 
 def _scan(client, result):
     sent = {}
-    with patch("app.main.email_client.connect_imap", return_value=MagicMock()), \
-         patch("app.main.email_client.search_unseen_by_subject", return_value=[b"1"]), \
-         patch("app.main.email_client.fetch_full_message", return_value=MagicMock(get=lambda k, d="": "[RECIPE] x")), \
-         patch("app.main.email_client.decode_subject", return_value="[RECIPE] x"), \
-         patch("app.main._sender_allowed", return_value=True), \
-         patch("app.main.process_tagged_email", return_value=result), \
-         patch("app.main.email_client.mark_seen") as seen, \
-         patch("app.main.email_client.connect_smtp", return_value=MagicMock()), \
-         patch("app.main.email_client.send_email", side_effect=lambda *a: sent.setdefault("body", a[-1])):
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=MagicMock(get=lambda k, d="": "[RECIPE] x")), \
+         patch("app.routes.email.email_client.decode_subject", return_value="[RECIPE] x"), \
+         patch("app.routes.email._sender_allowed", return_value=True), \
+         patch("app.routes.email.process_tagged_email", return_value=result), \
+         patch("app.routes.email.email_client.mark_seen") as seen, \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email", side_effect=lambda *a: sent.setdefault("body", a[-1])):
         body = client.post("/api/email-settings/scan").json()
     seen.assert_called_once()
     return body, sent.get("body", "")

@@ -667,7 +667,8 @@ racines les plus récents. GitHub suspend les exécutions planifiées après
 60 jours sans commit.
 
 ```
-backend/app/        application FastAPI (main.py), modèles, sauvegarde, HTTPS, On mange quoi?
+backend/app/        application FastAPI (main.py : démarrage, middleware), modèles, sauvegarde, HTTPS, On mange quoi?
+  routes/           l'API par domaine : recettes, importation, courriel, paramètres, sauvegarde; common.py partagé
   ingestion/        lecture des liens, PDF, photos et courriels; étiquetage
   ml/               Paramètres -> Apprentissage (numpy seulement)
   templates/        le gabarit d'impression/PDF/HTML
