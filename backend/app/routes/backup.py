@@ -596,7 +596,7 @@ def restore_backup(payload: schemas.RestoreRequest):
         if settings_blanked(db_path):
             kept_rows["email_ingest_settings"] = _keep_rows("email_ingest_settings")
 
-        new_uploads = UPLOADS_DIR.rstrip("/") + ".restore-new"
+        new_uploads = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
         shutil.rmtree(new_uploads, ignore_errors=True)
         kept, left_out = restore_mod.unpack_uploads(zip_path, new_uploads)
 

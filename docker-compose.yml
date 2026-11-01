@@ -41,7 +41,9 @@ services:
     # big scans being OCR'd at once (the app runs at most three, Settings ->
     # Learning's training counting as one); idle is
     # about 160 MB. Over the limit, Docker stops the container and
-    # restart: brings it back.
+    # restart: brings it back. Without a limit, on a NAS with little RAM the
+    # kernel may stop something else instead: set it below the memory the
+    # NAS can spare (the app then runs fewer big jobs before it's stopped).
     # mem_limit: 4g
     # cpus: 2
     # pids_limit: 256

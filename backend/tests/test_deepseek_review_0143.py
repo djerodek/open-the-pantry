@@ -1,6 +1,7 @@
 """DeepSeek review and security audit of 0143: a failed first sweep stopped
 the app starting; a restore interrupted between its renames left uploads/
-empty; JSON-LD sections nested very deep skipped the whole JSON-LD tier;
+empty (0144 put the old photos back: wrong, the database was already the
+backup's; finished with the staged photos in 0145); JSON-LD sections nested very deep skipped the whole JSON-LD tier;
 a compressed JSON response would have been rewritten under its old
 header; RECIPE_APP_ALLOWED_HOSTS=* turned the host check off silently;
 a cPanel username or token with a line break or a colon went into the
@@ -35,18 +36,57 @@ def test_a_failed_first_sweep_doesnt_stop_the_app_starting(client, monkeypatch):
     assert any("Start-up sweep failed" in m for m in logged)
 
 
-def test_an_interrupted_restore_puts_the_photos_back(tmp_path):
+def test_an_interrupted_restore_is_finished(tmp_path):
+    """DeepSeek review of 0144: the database is already the backup's when
+    the folders are swapped, so the staged photos go into place, not the
+    old ones (0144 moved the old ones back)."""
     from app.restore import recover_interrupted_swap
     live = tmp_path / "uploads"
     old = tmp_path / "uploads-before-restore-20261101-101010"
+    staged = tmp_path / "uploads.restore-new"
     old.mkdir()
-    (old / "img-1.jpg").write_bytes(b"x")
+    (old / "img-old.jpg").write_bytes(b"x")
+    staged.mkdir()
+    (staged / "img-restored.jpg").write_bytes(b"y")
     live.mkdir()                                           # recreated empty at import
-    assert recover_interrupted_swap(str(live)) == str(old)
-    assert (live / "img-1.jpg").exists() and not old.exists()
+    assert recover_interrupted_swap(str(live)) == str(staged)
+    assert (live / "img-restored.jpg").exists() and not staged.exists()
+    assert (old / "img-old.jpg").exists()                  # left, named in the log
 
 
-@pytest.mark.parametrize("setup", ["not empty", "two left", "none left"])
+def test_after_recovery_the_restored_recipes_photo_resolves(client):
+    """The same, through the app: a recipe as the restored database has it,
+    its photo only in the staged folder, uploads/ empty as after a crash."""
+    import shutil
+    from app.database import UPLOADS_DIR
+    from app.restore import recover_interrupted_swap, STAGED_SUFFIX
+    from tests.conftest import TINY_PNG
+    stored = client.post("/api/upload-image", headers=H, files={"file": ("p.png", TINY_PNG, "image/png")}).json()
+    r = client.post("/api/recipes", headers=H, json={"title": "Restored with photo", "source_type": "manual",
+                                                     "image_path": stored["stored_file"],
+                                                     "ingredients": [{"raw_line": "1 egg"}], "steps": ["Boil."]}).json()
+    photo = r["image_path"]
+    live = UPLOADS_DIR.rstrip("/")
+    before, staged = live + "-before-restore-20261101-101010", live + STAGED_SUFFIX
+    try:
+        shutil.copytree(live, staged)                       # the backup's photos, unpacked
+        os.remove(os.path.join(live, photo))                # not among the photos from before
+        os.rename(live, before)                             # swap_dirs' first rename...
+        os.makedirs(live)                                   # ...then the crash; recreated empty at import
+        assert client.get(f"/uploads/{photo}").status_code == 404
+        assert recover_interrupted_swap(UPLOADS_DIR) == staged
+        got = client.get(f"/api/recipes/{r['id']}").json()["image_path"]
+        assert client.get(f"/uploads/{got}").status_code == 200
+    finally:
+        if os.path.isdir(before):
+            shutil.rmtree(before)
+        if os.path.isdir(staged):
+            shutil.rmtree(staged)
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
+        client.delete(f"/api/recently-deleted/{r['id']}", headers=H)
+
+
+@pytest.mark.parametrize("setup", ["not empty", "two left", "none left", "no staged folder"])
 def test_otherwise_nothing_is_moved(tmp_path, setup):
     from app.restore import recover_interrupted_swap
     live = tmp_path / "uploads"
@@ -57,6 +97,8 @@ def test_otherwise_nothing_is_moved(tmp_path, setup):
         (tmp_path / "uploads-before-restore-20261101-101010").mkdir()
     if setup == "two left":
         (tmp_path / "uploads-before-restore-20261101-111111").mkdir()
+    if setup != "no staged folder":
+        (tmp_path / "uploads.restore-new").mkdir()
     assert recover_interrupted_swap(str(live)) is None
     assert live.is_dir()
 
@@ -117,7 +159,7 @@ def test_settings_refuse_a_bad_cpanel_token(client):
         r = client.put("/api/https/credentials", headers=H,
                        json={"username": "marc", "base_url": "https://cp.example.test:2083",
                              "domain": "pantry.example.test", "token": "TOKEN\nX"})
-    assert r.status_code == 400 and "letters and digits" in r.json()["detail"]
+    assert r.status_code == 400 and "letters, digits, dashes and underscores" in r.json()["detail"]
 
 
 @pytest.mark.parametrize("address,blocked", [("64:ff9b::7f00:1", True), ("64:ff9b::c0a8:101", True),

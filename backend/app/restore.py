@@ -267,14 +267,28 @@ def swap_dirs(new_dir: str, live_dir: str) -> str:
     return old
 
 
+# Where a restore unpacks the backup's photos before swap_dirs moves them
+# into place (routes.backup.restore_backup).
+STAGED_SUFFIX = ".restore-new"
+
+
 def recover_interrupted_swap(live_dir: str) -> str | None:
-    """At start-up: a restore stopped between swap_dirs' two renames (the
-    container killed, the power cut) left live_dir missing -- recreated
-    empty when the app loads -- and the old photos in
-    <live_dir>-before-restore-<time>. When live_dir is empty and exactly
-    one such folder exists, it's moved back. (A finished restore deletes
-    it.) DeepSeek audit of 0143."""
+    """At start-up: finishes a restore stopped between swap_dirs' two
+    renames (the container killed, the power cut). By then the database is
+    already the backup's, so the photos it names are the staged ones in
+    <live_dir>.restore-new; live_dir is missing (recreated empty when the
+    app loads) and the photos from before the restore are in
+    <live_dir>-before-restore-<time>. The staged folder is moved into
+    place, as swap_dirs would have; the old one is left, named in the log,
+    beside the restore-safety copy.
+
+    0144 moved the old photos back instead, which left the restored
+    database pointing at photos that weren't there (DeepSeek review of
+    0144). Nothing is moved unless live_dir is empty and exactly one old
+    folder is left; without a staged folder the second rename had already
+    happened, and the state is consistent."""
     parent, base = os.path.split(live_dir.rstrip("/"))
+    staged = live_dir.rstrip("/") + STAGED_SUFFIX
     try:
         left = sorted(n for n in os.listdir(parent or ".") if n.startswith(base + "-before-restore-"))
         empty = not os.path.isdir(live_dir) or not os.listdir(live_dir)
@@ -287,16 +301,20 @@ def recover_interrupted_swap(live_dir: str) -> str | None:
         log.warning("Start-up: %s left by an earlier restore; not moved (%s)", ", ".join(left),
                     "uploads/ isn't empty" if not empty else "more than one")
         return None
-    old = os.path.join(parent, left[0])
+    if not os.path.isdir(staged):
+        log.warning("Start-up: %s left by an earlier restore (the restore itself had finished); "
+                    "delete it once you've checked the photos", left[0])
+        return None
     try:
         if os.path.isdir(live_dir):
             os.rmdir(live_dir)
-        os.rename(old, live_dir)
+        os.rename(staged, live_dir)
     except OSError:
-        log.error("Start-up: couldn't move %s back to %s", old, live_dir, exc_info=True)
+        log.error("Start-up: couldn't move %s into %s", staged, live_dir, exc_info=True)
         return None
-    log.error("Start-up: a restore was interrupted; the photos from before it (%s) are back in place", left[0])
-    return old
+    log.error("Start-up: finished a restore that was interrupted: the backup's photos are in place; the "
+              "photos from before it are in %s (delete it once the library looks right)", left[0])
+    return staged
 
 
 def prune_safety_backups(data_dir: str, keep: int = SAFETY_KEEP):

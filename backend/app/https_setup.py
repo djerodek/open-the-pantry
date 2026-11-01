@@ -222,7 +222,8 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
     if (new.get("username") != old.get("username") or new.get("base_url") != old.get("base_url")) and not token:
         new.pop("token_encrypted", None)
     if token and not _CPANEL_TOKEN.fullmatch(token):
-        raise HttpsError("The API token is letters and digits only: copy it again from cPanel → Manage API Tokens.")
+        raise HttpsError("The API token is letters, digits, dashes and underscores only: copy it again from "
+                         "cPanel → Manage API Tokens.")
     if token:
         if not crypto.encryption_configured():
             if crypto.key_source() is None:
