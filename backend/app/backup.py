@@ -72,6 +72,11 @@ REDACTED_SETTINGS = {
 }
 
 
+# In a backup's database only: this backup's settings were blanked.
+# init_db drops it from the live database after a restore.
+REDACTED_MARK_TABLE = "backup_settings_blanked"
+
+
 def blank_settings(db_path: str) -> None:
     """REDACTED_SETTINGS applied to a snapshot, then VACUUM, so the old
     values aren't left in the file's free pages either."""
@@ -82,6 +87,12 @@ def blank_settings(db_path: str) -> None:
             values = {k: v for k, v in values.items() if k in cols}
             if values:
                 conn.execute(f"UPDATE {table} SET " + ", ".join(f"{k} = ?" for k in values), list(values.values()))
+        # Says so in the backup itself, for a restore to read (GPT review of
+        # 0147: guessing from four blank fields took an older backup with
+        # no keyword or sender list for a blanked one).
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {REDACTED_MARK_TABLE} (version INTEGER NOT NULL)")
+        conn.execute(f"DELETE FROM {REDACTED_MARK_TABLE}")
+        conn.execute(f"INSERT INTO {REDACTED_MARK_TABLE} (version) VALUES (1)")
         conn.commit()
         conn.execute("VACUUM")
     finally:
@@ -89,18 +100,28 @@ def blank_settings(db_path: str) -> None:
 
 
 def settings_blanked(db_path: str) -> bool:
-    """Whether a backup's email settings were blanked (a backup from 0143
-    on): an older backup still carries them, and a restore uses those."""
+    """Whether a backup's email settings were blanked: its database has
+    REDACTED_MARK_TABLE (from 0148). Without it (an older backup), every
+    field blank_settings clears must be as it leaves them, so a backup that
+    merely had no keyword or sender list keeps its notification address
+    and recipients on restore (GPT review of 0147)."""
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        row = conn.execute("SELECT username, password_encrypted, subject_keyword, allowed_senders "
-                           "FROM email_ingest_settings LIMIT 1").fetchone()
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                        (REDACTED_MARK_TABLE,)).fetchone():
+            return True
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(email_ingest_settings)")}
+        if not cols:
+            return True
+        fields = [k for k in REDACTED_SETTINGS["email_ingest_settings"] if k in cols]
+        row = conn.execute(f"SELECT {', '.join(fields)} FROM email_ingest_settings LIMIT 1").fetchone()
     except sqlite3.Error:
-        log.info("Restore: no email settings table in the backup", exc_info=True)
+        log.info("Restore: couldn't read the backup's email settings", exc_info=True)
         return True
     finally:
         conn.close()
-    return row is None or (row[0] is None and row[1] is None and row[2] == "" and row[3] == "")
+    blank = REDACTED_SETTINGS["email_ingest_settings"]
+    return row is None or all(v == blank[k] for k, v in zip(fields, row))
 
 
 def snapshot_database(dest_path: str) -> None:

@@ -114,3 +114,38 @@ def test_the_compose_files_say_the_ports_are_on_every_address():
     root = Path(__file__).resolve().parents[2]
     for name in ("docker-compose.yml", "docker-compose.build.yml"):
         assert "Published on every address of this machine" in (root / name).read_text(encoding="utf-8"), name
+
+
+def test_a_backup_says_it_was_blanked(client, configured, tmp_path):
+    """GPT review of 0147: the backup carries a mark, rather than the
+    restore guessing from blank fields; the mark doesn't stay in the live
+    database after a restore."""
+    from app.backup import REDACTED_MARK_TABLE, settings_blanked
+    path = tmp_path / "b.db"
+    path.write_bytes(_db_bytes(client.get("/api/backup/database.zip").content))
+    with sqlite3.connect(path) as c:
+        assert c.execute(f"SELECT version FROM {REDACTED_MARK_TABLE}").fetchone() == (1,)
+    assert settings_blanked(str(path)) is True
+    from sqlalchemy import text
+    from app.database import engine
+    from app.init_db import init_db
+    with engine.begin() as c:
+        c.execute(text(f"CREATE TABLE IF NOT EXISTS {REDACTED_MARK_TABLE} (version INTEGER)"))
+    init_db()
+    with engine.connect() as c:
+        assert c.execute(text("SELECT 1 FROM sqlite_master WHERE name = :n"), {"n": REDACTED_MARK_TABLE}).first() is None
+
+
+def test_an_older_backup_with_only_some_fields_blank_is_restored_as_it_was(tmp_path):
+    """GPT review of 0147: no keyword, no senders and no login, but a
+    notification address and recipients: an older backup, not a blanked
+    one."""
+    from app.backup import settings_blanked
+    old = tmp_path / "old.db"
+    with sqlite3.connect(old) as c:
+        c.execute("CREATE TABLE email_ingest_settings (enabled INTEGER, username TEXT, password_encrypted TEXT, "
+                  "notify_email TEXT, subject_keyword TEXT, allowed_senders TEXT, recent_recipients TEXT, "
+                  "last_problem TEXT)")
+        c.execute("INSERT INTO email_ingest_settings VALUES (0, NULL, NULL, 'me@home.example', '', '', "
+                  "'[\"aunt@family.example\"]', NULL)")
+    assert settings_blanked(str(old)) is False

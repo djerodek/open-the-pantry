@@ -51,6 +51,8 @@ def test_an_interrupted_restore_is_finished(tmp_path):
     staged.mkdir()
     (staged / "img-restored.jpg").write_bytes(b"y")
     live.mkdir()                                           # recreated empty at import
+    from app.restore import mark_database_replaced
+    mark_database_replaced(str(tmp_path))                  # written after the database copy (0146)
     assert recover_interrupted_restore(str(tmp_path), str(live)) == str(staged)
     assert (live / "img-restored.jpg").exists() and not staged.exists()
     assert (old / "img-old.jpg").exists()                  # left, named in the log
@@ -61,6 +63,7 @@ def test_after_recovery_the_restored_recipes_photo_resolves(client):
     its photo only in the staged folder, uploads/ empty as after a crash."""
     import shutil
     from app.database import DATA_DIR, UPLOADS_DIR
+    from app import restore
     from app.restore import recover_interrupted_restore, STAGED_SUFFIX
     from tests.conftest import TINY_PNG
     stored = client.post("/api/upload-image", headers=H, files={"file": ("p.png", TINY_PNG, "image/png")}).json()
@@ -76,6 +79,7 @@ def test_after_recovery_the_restored_recipes_photo_resolves(client):
         os.remove(os.path.join(live, photo))                # not among the photos from before
         os.rename(live, before)                             # swap_dirs' first rename...
         os.makedirs(live)                                   # ...then the crash; recreated empty at import
+        restore.mark_database_replaced(DATA_DIR)            # as restore_backup wrote it before the swap
         assert client.get(f"/uploads/{photo}").status_code == 404
         assert recover_interrupted_restore(DATA_DIR, UPLOADS_DIR) == staged
         got = client.get(f"/api/recipes/{r['id']}").json()["image_path"]
@@ -89,7 +93,8 @@ def test_after_recovery_the_restored_recipes_photo_resolves(client):
         client.delete(f"/api/recently-deleted/{r['id']}", headers=H)
 
 
-@pytest.mark.parametrize("setup", ["two left, uploads empty", "nothing left over", "old folder, uploads not empty, nothing staged"])
+@pytest.mark.parametrize("setup", ["two left, uploads empty", "nothing left over",
+                                   "old folder, uploads not empty, nothing staged", "one left, uploads empty, no marker"])
 def test_otherwise_nothing_is_moved(tmp_path, setup):
     from app.restore import recover_interrupted_restore
     live = tmp_path / "uploads"
@@ -100,11 +105,17 @@ def test_otherwise_nothing_is_moved(tmp_path, setup):
         (tmp_path / "uploads-before-restore-20261101-101010").mkdir()
     if setup == "two left, uploads empty":
         (tmp_path / "uploads-before-restore-20261101-111111").mkdir()
+    if setup in ("two left, uploads empty", "one left, uploads empty, no marker"):
         (tmp_path / "uploads.restore-new").mkdir()
+        (tmp_path / "uploads.restore-new" / "img-restored.jpg").write_bytes(b"new")
+    if setup == "one left, uploads empty, no marker":
+        (live / "img-2.jpg").unlink()
     assert recover_interrupted_restore(str(tmp_path), str(live)) is None
     assert live.is_dir()
-    if setup == "two left, uploads empty":
-        assert (tmp_path / "uploads.restore-new").is_dir()      # left for the owner
+    if "uploads empty" in setup:
+        # GPT review of 0147: without a marker this state is ambiguous; the
+        # staged photos stay for the owner.
+        assert (tmp_path / "uploads.restore-new" / "img-restored.jpg").exists() and not os.listdir(live)
 
 
 def _layout(tmp_path):

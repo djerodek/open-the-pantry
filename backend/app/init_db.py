@@ -265,6 +265,9 @@ def init_db():
             conn.execute(text(stmt))
         for stmt in INDEX_SQL:
             conn.execute(text(stmt))
+        # A restored backup's "settings blanked" mark: it describes that
+        # file, not this library (backup.REDACTED_MARK_TABLE).
+        conn.execute(text("DROP TABLE IF EXISTS backup_settings_blanked"))
         # Recipes added from a page with no yield before that was fixed in
         # url_ingest hold the text "None" as their servings.
         conn.execute(text("UPDATE recipes SET servings = NULL WHERE servings = 'None'"))

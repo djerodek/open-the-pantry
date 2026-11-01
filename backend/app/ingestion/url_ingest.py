@@ -84,7 +84,11 @@ def validate_public_url(url: str) -> str:
         # uses, 100.100.100.100 included) and similar non-public ranges.
         # NAT64 (64:ff9b::/96, RFC 6052): Python counts it as global, but a
         # NAT64 gateway turns 64:ff9b::7f00:1 into 127.0.0.1. Judged by the
-        # IPv4 address inside (DeepSeek audit of 0143).
+        # IPv4 address inside (DeepSeek audit of 0143). A network-specific
+        # NAT64 prefix can't be recognised from the address alone; there,
+        # the name's own A record is also answered (getaddrinfo returns
+        # both), and any private answer refuses the link (GPT review of
+        # 0147). An IPv6-only server behind such a prefix isn't covered.
         judged = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF) if ip.version == 6 and ip in _NAT64 else ip
         if not judged.is_global or judged.is_multicast:
             raise UrlValidationError("URLs resolving to private/internal network addresses aren't allowed.")

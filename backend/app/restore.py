@@ -300,10 +300,10 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
     """At start-up: a restore stopped part way (the container killed, the
     power cut) is finished or cleaned up so the photos match the database.
 
-    - The database had been replaced (marker present, or uploads/ missing
-      between swap_dirs' two renames): the staged photos go into place, as
-      the swap would have done. The old photos are kept in
-      uploads-before-restore-<time>, named in the log.
+    - The database had been replaced (the marker is present): the staged
+      photos go into place, as the swap would have done, whether the swap
+      hadn't started or stopped between its two renames. The old photos are
+      kept in uploads-before-restore-<time>, named in the log.
     - Staged photos without a marker: most likely stopped before the
       database copy (nothing uses them), but a stop just after the copy,
       before the marker was written, looks the same. They're left in place
@@ -326,7 +326,7 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
         log.warning("Start-up: couldn't check for an interrupted restore", exc_info=True)
         return None
     try:
-        if has_staged and empty and len(left) == 1:
+        if has_staged and empty and len(left) == 1 and marked:
             # Between the two renames: the old photos are already aside.
             if os.path.isdir(live):
                 os.rmdir(live)
@@ -336,9 +336,12 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
             clear_marker(data_dir)
             return staged
         if has_staged and empty and left:
+            # More than one old folder, or no marker to say the library was
+            # replaced (GPT review of 0147: without one, moving the staged
+            # photos could pair them with the old library).
             log.warning("Start-up: an interrupted restore left %s and %s with uploads/ empty; not moved "
-                        "(more than one old folder: check which is right by hand)", os.path.basename(staged),
-                        ", ".join(left))
+                        "(%s: check which is right by hand)", os.path.basename(staged), ", ".join(left),
+                        "more than one old folder" if marked else "no marker says the library was replaced")
             return None
         if has_staged and marked:
             # The database was replaced, the swap hadn't started.

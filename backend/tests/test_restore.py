@@ -109,6 +109,9 @@ def test_restore_puts_the_backup_back(client):
                     "subject_keyword, allowed_senders, daily_scan_hour, cooldown_minutes, language, recent_recipients, "
                     "password_encrypted) VALUES (1, 1, 993, 1, 587, 1, '[RECIPE]', '', 3, 30, 'en', '[]', 'not-a-token')")
         con.execute("DROP TABLE IF EXISTS picker_settings")
+        # As an older backup, which carried its email settings (from 0143
+        # a backup leaves them out and says so in this table).
+        con.execute("DROP TABLE IF EXISTS backup_settings_blanked")
     fake = f"img-{uuid.uuid4().hex}.jpg"
     data = _rezip(backup, change, extra={f"uploads/{fake}": b"<html>not an image</html>",
                                           "uploads/../escape.jpg": TINY_PNG})
