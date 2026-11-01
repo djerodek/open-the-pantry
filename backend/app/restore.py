@@ -304,11 +304,16 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
       between swap_dirs' two renames): the staged photos go into place, as
       the swap would have done. The old photos are kept in
       uploads-before-restore-<time>, named in the log.
-    - It hadn't (no marker, uploads/ as it was): the database is still the
-      old one, so the staged photos belong to nothing and are removed.
+    - Staged photos without a marker: most likely stopped before the
+      database copy (nothing uses them), but a stop just after the copy,
+      before the marker was written, looks the same. They're left in place
+      and named in the log; deleting them could lose the restored photos
+      (DeepSeek review of 0146; 0146 deleted them).
 
     0144 moved the old photos back instead (wrong: the database was
-    already the backup's). Returns what was moved into place, if anything."""
+    already the backup's). Returns the staged folder's former path when
+    its photos were moved into live_dir (it no longer exists by then),
+    otherwise None."""
     live = live_dir.rstrip("/")
     parent, base = os.path.split(live)
     staged = live + STAGED_SUFFIX
@@ -344,10 +349,10 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
             clear_marker(data_dir)
             return staged
         if has_staged:
-            # Stopped before the database was replaced: nothing uses these.
-            shutil.rmtree(staged, ignore_errors=True)
-            log.warning("Start-up: removed %s, left by a restore that stopped before replacing the library "
-                        "(the library is as it was)", os.path.basename(staged))
+            log.warning("Start-up: %s holds staged photos from a restore that stopped, and no marker says "
+                        "the library was replaced. If recipes' photos show, the library is the old one and "
+                        "this folder can be deleted; if they don't, the restore had replaced it: stop the "
+                        "app and move this folder to uploads/ (or restore again).", os.path.basename(staged))
             return None
         if marked:
             clear_marker(data_dir)          # the photos had been moved; only the clean-up was left
@@ -355,8 +360,11 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
         log.error("Start-up: couldn't finish an interrupted restore (%s)", staged, exc_info=True)
         return None
     for name in left:
-        log.warning("Start-up: %s left by an earlier restore (the restore itself had finished); "
-                    "delete it once you've checked the photos", name)
+        # After a finished restore whose old-photo copy wasn't removed:
+        # expected, so info; without the marker, someone's folders: warning.
+        (log.info if marked else log.warning)(
+            "Start-up: %s left by an earlier restore (the restore itself had finished); delete it once "
+            "you've checked the photos", name)
     return None
 
 

@@ -2,7 +2,8 @@
 the app starting; a restore interrupted between its renames left uploads/
 empty (0144 put the old photos back: wrong, the database was already the
 backup's; finished with the staged photos in 0145, and from 0146 also
-when stopped after the database copy, before the swap); JSON-LD sections nested very deep skipped the whole JSON-LD tier;
+when stopped after the database copy, before the swap; from 0147 staged
+photos without a marker are left, not deleted); JSON-LD sections nested very deep skipped the whole JSON-LD tier;
 a compressed JSON response would have been rewritten under its old
 header; RECIPE_APP_ALLOWED_HOSTS=* turned the host check off silently;
 a cPanel username or token with a line break or a colon went into the
@@ -88,7 +89,7 @@ def test_after_recovery_the_restored_recipes_photo_resolves(client):
         client.delete(f"/api/recently-deleted/{r['id']}", headers=H)
 
 
-@pytest.mark.parametrize("setup", ["two left, uploads empty", "nothing left over", "old folder only"])
+@pytest.mark.parametrize("setup", ["two left, uploads empty", "nothing left over", "old folder, uploads not empty, nothing staged"])
 def test_otherwise_nothing_is_moved(tmp_path, setup):
     from app.restore import recover_interrupted_restore
     live = tmp_path / "uploads"
@@ -129,13 +130,17 @@ def test_stopped_after_the_database_copy_the_photos_follow(tmp_path):
     assert not (tmp_path / restore.MARKER).exists()
 
 
-def test_stopped_before_the_database_copy_the_staged_copy_goes(tmp_path):
-    """No marker: the database is still the old one, so are the photos;
-    the staged copy belongs to nothing."""
+def test_staged_photos_without_a_marker_are_left_for_the_owner(tmp_path, monkeypatch):
+    """No marker: usually stopped before the database copy, but a stop just
+    after it, before the marker, looks the same, so the staged photos
+    aren't deleted (DeepSeek review of 0146; 0146 deleted them)."""
     from app import restore
+    warned = []
+    monkeypatch.setattr(restore.log, "warning", lambda msg, *a, **k: warned.append(msg % a))
     live, staged = _layout(tmp_path)
     assert restore.recover_interrupted_restore(str(tmp_path), str(live)) is None
-    assert (live / "img-old.jpg").exists() and not staged.exists()
+    assert (live / "img-old.jpg").exists() and (staged / "img-restored.jpg").exists()
+    assert any("uploads.restore-new" in w and "no marker" in w for w in warned)
 
 
 def test_the_restore_marks_the_database_and_clears_the_mark(client, monkeypatch):
