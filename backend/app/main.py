@@ -192,7 +192,16 @@ async def lifespan(app: FastAPI):
     # above is the actual CPU-thrashing guard; this is just pool headroom.
     anyio.to_thread.current_default_thread_limiter().total_tokens = 100
 
-    await _run_sweeps()
+    # A restore stopped between its two folder renames left uploads/ missing
+    # (recreated empty at import) beside uploads-before-restore-*.
+    restore_mod.recover_interrupted_swap(UPLOADS_DIR)
+    # A failed first sweep (the database still locked by the previous
+    # container) mustn't stop the app starting; the loop sweeps again
+    # (DeepSeek review and audit of 0143).
+    try:
+        await _run_sweeps()
+    except Exception:
+        log.exception("Start-up sweep failed; trying again in %d s", TMP_SWEEP_INTERVAL_SECONDS)
     sweep_task = asyncio.create_task(_periodic_tmp_sweep())
     email_scan_task = asyncio.create_task(_daily_email_scan_loop())
     backup_task = asyncio.create_task(_scheduled_backup_loop())
@@ -420,6 +429,12 @@ async def log_unhandled_errors(request: Request, call_next):
 #    can't add a custom header without a CORS preflight, which this app never
 #    approves. The app's own pages add it automatically (see app.js).
 ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("RECIPE_APP_ALLOWED_HOSTS", "").split(",") if h.strip()}
+if "*" in ALLOWED_HOSTS:
+    # Accepted (a proxy whose name changes), but it turns the host check
+    # off (DeepSeek audit of 0143: undocumented, and easy to copy).
+    log.warning("RECIPE_APP_ALLOWED_HOSTS contains *: any host name is accepted, which turns off the check that "
+                "stops other websites reaching the app through a visitor's browser (DNS rebinding). List the "
+                "names instead.")
 _LOCAL_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localhost")
 WRITE_HEADER = "x-requested-with"
 
@@ -695,6 +710,11 @@ async def interface_language(request: Request, call_next):
     finally:
         i18n.current_lang.reset(token)
     if lang == "en" or not response.headers.get("content-type", "").startswith("application/json"):
+        return response
+    # A compressed body (a compression middleware or proxy added later)
+    # can't be read as JSON here; left as it is, header and all (DeepSeek
+    # review of 0143).
+    if response.headers.get("content-encoding"):
         return response
     length = response.headers.get("content-length")
     if not length or int(length) > _TRANSLATE_MAX_BYTES:

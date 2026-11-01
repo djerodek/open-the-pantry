@@ -520,6 +520,8 @@ Son fonctionnement :
 - **Mauvais mots de passe.** Après 5 mauvais essais depuis une adresse, ou
   20 depuis toutes les adresses ensemble, chaque nouvel essai doit attendre
   (jusqu'à 15 minutes). Redémarrer le conteneur remet cela à zéro.
+  Quelqu'un sur votre réseau peut faire attendre les paramètres ainsi, même
+  avec le bon mot de passe; le redémarrage est la solution.
 - **Une fois HTTPS activé**, le mot de passe ne fonctionne qu'à l'adresse
   `https://`.
 - **Stockage.** Il est gardé sous forme de hachage scrypt salé dans
@@ -540,7 +542,10 @@ Son fonctionnement :
   - Les requêtes doivent utiliser une adresse IP, `localhost`, ou un nom
     local (`.local`, `.lan`, `.home.arpa`, `.internal`, ou sans point). Tout
     autre nom (un domaine de mandataire, un nom Tailscale) doit être listé
-    dans `RECIPE_APP_ALLOWED_HOSTS`.
+    dans `RECIPE_APP_ALLOWED_HOSTS`. `RECIPE_APP_ALLOWED_HOSTS=*` accepte
+    n'importe quel nom, ce qui désactive cette vérification : d'autres sites
+    pourraient alors atteindre l'application par votre navigateur (DNS
+    rebinding). Listez plutôt les noms; le journal en avertit au démarrage.
   - Les requêtes qui modifient des données doivent porter un en-tête
     `X-Requested-With`.
   - Les pages ne peuvent pas être affichées dans un autre site.

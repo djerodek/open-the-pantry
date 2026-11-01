@@ -267,6 +267,38 @@ def swap_dirs(new_dir: str, live_dir: str) -> str:
     return old
 
 
+def recover_interrupted_swap(live_dir: str) -> str | None:
+    """At start-up: a restore stopped between swap_dirs' two renames (the
+    container killed, the power cut) left live_dir missing -- recreated
+    empty when the app loads -- and the old photos in
+    <live_dir>-before-restore-<time>. When live_dir is empty and exactly
+    one such folder exists, it's moved back. (A finished restore deletes
+    it.) DeepSeek audit of 0143."""
+    parent, base = os.path.split(live_dir.rstrip("/"))
+    try:
+        left = sorted(n for n in os.listdir(parent or ".") if n.startswith(base + "-before-restore-"))
+        empty = not os.path.isdir(live_dir) or not os.listdir(live_dir)
+    except OSError:
+        log.warning("Start-up: couldn't check for an interrupted restore", exc_info=True)
+        return None
+    if not left:
+        return None
+    if not empty or len(left) != 1:
+        log.warning("Start-up: %s left by an earlier restore; not moved (%s)", ", ".join(left),
+                    "uploads/ isn't empty" if not empty else "more than one")
+        return None
+    old = os.path.join(parent, left[0])
+    try:
+        if os.path.isdir(live_dir):
+            os.rmdir(live_dir)
+        os.rename(old, live_dir)
+    except OSError:
+        log.error("Start-up: couldn't move %s back to %s", old, live_dir, exc_info=True)
+        return None
+    log.error("Start-up: a restore was interrupted; the photos from before it (%s) are back in place", left[0])
+    return old
+
+
 def prune_safety_backups(data_dir: str, keep: int = SAFETY_KEEP):
     names = sorted(n for n in os.listdir(data_dir) if n.startswith("restore-safety-") and n.endswith(".zip"))
     for n in names[:-keep] if keep else names:

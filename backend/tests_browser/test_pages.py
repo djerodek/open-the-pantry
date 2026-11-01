@@ -183,11 +183,18 @@ def test_restore_asks_for_the_password_at_the_check(server, api, page):
     pg.click("#import-btn")
     pg.wait_for_selector("#import-results li")
     assert pg.is_hidden("#admin-overlay")
+    checks = []
+    pg.on("request", lambda req: checks.append(req.url) if "/api/backup/restore/check" in req.url else None)
     pg.set_input_files("#import-file", files=[{"name": "b.zip", "mimeType": "application/zip", "buffer": backup}])
     pg.click("#import-btn")
+    # DeepSeek review of 0143: the password is asked for before the backup
+    # is sent (its list of files names recipes.db), so it's sent once.
+    pg.wait_for_selector("#admin-overlay:not([hidden])")
+    assert checks == []
     _password_if_asked(p)
     pg.wait_for_selector("#restore-confirm:not([hidden])")
     assert "full backup" in pg.inner_text("#restore-summary")
+    assert len(checks) == 1
     pg.click("#restore-cancel")
 
 

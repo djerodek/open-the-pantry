@@ -462,6 +462,16 @@
           // A full backup needs the settings password even to be checked
           // (the server answers 401 locked); adminFetch asks for it and
           // sends the file again. Anything else is checked without it.
+          // When the zip's own list of files shows a recipes.db, the
+          // password is asked for first, so a large backup is sent once,
+          // not twice (DeepSeek review of 0143).
+          if (await zipHasEntry(file, "recipes.db")) {
+            const st = await adminStatus().catch(() => null);
+            if (st && !st.unlocked && !st.https_url) {
+              const ok = await settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
+              if (!ok) { status.textContent = ""; importBtn.disabled = false; return; }
+            }
+          }
           const res = await adminFetch(`${API}/backup/restore/check`, { method: "POST", body });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { status.textContent = apiErrorText(data, res.status); importBtn.disabled = false; return; }
@@ -606,6 +616,37 @@
   const adminOverlay = $("#admin-overlay");
   $("#admin-close").addEventListener("click", () => closeModal(adminOverlay));
   adminOverlay.addEventListener("click", (e) => { if (e.target === adminOverlay) closeModal(adminOverlay); });
+
+  // Whether a .zip's central directory (the list at its end) names `entry`
+  // at its top level. Reads only the end of the file: the last 64 KB for
+  // the end record, then the directory itself. false when unsure (not a
+  // zip, a zip64 archive, a directory larger than 8 MB); the caller then
+  // goes on as before.
+  async function zipHasEntry(file, entry) {
+    try {
+      const tailLen = Math.min(file.size, 65557);
+      const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+      let eocd = -1;
+      for (let i = tailLen - 22; i >= 0; i--) {
+        if (tail.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) return false;
+      const cdSize = tail.getUint32(eocd + 12, true);
+      const cdOffset = tail.getUint32(eocd + 16, true);
+      if (cdOffset === 0xffffffff || cdSize > 8 * 1024 * 1024 || cdOffset + cdSize > file.size) return false;
+      const cd = new DataView(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
+      const decoder = new TextDecoder();
+      for (let p = 0; p + 46 <= cd.byteLength && cd.getUint32(p, true) === 0x02014b50;) {
+        const nameLen = cd.getUint16(p + 28, true);
+        const extra = cd.getUint16(p + 30, true);
+        const comment = cd.getUint16(p + 32, true);
+        const name = decoder.decode(new Uint8Array(cd.buffer, p + 46, nameLen));
+        if (name === entry) return true;
+        p += 46 + nameLen + extra + comment;
+      }
+    } catch { /* unreadable: treated as not a backup */ }
+    return false;
+  }
 
   async function adminStatus() {
     const res = await fetch(`${API}/admin/status`);

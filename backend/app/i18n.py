@@ -355,6 +355,14 @@ _FR_PATTERNS = [
     _p(r"cPanel's answer wasn't JSON\. Check CPANEL_BASE_URL \(e\.g\. https://host:2083\)\.",
        "La réponse de cPanel n'était pas du JSON. Vérifiez CPANEL_BASE_URL (p. ex. https://hote:2083)."),
     _p(r"cPanel refused the request: ", "cPanel a refusé la demande : "),
+    _p(r"The cPanel username can only have letters, digits, dots, dashes, underscores and @\.",
+       "Le nom d'utilisateur cPanel ne peut contenir que des lettres, des chiffres, des points, des tirets, "
+       "des traits de soulignement et @."),
+    _p(r"The API token is letters and digits only: copy it again from cPanel → Manage API Tokens\.",
+       "Le jeton d'API ne contient que des lettres et des chiffres : copiez-le de nouveau dans cPanel → Manage API Tokens."),
+    _p(r"The cPanel username or API token has characters they can't contain\. Check them in Settings → HTTPS \(or \.env\)\.",
+       "Le nom d'utilisateur ou le jeton d'API cPanel contient des caractères interdits. Vérifiez-les dans "
+       "Paramètres → HTTPS (ou .env)."),
     _p(r"This cPanel account doesn't have a DNS zone containing (\S+)\.",
        r"Ce compte cPanel n'a pas de zone DNS contenant \1."),
     _p(r"Use a name under (\S+), like pantry\.(\S+), not the domain itself\.",

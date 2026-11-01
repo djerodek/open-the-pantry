@@ -29,10 +29,10 @@ New tests go in the feature file when there is one.
 | Review queue (To review) | `test_review_queue.py` | |
 | Email ingest | `test_email_ingest.py`, `test_email_real_world.py` | `test_deepseek_round.py`, `test_security_round2.py` (saved password), `test_qwen_review.py`, `test_claude_review_round13.py` (inbox certificate, unknown charsets, scan failures logged), `test_claude_review_round14.py` (codec names that aren't text encodings), `test_deepseek_review_0133.py` (an invalid suggested tag left off), `test_ci_and_import_gaps_0138.py` (greeting and sign-off) |
 | Backup and export | `test_backup.py`, `test_interchange.py`, `test_scheduled_backup.py` | `test_qwen_review.py`, `test_deepseek_0083.py`, `test_gpt_review_0093.py`, `test_gpt_review_0104.py` (names in the same second, backup folder owner), `test_claude_review_round13.py` (a failed automatic backup tried again), `test_gpt_review_0129.py` (a failure after the day's success retried), `test_gpt_review_0134.py` (one backup when clocks go back), `test_claude_review_0138.py` (export source line, language, long words); `tests_browser/test_pages.py` (Print), `test_backup_settings_0143.py` (credentials left out of backups) |
-| Restore | `test_restore.py` | `test_gpt_review_0093.py` |
+| Restore | `test_restore.py` | `test_gpt_review_0093.py`, `test_deepseek_review_0143.py` (interrupted restore) |
 | Settings password | `test_settings_password.py` | |
 | HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` | |
-| Security (uploads, paths, cross-site, headers, outgoing TLS) | `test_tls_distrust.py` (compromised CA keys, pinned connections), `test_security_audit_0140.py` (link host checks and DNS rebinding, OCR time limits, one-line logs, nosniff, photo names, PDF export fetching), `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive), `test_claude_review_round13.py` (trusted roots in the image, publishing after CI), `test_ci_and_import_gaps_0138.py` (Node 24 actions, weekly run), `test_deepseek_review_0133.py` (HTTPS port range, photo copy names, josepy pinned), `test_gpt_review_0134.py` (HTTPS job lock taken by its caller, progress cleared, dnspython 2.9) |
+| Security (uploads, paths, cross-site, headers, outgoing TLS) | `test_tls_distrust.py` (compromised CA keys, pinned connections), `test_security_audit_0140.py` (link host checks and DNS rebinding, OCR time limits, one-line logs, nosniff, photo names, PDF export fetching), `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive), `test_claude_review_round13.py` (trusted roots in the image, publishing after CI), `test_ci_and_import_gaps_0138.py` (Node 24 actions, weekly run), `test_deepseek_review_0133.py` (HTTPS port range, photo copy names, josepy pinned), `test_gpt_review_0134.py` (HTTPS job lock taken by its caller, progress cleared, dnspython 2.9), `test_deepseek_review_0143.py` (cPanel values, NAT64, no HTML from data, wildcard hosts) |
 | Logs | `test_log_review.py` | `test_claude_review_round7.py` |
 | What to eat? | `test_picker.py` | `test_gpt_review_0078.py`, `test_claude_review_round7.py`, `test_claude_review_round8.py`, `test_claude_review_round14.py` (language guesses kept), `test_gpt_review_0129.py` (same-length edits) |
 | Things kept in two places (French text, page vs server rules) | `test_ui_consistency.py`, `test_i18n_catalog.py` | `test_deepseek_review_0096.py` (part names) |
@@ -81,3 +81,13 @@ helper defined in `common` and imported by a route module is patched in
 that route module. `conftest.app_routes(app)` lists every route, including
 those of the included routers (`app.routes` shows each router as one
 entry).
+
+## Tests that read the source
+
+Some tests (`test_ui_consistency.py`, and a few review files) check the
+text of `app.js`, `styles.css` or a workflow for a structure that stops a
+bug coming back: no recipe data through `innerHTML`, a `try` around
+`localStorage`, a control that stops a card's link. When a refactor breaks
+one, change the assertion to the new structure; don't delete it. Where a
+browser can check the behaviour itself, `tests_browser/` is the better
+place.

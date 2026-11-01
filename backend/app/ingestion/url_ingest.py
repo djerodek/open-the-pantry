@@ -31,6 +31,9 @@ class UrlValidationError(ValueError):
 _UNSAFE_URL_CHARS = re.compile(r"[\\\x00-\x1f\x7f]")
 
 
+_NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
+
+
 def _request_host(url: str) -> str | None:
     """The host requests will connect to: read by urllib3 from the URL as
     requests prepares it, not by urlparse."""
@@ -79,7 +82,11 @@ def validate_public_url(url: str) -> str:
         # is_global rather than a list of is_private / is_loopback / ...:
         # the list missed 100.64.0.0/10 (carrier-grade NAT, which Tailscale
         # uses, 100.100.100.100 included) and similar non-public ranges.
-        if not ip.is_global or ip.is_multicast:
+        # NAT64 (64:ff9b::/96, RFC 6052): Python counts it as global, but a
+        # NAT64 gateway turns 64:ff9b::7f00:1 into 127.0.0.1. Judged by the
+        # IPv4 address inside (DeepSeek audit of 0143).
+        judged = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF) if ip.version == 6 and ip in _NAT64 else ip
+        if not judged.is_global or judged.is_multicast:
             raise UrlValidationError("URLs resolving to private/internal network addresses aren't allowed.")
         addresses.append(str(ip))
     if not addresses:
@@ -351,7 +358,13 @@ def _try_recipe_scrapers(url: str, html: str):
         return None
 
 
-def _flatten_instructions(node) -> list[str]:
+# Sections inside sections deeper than this are left out: a page nesting
+# them thousands deep hit Python's recursion limit, and the whole JSON-LD
+# tier was skipped (DeepSeek review of 0143; _recipe_items stops at 6).
+MAX_INSTRUCTION_DEPTH = 20     # lists and objects each count: 20 is sections nested about 9 deep
+
+
+def _flatten_instructions(node, depth: int = 0) -> list[str]:
     """recipeInstructions as a flat list of step texts.
 
     Sites group steps into HowToSection objects ("For the dough", "For the
@@ -361,12 +374,14 @@ def _flatten_instructions(node) -> list[str]:
     their heading as a step ending in ":" -- the same way ingredient
     sub-headings read -- followed by their steps.
     """
+    if depth > MAX_INSTRUCTION_DEPTH:
+        return []
     if isinstance(node, str):
         return [s.strip() for s in node.split("\n") if s.strip()]
     if isinstance(node, list):
         out = []
         for item in node:
-            out.extend(_flatten_instructions(item))
+            out.extend(_flatten_instructions(item, depth + 1))
         return out
     if isinstance(node, dict):
         kind = node.get("@type")
@@ -374,7 +389,7 @@ def _flatten_instructions(node) -> list[str]:
         children = node.get("itemListElement")
         if "HowToSection" in kinds or (children and not node.get("text")):
             heading = (node.get("name") or "").strip()
-            inner = _flatten_instructions(children or [])
+            inner = _flatten_instructions(children or [], depth + 1)
             return ([heading.rstrip(":") + ":"] if heading and inner else []) + inner
         text = node.get("text") or node.get("name")
         return [text.strip()] if isinstance(text, str) and text.strip() else []

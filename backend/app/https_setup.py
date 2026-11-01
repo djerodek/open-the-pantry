@@ -184,6 +184,15 @@ def credentials_status() -> dict:
             "from_env": from_env}
 
 
+# What a cPanel username and API token are made of. Both go into the
+# Authorization header ("cpanel user:token"): a line break, a space or a
+# colon pasted with them failed later as "cPanel refused the login"
+# (DeepSeek audit of 0143). Usernames are letters, digits and a few marks;
+# tokens are letters and digits (dashes and underscores allowed).
+_CPANEL_USER = re.compile(r"^[A-Za-z0-9._@-]{1,64}$")
+_CPANEL_TOKEN = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+
+
 def save_login(username: str, base_url: str, domain: str, token: str | None):
     """Settings -> HTTPS: saves the cPanel login and the name. Fields set in
     .env are left to .env. Changing the username or address without entering
@@ -197,6 +206,8 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
     if not _value("username")[1]:
         if not username:
             raise HttpsError("Enter the cPanel username.")
+        if not _CPANEL_USER.fullmatch(username):
+            raise HttpsError("The cPanel username can only have letters, digits, dots, dashes, underscores and @.")
         new["username"] = username
     if not _value("base_url")[1]:
         m = re.match(r"^https://[^\s/:]+(?::(\d{1,5}))?$", base_url)
@@ -210,6 +221,8 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
         new["domain"] = d
     if (new.get("username") != old.get("username") or new.get("base_url") != old.get("base_url")) and not token:
         new.pop("token_encrypted", None)
+    if token and not _CPANEL_TOKEN.fullmatch(token):
+        raise HttpsError("The API token is letters and digits only: copy it again from cPanel → Manage API Tokens.")
     if token:
         if not crypto.encryption_configured():
             if crypto.key_source() is None:
@@ -350,6 +363,10 @@ def validate(domain: str, lan_address: str, email: str, port: int,
 class CpanelDns:
     def __init__(self, base_url: str, username: str, token: str, timeout: float = 20):
         self.base = base_url.rstrip("/")
+        # From .env as well as Settings: the same check before the header.
+        if not (_CPANEL_USER.fullmatch(username or "") and _CPANEL_TOKEN.fullmatch(token or "")):
+            raise HttpsError("The cPanel username or API token has characters they can't contain. "
+                             "Check them in Settings → HTTPS (or .env).")
         self.auth = f"cpanel {username}:{token}"
         self.timeout = timeout
 

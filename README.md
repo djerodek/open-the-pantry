@@ -453,7 +453,9 @@ How it works:
   Restarting the container locks every browser.
 - **Wrong passwords.** After 5 wrong tries from one address, or 20 from all
   addresses together, each new try has to wait (up to 15 minutes).
-  Restarting the container clears that.
+  Restarting the container clears that. Someone on your network can keep
+  Settings waiting this way, even for the right password; the restart is
+  the way out.
 - **Once HTTPS is on**, the password works only at the `https://` address.
 - **Storage.** It's stored as a salted scrypt hash in `admin-password.json`.
 - **Forgotten?** Delete `admin-password.json`, then create a new password.
@@ -470,6 +472,9 @@ How it works:
   - Requests must use an IP address, `localhost`, or a local name (`.local`,
     `.lan`, `.home.arpa`, `.internal`, or no dot). Any other name (a proxy
     domain, a Tailscale name) has to be listed in `RECIPE_APP_ALLOWED_HOSTS`.
+    `RECIPE_APP_ALLOWED_HOSTS=*` accepts any name, which turns this check
+    off: other websites could then reach the app through your browser (DNS
+    rebinding). List the names instead; the log warns at start-up.
   - Requests that change data must carry an `X-Requested-With` header.
   - The pages can't be shown inside another site.
   - A Content-Security-Policy allows only the app's own scripts and
