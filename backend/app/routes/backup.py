@@ -602,11 +602,13 @@ def restore_backup(payload: schemas.RestoreRequest):
 
         engine.dispose()
         restore_mod.copy_into_live(db_path, DB_PATH)
+        restore_mod.mark_database_replaced(DATA_DIR)  # from here, a stop is finished at start-up
         engine.dispose()
         init_db()                                     # an older backup's schema brought up to date
         for table, rows in kept_rows.items():
             _put_back_rows(table, rows)
         old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
+        restore_mod.clear_marker(DATA_DIR)
         shutil.rmtree(old_uploads, ignore_errors=True)
         email_cleared = _clear_unusable_email_password()
 

@@ -188,9 +188,10 @@ def credentials_status() -> dict:
 # Authorization header ("cpanel user:token"): a line break, a space or a
 # colon pasted with them failed later as "cPanel refused the login"
 # (DeepSeek audit of 0143). Usernames are letters, digits and a few marks;
-# tokens are letters and digits (dashes and underscores allowed).
+# tokens are letters and digits (cPanel's are 32 of them), with the
+# base64 marks allowed in case a token type uses them.
 _CPANEL_USER = re.compile(r"^[A-Za-z0-9._@-]{1,64}$")
-_CPANEL_TOKEN = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+_CPANEL_TOKEN = re.compile(r"^[A-Za-z0-9_+/=-]{1,256}$")
 
 
 def save_login(username: str, base_url: str, domain: str, token: str | None):
@@ -222,7 +223,7 @@ def save_login(username: str, base_url: str, domain: str, token: str | None):
     if (new.get("username") != old.get("username") or new.get("base_url") != old.get("base_url")) and not token:
         new.pop("token_encrypted", None)
     if token and not _CPANEL_TOKEN.fullmatch(token):
-        raise HttpsError("The API token is letters, digits, dashes and underscores only: copy it again from "
+        raise HttpsError("The API token can't contain spaces, line breaks or colons: copy it again from "
                          "cPanel → Manage API Tokens.")
     if token:
         if not crypto.encryption_configured():

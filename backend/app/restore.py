@@ -25,6 +25,7 @@ Steps (main.restore_backup drives them, with the app quiet):
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sqlite3
@@ -268,53 +269,95 @@ def swap_dirs(new_dir: str, live_dir: str) -> str:
 
 
 # Where a restore unpacks the backup's photos before swap_dirs moves them
-# into place (routes.backup.restore_backup).
+# into place (routes.backup.restore_backup). A dot for this short-lived
+# folder, a dash for the dated copy of the old photos kept after a swap.
 STAGED_SUFFIX = ".restore-new"
+# Written once the live database is the backup's, removed when the photos
+# are in place too: at start-up it says which side of that line a stopped
+# restore was on (DeepSeek review of 0145: stopped after the database copy
+# but before the swap, the restored recipes pointed at photos still in
+# the staged folder, and nothing noticed).
+MARKER = "restore-in-progress.json"
 
 
-def recover_interrupted_swap(live_dir: str) -> str | None:
-    """At start-up: finishes a restore stopped between swap_dirs' two
-    renames (the container killed, the power cut). By then the database is
-    already the backup's, so the photos it names are the staged ones in
-    <live_dir>.restore-new; live_dir is missing (recreated empty when the
-    app loads) and the photos from before the restore are in
-    <live_dir>-before-restore-<time>. The staged folder is moved into
-    place, as swap_dirs would have; the old one is left, named in the log,
-    beside the restore-safety copy.
+def mark_database_replaced(data_dir: str) -> None:
+    path = os.path.join(data_dir, MARKER)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump({"stage": "database replaced", "at": datetime.now().isoformat(timespec="seconds")}, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(path + ".tmp", path)
 
-    0144 moved the old photos back instead, which left the restored
-    database pointing at photos that weren't there (DeepSeek review of
-    0144). Nothing is moved unless live_dir is empty and exactly one old
-    folder is left; without a staged folder the second rename had already
-    happened, and the state is consistent."""
-    parent, base = os.path.split(live_dir.rstrip("/"))
-    staged = live_dir.rstrip("/") + STAGED_SUFFIX
+
+def clear_marker(data_dir: str) -> None:
+    try:
+        os.remove(os.path.join(data_dir, MARKER))
+    except FileNotFoundError:
+        pass
+
+
+def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
+    """At start-up: a restore stopped part way (the container killed, the
+    power cut) is finished or cleaned up so the photos match the database.
+
+    - The database had been replaced (marker present, or uploads/ missing
+      between swap_dirs' two renames): the staged photos go into place, as
+      the swap would have done. The old photos are kept in
+      uploads-before-restore-<time>, named in the log.
+    - It hadn't (no marker, uploads/ as it was): the database is still the
+      old one, so the staged photos belong to nothing and are removed.
+
+    0144 moved the old photos back instead (wrong: the database was
+    already the backup's). Returns what was moved into place, if anything."""
+    live = live_dir.rstrip("/")
+    parent, base = os.path.split(live)
+    staged = live + STAGED_SUFFIX
+    marked = os.path.exists(os.path.join(data_dir, MARKER))
     try:
         left = sorted(n for n in os.listdir(parent or ".") if n.startswith(base + "-before-restore-"))
-        empty = not os.path.isdir(live_dir) or not os.listdir(live_dir)
+        empty = not os.path.isdir(live) or not os.listdir(live)
+        has_staged = os.path.isdir(staged)
     except OSError:
         log.warning("Start-up: couldn't check for an interrupted restore", exc_info=True)
         return None
-    if not left:
-        return None
-    if not empty or len(left) != 1:
-        log.warning("Start-up: %s left by an earlier restore; not moved (%s)", ", ".join(left),
-                    "uploads/ isn't empty" if not empty else "more than one")
-        return None
-    if not os.path.isdir(staged):
-        log.warning("Start-up: %s left by an earlier restore (the restore itself had finished); "
-                    "delete it once you've checked the photos", left[0])
-        return None
     try:
-        if os.path.isdir(live_dir):
-            os.rmdir(live_dir)
-        os.rename(staged, live_dir)
+        if has_staged and empty and len(left) == 1:
+            # Between the two renames: the old photos are already aside.
+            if os.path.isdir(live):
+                os.rmdir(live)
+            os.rename(staged, live)
+            log.error("Start-up: finished a restore that was interrupted: the backup's photos are in place; "
+                      "the photos from before it are in %s (delete it once the library looks right)", left[0])
+            clear_marker(data_dir)
+            return staged
+        if has_staged and empty and left:
+            log.warning("Start-up: an interrupted restore left %s and %s with uploads/ empty; not moved "
+                        "(more than one old folder: check which is right by hand)", os.path.basename(staged),
+                        ", ".join(left))
+            return None
+        if has_staged and marked:
+            # The database was replaced, the swap hadn't started.
+            old = swap_dirs(staged, live)
+            log.error("Start-up: finished a restore that was interrupted before its photos were moved: the "
+                      "backup's photos are in place; the photos from before it are in %s (delete it once the "
+                      "library looks right)", os.path.basename(old))
+            clear_marker(data_dir)
+            return staged
+        if has_staged:
+            # Stopped before the database was replaced: nothing uses these.
+            shutil.rmtree(staged, ignore_errors=True)
+            log.warning("Start-up: removed %s, left by a restore that stopped before replacing the library "
+                        "(the library is as it was)", os.path.basename(staged))
+            return None
+        if marked:
+            clear_marker(data_dir)          # the photos had been moved; only the clean-up was left
     except OSError:
-        log.error("Start-up: couldn't move %s into %s", staged, live_dir, exc_info=True)
+        log.error("Start-up: couldn't finish an interrupted restore (%s)", staged, exc_info=True)
         return None
-    log.error("Start-up: finished a restore that was interrupted: the backup's photos are in place; the "
-              "photos from before it are in %s (delete it once the library looks right)", left[0])
-    return staged
+    for name in left:
+        log.warning("Start-up: %s left by an earlier restore (the restore itself had finished); "
+                    "delete it once you've checked the photos", name)
+    return None
 
 
 def prune_safety_backups(data_dir: str, keep: int = SAFETY_KEEP):

@@ -358,9 +358,9 @@ _FR_PATTERNS = [
     _p(r"The cPanel username can only have letters, digits, dots, dashes, underscores and @\.",
        "Le nom d'utilisateur cPanel ne peut contenir que des lettres, des chiffres, des points, des tirets, "
        "des traits de soulignement et @."),
-    _p(r"The API token is letters, digits, dashes and underscores only: copy it again from cPanel → Manage API Tokens\.",
-       "Le jeton d'API ne contient que des lettres, des chiffres, des tirets et des traits de soulignement : "
-       "copiez-le de nouveau dans cPanel → Manage API Tokens."),
+    _p(r"The API token can't contain spaces, line breaks or colons: copy it again from cPanel → Manage API Tokens\.",
+       "Le jeton d'API ne peut pas contenir d'espaces, de sauts de ligne ni de deux-points : copiez-le de nouveau "
+       "dans cPanel → Manage API Tokens."),
     _p(r"The cPanel username or API token has characters they can't contain\. Check them in Settings → HTTPS \(or \.env\)\.",
        "Le nom d'utilisateur ou le jeton d'API cPanel contient des caractères interdits. Vérifiez-les dans "
        "Paramètres → HTTPS (ou .env)."),
