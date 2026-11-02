@@ -1,5 +1,5 @@
 """0150: the recipe view's Weights button (volume amounts shown as grams,
-from frontend/js/weights.js). Runs app.js's functions in Node, as the
+from frontend/js/weights.js). Runs amounts.js's functions in Node, as the
 scaling tests do (skipped without Node)."""
 import json
 import re
@@ -13,15 +13,19 @@ import pytest
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
+def amounts_js():
+    """weights.js and amounts.js, for Node, with amounts.js's functions as
+    globals (0155: shared by the main app and What to eat?)."""
+    return ("const self = globalThis;\n" + (FRONTEND / "js" / "weights.js").read_text(encoding="utf-8")
+           + (FRONTEND / "js" / "amounts.js").read_text(encoding="utf-8")
+           + "\nconst { isPartName, scaleLine, scaleLineInfo, scaleServings, weightLineInfo, volumeLineInfo } = self.OTP_AMOUNTS;\n")
+
+
 def _run(cases):
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
-    js = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
-    weights = (FRONTEND / "js" / "weights.js").read_text(encoding="utf-8")
-    block = js[js.index("  const UNICODE_FRACTIONS"):js.index("  // The three buttons; onChange(factor)")]
-    part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
-    src = ("const self = globalThis;\n" + weights + part + block +
+    src = (amounts_js() +
            f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f]) => {{"
            "const s = scaleLineInfo(t, f || 1); if (s.kept) return ['scaled-kept', s.text];"
            "const w = weightLineInfo(s.text); return [w.kept ? 'kept' : w.converted ? 'converted' : 'same', w.text]; })));")
@@ -122,7 +126,7 @@ def test_the_table():
 
 def test_the_page_loads_the_table_and_the_service_worker_keeps_it():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    assert html.index('src="js/weights.js"') < html.index('src="js/app.js"')
+    assert html.index('src="js/weights.js"') < html.index('src="js/amounts.js"') < html.index('src="js/app.js"')
     assert '"/js/weights.js"' in (FRONTEND / "service-worker.js").read_text(encoding="utf-8")
 
 

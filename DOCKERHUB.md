@@ -108,7 +108,8 @@ Tandoor have those.
   port 8091 that picks a random recipe by meal type, cooking style, main
   ingredient, pace or language (English/French, guessed from the recipe and
   correctable in Edit recipe), shuffles through titles and stops on one to read and
-  print right there (read-only; edit in the main app); no login, so anyone
+  print right there, halved, doubled, or with weights or volumes (read-only;
+  edit in the main app); no login, so anyone
   who can reach the port can read your recipes; switched on in Settings
 - Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
   plus your own groups and keywords; automatic tag suggestions (English and

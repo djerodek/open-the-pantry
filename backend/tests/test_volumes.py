@@ -1,5 +1,5 @@
 """0154: the recipe view's Volumes choice (weights shown as cups/spoons,
-from frontend/js/weights.js, in the recipe's language). Runs app.js's
+from frontend/js/weights.js, in the recipe's language). Runs amounts.js's
 functions in Node, as test_weights.py does (skipped without Node)."""
 import json
 import shutil
@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
+from .test_weights import amounts_js
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -16,11 +18,7 @@ def _run(cases):
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
-    js = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
-    weights = (FRONTEND / "js" / "weights.js").read_text(encoding="utf-8")
-    block = js[js.index("  const UNICODE_FRACTIONS"):js.index("  // The three buttons; onChange(factor)")]
-    part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
-    src = ("const self = globalThis;\n" + weights + part + block +
+    src = (amounts_js() +
            f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, lang, f]) => {{"
            "const s = scaleLineInfo(t, f || 1); if (s.kept) return ['scaled-kept', s.text];"
            "const v = volumeLineInfo(s.text, lang); return [v.kept ? 'kept' : v.converted ? 'converted' : 'same', v.text]; })));")
@@ -87,11 +85,7 @@ def test_weights_and_volumes_round_trip_closely():
     if not node:
         pytest.skip("node not installed")
     for text, lang in (("1 cup flour", "en"), ("1/2 cup sugar", "en"), ("2 tbsp butter", "en"), ("1 tasse de farine", "fr")):
-        js = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
-        weights = (FRONTEND / "js" / "weights.js").read_text(encoding="utf-8")
-        block = js[js.index("  const UNICODE_FRACTIONS"):js.index("  // The three buttons; onChange(factor)")]
-        part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
-        src = ("const self = globalThis;\n" + weights + part + block +
+        src = (amounts_js() +
                f"\nconsole.log(volumeLineInfo(weightLineInfo({json.dumps(text)}).text, {json.dumps(lang)}).text);")
         out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
         assert out.stdout.strip() == text, (text, out.stdout, out.stderr)

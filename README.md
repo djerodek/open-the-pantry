@@ -186,7 +186,9 @@ own port, 8091. You pick choices if you want (meal type, cooking style, main
 ingredient, pace, language) and press **Pick one**. Titles roll past and it stops on a
 matching recipe. **Something else** picks again, with no repeats until every
 match has been shown; with more than 500 matches, only the latest 500 shown
-are remembered. Tap the card to read the recipe, or print it. **Edit in Open
+are remembered. Tap the card to read the recipe, or print it. The recipe
+has the same ½ / 1× / 2× and As written / Weights / Volumes buttons as in
+the main app (view only; the choice is kept on that device). **Edit in Open
 the Pantry** opens it in the main app.
 
 - Within a group the choices are alternatives (Dinner or Lunch). Across
@@ -343,7 +345,7 @@ Mail without the keyword is never read.
   - Nothing is saved: the recipe opens at 1× next time.
 - **As written / Weights / Volumes**, one at a time, after any scaling,
   from the same table of about 220 common ingredients
-  (`frontend/js/weights.js`). A small note under the buttons says the
+  (`frontend/js/weights.js`). What to eat?'s recipe has them too. A small note under the buttons says the
   conversions are approximate.
   - **Weights** shows volumes as grams ("1 cup flour" → "120 g flour", "2
     c. à soupe de beurre" → "29 g de beurre"): cups (US cup; a French
@@ -630,7 +632,8 @@ backend/app/        FastAPI app (main.py: start-up, middleware), models, backup,
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template
 backend/tests/      server tests; corpus/: import corpus cases; tests_browser/: page tests
-frontend/           the app: index.html, js/app.js, js/i18n.js, css/
+frontend/           the app: index.html, js/app.js, js/i18n.js, css/;
+                    js/amounts.js + js/weights.js: scaling, Weights, Volumes (also used by What to eat?)
 frontend-picker/    the What to eat? page (port 8091)
 docker-compose*.yml published image, build from source, HTTPS via Traefik
 ```

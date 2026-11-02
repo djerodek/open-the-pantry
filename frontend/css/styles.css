@@ -1895,7 +1895,7 @@ a.btn-primary { display: inline-block; text-decoration: none; }
   font-size: 0.9rem; cursor: pointer;
 }
 .scale-button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-bg-raised); border-color: var(--color-ink); }
-/* Weights: a separate on/off choice after ½ / 1× / 2×. */
+/* As written / Weights / Volumes (amounts.js), under ½ / 1× / 2×. */
 .units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
 .units-disclaimer { margin: 0; font-size: 0.72rem; color: var(--color-ink-muted, inherit); }
 .unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }

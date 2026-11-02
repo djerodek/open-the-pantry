@@ -118,7 +118,8 @@ def test_part_names_are_headings_in_the_export(client, sample_recipe_payload):
 def test_the_page_shows_part_names_as_headings():
     import pathlib
     js = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
-    assert "function isPartName(text)" in js
+    amounts = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "amounts.js").read_text(encoding="utf-8")
+    assert "function isPartName(text)" in amounts and "const { isPartName } = window.OTP_AMOUNTS;" in js
     assert 'el("li", { value: String(++n), text: s.text })' in js
 
 

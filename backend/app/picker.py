@@ -567,6 +567,9 @@ def picker_recipe(recipe_id: schemas.DbId, db: Session = Depends(get_db)):
         "tastiness_rating": recipe.tastiness_rating if recipe.tastiness_rating in (1, 2, 3, 4, 5) else None,
         "difficulty_rating": recipe.difficulty_rating if recipe.difficulty_rating in DIFFICULTIES else None,
         "favorite": bool(recipe.favorite),
+        # For Volumes in the reader: cups and spoons in English, tasses and
+        # cuillères in French. The Language set in Edit recipe, else guessed.
+        "language": recipe.language if recipe.language in LANGUAGES else recipe.detected_language,
         "notes": (recipe.notes or "").strip() or None,
         "ingredients": [(i.raw_line or " ".join(p for p in (i.quantity, i.unit, i.name) if p)).strip()
                         for i in recipe.ingredients],
@@ -637,12 +640,24 @@ def create_app(middleware: list) -> FastAPI:
         path = os.path.join(PICKER_STATIC_DIR, "index.html")
         return FileResponse(path) if os.path.isfile(path) else _not_found()
 
+    # Shared with the main app: i18n.js (the language, the French catalog
+    # and the tag labels); weights.js and amounts.js (scaling, Weights and
+    # Volumes in the reader). These three names only.
+    def _main_js(name):
+        path = os.path.join(MAIN_STATIC_DIR, "js", name)
+        return FileResponse(path) if os.path.isfile(path) else _not_found()
+
     @a.get("/js/i18n.js")
     def i18n_js():
-        # Shared with the main app: the language, the French catalog and the
-        # tag labels.
-        path = os.path.join(MAIN_STATIC_DIR, "js", "i18n.js")
-        return FileResponse(path) if os.path.isfile(path) else _not_found()
+        return _main_js("i18n.js")
+
+    @a.get("/js/weights.js")
+    def weights_js():
+        return _main_js("weights.js")
+
+    @a.get("/js/amounts.js")
+    def amounts_js():
+        return _main_js("amounts.js")
 
     @a.get("/uploads/{name}")
     def photo(name: str):

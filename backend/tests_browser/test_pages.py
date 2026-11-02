@@ -529,3 +529,42 @@ def test_units_as_written_weights_volumes(server, api, page):
     assert pressed() == ["written"]
     text = pg.inner_text(lines)
     assert re.search(r"^1 cup flour", text, re.M) and re.search(r"^100 g sugar", text, re.M) and "as written" not in text
+
+
+def test_picker_reader_scaling_weights_volumes(server, api, page):
+    """0155: What to eat?'s reader has the recipe view's ½ / 1× / 2× and As
+    written / Weights / Volumes (amounts.js); Volumes follows the recipe's
+    language; the controls aren't printed."""
+    r = add_recipe(api, f"Picker units {uuid.uuid4().hex[:6]}", tags=[{"name": "Dinner", "category": "meal_type"}],
+                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "100 g sugar"}, {"raw_line": "2 eggs"}],
+                   servings="4")
+    fr = add_recipe(api, f"Gâteau {uuid.uuid4().hex[:6]}", tags=[{"name": "Dinner", "category": "meal_type"}],
+                    ingredients=[{"raw_line": "30 g de beurre"}], language="fr")
+    assert api.put("/api/picker/settings", json={"enabled": True}).status_code == 200
+    try:
+        p = page()
+        pg = p.page
+        pg.goto(f"{server['picker_url']}/#recipe-{r['id']}")
+        pg.wait_for_selector("#reader-overlay:not([hidden]) .units-volumes")
+        lines = "#reader .reader-ingredient-list"
+        assert "approximate" in pg.inner_text("#reader .units-disclaimer")
+        pg.click("#reader .scale-button[aria-label='Double the quantities']")
+        text = pg.inner_text(lines)
+        assert re.search(r"^2 cups flour", text, re.M) and re.search(r"^4 eggs", text, re.M), text
+        assert "8" in pg.inner_text("#reader .scale-note")          # servings 4 -> 8
+        pg.click("#reader .units-weights")
+        assert re.search(r"^240 g flour", pg.inner_text(lines), re.M)
+        pg.click("#reader .scale-button[aria-label='Quantities as written']")
+        pg.click("#reader .units-volumes")
+        text = pg.inner_text(lines)
+        assert re.search(r"^1/2 cup sugar$", text, re.M) and re.search(r"^1 cup flour$", text, re.M), text
+        pg.emulate_media(media="print")
+        assert not pg.is_visible("#reader .units-buttons") and not pg.is_visible("#reader .units-disclaimer")
+        pg.emulate_media(media="screen")
+        # The French recipe: tasses and cuillères; the choice was kept.
+        pg.goto(f"{server['picker_url']}/#recipe-{fr['id']}")
+        pg.reload()
+        pg.wait_for_selector("#reader-overlay:not([hidden]) .units-volumes[aria-pressed='true']")
+        assert re.search(r"^2 c\. à soupe de beurre$", pg.inner_text(lines), re.M)
+    finally:
+        api.put("/api/picker/settings", json={"enabled": False})

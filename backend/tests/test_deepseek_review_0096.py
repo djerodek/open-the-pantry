@@ -65,10 +65,11 @@ def test_the_pages_use_the_same_rule():
     from pathlib import Path
     from app.text_rules import INGREDIENT_TAIL
     root = Path(__file__).resolve().parents[2]
+    # One copy since 0155: amounts.js, used by both pages.
+    m = re.search(r"const notAPart = /(.+)/i;", (root / "frontend" / "js" / "amounts.js").read_text(encoding="utf-8"))
+    assert m and m.group(1) == INGREDIENT_TAIL.pattern
     for page in (root / "frontend" / "js" / "app.js", root / "frontend-picker" / "picker.js"):
-        js = page.read_text(encoding="utf-8")
-        m = re.search(r"const notAPart = /(.+)/i;", js)
-        assert m and m.group(1) == INGREDIENT_TAIL.pattern, page.name
+        assert "const notAPart" not in page.read_text(encoding="utf-8"), page.name
 
 
 def test_the_reset_message_has_french(monkeypatch):

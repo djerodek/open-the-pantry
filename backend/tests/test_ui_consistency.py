@@ -352,19 +352,20 @@ def test_picker_recipe_view_prints_the_recipe_only():
 
 
 def _scale_line():
-    """scaleLine() from app.js, run in Node (skipped without it)."""
+    """scaleLine() from amounts.js, run in Node (skipped without it)."""
     import json
     import shutil
     import subprocess
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
-    block = js[js.index("  const UNICODE_FRACTIONS"):js.index("  // The three buttons; onChange(factor)")]
-    part = js[js.index("  function isPartName("):js.index("  function renderRecipeDetail(")]
+    js_dir = CSS.parents[1] / "js"
+    prelude = ("const self = globalThis;\n" + (js_dir / "weights.js").read_text(encoding="utf-8")
+               + (js_dir / "amounts.js").read_text(encoding="utf-8")
+               + "\nconst { scaleLine, scaleLineInfo, scaleServings } = self.OTP_AMOUNTS;\n")
 
     def run(cases):
-        src = part + block + f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f, fn]) => fn === 'servings' ? scaleServings(t, f) : fn === 'kept' ? scaleLineInfo(t, f).kept : scaleLine(t, f))));"
+        src = prelude + f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, f, fn]) => fn === 'servings' ? scaleServings(t, f) : fn === 'kept' ? scaleLineInfo(t, f).kept : scaleLine(t, f))));"
         out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
@@ -437,13 +438,16 @@ def test_scaling_makes_the_unit_agree():
 
 
 def test_scale_buttons_in_the_recipe_view():
+    """The controls live in amounts.js (0155), used by the recipe view and
+    by What to eat?'s reader."""
+    amounts = (CSS.parents[1] / "js" / "amounts.js").read_text(encoding="utf-8")
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
-    assert '[[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]]' in js
-    start = js.index("    const ingredientsList = el(\"ul\"")
-    detail = js[start:js.index("    body.appendChild(el(\"div\", { class: \"recipe-detail\" }", start)]
-    assert "scaleLineInfo(text, factor)" in detail and "scaleServings(recipe.servings, factor)" in detail
+    assert '[[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]]' in amounts
+    detail = amounts[amounts.index("  function ingredientControls("):]
+    assert "scaleLineInfo(text, factor)" in detail and "scaleServings(servings, factor)" in detail
     assert 'tx("as written")' in detail
+    assert "window.OTP_AMOUNTS.ingredientControls({" in js
     assert "@media print { .scale-buttons, .units-disclaimer { display: none !important; } }" in css
 
 

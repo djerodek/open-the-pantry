@@ -216,8 +216,10 @@ langue) et vous appuyez sur **Choisis pour moi**. Des titres défilent et s'arr�
 recette qui correspond. **Autre chose** en choisit une autre, sans
 répétition tant que toutes ne sont pas sorties; au-delà de 500
 correspondances, seules les 500 dernières montrées sont retenues. Touchez la
-carte pour lire la recette, ou l'imprimer. **Modifier dans Open the
-Pantry** l'ouvre dans l'application principale.
+carte pour lire la recette, ou l'imprimer. La recette a les mêmes boutons
+½ / 1× / 2× et Tel qu'écrit / Poids / Volumes que l'application principale
+(affichage seulement; le choix est gardé sur cet appareil). **Modifier dans
+Open the Pantry** l'ouvre dans l'application principale.
 
 - Dans un groupe, les choix sont des options (Souper ou Dîner). D'un groupe
   à l'autre, tous doivent correspondre.
@@ -395,7 +397,8 @@ Le courriel sans le mot-clé n'est jamais lu.
   - Rien n'est enregistré : la recette s'ouvre à 1× la fois suivante.
 - **Tel qu'écrit / Poids / Volumes**, un à la fois, après l'ajustement
   s'il y en a un, à partir de la même table d'environ 220 ingrédients
-  courants (`frontend/js/weights.js`). Une petite note sous les boutons
+  courants (`frontend/js/weights.js`). La recette d'On mange quoi? les a
+  aussi. Une petite note sous les boutons
   rappelle que les conversions sont approximatives.
   - **Poids** affiche les volumes en grammes (« 1 tasse de farine » → « 125
     g de farine », « 1 cup flour » → « 120 g flour ») : tasses (250 ml; un
@@ -720,7 +723,8 @@ backend/app/        application FastAPI (main.py : démarrage, middleware), mod�
   ml/               Paramètres -> Apprentissage (numpy seulement)
   templates/        le gabarit d'impression/PDF/HTML
 backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation; tests_browser/ : tests des pages
-frontend/           l'application : index.html, js/app.js, js/i18n.js, css/
+frontend/           l'application : index.html, js/app.js, js/i18n.js, css/;
+                    js/amounts.js + js/weights.js : ajustement, Poids, Volumes (aussi pour On mange quoi?)
 frontend-picker/    la page On mange quoi? (port 8091)
 docker-compose*.yml image publiée, construction depuis les sources, HTTPS par Traefik
 ```

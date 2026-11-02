@@ -417,14 +417,9 @@
     return parts.join(" ") || "0 min";
   }
 
-  // "Sauce tartare:" names a part of the recipe (as in the main app).
-  function isPartName(text) {
-    const t = (text || "").trim();
-    // Not an ingredient that ends in ":" ("Salt and pepper to taste:").
-    // Same pattern as text_rules.INGREDIENT_TAIL (test_ui_consistency).
-    const notAPart = /\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin|en quantit[ée] suffisante|pour (?:la )?friture|for frying|for deep[- ]frying)\b/i;
-    return t.endsWith(":") && t.split(/\s+/).length <= 6 && !notAPart.test(t);
-  }
+  // "Sauce tartare:" names a part of the recipe; scaling, Weights and
+  // Volumes: the main app's own code (amounts.js).
+  const { isPartName, ingredientControls } = window.OTP_AMOUNTS;
 
   function sourceLink(recipe) {
     let url;
@@ -463,6 +458,9 @@
       recipe.actual_cook_time ? tx("Real-world cook time: {1}", { 1: ddhhmmLabel(recipe.actual_cook_time) }) : null,
     ].filter(Boolean);
     const line = tagLine({ tags: recipe.tags });
+    // ½ / 1× / 2× and As written / Weights / Volumes, as in the main app.
+    const amounts = ingredientControls({ lines: recipe.ingredients || [], servings: recipe.servings,
+                                         language: recipe.language, listClass: "reader-ingredient-list" });
     let n = 0;
     // replaceChildren() writes a null argument out as the text "null" (a
     // recipe without a photo showed it above the title), unlike el(), which
@@ -479,8 +477,9 @@
         ]) : null,
         el("div", { class: "reader-columns" }, [
           el("section", { class: "reader-ingredients" }, [
-            el("h3", { text: tx("Ingredients") }),
-            el("ul", {}, (recipe.ingredients || []).map((t) => el("li", { class: isPartName(t) ? "list-part" : null, text: t }))),
+            el("div", { class: "ingredients-head" }, [el("h3", { text: tx("Ingredients") }), amounts.scale, amounts.units]),
+            amounts.note,
+            amounts.list,
           ]),
           el("section", { class: "reader-steps" }, [
             el("h3", { text: tx("Instructions") }),
