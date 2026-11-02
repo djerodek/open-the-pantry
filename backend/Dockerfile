@@ -70,6 +70,12 @@ RUN mkdir -p /app/data/uploads /app/data/tmp \
 # fault. Point the cache at a writable path instead.
 ENV XDG_CACHE_HOME=/tmp/.cache
 
+# Chrome's stable major version, for the User-Agent of link imports. CI
+# looks it up at each build (.github/scripts/chrome_major.py); empty (a build
+# from source) uses the version written in app/ingestion/url_ingest.py.
+ARG CHROME_MAJOR=
+ENV RECIPE_APP_CHROME_MAJOR=${CHROME_MAJOR}
+
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

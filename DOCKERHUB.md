@@ -73,6 +73,10 @@ Updating:
 
     docker compose pull && docker compose up -d
 
+The image is rebuilt every Sunday with the newest base image, trusted
+roots and Chrome version (for link imports); a weekly cron job running the
+command above after that keeps a server current.
+
 Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
 `main` if you want to control exactly when updates apply.
 

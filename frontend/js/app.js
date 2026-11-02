@@ -3497,8 +3497,10 @@
   // French spoons, built like ingredient_parser.py's _FR_SPOON / FR_TBSP /
   // FR_TSP ("c. à soupe", "c.à.s.", "c. s.", "cuillère à thé", "c. à c.",
   // "c.c.", "c. t."): tried before the cup, so "c. s." isn't read as "c."
-  // (DeepSeek review of 0151). Change both together; test_weights.py checks
-  // they agree.
+  // (DeepSeek review of 0151). Change both together: test_weights.py checks
+  // the forms listed in its FRENCH_SPOONS agree; add new forms there. This
+  // side is a little more lenient: the final dot of "c. à t." / "c. à c."
+  // may be missing.
   const FR_SPOON = String.raw`(?:c\.?\s*[àa]\.?\s*|cuil\.\s*[àa]\s*|cuill?(?:[eè]re|er[ée]e)s?\s+[àa]\s+)`;
   const VOLUME_UNITS = [
     [new RegExp(String.raw`^(?:${FR_SPOON}(?:soupe|table|s\.?)|c\.\s*s\.|cs)(?![\w])`, "i"), 15 / US_CUP_ML],

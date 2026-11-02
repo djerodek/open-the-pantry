@@ -7,6 +7,8 @@ import re
 _FR_SPOON = r"(?:c\.?\s*[àa]\.?\s*|cuil\.\s*[àa]\s*|cuill?(?:[eè]re|er[ée]e)s?\s+[àa]\s+)"
 FR_TBSP = _FR_SPOON + r"(?:soupe|table|s\.)"
 FR_TSP = _FR_SPOON + r"(?:th[ée]|caf[ée]|t\.|c\.)"
+# frontend/js/app.js also accepts "c. à t" / "c. à c" without the final dot
+# (Weights converts them; here they stay part of the name). Harmless.
 
 UNIT_WORDS = [
     FR_TBSP, FR_TSP, r"c\.\s*s\.", r"c\.\s*[ct]\.",

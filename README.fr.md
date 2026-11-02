@@ -77,6 +77,12 @@ personne de votre réseau à ouvrir une de ces sections le choisit.
     `image: djerodek/open-the-pantry@sha256:<empreinte>`.
     `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
     affiche celle de l'image qui tourne.
+  - L'image est reconstruite chaque dimanche (intégration continue, plus
+    bas). Pour la suivre, une tâche cron hebdomadaire sur le serveur après
+    celle-ci, par exemple le dimanche à 5 h :
+    `cd /chemin/vers/open-the-pantry && docker compose pull -q && docker compose up -d && docker image prune -f`.
+    `up -d` ne recrée le conteneur que si l'image a changé. Avec HTTPS,
+    donnez les deux fichiers compose à chaque commande.
 - **Images** : `linux/amd64` et `linux/arm64` (un NAS, un VPS, un Raspberry
   Pi). Les fichiers compose publient les ports sur toutes les adresses de
   la machine; sur un VPS ou toute machine ayant une adresse publique,
@@ -694,8 +700,12 @@ Elle lance les deux suites de tests, un audit des dépendances (qui échoue
 sur toute vulnérabilité connue) et une construction Docker. L'image
 publiée n'est construite qu'une fois ces étapes réussies; l'exécution
 hebdomadaire la reconstruit donc avec l'image de base et les certificats
-racines les plus récents. GitHub suspend les exécutions planifiées après
-60 jours sans commit.
+racines les plus récents. Chaque construction cherche aussi la version
+stable actuelle de Chrome, pour le nom de navigateur qu'envoient les
+importations par lien (certains sites refusent une version périmée); si
+le service de versions de Google ne répond pas, elle prend la version
+inscrite dans `url_ingest.py`. GitHub suspend les exécutions planifiées
+après 60 jours sans commit.
 
 ```
 backend/app/        application FastAPI (main.py : démarrage, middleware), modèles, sauvegarde, HTTPS, On mange quoi?

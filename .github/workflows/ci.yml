@@ -97,6 +97,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Look up Chrome's stable version (link-import User-Agent)
+        id: chrome
+        # Empty with a warning if Google's API can't be reached; the build
+        # then uses the version in url_ingest.py.
+        run: echo "major=$(python3 .github/scripts/chrome_major.py)" >> "$GITHUB_OUTPUT"
+
       - name: Build image (not pushed -- just confirms it builds)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -104,6 +110,7 @@ jobs:
           file: backend/Dockerfile
           pull: true      # the newest python:3.13-slim, not a cached one
           push: false
+          build-args: CHROME_MAJOR=${{ steps.chrome.outputs.major }}
 
   publish:
     # Only once the tests, the audit, the browser tests and the test build
@@ -142,6 +149,12 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
 
+      - name: Look up Chrome's stable version (link-import User-Agent)
+        id: chrome
+        # Empty with a warning if Google's API can't be reached; the build
+        # then uses the version in url_ingest.py.
+        run: echo "major=$(python3 .github/scripts/chrome_major.py)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -150,6 +163,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           pull: true
           push: true
+          build-args: CHROME_MAJOR=${{ steps.chrome.outputs.major }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 

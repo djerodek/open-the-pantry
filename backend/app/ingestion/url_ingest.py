@@ -1,5 +1,6 @@
 import ipaddress
 import json
+import os
 import re
 import socket
 from urllib.parse import urlparse
@@ -11,12 +12,31 @@ from ..tls import get as http_get   # chains through compromised CA keys refused
 
 log = get_logger("url")
 
-# A generic/custom UA gets blocked by some recipe sites' bot filtering.
-# This mirrors a current desktop Chrome UA for compatibility; it's still an
-# honest identification of an HTTP client, not spoofing a browser's behavior.
+# A generic/custom UA gets blocked by some recipe sites' bot filtering, and
+# so does an outdated browser version. This mirrors a current desktop Chrome
+# UA for compatibility; it's still an honest identification of an HTTP
+# client, not spoofing a browser's behavior. CI looks up Chrome's current
+# stable major at each image build (.github/scripts/chrome_major.py) and
+# passes it as RECIPE_APP_CHROME_MAJOR; without it, or if it is older,
+# DEFAULT_CHROME_MAJOR (stable on 2026-11-01; raise it now and then for
+# builds from source).
+DEFAULT_CHROME_MAJOR = 156
+
+
+def chrome_major() -> int:
+    raw = os.environ.get("RECIPE_APP_CHROME_MAJOR", "").strip()
+    if not raw:
+        return DEFAULT_CHROME_MAJOR
+    if not re.fullmatch(r"\d{3}", raw):
+        log.warning("RECIPE_APP_CHROME_MAJOR=%r isn't a Chrome version (3 digits); using %d",
+                    raw[:20], DEFAULT_CHROME_MAJOR)
+        return DEFAULT_CHROME_MAJOR
+    return max(int(raw), DEFAULT_CHROME_MAJOR)
+
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    f"(KHTML, like Gecko) Chrome/{chrome_major()}.0.0.0 Safari/537.36"
 )
 
 

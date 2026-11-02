@@ -66,6 +66,11 @@ those sections sets it.
     when to upgrade, pin a digest: `image: djerodek/open-the-pantry@sha256:<digest>`.
     `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
     shows the digest of the image you're running.
+  - The image is rebuilt every Sunday (CI, below). To follow it, a weekly
+    cron job on the server after that, e.g. Sunday 05:00:
+    `cd /path/to/open-the-pantry && docker compose pull -q && docker compose up -d && docker image prune -f`.
+    `up -d` only recreates the container when the image changed. With
+    HTTPS, give both compose files to each command.
 - **Images**: `linux/amd64` and `linux/arm64` (a NAS, a VPS, a Raspberry Pi).
   The compose files publish the ports on every address of the machine; on
   a VPS or any machine with a public address, put them behind a firewall
@@ -606,8 +611,11 @@ CI (`.github/workflows/ci.yml`) runs on every push, every Sunday, and on
 demand (Actions -> CI -> Run workflow). It runs both test suites, a
 dependency audit (which fails on any known vulnerability) and a Docker
 build. The published image is built only once those pass, so the weekly
-run also refreshes it with the newest base image and trusted roots.
-GitHub pauses scheduled runs after 60 days without a commit.
+run also refreshes it with the newest base image and trusted roots. Each
+build also looks up Chrome's current stable version for the browser name
+link imports send (some sites refuse an outdated one); if Google's
+version service can't be reached, the build uses the version in
+`url_ingest.py`. GitHub pauses scheduled runs after 60 days without a commit.
 
 ```
 backend/app/        FastAPI app (main.py: start-up, middleware), models, backup, HTTPS, picker
