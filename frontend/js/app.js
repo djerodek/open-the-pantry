@@ -3494,18 +3494,25 @@
   // Cups in one of each unit. A French "tasse" is the Canadian 250 ml cup;
   // ml and l are converted through the US cup the table is in.
   const US_CUP_ML = 236.588;
+  // French spoons, built like ingredient_parser.py's _FR_SPOON / FR_TBSP /
+  // FR_TSP ("c. à soupe", "c.à.s.", "c. s.", "cuillère à thé", "c. à c.",
+  // "c.c.", "c. t."): tried before the cup, so "c. s." isn't read as "c."
+  // (DeepSeek review of 0151). Change both together; test_weights.py checks
+  // they agree.
+  const FR_SPOON = String.raw`(?:c\.?\s*[àa]\.?\s*|cuil\.\s*[àa]\s*|cuill?(?:[eè]re|er[ée]e)s?\s+[àa]\s+)`;
   const VOLUME_UNITS = [
-    // Not a bare lowercase "c" (ingredient_parser.py doesn't take it for a
-    // unit either); "c." but not "c. à …" (a spoon).
-    [/^(?:cups?|c\.(?!\s?(?:à|a)\s))(?![\w])/i, 1],
-    [/^C(?=\s)/, 1],
+    [new RegExp(String.raw`^(?:${FR_SPOON}(?:soupe|table|s\.?)|c\.\s*s\.|cs)(?![\w])`, "i"), 15 / US_CUP_ML],
+    [new RegExp(String.raw`^(?:${FR_SPOON}(?:th[ée]|the|caf[ée]|t\.?|c\.?)|c\.\s*[tc]\.|ct)(?![\w])`, "i"), 5 / US_CUP_ML],
     [/^(?:tasses?)(?![\w])/i, 250 / US_CUP_ML],
+    // Not a bare lowercase "c" (ingredient_parser.py doesn't take it for a
+    // unit either); "c." but not "c." then a spoon's letters that the
+    // patterns above didn't read (left alone rather than read as a cup).
+    [/^(?:cups?|c\.(?!\s*(?:[àa](?![\w])|[stc]\.)))(?![\w])/i, 1],
+    [/^C(?=\s)/, 1],
     [/^(?:tablespoons?|tbsps?\.?|tbs\.?|tbl\.?|tblsp\.?)(?![\w])/i, 1 / 16],
     [/^T(?=\s)/, 1 / 16],
-    [/^(?:c\.\s?(?:à|a)\s?s\.?|c\.\s?(?:à|a)\s?soupe|c\.\s?(?:à|a)\s?table|cuill(?:è|e)res?\s(?:à|a)\stable|cuill(?:è|e)res?\s(?:à|a)\ssoupe|cuill(?:è|e)r(?:é|e)es?\s(?:à|a)\ssoupe|c\.s\.|cs)(?![\w])/i, 15 / US_CUP_ML],
     [/^(?:teaspoons?|tsps?\.?)(?![\w])/i, 1 / 48],
     [/^t(?=\s)/, 1 / 48],
-    [/^(?:c\.\s?(?:à|a)\s?t\.?|c\.\s?(?:à|a)\s?(?:thé|the|café|cafe)|cuill(?:è|e)res?\s(?:à|a)\s(?:thé|the|café|cafe)|cuill(?:è|e)r(?:é|e)es?\s(?:à|a)\s(?:thé|the|café|cafe)|c\.t\.|ct)(?![\w])/i, 5 / US_CUP_ML],
     [/^(?:fl\.?\s?oz\.?|fluid\s+ounces?)(?![\w])/i, 1 / 8],
     [/^(?:ml|mls|millilit(?:er|re)s?)(?![\w])/i, 1 / US_CUP_ML],
     [/^(?:l|lit(?:er|re)s?)(?![\w'’])/i, 1000 / US_CUP_ML],

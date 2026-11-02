@@ -1,14 +1,15 @@
 import re
 
 # French (Quebec) spoon measures: "c. à soupe", "c. à s.", "c. à table",
-# "cuillère(s) à soupe"; "c. à thé", "c. à café", "c. à c.". Listed first:
+# "cuillère(s) à soupe"; "c. à thé", "c. à café", "c. à c.", "c. c.", "c. t.".
+# frontend/js/app.js (Weights) reads the same forms. Listed first:
 # they contain spaces and dots, and "c" alone must not be taken for a unit.
 _FR_SPOON = r"(?:c\.?\s*[àa]\.?\s*|cuil\.\s*[àa]\s*|cuill?(?:[eè]re|er[ée]e)s?\s+[àa]\s+)"
 FR_TBSP = _FR_SPOON + r"(?:soupe|table|s\.)"
 FR_TSP = _FR_SPOON + r"(?:th[ée]|caf[ée]|t\.|c\.)"
 
 UNIT_WORDS = [
-    FR_TBSP, FR_TSP, r"c\.\s*s\.", r"c\.\s*c\.",
+    FR_TBSP, FR_TSP, r"c\.\s*s\.", r"c\.\s*[ct]\.",
     "tasses?", "pinc[ée]es?", "gousses?", "bo[îi]tes?", "tranches?", "bottes?", "paquets?",
     "sachets?", "livres?", "grammes?", "kilos?",
     "cups?", "tbsp", "tablespoons?", "tsp", "teaspoons?",
@@ -68,7 +69,7 @@ LINE_RE = re.compile(
 
 _FR_CANONICAL = [
     (re.compile(FR_TBSP + "$|^c\\.\\s*s\\.$", re.I), "tbsp"),
-    (re.compile(FR_TSP + "$|^c\\.\\s*c\\.$", re.I), "tsp"),
+    (re.compile(FR_TSP + "$|^c\\.\\s*[ct]\\.$", re.I), "tsp"),
     (re.compile(r"^tasses?$", re.I), "cup"),
     (re.compile(r"^pinc[ée]es?$", re.I), "pinch"),
     (re.compile(r"^gousses?$", re.I), "clove"),

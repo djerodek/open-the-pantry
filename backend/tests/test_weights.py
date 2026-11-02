@@ -124,3 +124,28 @@ def test_the_page_loads_the_table_and_the_service_worker_keeps_it():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert html.index('src="js/weights.js"') < html.index('src="js/app.js"')
     assert '"/js/weights.js"' in (FRONTEND / "service-worker.js").read_text(encoding="utf-8")
+
+
+FRENCH_SPOONS = ["c. à soupe", "c. à s.", "c.à.s.", "c. à. s.", "c.à s.", "c. a s.", "c. s.", "c.s.", "c. à table",
+                 "cuillère à soupe", "cuillères à soupe", "cuil. à soupe",
+                 "c. à thé", "c. à café", "c. à t.", "c.à.t.", "c. à c.", "c.à.c.", "c. t.", "c.t.", "c. c.", "c.c.",
+                 "cuillère à thé", "cuil. à thé", "cuillerée à café"]
+
+
+def test_french_spoons_agree_with_the_ingredient_parser():
+    """DeepSeek review of 0151: "c. s." was read as a cup ("c."), 16 times
+    too much. Every spoon form the parser reads, Weights reads as the same
+    spoon: 1 of each of salt is 6 g (tsp) or 18 g (tbsp), never a cup."""
+    from app.ingestion.ingredient_parser import parse_ingredient_line
+    got = _run([[f"1 {u} sel", 1] for u in FRENCH_SPOONS])
+    for unit, (kind, out) in zip(FRENCH_SPOONS, got):
+        parsed = parse_ingredient_line(f"1 {unit} sel")
+        assert parsed["unit"] in ("tbsp", "tsp") and parsed["name"] == "sel", (unit, parsed)
+        assert (kind, out) == ("converted", {"tbsp": "18 g sel", "tsp": "6 g sel"}[parsed["unit"]]), (unit, out)
+
+
+@pytest.mark.parametrize("text,want", [("1 c. sucre", "200 g sucre"), ("1 c. flour", "120 g flour"),
+                                       ("1 c. sugar", "200 g sugar"), ("1 c sucre", "1 c sucre")])
+def test_c_dot_alone_is_still_a_cup(text, want):
+    """"c." before a word is a cup; "c. s." is not; a bare "c" is nothing."""
+    assert _run([[text, 1]])[0][1] == want
