@@ -208,6 +208,24 @@ def test_the_safety_copy_keeps_the_settings(client, configured):
     assert SECRET["subject_keyword"].encode() in raw and b"pantry.home.example" in raw
 
 
+def test_the_safety_copy_says_it_needs_the_key(client, configured):
+    """DeepSeek review of 0149: the safety copy keeps the encrypted
+    credentials, so its RESTORE.txt must not say encryption.key isn't
+    needed; a downloaded backup's still does. Both languages."""
+    import os
+    from app import backup
+    from app.database import DATA_DIR
+    body = _restore(client, client.get("/api/backup/database.zip").content)
+    safety = zipfile.ZipFile(os.path.join(DATA_DIR, body["safety_backup"])).read("RESTORE.txt").decode()
+    assert "safety copy written before a restore" in safety and "isn't needed" not in safety
+    assert "Left out on purpose" not in safety
+    download = zipfile.ZipFile(io.BytesIO(client.get("/api/backup/database.zip").content)).read("RESTORE.txt").decode()
+    assert "isn't needed to restore it" in download and "safety copy written" not in download
+    fr = backup.restore_instructions("fr", blank=False)
+    assert "copie de sécurité écrite" in fr and "n'est donc pas nécessaire" not in fr
+    assert backup.restore_instructions("fr") == backup.RESTORE_INSTRUCTIONS_FR
+
+
 def test_waiting_notifications_dont_carry_the_keyword(client, configured):
     """Claude review of 0148: result lines quote email subjects."""
     from sqlalchemy import text

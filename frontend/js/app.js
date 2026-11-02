@@ -3495,6 +3495,8 @@
   // ml and l are converted through the US cup the table is in.
   const US_CUP_ML = 236.588;
   const VOLUME_UNITS = [
+    // Not a bare lowercase "c" (ingredient_parser.py doesn't take it for a
+    // unit either); "c." but not "c. à …" (a spoon).
     [/^(?:cups?|c\.(?!\s?(?:à|a)\s))(?![\w])/i, 1],
     [/^C(?=\s)/, 1],
     [/^(?:tasses?)(?![\w])/i, 250 / US_CUP_ML],

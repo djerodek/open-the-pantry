@@ -74,7 +74,7 @@ self.OTP_INGREDIENT_WEIGHTS = [
   { en: ["sour cream"], fr: ["creme sure", "creme aigre"], g: 227 },
   { en: ["creme fraiche"], fr: ["creme fraiche"], g: 226 },
   { en: ["yogurt", "yoghurt", "greek yogurt", "plain yogurt"], fr: ["yogourt", "yaourt", "yogourt grec"], g: 227 },
-  { en: ["cream cheese"], fr: ["fromage a la creme", "fromage a la crème"], g: 227 },
+  { en: ["cream cheese"], fr: ["fromage a la creme"], g: 227 },
   { en: ["ricotta"], fr: ["ricotta"], g: 227 },
   { en: ["mascarpone"], fr: ["mascarpone"], g: 227 },
   { en: ["cottage cheese"], fr: ["fromage cottage"], g: 226 },
@@ -158,7 +158,7 @@ self.OTP_INGREDIENT_WEIGHTS = [
   // Fruit, vegetables and the rest
   { en: ["mashed banana", "mashed bananas", "mashed ripe banana", "mashed ripe bananas"], fr: ["bananes ecrasees", "banane ecrasee", "puree de banane"], g: 227 },
   { en: ["applesauce", "apple sauce"], fr: ["compote de pommes"], g: 255 },
-  { en: ["pumpkin puree", "pumpkin purée", "canned pumpkin"], fr: ["puree de citrouille", "puree de potiron"], g: 227 },
+  { en: ["pumpkin puree", "canned pumpkin"], fr: ["puree de citrouille", "puree de potiron"], g: 227 },
   { en: ["blueberries"], fr: ["bleuets", "myrtilles"], g: 155 },
   { en: ["raspberries"], fr: ["framboises"], g: 120 },
   { en: ["sliced strawberries", "strawberries"], fr: ["fraises", "fraises tranchees"], g: 167 },

@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -77,11 +78,15 @@ def test_after_scaling():
 @pytest.mark.parametrize("text", [
     "1 tsp kosher salt", "1 cup ice cream", "1 tsp cream of tartar", "2 cups sugar snap peas",
     "3/4 tsp each salt and pepper", "1 cup lettuce, shredded", "2 tbsp taco seasoning", "1 stick cinnamon",
-    "1/2 cup white wine and sea salt",
 ])
 def test_volumes_it_cant_weigh_are_left_as_written(text):
     (kind, out), = _run([[text, 1]])
-    assert (kind, out) == ("kept", text) or (text.startswith("1/2 cup white wine") and kind == "converted")
+    assert (kind, out) == ("kept", text)
+
+
+def test_only_the_name_before_and_is_weighed():
+    """The name part ends at "and"/"or": wine is weighed, not the salt."""
+    assert _run([["1/2 cup white wine and sea salt", 1]]) == [["converted", "120 g white wine and sea salt"]]
 
 
 @pytest.mark.parametrize("text", ["2 eggs", "200 g sugar", "8 oz cream cheese", "Salt to taste", "Sauce:", ""])
@@ -92,7 +97,8 @@ def test_weights_counts_and_plain_lines_are_unchanged(text):
 
 def test_the_table():
     """Every entry has names and a positive weight (or None to leave a line
-    as written); no name is in two entries."""
+    as written); no name is in two entries, accents aside (matching folds
+    them, so an accented copy of a name does nothing)."""
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
@@ -105,8 +111,11 @@ def test_the_table():
     for i, e in enumerate(table):
         assert e["en"] or e["fr"]
         assert e["g"] is None or 0 < e["g"] < 400, e
+        names = [unicodedata.normalize("NFD", n).encode("ascii", "ignore").decode() for n in e["en"] + e["fr"]]
+        assert len(set(names)) == len(set(e["en"] + e["fr"])), f"a name twice, accents aside, in {e}"
         for name in e["en"] + e["fr"]:
             assert name == name.lower() and name.strip() == name, name
+        for name in names:
             assert seen.setdefault(name, i) == i, f"{name} in two entries"
     assert len(table) > 150
 

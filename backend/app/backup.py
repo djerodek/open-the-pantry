@@ -329,6 +329,62 @@ def remove_upload_file(path: str) -> None:
             os.remove(path)
 
 
+# The safety copy a restore writes first (blank=False) keeps the settings,
+# credentials included, encrypted with this server's encryption.key: its
+# RESTORE.txt says so instead of "left out" (DeepSeek review of 0149).
+_SAFETY_COPY_NOTE = {
+    "en": ("This is the safety copy written before a restore: unlike a downloaded\n"
+           "backup, it keeps every setting, the email password and cPanel token\n"
+           "included, encrypted with this server's encryption.key. Restored on this\n"
+           "server they work as before; onto another server, also copy\n"
+           "encryption.key from this server's data folder, or enter them again."),
+    "fr": ("Ceci est la copie de sécurité écrite avant une restauration : contrairement\n"
+           "à une sauvegarde téléchargée, elle garde tous les paramètres, y compris le\n"
+           "mot de passe de courriel et le jeton cPanel, chiffrés avec le fichier\n"
+           "encryption.key de ce serveur. Restaurés sur ce serveur, ils fonctionnent\n"
+           "comme avant; sur un autre serveur, copiez aussi encryption.key depuis le\n"
+           "dossier de données de ce serveur, ou entrez-les de nouveau."),
+}
+_LEFT_OUT = {
+    "en": ("Left out on purpose: the email login and password, subject keyword,\n"
+           "allowed senders and recipients, and the HTTPS name. Restoring on this\n"
+           "server keeps its own; on a new server, enter them again in Settings."),
+    "fr": ("Laissés de côté exprès : l'identifiant et le mot de passe de courriel, le\n"
+           "mot-clé d'objet, les expéditeurs permis et destinataires, et le nom HTTPS.\n"
+           "Une restauration sur ce serveur garde les siens; sur un nouveau serveur,\n"
+           "entrez-les de nouveau dans les Paramètres."),
+}
+_EMAIL_BULLET = {
+    "en": ("* Email ingest and HTTPS: this archive holds no email login or password and\n"
+           "  no cPanel token (see above), so encryption.key isn't needed to restore it.\n"
+           "  On a new server, enter the email login and password in Settings again;\n"
+           "  the mail server names and ports come back from the backup.\n"),
+    "fr": ("* Réception par courriel et HTTPS : cette archive ne contient ni identifiant\n"
+           "  ni mot de passe de courriel, ni jeton cPanel (voir plus haut); encryption.key\n"
+           "  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur, entrez\n"
+           "  de nouveau l'identifiant et le mot de passe de courriel dans les Paramètres;\n"
+           "  les noms et ports des serveurs de courriel reviennent de la sauvegarde.\n"),
+}
+_SAFETY_EMAIL_BULLET = {
+    "en": ("* Email ingest and HTTPS: see the note on the safety copy above.\n"),
+    "fr": ("* Réception par courriel et HTTPS : voir la note sur la copie de sécurité\n"
+           "  plus haut.\n"),
+}
+
+
+def restore_instructions(lang: str, blank: bool = True) -> str:
+    """RESTORE.txt / RESTAURER.txt for a backup, or for a restore's safety copy."""
+    key = "fr" if lang == "fr" else "en"
+    text = RESTORE_INSTRUCTIONS_FR if key == "fr" else RESTORE_INSTRUCTIONS
+    if blank:
+        return text
+    for old in (_LEFT_OUT[key], _EMAIL_BULLET[key]):
+        if old not in text:
+            raise RuntimeError("restore_instructions: RESTORE text changed; update _LEFT_OUT/_EMAIL_BULLET")
+    return (text.replace(_LEFT_OUT[key], _SAFETY_COPY_NOTE[key])
+            .replace(_EMAIL_BULLET[key], _SAFETY_EMAIL_BULLET[key]))
+
+
 def build_database_backup(dest_zip_path: str, blank: bool = True) -> dict:
     """Database + uploads, as a restorable zip. Returns manifest counts."""
     tmp_db = dest_zip_path + ".db.tmp"
@@ -403,10 +459,8 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str, blank: bool =
         manifest = _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unreferenced)
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
         # In the language of the request that asked for the backup.
-        if i18n.current_lang.get() == "fr":
-            zf.writestr("RESTAURER.txt", RESTORE_INSTRUCTIONS_FR)
-        else:
-            zf.writestr("RESTORE.txt", RESTORE_INSTRUCTIONS)
+        lang = "fr" if i18n.current_lang.get() == "fr" else "en"
+        zf.writestr("RESTAURER.txt" if lang == "fr" else "RESTORE.txt", restore_instructions(lang, blank))
 
     return manifest
 
