@@ -22,6 +22,11 @@ on:
     - cron: "23 7 * * 0"    # Sundays 07:23 UTC
   workflow_dispatch:
 
+# The workflow's GitHub token can only read the repository (it pushes to
+# Docker Hub with its own secrets, not with this token).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -48,7 +53,7 @@ jobs:
 
       - name: Dependency audit
         run: |
-          pip install pip-audit
+          pip install pip-audit==2.10.1
           pip-audit -r backend/requirements.txt
         # Fails the build. It used to end in `|| true`, so 167 advisories
         # accumulated unseen across the libraries that parse uploads, email

@@ -149,3 +149,75 @@ def test_an_older_backup_with_only_some_fields_blank_is_restored_as_it_was(tmp_p
         c.execute("INSERT INTO email_ingest_settings VALUES (0, NULL, NULL, 'me@home.example', '', '', "
                   "'[\"aunt@family.example\"]', NULL)")
     assert settings_blanked(str(old)) is False
+
+
+def _restore(client, data):
+    tok = client.post("/api/backup/restore/check", headers=H,
+                      files={"file": ("b.zip", data, "application/zip")}).json()["token"]
+    r = client.post("/api/backup/restore", headers=H, json={"token": tok})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_a_restore_keeps_this_servers_backup_schedule(client):
+    """Claude review of 0148: restoring a backup taken with automatic
+    backups off turned them off again, without a word."""
+    from sqlalchemy import text
+    from app.database import engine
+    data = client.get("/api/backup/database.zip").content
+    with engine.begin() as c:
+        before = [dict(r) for r in c.execute(text("SELECT * FROM backup_schedule")).mappings()]
+        c.execute(text("DELETE FROM backup_schedule"))
+        c.execute(text("INSERT INTO backup_schedule (id, enabled, hour, keep) VALUES (1, 1, 2, 14)"))
+    try:
+        _restore(client, data)
+        with engine.connect() as c:
+            assert tuple(c.execute(text("SELECT enabled, hour, keep FROM backup_schedule")).one()) == (1, 2, 14)
+    finally:
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM backup_schedule"))
+            for row in before:
+                c.execute(text(f"INSERT INTO backup_schedule ({', '.join(row)}) VALUES "
+                               f"({', '.join(':' + k for k in row)})"), row)
+
+
+def test_a_new_server_gets_the_backups_mail_servers(client, configured):
+    """Claude review of 0148: the whole live row was put back, so a new
+    server's defaults replaced the backup's mail servers and scan hour."""
+    from sqlalchemy import text
+    from app.database import engine
+    with engine.begin() as c:
+        c.execute(text("UPDATE email_ingest_settings SET daily_scan_hour = 5"))
+    data = client.get("/api/backup/database.zip").content
+    with engine.begin() as c:                       # a new server: defaults, its own login
+        c.execute(text("UPDATE email_ingest_settings SET imap_host = NULL, smtp_host = NULL, daily_scan_hour = 3, "
+                       "username = 'new@server.example'"))
+    _restore(client, data)
+    with engine.connect() as c:
+        row = c.execute(text("SELECT imap_host, smtp_host, daily_scan_hour, username FROM email_ingest_settings")).one()
+    assert tuple(row) == ("imap.home.example", "smtp.home.example", 5, "new@server.example")
+
+
+def test_the_safety_copy_keeps_the_settings(client, configured):
+    """Claude review of 0148: the copy made before a restore stays in the
+    data folder and is how a restore is undone, so it isn't blanked."""
+    import os
+    from app.database import DATA_DIR
+    body = _restore(client, client.get("/api/backup/database.zip").content)
+    raw = _db_bytes(open(os.path.join(DATA_DIR, body["safety_backup"]), "rb").read())
+    assert SECRET["subject_keyword"].encode() in raw and b"pantry.home.example" in raw
+
+
+def test_waiting_notifications_dont_carry_the_keyword(client, configured):
+    """Claude review of 0148: result lines quote email subjects."""
+    from sqlalchemy import text
+    from app.database import engine
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO email_notification_queue (success, message) VALUES (1, :m)"),
+                  {"m": f'Saved (from "{SECRET["subject_keyword"]} Lasagna")'})
+    try:
+        raw = _db_bytes(client.get("/api/backup/database.zip").content)
+        assert SECRET["subject_keyword"].encode() not in raw
+    finally:
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM email_notification_queue"))

@@ -87,6 +87,10 @@ def blank_settings(db_path: str) -> None:
             values = {k: v for k, v in values.items() if k in cols}
             if values:
                 conn.execute(f"UPDATE {table} SET " + ", ".join(f"{k} = ?" for k in values), list(values.values()))
+        # Waiting result lines quote email subjects, keyword included
+        # (Claude review of 0148).
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'email_notification_queue'").fetchone():
+            conn.execute("DELETE FROM email_notification_queue")
         # Says so in the backup itself, for a restore to read (GPT review of
         # 0147: guessing from four blank fields took an older backup with
         # no keyword or sender list for a blanked one).
@@ -228,12 +232,10 @@ Notes
   somewhere else first.
 * recipes.db is an ordinary SQLite database. You can open it with any SQLite
   tool if you ever want the data out without running this app.
-* Email ingest: this archive deliberately does NOT contain encryption.key,
-  so it exposes no email password. To keep the saved password working,
-  copy encryption.key from the old data folder into the new one (or keep
-  RECIPE_APP_ENCRYPTION_KEY the same, if you set it that way). Otherwise,
-  set up encryption again in Settings and re-enter the password. Everything
-  else restores regardless.
+* Email ingest and HTTPS: this archive holds no email login or password and
+  no cPanel token (see above), so encryption.key isn't needed to restore it.
+  On a new server, enter the email login and password in Settings again;
+  the mail server names and ports come back from the backup.
 """
 
 
@@ -304,13 +306,11 @@ Remarques
 * recipes.db est une base de données SQLite ordinaire. N'importe quel outil
   SQLite peut l'ouvrir si vous voulez récupérer les données sans cette
   application.
-* Réception par courriel : cette archive ne contient volontairement PAS
-  encryption.key; elle n'expose donc aucun mot de passe de courriel. Pour que
-  le mot de passe enregistré continue de fonctionner, copiez encryption.key
-  de l'ancien dossier de données vers le nouveau (ou gardez la même valeur
-  pour RECIPE_APP_ENCRYPTION_KEY, si vous l'avez définie ainsi). Sinon,
-  configurez de nouveau le chiffrement dans les Paramètres et entrez le mot
-  de passe à nouveau. Tout le reste se restaure quand même.
+* Réception par courriel et HTTPS : cette archive ne contient ni identifiant
+  ni mot de passe de courriel, ni jeton cPanel (voir plus haut); encryption.key
+  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur, entrez
+  de nouveau l'identifiant et le mot de passe de courriel dans les Paramètres;
+  les noms et ports des serveurs de courriel reviennent de la sauvegarde.
 """
 
 
@@ -329,18 +329,18 @@ def remove_upload_file(path: str) -> None:
             os.remove(path)
 
 
-def build_database_backup(dest_zip_path: str) -> dict:
+def build_database_backup(dest_zip_path: str, blank: bool = True) -> dict:
     """Database + uploads, as a restorable zip. Returns manifest counts."""
     tmp_db = dest_zip_path + ".db.tmp"
     try:
         with UPLOADS_LOCK:
-            return _build_database_backup_locked(dest_zip_path, tmp_db)
+            return _build_database_backup_locked(dest_zip_path, tmp_db, blank)
     finally:
         if os.path.isfile(tmp_db):
             os.remove(tmp_db)
 
 
-def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
+def _build_database_backup_locked(dest_zip_path: str, tmp_db: str, blank: bool = True) -> dict:
     """The archive contains exactly the photos the snapshot refers to.
 
     It used to contain whatever was in uploads/ when the folder was listed,
@@ -354,7 +354,11 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str) -> dict:
     from .file_validation import is_safe_stored_filename
 
     snapshot_database(tmp_db)
-    blank_settings(tmp_db)
+    # Not for restore's own safety copy (blank=False): it stays in the data
+    # folder beside encryption.key, and is what puts this server's settings
+    # back if the restore is undone (Claude review of 0148).
+    if blank:
+        blank_settings(tmp_db)
     with sqlite3.connect(tmp_db) as snap:
         # Recipes in Recently deleted are in the backup (and come back there
         # on a restore) but aren't counted as the library's.
@@ -422,6 +426,10 @@ def _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unrefe
     }
 
 
+def _csv_safe(value):
+    return "'" + value if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+
+
 def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) -> dict:
     """One PDF per recipe, plus an index. Does not restore -- see module docstring.
 
@@ -469,7 +477,10 @@ def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) ->
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=["id", "title", "file", "status", "source_type"])
         writer.writeheader()
-        writer.writerows(index_rows)
+        # A title from a web page or an email starting with = + - @ (or a tab
+        # or CR) would run as a formula in a spreadsheet (Claude review of
+        # 0148): such cells start with an apostrophe.
+        writer.writerows({k: _csv_safe(v) for k, v in row.items()} for row in index_rows)
         zf.writestr("index.csv", buf.getvalue())
 
         manifest = {

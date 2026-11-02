@@ -247,7 +247,7 @@ def library_check(db: Session = Depends(get_db)):
     tagged = {rid for (rid,) in db.query(models.recipe_tags.c.recipe_id).distinct()}
     checks = {k: [] for k in ("no_ingredients", "no_steps", "no_tags", "no_photo", "photo_missing", "to_review")}
     rows = db.query(models.Recipe.id, models.Recipe.title, models.Recipe.image_path, models.Recipe.needs_review).all()
-    for rid, title, image, review in sorted(rows, key=lambda r: (r[1] or "").casefold()):
+    for rid, title, image, to_review in sorted(rows, key=lambda r: (r[1] or "").casefold()):
         item = {"id": rid, "title": title}
         if not ing.get(rid):
             checks["no_ingredients"].append(item)
@@ -261,7 +261,7 @@ def library_check(db: Session = Depends(get_db)):
             path = safe_join(UPLOADS_DIR, image)
             if not path or not os.path.isfile(path):
                 checks["photo_missing"].append(item)
-        if review:
+        if to_review:
             checks["to_review"].append(item)
     return {"total": len(rows), "checks": checks, "duplicates": duplicates.groups(db)}
 

@@ -521,7 +521,7 @@ def restore_check(request: Request, file: UploadFile = File(...), db: Session = 
 # Kept from the live database across a restore: HTTPS always (it belongs
 # to this server), and the email settings when the backup's were blanked
 # (backup.REDACTED_SETTINGS, from 0143); an older backup's are restored.
-_KEPT_TABLES = ("https_settings", "email_ingest_settings")
+_KEPT_TABLES = ("https_settings", "email_ingest_settings", "backup_schedule")
 
 
 def _keep_rows(table: str) -> list[dict]:
@@ -529,6 +529,21 @@ def _keep_rows(table: str) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(text(f"SELECT * FROM {table}")).mappings().all()
     return [dict(r) for r in rows]
+
+
+def _put_back_blanked_email_fields(live: dict):
+    """A blanked backup's email row keeps what it has (mail servers, ports,
+    scan hour); only the fields the backup left out come from this server.
+    The whole live row used to be put back, so on a new server the backup's
+    mail servers were lost to its defaults (Claude review of 0148)."""
+    from ..backup import REDACTED_SETTINGS
+    fields = [k for k in REDACTED_SETTINGS["email_ingest_settings"] if k in live]
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT COUNT(*) FROM email_ingest_settings")).scalar():
+            conn.execute(text("UPDATE email_ingest_settings SET " + ", ".join(f"{k} = :{k}" for k in fields)),
+                         {k: live[k] for k in fields})
+        else:
+            _put_back_rows("email_ingest_settings", [live])
 
 
 def _put_back_rows(table: str, rows: list[dict]):
@@ -590,11 +605,15 @@ def restore_backup(payload: schemas.RestoreRequest):
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         safety_name = f"restore-safety-{stamp}.zip"
-        build_database_backup(os.path.join(DATA_DIR, safety_name))
+        build_database_backup(os.path.join(DATA_DIR, safety_name), blank=False)
         log.info("Restore: current data saved to %s", safety_name)
-        kept_rows = {"https_settings": _keep_rows("https_settings")}
-        if settings_blanked(db_path):
-            kept_rows["email_ingest_settings"] = _keep_rows("email_ingest_settings")
+        # The automatic-backup schedule belongs to this server too: a restore
+        # used to put back the backup's (usually off) without a word, and
+        # changing it otherwise needs the settings password (Claude review
+        # of 0148).
+        kept_rows = {"https_settings": _keep_rows("https_settings"),
+                     "backup_schedule": _keep_rows("backup_schedule")}
+        email_kept = _keep_rows("email_ingest_settings") if settings_blanked(db_path) else None
 
         new_uploads = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
         shutil.rmtree(new_uploads, ignore_errors=True)
@@ -607,6 +626,8 @@ def restore_backup(payload: schemas.RestoreRequest):
         init_db()                                     # an older backup's schema brought up to date
         for table, rows in kept_rows.items():
             _put_back_rows(table, rows)
+        if email_kept:
+            _put_back_blanked_email_fields(email_kept[0])
         old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
         restore_mod.clear_marker(DATA_DIR)
         shutil.rmtree(old_uploads, ignore_errors=True)

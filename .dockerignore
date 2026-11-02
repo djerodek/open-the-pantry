@@ -4,3 +4,11 @@ data/
 .git
 .github
 *.md
+# Secrets and host data next to the compose files: never part of a build
+# (Claude review of 0148; they weren't copied into the image, but were sent
+# to the build).
+.env
+*.env
+!https.env.example
+letsencrypt/
+backups/

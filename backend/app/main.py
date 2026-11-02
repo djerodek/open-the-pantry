@@ -240,7 +240,10 @@ async def lifespan(app: FastAPI):
     engine.dispose()
 
 
-app = FastAPI(title="Recipe App", lifespan=lifespan)
+# No /docs, /redoc or /openapi.json: a map of every route for anyone on
+# the network, and /docs didn't work under the CSP anyway (Claude review
+# of 0148). The picker's app has none either.
+app = FastAPI(title="Recipe App", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 # Request bodies that aren't file uploads (JSON: recipes, settings, batch
 # lists) are read whole into memory before validation, and uvicorn sets no

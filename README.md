@@ -410,12 +410,16 @@ In Settings → Backup & export:
   - **A full backup replaces the library**, after a check and a
     confirmation. It needs the settings password. A safety copy of the
     current library is written first (`restore-safety-<date>.zip`), and no
-    restart is needed. This server's HTTPS setup and email settings are
-    kept.
+    restart is needed. This server's HTTPS setup, automatic-backup schedule,
+    and the email details a backup leaves out (below) are kept; the mail
+    server names and ports come from the backup. The safety copy keeps
+    everything, so restoring it undoes the restore.
   - **What a backup leaves out**: the email login and password, the subject
     keyword, allowed senders, notification address and recent recipients,
     and the HTTPS name and addresses. Anyone on your network can download a
-    backup, so these never go in one. On a new server, enter them again.
+    backup, so these never go in one (the restore's own safety copy, which
+    stays in the data folder, does have them). On a new server, enter them
+    again.
   - **Anything else adds its recipes**: schema.org `.json`, a `.zip` of
     them, or a Paprika export (`.paprikarecipes`). A recipe whose link is
     already saved is skipped. Archives are read with size limits.

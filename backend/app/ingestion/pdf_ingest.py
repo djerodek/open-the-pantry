@@ -558,11 +558,22 @@ def _title_like(l: str) -> bool:
             and not l.lstrip().startswith("(") and not re.search(r"\S\s*[»›]\s*\S", l))
 
 
+_DISH_WORD = re.compile(
+    r"\b(?:cakes?|brownies?|cookies?|bars?|pies?|tarts?|breads?|buns?|rolls?|muffins?|scones?|pancakes?|waffles?|"
+    r"chocolate|caramel|vanilla|cheesecakes?|pudding|soups?|stews?|salads?|sauces?|chicken|beef|pork|fish|"
+    r"shrimp|pasta|noodles|rice|beans|potato(?:es)?|eggs?|cheese|butter|cream|sundaes?|cocktails?|punch|"
+    r"pizza|tacos?|burgers?|sandwich(?:es)?|wings|ribs|chili|curry|gâteau|tarte|biscuits?|fudge|dip)\b",
+    re.IGNORECASE)
+
+
 def _tidy_title(title: str) -> str:
     """"Pulled Pork Sandwich by Samuel Fortier, …" -> "Pulled Pork Sandwich";
     "Cowboy Butter Recipe" -> "Cowboy Butter"; ALL CAPS -> Each Word
     Capitalised (printed pages set the name in capitals)."""
-    t = re.sub(r"\s+by\s+[A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*)?\b.*$", "", title).strip() or title
+    m = re.search(r"\s+by\s+([A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*)?\b.*)$", title)
+    # Not when what follows "by" is food ("Death by Chocolate Cake", "Stand
+    # by Me Brownies"): a byline names a person (Claude review of 0148).
+    t = title if not m or _DISH_WORD.search(m.group(1)) else (title[:m.start()].strip() or title)
     shorter = re.sub(r"(?<=\w)\s+recipe$", "", t, flags=re.IGNORECASE).strip()
     if len(shorter.split()) >= 2:          # "Attached Recipe" stays as it is
         t = shorter

@@ -468,14 +468,18 @@ Dans Paramètres → Sauvegarde et exportation :
     vérification et une confirmation. Elle demande le mot de passe des
     paramètres. Une copie de sécurité de la bibliothèque actuelle est
     d'abord écrite (`restore-safety-<date>.zip`), et aucun redémarrage
-    n'est nécessaire. La configuration HTTPS et les paramètres de courriel
-    de ce serveur sont gardés.
+    n'est nécessaire. La configuration HTTPS de ce serveur, l'horaire des
+    sauvegardes automatiques et les détails de courriel qu'une sauvegarde
+    laisse de côté (ci-dessous) sont gardés; les noms et ports des serveurs
+    de courriel viennent de la sauvegarde. La copie de sécurité garde tout :
+    la restaurer annule la restauration.
   - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
     passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
     de notification et les destinataires récents, ainsi que le nom et les
     adresses HTTPS. N'importe qui sur votre réseau peut télécharger une
-    sauvegarde, alors ils n'y sont jamais. Sur un nouveau serveur,
-    entrez-les de nouveau.
+    sauvegarde, alors ils n'y sont jamais (la copie de sécurité de la
+    restauration, qui reste dans le dossier de données, les contient). Sur
+    un nouveau serveur, entrez-les de nouveau.
   - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
     `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une
     recette dont le lien est déjà enregistré est sautée. Les archives sont
