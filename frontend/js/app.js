@@ -3606,6 +3606,80 @@
     return { text: `${m[1]}${shown} g${tail}`, kept: false, converted: true };
   }
 
+  // -------------------------------------------------------------------
+  // Volumes (the recipe view's Volumes choice): the reverse of Weights, from
+  // the same table. A weight at the start of a line (g, kg, oz, lb) shown as
+  // a volume in the recipe's language: US cups, tbsp, tsp in English;
+  // tasse (250 ml), c. à soupe, c. à thé in French. Kitchen fractions; an
+  // ingredient the table doesn't know is left as written and marked.
+  // -------------------------------------------------------------------
+  const WEIGHT_UNITS = [
+    [/^(?:kg|kilos?|kilogram(?:me)?s?)(?![\w])/i, 1000],
+    [/^(?:g|gr\.?|grams?|grammes?)(?![\w])/i, 1],
+    [/^(?:oz\.?|ounces?|onces?)(?![\w])/i, 28.3495],
+    [/^(?:lbs?\.?|pounds?|livres?)(?![\w])/i, 453.592],
+  ];
+  // [cups per unit, singular, plural]; the first unit used when the amount
+  // is at least a quarter of it, the spoons below that.
+  const VOLUME_OUT = {
+    en: { big: [1, "cup", "cups"], spoon: [1 / 16, "tbsp", "tbsp"], small: [1 / 48, "tsp", "tsp"] },
+    fr: { big: [250 / US_CUP_ML, "tasse", "tasses"], spoon: [15 / US_CUP_ML, "c. à soupe", "c. à soupe"],
+          small: [5 / US_CUP_ML, "c. à thé", "c. à thé"] },
+  };
+  const CUP_FRACTIONS = [[0, ""], [1 / 4, "1/4"], [1 / 3, "1/3"], [1 / 2, "1/2"], [2 / 3, "2/3"], [3 / 4, "3/4"], [1, ""]];
+  const SPOON_FRACTIONS = [[0, ""], [1 / 2, "1/2"], [1, ""]];
+  const TSP_FRACTIONS = [[0, ""], [1 / 8, "1/8"], [1 / 4, "1/4"], [1 / 2, "1/2"], [3 / 4, "3/4"], [1, ""]];
+  // { text, value }: the nearest whole-and-fraction ("1 1/2"), at least the
+  // smallest fraction (never "0").
+  function kitchenAmount(v, fractions) {
+    let whole = Math.floor(v);
+    let best = fractions[0];
+    for (const f of fractions) if (Math.abs(v - whole - f[0]) < Math.abs(v - whole - best[0])) best = f;
+    if (best[0] === 1) { whole += 1; best = fractions[0]; }
+    if (!whole && !best[1]) best = fractions[1];
+    const text = whole && best[1] ? `${whole} ${best[1]}` : (best[1] || String(whole));
+    return { text, value: whole + best[0] };
+  }
+  function volumeUnitFor(cups, lang) {
+    const out = VOLUME_OUT[lang];
+    if (cups / out.big[0] >= 0.25 - 1e-9) return [out.big, CUP_FRACTIONS];
+    if (cups / out.spoon[0] >= 1 - 1e-9) return [out.spoon, SPOON_FRACTIONS];
+    return [out.small, TSP_FRACTIONS];
+  }
+
+  // { text, kept, converted }, as weightLineInfo. lang: "en" or "fr".
+  function volumeLineInfo(text, lang) {
+    if (!text || isPartName(text)) return { text, kept: false, converted: false };
+    const m = LEADING_AMOUNT.exec(text);
+    if (!m) return { text, kept: false, converted: false };
+    const afterAmount = text.slice(m[0].length);
+    const spaced = afterAmount.replace(/^\s+/, "");
+    let grams = null, unitLen = 0;
+    for (const [re, perUnit] of WEIGHT_UNITS) {
+      const u = re.exec(spaced);
+      if (u) { grams = perUnit; unitLen = u[0].length; break; }
+    }
+    if (grams === null) return { text, kept: false, converted: false };
+    const rest = spaced.slice(unitLen);
+    const amounts = [m[2], m[4]].filter(Boolean);
+    const entry = /^\s*(?:each|chacun|chacune)\b/i.test(rest) ? null : ingredientWeightEntry(rest);
+    if (!entry || entry.g === null
+        || amounts.some((a) => AMBIGUOUS_THOUSANDS.test(a.trim())) || SECOND_AMOUNT.test(afterAmount)) {
+      return { text, kept: true, converted: false };
+    }
+    const values = amounts.map(parseAmount);
+    if (!values.every(Number.isFinite) || values.some((v) => v <= 0)) return { text, kept: true, converted: false };
+    const cups = values.map((v) => (v * grams) / entry.g);
+    // One unit for both ends of a range, chosen by the larger.
+    const [unit, fractions] = volumeUnitFor(Math.max(...cups), lang === "fr" ? "fr" : "en");
+    const shown = cups.map((c) => kitchenAmount(c / unit[0], fractions));
+    const last = shown[shown.length - 1].value;
+    const plural = lang === "fr" ? last >= 2 : last > 1;
+    const amountText = shown.length === 2 ? `${shown[0].text}${m[3]}${shown[1].text}` : shown[0].text;
+    const tail = /^\s/.test(rest) ? rest : ` ${rest}`;
+    return { text: `${m[1]}${amountText} ${plural ? unit[2] : unit[1]}${tail}`, kept: false, converted: true };
+  }
+
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
   function scaleButtons(onChange) {
     const choices = [[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]];
@@ -4656,33 +4730,45 @@
     // ½ / 1x / 2x: rewrites the amounts at the start of the ingredient
     // lines (scaleLine). Back to 1x each time a recipe opens.
     const ingredientsList = el("ul", { class: "ingredients-list" });
-    // Weights: volumes shown as grams (weights.js), after scaling; kept per
-    // device. A volume the table doesn't know stays as written, marked.
+    // Units: as written, Weights (volumes shown as grams) or Volumes (weights
+    // shown as cups/spoons, in the recipe's language), from weights.js, after
+    // scaling; one at a time, kept per device. An ingredient the table
+    // doesn't know stays as written, marked.
     let currentFactor = 1;
-    let weightsOn = storageGet("recipe-app-weights") === "1";
-    const weightsBtn = el("button", {
-      type: "button", class: "scale-button weights-button", "aria-pressed": String(weightsOn),
-      title: tx("Show volumes as weights"), "aria-label": tx("Show volumes as weights"), text: tx("Weights"),
+    const savedUnits = storageGet("recipe-app-units");
+    let unitsMode = ["written", "weights", "volumes"].includes(savedUnits) ? savedUnits
+      : (storageGet("recipe-app-weights") === "1" ? "weights" : "written");   // the 0150 setting
+    const volumeLang = (recipe.language || recipe.detected_language) === "fr" ? "fr" : "en";
+    const unitChoices = [["written", tx("As written"), tx("Amounts as written")],
+                         ["weights", tx("Weights"), tx("Show volumes as weights")],
+                         ["volumes", tx("Volumes"), tx("Show weights as volumes")]];
+    const unitButtons = unitChoices.map(([mode, label, name]) => el("button", {
+      type: "button", class: `scale-button units-button units-${mode}`, "aria-pressed": String(unitsMode === mode),
+      title: name, "aria-label": name, text: label,
       onclick: () => {
-        weightsOn = !weightsOn;
-        storageSet("recipe-app-weights", weightsOn ? "1" : "0");
-        weightsBtn.setAttribute("aria-pressed", String(weightsOn));
+        unitsMode = mode;
+        storageSet("recipe-app-units", mode);
+        unitButtons.forEach((b, k) => b.setAttribute("aria-pressed", String(unitChoices[k][0] === mode)));
         renderIngredients(currentFactor);
       },
-    });
+    }));
+    const unitsControl = el("div", { class: "units-control" }, [
+      el("div", { class: "scale-buttons units-buttons", role: "group", "aria-label": tx("Units") }, unitButtons),
+      el("p", { class: "units-disclaimer", text: tx("Conversions are approximate; adjust as needed.") }),
+    ]);
     const renderIngredients = (factor) => {
       currentFactor = factor;
-      let kept = 0, unweighed = 0, weighed = 0;
+      let kept = 0, unconverted = 0, converted = 0;
       ingredientsList.replaceChildren(...recipe.ingredients.map((i) => {
         const text = ingredientText(i);
         const info = scaleLineInfo(text, factor);
         let shown = info.text, mark = info.kept;
         if (info.kept) kept += 1;
-        else if (weightsOn) {
-          const w = weightLineInfo(info.text);
+        else if (unitsMode !== "written") {
+          const w = unitsMode === "weights" ? weightLineInfo(info.text) : volumeLineInfo(info.text, volumeLang);
           shown = w.text;
-          if (w.kept) { unweighed += 1; mark = true; }
-          if (w.converted) weighed += 1;
+          if (w.kept) { unconverted += 1; mark = true; }
+          if (w.converted) converted += 1;
         }
         return el("li", { class: isPartName(text) ? "list-part" : (mark ? "unscaled" : null) }, [
           document.createTextNode(shown),
@@ -4690,8 +4776,8 @@
         ]);
       }));
       const parts = [];
-      if (weightsOn && weighed) parts.push(tx("Weights are approximate: a cup weighs more or less depending on how it's filled."));
-      if (weightsOn && unweighed) parts.push(txn(unweighed, "{n} volume with no known weight, left as written.", "{n} volumes with no known weight, left as written."));
+      if (unitsMode === "weights" && unconverted) parts.push(txn(unconverted, "{n} volume with no known weight, left as written.", "{n} volumes with no known weight, left as written."));
+      if (unitsMode === "volumes" && unconverted) parts.push(txn(unconverted, "{n} weight with no known volume, left as written.", "{n} weights with no known volume, left as written."));
       if (factor !== 1 && recipe.servings) {
         const servings = scaleServings(recipe.servings, factor);
         parts.push(servings === null
@@ -4699,12 +4785,11 @@
           : tx("Servings: {1}", { 1: servings }));
       }
       if (factor !== 1 && kept) parts.push(txn(kept, "{n} line left as written: check it by hand.", "{n} lines left as written: check them by hand."));
-      if (factor !== 1 || (weightsOn && weighed)) parts.push(tx("Amounts in the steps stay as written."));
+      if (factor !== 1 || converted) parts.push(tx("Amounts in the steps stay as written."));
       scaleControl.note.textContent = parts.join(" · ");
       scaleControl.note.hidden = !parts.length;
     };
     const scaleControl = scaleButtons(renderIngredients);
-    scaleControl.element.appendChild(weightsBtn);
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
       // Share lives at the top right of the recipe card; the source/OCR
@@ -4727,7 +4812,7 @@
       // steps scroll), one after the other on a narrow one.
       el("div", { class: "recipe-body" }, [
         el("section", { class: "recipe-ingredients" }, [
-          el("div", { class: "ingredients-head" }, [el("h2", { text: tx("Ingredients") }), scaleControl.element]),
+          el("div", { class: "ingredients-head" }, [el("h2", { text: tx("Ingredients") }), scaleControl.element, unitsControl]),
           scaleControl.note,
           ingredientsList,
         ]),

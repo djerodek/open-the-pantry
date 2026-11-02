@@ -486,34 +486,46 @@ def test_print_gives_only_the_chosen_recipe(server, api, page):
     assert pg.is_visible("#recipe-list-region") and not pg.is_visible("#recipe-detail-heading")
 
 
-def test_weights_button(server, api, page):
-    """0150: Weights shows volumes as grams after scaling, marks a volume it
-    has no weight for, is kept on this device, and turns back off."""
-    r = add_recipe(api, f"Browser weights {uuid.uuid4().hex[:6]}",
-                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "1 tbsp harissa"}, {"raw_line": "2 eggs"}])
+def test_units_as_written_weights_volumes(server, api, page):
+    """0150: Weights shows volumes as grams after scaling and marks a volume
+    it has no weight for. 0154: one of As written / Weights / Volumes at a
+    time; Volumes shows weights as cups/spoons; kept on this device (0150's
+    setting carried over); a small note says conversions are approximate."""
+    r = add_recipe(api, f"Browser units {uuid.uuid4().hex[:6]}",
+                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "100 g sugar"},
+                                {"raw_line": "1 tbsp harissa"}, {"raw_line": "2 eggs"}])
     p = page()
     pg = p.page
     pg.goto(server["url"])
-    pg.wait_for_selector(f"text={r['title']}")
-    pg.click(f"text={r['title']}")
-    pg.wait_for_selector("#recipe-detail-heading")
-    lines = ".recipe-ingredients .ingredients-list"
-    pg.click(".weights-button")
-    assert pg.get_attribute(".weights-button", "aria-pressed") == "true"
-    text = pg.inner_text(lines)
-    assert re.search(r"^120 g flour", text, re.M), text
-    assert re.search(r"^1 tbsp harissa\s*\(as written\)", text, re.M), text
-    assert re.search(r"^2 eggs$", text, re.M), text
-    assert "approximate" in pg.inner_text(".scale-note")
-    pg.click(".scale-button[aria-label='Double the quantities']")
-    assert re.search(r"^240 g flour", pg.inner_text(lines), re.M)
-    # Kept on this device: still on when the recipe is opened again.
+    pg.evaluate("localStorage.removeItem('recipe-app-units'); localStorage.setItem('recipe-app-weights', '1'); null")
     pg.reload()
     pg.wait_for_selector(f"text={r['title']}")
     pg.click(f"text={r['title']}")
     pg.wait_for_selector("#recipe-detail-heading")
+    lines = ".recipe-ingredients .ingredients-list"
+    pressed = lambda: [b for b in ("written", "weights", "volumes")
+                       if pg.get_attribute(f".units-{b}", "aria-pressed") == "true"]
+    assert "approximate" in pg.inner_text(".units-disclaimer")
+    # 0150's Weights setting is carried over.
     wait_until(pg, "/^120 g flour/m.test(document.querySelector('.recipe-ingredients .ingredients-list').innerText)")
-    pg.click(".weights-button")
-    assert pg.get_attribute(".weights-button", "aria-pressed") == "false"
+    assert pressed() == ["weights"]
     text = pg.inner_text(lines)
-    assert re.search(r"^1 cup flour", text, re.M) and "as written" not in text, text
+    assert re.search(r"^100 g sugar$", text, re.M) and re.search(r"^1 tbsp harissa\s*\(as written\)", text, re.M), text
+    pg.click(".scale-button[aria-label='Double the quantities']")
+    assert re.search(r"^240 g flour", pg.inner_text(lines), re.M)
+    pg.click(".scale-button[aria-label='Quantities as written']")
+    # Volumes: the weight becomes a volume, the volume stays.
+    pg.click(".units-volumes")
+    assert pressed() == ["volumes"]
+    text = pg.inner_text(lines)
+    assert re.search(r"^1/2 cup sugar$", text, re.M) and re.search(r"^1 cup flour$", text, re.M), text
+    assert re.search(r"^2 eggs$", text, re.M) and "as written" not in text, text
+    pg.reload()
+    pg.wait_for_selector(f"text={r['title']}")
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    wait_until(pg, "/^1\\/2 cup sugar/m.test(document.querySelector('.recipe-ingredients .ingredients-list').innerText)")
+    pg.click(".units-written")
+    assert pressed() == ["written"]
+    text = pg.inner_text(lines)
+    assert re.search(r"^1 cup flour", text, re.M) and re.search(r"^100 g sugar", text, re.M) and "as written" not in text

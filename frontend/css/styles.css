@@ -1896,10 +1896,11 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 }
 .scale-button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-bg-raised); border-color: var(--color-ink); }
 /* Weights: a separate on/off choice after ½ / 1× / 2×. */
-.weights-button { margin-left: 0.4rem; }
+.units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
+.units-disclaimer { margin: 0; font-size: 0.72rem; color: var(--color-ink-muted, inherit); }
 .unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }
 .scale-note { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-ink-muted); }
-@media print { .scale-buttons { display: none !important; } }
+@media print { .scale-buttons, .units-disclaimer { display: none !important; } }
 
 /* Settings -> Backup & export -> Import recipes */
 .import-box { margin-top: 1.25rem; padding-top: 0.9rem; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }

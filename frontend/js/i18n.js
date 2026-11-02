@@ -967,10 +967,17 @@
     "{n} line left as written: check it by hand.": "{n} ligne laissée telle qu'écrite : vérifiez-la à la main.",
     "{n} lines left as written: check them by hand.": "{n} lignes laissées telles qu'écrites : vérifiez-les à la main.",
     "Amounts in the steps stay as written.": "Les quantités dans les étapes restent telles qu'écrites.",
-    // Recipe view: Weights
+    // Recipe view: units (as written / Weights / Volumes)
+    "Units": "Unités",
+    "As written": "Tel qu'écrit",
+    "Amounts as written": "Quantités telles qu'écrites",
     "Weights": "Poids",
     "Show volumes as weights": "Afficher les volumes en poids",
-    "Weights are approximate: a cup weighs more or less depending on how it's filled.": "Les poids sont approximatifs : une tasse pèse plus ou moins selon la façon de la remplir.",
+    "Volumes": "Volumes",
+    "Show weights as volumes": "Afficher les poids en volumes",
+    "Conversions are approximate; adjust as needed.": "Conversions approximatives; ajustez au besoin.",
+    "{n} weight with no known volume, left as written.": "{n} poids sans volume connu, laissé tel qu'écrit.",
+    "{n} weights with no known volume, left as written.": "{n} poids sans volume connu, laissés tels qu'écrits.",
     "{n} volume with no known weight, left as written.": "{n} volume sans poids connu, laissé tel qu'écrit.",
     "{n} volumes with no known weight, left as written.": "{n} volumes sans poids connu, laissés tels qu'écrits.",
     // Already in your library? (review screen, Add manually, batch links)

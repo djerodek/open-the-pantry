@@ -444,7 +444,7 @@ def test_scale_buttons_in_the_recipe_view():
     detail = js[start:js.index("    body.appendChild(el(\"div\", { class: \"recipe-detail\" }", start)]
     assert "scaleLineInfo(text, factor)" in detail and "scaleServings(recipe.servings, factor)" in detail
     assert 'tx("as written")' in detail
-    assert "@media print { .scale-buttons { display: none !important; } }" in css
+    assert "@media print { .scale-buttons, .units-disclaimer { display: none !important; } }" in css
 
 
 def test_shared_link_opens_add_from_url():

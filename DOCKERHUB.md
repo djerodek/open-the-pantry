@@ -132,7 +132,8 @@ Tandoor have those.
 - Optional HTTPS on your LAN with a real Let's Encrypt certificate, set up
   from Settings (cPanel-managed domains; see the README)
 - Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×),
-  units included ("1 cup" → "2 cups"); show volumes as grams (Weights)
+  units included ("1 cup" → "2 cups"); show volumes as grams (Weights) or
+  weights as cups and spoons (Volumes)
 - Select several recipes to delete them, or to add or remove a tag on all
   of them at once; merge two into one, choosing each part
 - Library check in Settings: recipes missing ingredients, steps, tags or a
