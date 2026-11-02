@@ -3483,6 +3483,118 @@
     return text.replace(numbers[0], formatAmount(parseAmount(numbers[0]) * factor, numbers[0]));
   }
 
+  // -------------------------------------------------------------------
+  // Weights (the recipe view's Weights button): a volume amount at the
+  // start of an ingredient line shown as grams, from the grams-per-cup
+  // table in weights.js ("1 cup flour" -> "120 g flour"). Applied after
+  // scaling. Weights, counts ("2 eggs") and lines without an amount stay
+  // as they are; a volume of something not in the table is left as written
+  // and marked. Nothing is saved.
+  // -------------------------------------------------------------------
+  // Cups in one of each unit. A French "tasse" is the Canadian 250 ml cup;
+  // ml and l are converted through the US cup the table is in.
+  const US_CUP_ML = 236.588;
+  const VOLUME_UNITS = [
+    [/^(?:cups?|c\.(?!\s?(?:à|a)\s))(?![\w])/i, 1],
+    [/^C(?=\s)/, 1],
+    [/^(?:tasses?)(?![\w])/i, 250 / US_CUP_ML],
+    [/^(?:tablespoons?|tbsps?\.?|tbs\.?|tbl\.?|tblsp\.?)(?![\w])/i, 1 / 16],
+    [/^T(?=\s)/, 1 / 16],
+    [/^(?:c\.\s?(?:à|a)\s?s\.?|c\.\s?(?:à|a)\s?soupe|c\.\s?(?:à|a)\s?table|cuill(?:è|e)res?\s(?:à|a)\stable|cuill(?:è|e)res?\s(?:à|a)\ssoupe|cuill(?:è|e)r(?:é|e)es?\s(?:à|a)\ssoupe|c\.s\.|cs)(?![\w])/i, 15 / US_CUP_ML],
+    [/^(?:teaspoons?|tsps?\.?)(?![\w])/i, 1 / 48],
+    [/^t(?=\s)/, 1 / 48],
+    [/^(?:c\.\s?(?:à|a)\s?t\.?|c\.\s?(?:à|a)\s?(?:thé|the|café|cafe)|cuill(?:è|e)res?\s(?:à|a)\s(?:thé|the|café|cafe)|cuill(?:è|e)r(?:é|e)es?\s(?:à|a)\s(?:thé|the|café|cafe)|c\.t\.|ct)(?![\w])/i, 5 / US_CUP_ML],
+    [/^(?:fl\.?\s?oz\.?|fluid\s+ounces?)(?![\w])/i, 1 / 8],
+    [/^(?:ml|mls|millilit(?:er|re)s?)(?![\w])/i, 1 / US_CUP_ML],
+    [/^(?:l|lit(?:er|re)s?)(?![\w'’])/i, 1000 / US_CUP_ML],
+  ];
+  const STICK_UNIT = /^(?:sticks?|bâtons?)(?![\w])/i;
+
+  function foldText(s) {
+    return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’`]/g, "'");
+  }
+  let weightIndex = null;
+  function weightEntries() {
+    if (weightIndex) return weightIndex;
+    const out = [];
+    for (const entry of (self.OTP_INGREDIENT_WEIGHTS || [])) {
+      for (const name of [...entry.en, ...entry.fr]) {
+        const folded = foldText(name);
+        const words = folded.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        // The last word may be plural ("almond" / "almonds", "noix").
+        const pattern = new RegExp(`(?:^|[^a-z0-9])(${words.join("\\s+")})(?:e?s|x)?(?![a-z0-9])`);
+        out.push({ pattern, length: folded.length, entry });
+      }
+    }
+    weightIndex = out;
+    return out;
+  }
+  // The ingredient's name is what comes before the first comma,
+  // parenthesis, slash, or "or"/"and" ("2 tsp honey (or agave)", "1 cup
+  // water or broth"): a word further on ("... and sea salt") isn't it. Of
+  // the names found there, the one starting first wins, then the longest:
+  // "brown sugar" over "sugar", "kosher salt" (unknown weight) over "salt",
+  // "sun-dried tomatoes in oil" over "oil".
+  const NAME_END = /[,(;/]|\s(?:or|ou|and|et|plus)\s/i;
+  function ingredientWeightEntry(name) {
+    // "45 ml (3 tablespoons) of olive oil": the same amount again, first.
+    name = name.replace(/^\s*\([^)]*\)\s*(?:of\s+|de\s+|d['’]\s*)?/i, " ");
+    const end = NAME_END.exec(name);
+    const folded = foldText(end ? name.slice(0, end.index) : name);
+    let best = null;
+    for (const e of weightEntries()) {
+      const m = e.pattern.exec(folded);
+      if (!m) continue;
+      const at = m.index + m[0].indexOf(m[1]);
+      if (!best || at < best.at || (at === best.at && e.length > best.length)) best = { at, length: e.length, entry: e.entry };
+    }
+    return best ? best.entry : null;
+  }
+  function formatGrams(g, french) {
+    let v;
+    if (g < 1) v = Math.max(0.1, Math.round(g * 10) / 10);   // "0.2 g", never "0 g"
+    else if (g < 10) v = Math.round(g * 2) / 2;
+    else if (g < 100) v = Math.round(g);
+    else v = Math.round(g / 5) * 5;
+    const s = String(v);
+    return french ? s.replace(".", ",") : s;
+  }
+
+  // { text, kept, converted }: kept marks a volume line that couldn't be
+  // weighed (shown "as written"); converted, one that was.
+  function weightLineInfo(text) {
+    if (!text || isPartName(text)) return { text, kept: false, converted: false };
+    const m = LEADING_AMOUNT.exec(text);
+    if (!m) return { text, kept: false, converted: false };
+    const afterAmount = text.slice(m[0].length);
+    const spaced = afterAmount.replace(/^\s+/, "");
+    let cups = null, unitLen = 0, stick = false;
+    for (const [re, perUnit] of VOLUME_UNITS) {
+      const u = re.exec(spaced);
+      if (u) { cups = perUnit; unitLen = u[0].length; break; }
+    }
+    if (cups === null) {
+      const s = STICK_UNIT.exec(spaced);
+      if (s) { cups = 0.5; unitLen = s[0].length; stick = true; }
+    }
+    if (cups === null) return { text, kept: false, converted: false };
+    const rest = spaced.slice(unitLen);
+    const amounts = [m[2], m[4]].filter(Boolean);
+    // "3/4 tsp each salt and pepper": one amount for two things.
+    const entry = /^\s*(?:each|chacun|chacune)\b/i.test(rest) ? null : ingredientWeightEntry(rest);
+    if (!entry || entry.g === null || (stick && !entry.stick)
+        || amounts.some((a) => AMBIGUOUS_THOUSANDS.test(a.trim())) || SECOND_AMOUNT.test(afterAmount)) {
+      return { text, kept: true, converted: false };
+    }
+    const values = amounts.map(parseAmount);
+    if (!values.every(Number.isFinite)) return { text, kept: true, converted: false };
+    const french = amounts.some((a) => a.includes(","));
+    const grams = values.map((v) => formatGrams(v * cups * entry.g, french));
+    const shown = grams.length === 2 ? `${grams[0]}${m[3]}${grams[1]}` : grams[0];
+    const tail = /^\s/.test(rest) ? rest : ` ${rest}`;      // "of" / "de" kept: "120 g de farine"
+    return { text: `${m[1]}${shown} g${tail}`, kept: false, converted: true };
+  }
+
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
   function scaleButtons(onChange) {
     const choices = [[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]];
@@ -4533,18 +4645,42 @@
     // ½ / 1x / 2x: rewrites the amounts at the start of the ingredient
     // lines (scaleLine). Back to 1x each time a recipe opens.
     const ingredientsList = el("ul", { class: "ingredients-list" });
-    const scaleControl = scaleButtons((factor) => {
-      let kept = 0;
+    // Weights: volumes shown as grams (weights.js), after scaling; kept per
+    // device. A volume the table doesn't know stays as written, marked.
+    let currentFactor = 1;
+    let weightsOn = storageGet("recipe-app-weights") === "1";
+    const weightsBtn = el("button", {
+      type: "button", class: "scale-button weights-button", "aria-pressed": String(weightsOn),
+      title: tx("Show volumes as weights"), "aria-label": tx("Show volumes as weights"), text: tx("Weights"),
+      onclick: () => {
+        weightsOn = !weightsOn;
+        storageSet("recipe-app-weights", weightsOn ? "1" : "0");
+        weightsBtn.setAttribute("aria-pressed", String(weightsOn));
+        renderIngredients(currentFactor);
+      },
+    });
+    const renderIngredients = (factor) => {
+      currentFactor = factor;
+      let kept = 0, unweighed = 0, weighed = 0;
       ingredientsList.replaceChildren(...recipe.ingredients.map((i) => {
         const text = ingredientText(i);
         const info = scaleLineInfo(text, factor);
+        let shown = info.text, mark = info.kept;
         if (info.kept) kept += 1;
-        return el("li", { class: isPartName(text) ? "list-part" : (info.kept ? "unscaled" : null) }, [
-          document.createTextNode(info.text),
-          info.kept ? el("span", { class: "unscaled-mark", text: ` (${tx("as written")})` }) : null,
+        else if (weightsOn) {
+          const w = weightLineInfo(info.text);
+          shown = w.text;
+          if (w.kept) { unweighed += 1; mark = true; }
+          if (w.converted) weighed += 1;
+        }
+        return el("li", { class: isPartName(text) ? "list-part" : (mark ? "unscaled" : null) }, [
+          document.createTextNode(shown),
+          mark ? el("span", { class: "unscaled-mark", text: ` (${tx("as written")})` }) : null,
         ]);
       }));
       const parts = [];
+      if (weightsOn && weighed) parts.push(tx("Weights are approximate: a cup weighs more or less depending on how it's filled."));
+      if (weightsOn && unweighed) parts.push(txn(unweighed, "{n} volume with no known weight, left as written.", "{n} volumes with no known weight, left as written."));
       if (factor !== 1 && recipe.servings) {
         const servings = scaleServings(recipe.servings, factor);
         parts.push(servings === null
@@ -4552,10 +4688,12 @@
           : tx("Servings: {1}", { 1: servings }));
       }
       if (factor !== 1 && kept) parts.push(txn(kept, "{n} line left as written: check it by hand.", "{n} lines left as written: check them by hand."));
-      if (factor !== 1) parts.push(tx("Amounts in the steps stay as written."));
+      if (factor !== 1 || (weightsOn && weighed)) parts.push(tx("Amounts in the steps stay as written."));
       scaleControl.note.textContent = parts.join(" · ");
       scaleControl.note.hidden = !parts.length;
-    });
+    };
+    const scaleControl = scaleButtons(renderIngredients);
+    scaleControl.element.appendChild(weightsBtn);
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
       // Share lives at the top right of the recipe card; the source/OCR

@@ -336,6 +336,18 @@ Mail without the keyword is never read.
   - Lines it can't scale safely are marked "(as written)": "1,000 g" (a
     thousand, or one?), and two amounts on one line such as "1 lb 8 oz".
   - Nothing is saved: the recipe opens at 1× next time.
+- **Weights** shows volumes as grams ("1 cup flour" → "120 g flour", "2 c.
+  à soupe de beurre" → "29 g de beurre"), after any scaling. It covers cups
+  (US cup; a French "tasse" is 250 ml), tablespoons, teaspoons, fl oz, ml,
+  litres and sticks of butter, for about 220 common ingredients
+  (`frontend/js/weights.js`).
+  - Weights are approximate: a cup weighs more or less depending on how
+    it's filled.
+  - A volume of something it has no weight for (kosher salt, whose weight
+    depends on the brand; spice blends; pastes; sauces) stays as written,
+    marked, as do lines with two amounts ("3 tbsp plus 1 tsp").
+  - Weights already in grams, counts ("2 eggs") and the steps aren't
+    changed. The choice is kept on this device.
 - **Keep screen awake** while a recipe is open, on every recipe (Settings)
   or on one. This needs HTTPS.
 

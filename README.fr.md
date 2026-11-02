@@ -387,6 +387,19 @@ Le courriel sans le mot-clé n'est jamais lu.
     qu'écrit) » : « 1.000 g » (mille, ou un?), et deux quantités sur une
     ligne, comme « 1 lb 8 oz ».
   - Rien n'est enregistré : la recette s'ouvre à 1× la fois suivante.
+- **Poids** affiche les volumes en grammes (« 1 tasse de farine » → « 125 g
+  de farine », « 1 cup flour » → « 120 g flour »), après l'ajustement s'il
+  y en a un. Cela couvre les tasses (250 ml ; un « cup » américain fait
+  236,6 ml), les cuillères à soupe et à thé, fl oz, ml, litres et bâtons de
+  beurre, pour environ 220 ingrédients courants (`frontend/js/weights.js`).
+  - Les poids sont approximatifs : une tasse pèse plus ou moins selon la
+    façon dont on la remplit.
+  - Le volume d'un ingrédient dont le poids n'est pas connu (sel casher,
+    dont le poids dépend de la marque; mélanges d'épices; pâtes; sauces)
+    reste tel qu'écrit, marqué, comme les lignes à deux quantités (« 3 c. à
+    soupe plus 1 c. à thé »).
+  - Les poids déjà en grammes, les nombres (« 2 œufs ») et les étapes ne
+    changent pas. Le choix est gardé sur cet appareil.
 - **Garder l'écran allumé** pendant qu'une recette est ouverte, sur toutes
   les recettes (Paramètres) ou sur une seule. Il faut HTTPS.
 
