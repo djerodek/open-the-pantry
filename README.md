@@ -357,8 +357,10 @@ Mail without the keyword is never read.
     thé in French ("30 g de beurre" → "2 c. à soupe de beurre"). "oz" is
     read as a weight; "fl oz" is already a volume.
   - An ingredient it has no figure for (kosher salt, whose weight depends
-    on the brand; spice blends; pastes; sauces; meat) stays as written,
-    marked, as do lines with two amounts ("3 tbsp plus 1 tsp", "1 lb 8 oz").
+    on the brand; spice blends; pastes; sauces; meat; a cooked, whipped or
+    substitute form the table doesn't list) stays as written, marked, as do
+    lines with two amounts ("3 tbsp plus 1 tsp", "1 lb 8 oz"). A wide range
+    gets a unit for each end ("1/2 tsp-3/4 cup").
   - Counts ("2 eggs") and the steps aren't changed. The choice is kept on
     this device.
 - **Keep screen awake** while a recipe is open, on every recipe (Settings)
@@ -436,9 +438,15 @@ In Settings → Backup & export:
     confirmation. It needs the settings password. A safety copy of the
     current library is written first (`restore-safety-<date>.zip`), and no
     restart is needed. This server's HTTPS setup, automatic-backup schedule,
-    and the email details a backup leaves out (below) are kept; the mail
-    server names and ports come from the backup. The safety copy keeps
-    everything, so restoring it undoes the restore.
+    and the email details a backup leaves out (below) are kept. A server
+    with an email login keeps all its email settings; one without (a new
+    install) takes the backup's mail server names and ports. The safety
+    copy keeps the database whole, so restoring it undoes the restore (the
+    HTTPS certificate and cPanel login, in `data/https/`, are never in a
+    backup).
+  - If a restore fails after the library was replaced and can't finish,
+    the app stays closed (503) until it's restarted; at start-up it
+    finishes the restore.
   - **What a backup leaves out**: the email login and password, the subject
     keyword, allowed senders, notification address and recent recipients,
     and the HTTPS name and addresses. Anyone on your network can download a

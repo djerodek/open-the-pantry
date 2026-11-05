@@ -388,6 +388,34 @@ def _try_recipe_scrapers(url: str, html: str):
 MAX_INSTRUCTION_DEPTH = 20     # lists and objects each count: 20 is sections nested about 9 deep
 
 
+_BLOCK_END = re.compile(r"<\s*(?:br|/p|/li|/div|/h[1-6])\b[^>]*>", re.IGNORECASE)
+
+
+def _ld_text(value, numbers: bool = False):
+    """A JSON-LD text field as plain text, or None: a string (or the first
+    string of a list; a number only when `numbers`), with HTML tags and
+    entities removed and spaces collapsed, as recipe-scrapers does. Pages
+    put lists, numbers and markup where text belongs (Claude review of
+    0155: a list as the name gave a 500)."""
+    if isinstance(value, list):
+        value = next((v for v in value if isinstance(v, str) and v.strip()), None)
+    if numbers and isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(value)
+    if not isinstance(value, str):
+        return None
+    if "<" in value or "&" in value:
+        value = BeautifulSoup(_BLOCK_END.sub(" ", value), "html.parser").get_text()
+    value = re.sub(r"\s+", " ", value.replace("\xa0", " ")).strip()
+    return value or None
+
+
+def _ld_lines(value) -> list[str]:
+    """A text that may hold several lines (an instructions string)."""
+    if not isinstance(value, str):
+        return []
+    return [t for t in (_ld_text(line) for line in value.split("\n")) if t]
+
+
 def _flatten_instructions(node, depth: int = 0) -> list[str]:
     """recipeInstructions as a flat list of step texts.
 
@@ -401,7 +429,7 @@ def _flatten_instructions(node, depth: int = 0) -> list[str]:
     if depth > MAX_INSTRUCTION_DEPTH:
         return []
     if isinstance(node, str):
-        return [s.strip() for s in node.split("\n") if s.strip()]
+        return _ld_lines(node)
     if isinstance(node, list):
         out = []
         for item in node:
@@ -412,11 +440,10 @@ def _flatten_instructions(node, depth: int = 0) -> list[str]:
         kinds = kind if isinstance(kind, list) else [kind]
         children = node.get("itemListElement")
         if "HowToSection" in kinds or (children and not node.get("text")):
-            heading = (node.get("name") or "").strip()
-            inner = _flatten_instructions(children or [], depth + 1)
+            heading = _ld_text(node.get("name")) or ""
+            inner = _flatten_instructions(children if isinstance(children, (list, dict)) else [], depth + 1)
             return ([heading.rstrip(":") + ":"] if heading and inner else []) + inner
-        text = node.get("text") or node.get("name")
-        return [text.strip()] if isinstance(text, str) and text.strip() else []
+        return _ld_lines(node.get("text") if isinstance(node.get("text"), str) else node.get("name"))
     return []
 
 
@@ -453,40 +480,45 @@ def _try_json_ld(html: str):
             if "Recipe" not in types:
                 continue
 
-            title = item.get("name", "Untitled Recipe")
+            title = _ld_text(item.get("name"), numbers=True) or "Untitled Recipe"
 
             raw_ingredients = item.get("recipeIngredient") or item.get("ingredients") or []
             if isinstance(raw_ingredients, str):
                 raw_ingredients = [raw_ingredients]
+            if not isinstance(raw_ingredients, list):
+                raw_ingredients = []
+            # Text items only: an empty or numeric one crashed the parser.
+            ingredients = [t for t in (_ld_text(i) for i in raw_ingredients if isinstance(i, str)) if t]
 
             instructions = item.get("recipeInstructions", [])
             steps = []
             if isinstance(instructions, str):
-                steps = [s.strip() for s in instructions.split("\n") if s.strip()]
+                steps = _ld_lines(instructions)
             elif isinstance(instructions, (list, dict)):
                 steps = _flatten_instructions(instructions)
 
             image = item.get("image")
-            image_url = None
-            if isinstance(image, str):
-                image_url = image
-            elif isinstance(image, list) and image:
-                image_url = image[0] if isinstance(image[0], str) else image[0].get("url")
-            elif isinstance(image, dict):
-                image_url = image.get("url")
+            if isinstance(image, list):
+                image = image[0] if image else None
+            if isinstance(image, dict):
+                image = image.get("url")
+            image_url = image.strip() if isinstance(image, str) and image.strip() else None
 
             servings = item.get("recipeYield")
             if isinstance(servings, list):
                 servings = servings[0] if servings else None
 
+            def _time(key):
+                return _ld_text(item.get(key))
+
             return UrlIngestResult(
                 title=title,
-                ingredients=raw_ingredients,
+                ingredients=ingredients,
                 steps=steps,
-                servings=str(servings) if servings else None,
-                prep_time=item.get("prepTime"),
-                cook_time=item.get("cookTime"),
-                total_time=item.get("totalTime"),
+                servings=_ld_text(servings, numbers=True),
+                prep_time=_time("prepTime"),
+                cook_time=_time("cookTime"),
+                total_time=_time("totalTime"),
                 image_url=image_url,
                 raw_text="\n".join(steps),
                 method="json-ld",

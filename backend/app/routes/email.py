@@ -20,7 +20,7 @@ from .. import i18n
 from .. import duplicates
 from ..ml import service as learning
 from ..file_validation import safe_join
-from .common import _apply_tags, _attachment_disposition, _demote_to_tmp, _discard_temp_file, _iso_utc, _promote_temp_file, _run_heavy, _utc_now
+from .common import _apply_tags, _attachment_disposition, _demote_to_tmp, _discard_temp_file, _iso_utc, _promote_temp_file, _restoring, _run_heavy, _utc_now
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -217,6 +217,9 @@ def run_email_scan(force_notify: bool = False) -> dict:
     # on it) could otherwise both fetch the same UNSEEN message before
     # either marks it Seen, and save the recipe twice. Non-blocking: a
     # second caller is told a scan is running instead of queueing behind it.
+    if _restoring.is_set():          # running or unfinished (GPT review of 0155)
+        return {"scanned": 0, "succeeded": 0, "failed": 0,
+                "messages": ["A backup is being restored. Try again in a minute."]}
     if not _email_scan_lock.acquire(blocking=False):
         return {"scanned": 0, "succeeded": 0, "failed": 0,
                 "messages": ["A scan is already running. Try again in a moment."]}

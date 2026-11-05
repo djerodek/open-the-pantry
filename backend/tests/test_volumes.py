@@ -89,3 +89,21 @@ def test_weights_and_volumes_round_trip_closely():
                f"\nconsole.log(volumeLineInfo(weightLineInfo({json.dumps(text)}).text, {json.dumps(lang)}).text);")
         out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
         assert out.stdout.strip() == text, (text, out.stdout, out.stderr)
+
+
+@pytest.mark.parametrize("text,want", [
+    ("1-100 g flour", "1/2 tsp-3/4 cup flour"),           # 1 g isn't 1/4 cup (GPT review of 0155)
+    ("1-1000 g flour", "1/2 tsp-8 1/3 cups flour"),
+    ("10 à 200 g de farine", "1 1/2 c. à soupe à 1 1/2 tasse de farine"),
+    ("200-250 g flour", "1 2/3-2 cups flour"),            # close ends keep one unit
+    ("100-120 g sugar", "1/2-2/3 cup sugar"),
+])
+def test_broad_ranges_get_a_unit_for_each_end(text, want):
+    lang = "fr" if " de " in text else "en"
+    assert _run([[text, lang, 1]]) == [["converted", want]]
+
+
+def test_cooked_and_whipped_in_volumes_too():
+    assert _run([["400 g de riz cuit", "fr", 1], ["400 g de riz basmati cuit", "fr", 1],
+                 ["100 g whipped cream", "en", 1]]) == [
+        ["converted", "2 1/3 tasses de riz cuit"], ["kept", "400 g de riz basmati cuit"], ["kept", "100 g whipped cream"]]

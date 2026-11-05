@@ -91,7 +91,8 @@
   // second amount after the first one's unit ("1 lb 8 oz", "2 tbsp + 1
   // tsp") would stay unscaled while the first changed.
   const AMBIGUOUS_THOUSANDS = /^\d{1,3}[.,]\d{3}$/;
-  const SECOND_AMOUNT = /^\s*[a-zA-ZÀ-ÿ.]+\.?\s*(?:\+|plus\b|and\b|et\b)?\s*\d+(?:[.,/]\d+)?\s*(?!%)[a-zA-ZÀ-ÿ]/i;
+  // Not "00" ("1 cup 00 flour", a flour's grade; Claude review of 0155).
+  const SECOND_AMOUNT = /^\s*[a-zA-ZÀ-ÿ.]+\.?\s*(?:\+|plus\b|and\b|et\b)?\s*(?!0+\s)\d+(?:[.,/]\d+)?\s*(?!%)[a-zA-ZÀ-ÿ]/i;
 
   // The word after a scaled amount follows the new amount: "1 cup" at 2x
   // is "2 cups", "1 1/2 cups" at ½ is "3/4 cup", "1 gousse" at 2x "2
@@ -255,9 +256,17 @@
   // "brown sugar" over "sugar", "kosher salt" (unknown weight) over "salt",
   // "sun-dried tomatoes in oil" over "oil".
   const NAME_END = /[,(;/]|\s(?:or|ou|and|et|plus)\s/i;
+  // Words that change what a cup weighs, outside the name found ("2 cups
+  // cooked rice" isn't dry rice, "whipped cream" isn't cream, "sugar
+  // substitute" isn't sugar): the line is left as written unless the table
+  // has that form ("cooked rice"). Claude review of 0155.
+  const DENSITY_WORDS = /(?:^|[^a-z0-9])(?:cooked|cuite?s?|whipped|fouettee?s?|substitutes?|substitut|succedane)(?![a-z0-9])/g;
+  const NOT_WEIGHED = { g: null };
   function ingredientWeightEntry(name) {
     // "45 ml (3 tablespoons) of olive oil": the same amount again, first.
     name = name.replace(/^\s*\([^)]*\)\s*(?:of\s+|de\s+|d['’]\s*)?/i, " ");
+    // One name, not cut at its "and".
+    name = name.replace(/\bhalf[\s-]+and[\s-]+half\b/gi, "half-and-half");
     const end = NAME_END.exec(name);
     const folded = foldText(end ? name.slice(0, end.index) : name);
     let best = null;
@@ -267,11 +276,17 @@
       const at = m.index + m[0].indexOf(m[1]);
       if (!best || at < best.at || (at === best.at && e.length > best.length)) best = { at, length: e.length, entry: e.entry };
     }
-    return best ? best.entry : null;
+    if (!best) return null;
+    for (const w of folded.matchAll(DENSITY_WORDS)) {
+      const word = w.index + w[0].search(/[a-z]/);
+      if (word < best.at || word >= best.at + best.length) return NOT_WEIGHED;
+    }
+    return best.entry;
   }
   function formatGrams(g, french) {
     let v;
-    if (g < 1) v = Math.max(0.1, Math.round(g * 10) / 10);   // "0.2 g", never "0 g"
+    if (g <= 0) v = 0;                                        // "0 cup" stays 0 (GPT review of 0155)
+    else if (g < 1) v = Math.max(0.1, Math.round(g * 10) / 10);   // "0.2 g", never "0 g"
     else if (g < 10) v = Math.round(g * 2) / 2;
     else if (g < 100) v = Math.round(g);
     else v = Math.round(g / 5) * 5;
@@ -280,8 +295,9 @@
   }
 
   // { text, kept, converted }: kept marks a volume line that couldn't be
-  // weighed (shown "as written"); converted, one that was.
-  function weightLineInfo(text) {
+  // weighed (shown "as written"); converted, one that was. lang "fr": a
+  // decimal comma ("0,8 g"), as an amount written with one also gets.
+  function weightLineInfo(text, lang) {
     if (!text || isPartName(text)) return { text, kept: false, converted: false };
     const m = LEADING_AMOUNT.exec(text);
     if (!m) return { text, kept: false, converted: false };
@@ -301,13 +317,16 @@
     const amounts = [m[2], m[4]].filter(Boolean);
     // "3/4 tsp each salt and pepper": one amount for two things.
     const entry = /^\s*(?:each|chacun|chacune)\b/i.test(rest) ? null : ingredientWeightEntry(rest);
-    if (!entry || entry.g === null || (stick && !entry.stick)
+    // A stick is a volume only for butter: "1 stick cinnamon" is a count,
+    // not a volume to weigh (Claude review of 0155).
+    if (stick && !(entry && entry.stick)) return { text, kept: false, converted: false };
+    if (!entry || entry.g === null
         || amounts.some((a) => AMBIGUOUS_THOUSANDS.test(a.trim())) || SECOND_AMOUNT.test(afterAmount)) {
       return { text, kept: true, converted: false };
     }
     const values = amounts.map(parseAmount);
     if (!values.every(Number.isFinite)) return { text, kept: true, converted: false };
-    const french = amounts.some((a) => a.includes(","));
+    const french = lang === "fr" || amounts.some((a) => a.includes(","));
     const grams = values.map((v) => formatGrams(v * cups * entry.g, french));
     const shown = grams.length === 2 ? `${grams[0]}${m[3]}${grams[1]}` : grams[0];
     const tail = /^\s/.test(rest) ? rest : ` ${rest}`;      // "of" / "de" kept: "120 g de farine"
@@ -378,14 +397,25 @@
     const values = amounts.map(parseAmount);
     if (!values.every(Number.isFinite) || values.some((v) => v <= 0)) return { text, kept: true, converted: false };
     const cups = values.map((v) => (v * grams) / entry.g);
-    // One unit for both ends of a range, chosen by the larger.
-    const [unit, fractions] = volumeUnitFor(Math.max(...cups), lang === "fr" ? "fr" : "en");
-    const shown = cups.map((c) => kitchenAmount(c / unit[0], fractions));
-    const last = shown[shown.length - 1].value;
-    const plural = lang === "fr" ? last >= 2 : last > 1;
-    const amountText = shown.length === 2 ? `${shown[0].text}${m[3]}${shown[1].text}` : shown[0].text;
+    const out = lang === "fr" ? "fr" : "en";
+    const unitName = (unit, value) => ((out === "fr" ? value >= 2 : value > 1) ? unit[2] : unit[1]);
+    // One unit for both ends of a range, chosen by the larger; but when
+    // that rounds the smaller end more than a quarter off ("1-100 g flour"
+    // read "1/4-3/4 cup": 1 g as 30 g), each end gets its own unit
+    // ("1/2 tsp-3/4 cup"). GPT review of 0155.
+    const [unit, fractions] = volumeUnitFor(Math.max(...cups), out);
+    let shown = cups.map((c) => kitchenAmount(c / unit[0], fractions));
     const tail = /^\s/.test(rest) ? rest : ` ${rest}`;
-    return { text: `${m[1]}${amountText} ${plural ? unit[2] : unit[1]}${tail}`, kept: false, converted: true };
+    if (cups.some((c, k) => Math.abs(shown[k].value * unit[0] - c) > 0.25 * c)) {
+      const ends = cups.map((c) => {
+        const [u, f] = volumeUnitFor(c, out);
+        const a = kitchenAmount(c / u[0], f);
+        return `${a.text} ${unitName(u, a.value)}`;
+      });
+      return { text: `${m[1]}${ends.join(m[3] || "")}${tail}`, kept: false, converted: true };
+    }
+    const amountText = shown.length === 2 ? `${shown[0].text}${m[3]}${shown[1].text}` : shown[0].text;
+    return { text: `${m[1]}${amountText} ${unitName(unit, shown[shown.length - 1].value)}${tail}`, kept: false, converted: true };
   }
 
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
@@ -442,7 +472,7 @@
         let shown = info.text, mark = info.kept;
         if (info.kept) kept += 1;
         else if (unitsMode !== "written") {
-          const w = unitsMode === "weights" ? weightLineInfo(info.text) : volumeLineInfo(info.text, volumeLang);
+          const w = unitsMode === "weights" ? weightLineInfo(info.text, volumeLang) : volumeLineInfo(info.text, volumeLang);
           shown = w.text;
           if (w.kept) { unconverted += 1; mark = true; }
           if (w.converted) converted += 1;

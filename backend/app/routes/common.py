@@ -74,6 +74,16 @@ os.makedirs(BACKUP_TMP_DIR, exist_ok=True)
 # being replaced under them), and the restore waits for requests already
 # running to finish before it starts. (restore_backup)
 _restoring = threading.Event()
+# A restore that failed after the library was replaced and couldn't finish
+# its remaining steps: _restoring stays set (so the sweeps, scans and
+# automatic backups stay off) and every request gets this 503 until the app
+# is restarted, whose start-up recovery finishes the photos. Serving the
+# backup's database with the old photos would show missing photos, and the
+# orphaned-photo sweep would delete the old ones (GPT review of 0155).
+_restore_incomplete = threading.Event()
+RESTORE_INCOMPLETE_MESSAGE = ("A restore stopped after the library had been replaced and couldn't finish. "
+                              "Restart the app (docker compose restart): it finishes the restore when it starts. "
+                              "The library from before is in the safety backup (restore-safety-*.zip) in the data folder.")
 _inflight = 0
 _inflight_lock = threading.Lock()
 

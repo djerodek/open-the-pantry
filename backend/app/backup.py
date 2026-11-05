@@ -62,7 +62,8 @@ def safe_pdf_filename(title: str, recipe_id: int) -> str:
 # decide which emails are read, the notification address and the people
 # recipes were emailed to, and the HTTPS name and addresses. A restore
 # keeps the server's own (routes.backup); a new server needs them entered
-# again. Other settings (mail server names and ports, scan hour) stay.
+# again. Other settings (mail server names and ports, scan hour) stay; a
+# restore uses them only on a server with no email login (routes.backup).
 REDACTED_SETTINGS = {
     "email_ingest_settings": {"enabled": 0, "username": None, "password_encrypted": None, "notify_email": None,
                               "subject_keyword": "", "allowed_senders": "", "recent_recipients": "[]",
@@ -72,9 +73,17 @@ REDACTED_SETTINGS = {
 }
 
 
-# In a backup's database only: this backup's settings were blanked.
-# init_db drops it from the live database after a restore.
+# In a backup's database only: version 1, this backup's settings were
+# blanked; version 0 (from 0156), a full copy (a restore's safety copy),
+# which an unconfigured server's would otherwise look like (GPT review of
+# 0155). init_db drops it from the live database after a restore.
 REDACTED_MARK_TABLE = "backup_settings_blanked"
+
+
+def _write_mark(conn, version: int) -> None:
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {REDACTED_MARK_TABLE} (version INTEGER NOT NULL)")
+    conn.execute(f"DELETE FROM {REDACTED_MARK_TABLE}")
+    conn.execute(f"INSERT INTO {REDACTED_MARK_TABLE} (version) VALUES (?)", (version,))
 
 
 def blank_settings(db_path: str) -> None:
@@ -94,9 +103,7 @@ def blank_settings(db_path: str) -> None:
         # Says so in the backup itself, for a restore to read (GPT review of
         # 0147: guessing from four blank fields took an older backup with
         # no keyword or sender list for a blanked one).
-        conn.execute(f"CREATE TABLE IF NOT EXISTS {REDACTED_MARK_TABLE} (version INTEGER NOT NULL)")
-        conn.execute(f"DELETE FROM {REDACTED_MARK_TABLE}")
-        conn.execute(f"INSERT INTO {REDACTED_MARK_TABLE} (version) VALUES (1)")
+        _write_mark(conn, 1)
         conn.commit()
         conn.execute("VACUUM")
     finally:
@@ -104,8 +111,9 @@ def blank_settings(db_path: str) -> None:
 
 
 def settings_blanked(db_path: str) -> bool:
-    """Whether a backup's email settings were blanked: its database has
-    REDACTED_MARK_TABLE (from 0148). Without it (an older backup), every
+    """Whether a backup's email settings were blanked: REDACTED_MARK_TABLE
+    says so (0148 on; 0 = a full copy, anything else is taken as blanked,
+    which keeps this server's settings). Without it (an older backup), every
     field blank_settings clears must be as it leaves them, so a backup that
     merely had no keyword or sender list keeps its notification address
     and recipients on restore (GPT review of 0147)."""
@@ -113,7 +121,8 @@ def settings_blanked(db_path: str) -> bool:
     try:
         if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
                         (REDACTED_MARK_TABLE,)).fetchone():
-            return True
+            mark = conn.execute(f"SELECT version FROM {REDACTED_MARK_TABLE} LIMIT 1").fetchone()
+            return not (mark and mark[0] == 0)
         cols = {r[1] for r in conn.execute("PRAGMA table_info(email_ingest_settings)")}
         if not cols:
             return True
@@ -234,8 +243,9 @@ Notes
   tool if you ever want the data out without running this app.
 * Email ingest and HTTPS: this archive holds no email login or password and
   no cPanel token (see above), so encryption.key isn't needed to restore it.
-  On a new server, enter the email login and password in Settings again;
-  the mail server names and ports come back from the backup.
+  On a new server, restore first, then enter the email login and password
+  in Settings: the mail server names and ports come back from the backup
+  while the server has no email login. One that has keeps all its own.
 """
 
 
@@ -308,9 +318,11 @@ Remarques
   application.
 * Réception par courriel et HTTPS : cette archive ne contient ni identifiant
   ni mot de passe de courriel, ni jeton cPanel (voir plus haut); encryption.key
-  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur, entrez
-  de nouveau l'identifiant et le mot de passe de courriel dans les Paramètres;
-  les noms et ports des serveurs de courriel reviennent de la sauvegarde.
+  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur,
+  restaurez d'abord, puis entrez l'identifiant et le mot de passe de courriel
+  dans les Paramètres : les noms et ports des serveurs de courriel reviennent
+  de la sauvegarde tant que le serveur n'a pas d'identifiant de courriel.
+  Celui qui en a un garde tous les siens.
 """
 
 
@@ -334,16 +346,22 @@ def remove_upload_file(path: str) -> None:
 # RESTORE.txt says so instead of "left out" (DeepSeek review of 0149).
 _SAFETY_COPY_NOTE = {
     "en": ("This is the safety copy written before a restore: unlike a downloaded\n"
-           "backup, it keeps every setting, the email password and cPanel token\n"
-           "included, encrypted with this server's encryption.key. Restored on this\n"
+           "backup, its database keeps the email login and password (encrypted with\n"
+           "this server's encryption.key) and the other settings. Restored on this\n"
            "server they work as before; onto another server, also copy\n"
-           "encryption.key from this server's data folder, or enter them again."),
+           "encryption.key from this server's data folder, or enter the email\n"
+           "password again. The HTTPS certificate and the cPanel login aren't in\n"
+           "it (data/https/, with cpanel-login.json): set HTTPS up again in Settings\n"
+           "-> HTTPS on another server."),
     "fr": ("Ceci est la copie de sécurité écrite avant une restauration : contrairement\n"
-           "à une sauvegarde téléchargée, elle garde tous les paramètres, y compris le\n"
-           "mot de passe de courriel et le jeton cPanel, chiffrés avec le fichier\n"
-           "encryption.key de ce serveur. Restaurés sur ce serveur, ils fonctionnent\n"
-           "comme avant; sur un autre serveur, copiez aussi encryption.key depuis le\n"
-           "dossier de données de ce serveur, ou entrez-les de nouveau."),
+           "à une sauvegarde téléchargée, sa base de données garde l'identifiant et le\n"
+           "mot de passe de courriel (chiffré avec le fichier encryption.key de ce\n"
+           "serveur) et les autres paramètres. Restaurés sur ce serveur, ils\n"
+           "fonctionnent comme avant; sur un autre serveur, copiez aussi encryption.key\n"
+           "depuis le dossier de données de ce serveur, ou entrez de nouveau le mot de\n"
+           "passe de courriel. Le certificat HTTPS et l'identifiant cPanel n'y sont pas\n"
+           "(data/https/, avec cpanel-login.json) : configurez de nouveau HTTPS dans\n"
+           "Paramètres -> HTTPS sur un autre serveur."),
 }
 _LEFT_OUT = {
     "en": ("Left out on purpose: the email login and password, subject keyword,\n"
@@ -357,13 +375,16 @@ _LEFT_OUT = {
 _EMAIL_BULLET = {
     "en": ("* Email ingest and HTTPS: this archive holds no email login or password and\n"
            "  no cPanel token (see above), so encryption.key isn't needed to restore it.\n"
-           "  On a new server, enter the email login and password in Settings again;\n"
-           "  the mail server names and ports come back from the backup.\n"),
+           "  On a new server, restore first, then enter the email login and password\n"
+           "  in Settings: the mail server names and ports come back from the backup\n"
+           "  while the server has no email login. One that has keeps all its own.\n"),
     "fr": ("* Réception par courriel et HTTPS : cette archive ne contient ni identifiant\n"
            "  ni mot de passe de courriel, ni jeton cPanel (voir plus haut); encryption.key\n"
-           "  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur, entrez\n"
-           "  de nouveau l'identifiant et le mot de passe de courriel dans les Paramètres;\n"
-           "  les noms et ports des serveurs de courriel reviennent de la sauvegarde.\n"),
+           "  n'est donc pas nécessaire pour la restaurer. Sur un nouveau serveur,\n"
+           "  restaurez d'abord, puis entrez l'identifiant et le mot de passe de courriel\n"
+           "  dans les Paramètres : les noms et ports des serveurs de courriel reviennent\n"
+           "  de la sauvegarde tant que le serveur n'a pas d'identifiant de courriel.\n"
+           "  Celui qui en a un garde tous les siens.\n"),
 }
 _SAFETY_EMAIL_BULLET = {
     "en": ("* Email ingest and HTTPS: see the note on the safety copy above.\n"),
@@ -415,6 +436,9 @@ def _build_database_backup_locked(dest_zip_path: str, tmp_db: str, blank: bool =
     # back if the restore is undone (Claude review of 0148).
     if blank:
         blank_settings(tmp_db)
+    else:
+        with sqlite3.connect(tmp_db) as full:
+            _write_mark(full, 0)
     with sqlite3.connect(tmp_db) as snap:
         # Recipes in Recently deleted are in the backup (and come back there
         # on a restore) but aren't counted as the library's.
@@ -480,8 +504,17 @@ def _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unrefe
     }
 
 
+# A cell a spreadsheet would read as a formula: =, +, -, @, tab, CR, LF,
+# their full-width forms (some locales), also after leading spaces (GPT
+# review of 0155; OWASP CSV injection). Prefixed with ' so it's shown as
+# text.
+_CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n", "＝", "＋", "－", "＠")
+
+
 def _csv_safe(value):
-    return "'" + value if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+    if isinstance(value, str) and (value[:1] in _CSV_FORMULA_START or value.lstrip(" ")[:1] in _CSV_FORMULA_START):
+        return "'" + value
+    return value
 
 
 def build_pdf_bundle(recipes, dest_zip_path: str, include_notes: bool = True) -> dict:

@@ -410,9 +410,11 @@ Le courriel sans le mot-clé n'est jamais lu.
     de beurre »), cups, tbsp et tsp américains en anglais. « oz » est lu
     comme un poids; « fl oz » est déjà un volume.
   - Un ingrédient sans valeur connue (sel casher, dont le poids dépend de
-    la marque; mélanges d'épices; pâtes; sauces; viande) reste tel
-    qu'écrit, marqué, comme les lignes à deux quantités (« 3 c. à soupe
-    plus 1 c. à thé », « 1 lb 8 oz »).
+    la marque; mélanges d'épices; pâtes; sauces; viande; une forme cuite,
+    fouettée ou un substitut que la table n'a pas) reste tel qu'écrit,
+    marqué, comme les lignes à deux quantités (« 3 c. à soupe plus 1 c. à
+    thé », « 1 lb 8 oz »). Un large intervalle a une unité à chaque bout
+    (« 1/2 c. à thé à 3/4 tasse »).
   - Les nombres (« 2 œufs ») et les étapes ne changent pas. Le choix est
     gardé sur cet appareil.
 - **Garder l'écran allumé** pendant qu'une recette est ouverte, sur toutes
@@ -498,9 +500,15 @@ Dans Paramètres → Sauvegarde et exportation :
     d'abord écrite (`restore-safety-<date>.zip`), et aucun redémarrage
     n'est nécessaire. La configuration HTTPS de ce serveur, l'horaire des
     sauvegardes automatiques et les détails de courriel qu'une sauvegarde
-    laisse de côté (ci-dessous) sont gardés; les noms et ports des serveurs
-    de courriel viennent de la sauvegarde. La copie de sécurité garde tout :
-    la restaurer annule la restauration.
+    laisse de côté (ci-dessous) sont gardés. Un serveur qui a un identifiant
+    de courriel garde tous ses paramètres de courriel; un serveur sans (une
+    nouvelle installation) prend les noms et ports des serveurs de courriel
+    de la sauvegarde. La copie de sécurité garde la base de données entière :
+    la restaurer annule la restauration (le certificat HTTPS et l'identifiant
+    cPanel, dans `data/https/`, ne sont jamais dans une sauvegarde).
+  - Si une restauration échoue après le remplacement de la bibliothèque et
+    ne peut pas se terminer, l'application reste fermée (503) jusqu'à son
+    redémarrage; au démarrage, elle termine la restauration.
   - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
     passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
     de notification et les destinataires récents, ainsi que le nom et les

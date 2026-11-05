@@ -145,7 +145,14 @@ async def _run_sweeps():
     backup.UPLOADS_LOCK, which a full backup holds for its whole archive
     build: run on the event loop, a sweep that met a backup froze every
     request on both ports until the backup ended (DeepSeek review of
-    0083)."""
+    0083).
+
+    Not while a restore runs or is unfinished: the database and uploads/
+    may not match, and the photo sweep would take the old library's photos
+    for orphans (GPT review of 0155)."""
+    if _restoring.is_set():
+        log.info("Periodic sweep skipped: a restore is running or unfinished")
+        return
     await asyncio.to_thread(_sweep_stale_tmp_files)
     await asyncio.to_thread(purge_recently_deleted)
     await asyncio.to_thread(_sweep_orphaned_upload_files)
@@ -364,6 +371,8 @@ if API_KEY:
 @app.middleware("http")
 async def restore_guard(request: Request, call_next):
     # The count lives in routes.common, where restore_backup reads it.
+    if common._restore_incomplete.is_set() and request.url.path != "/healthz":
+        return JSONResponse(status_code=503, content={"detail": common.RESTORE_INCOMPLETE_MESSAGE})
     if _restoring.is_set() and request.url.path != "/healthz":
         return JSONResponse(status_code=503, content={"detail": "A backup is being restored. Try again in a minute."},
                             headers={"Retry-After": "30"})

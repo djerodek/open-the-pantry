@@ -30,7 +30,8 @@ from .. import restore as restore_mod
 from ..ml import service as learning
 from ..file_validation import validate_and_save_image_bytes
 from . import common
-from .common import BACKUP_TMP_DIR, _discard_temp_file, _inflight_lock, _restoring, _run_heavy, _settings_lock_refusal, _utc_now, refresh_user_keywords
+from .common import (BACKUP_TMP_DIR, RESTORE_INCOMPLETE_MESSAGE, _discard_temp_file, _inflight_lock, _restore_incomplete,
+                     _restoring, _run_heavy, _settings_lock_refusal, _utc_now, refresh_user_keywords)
 from .email import _email_scan_lock
 from .recipes import create_recipe
 from fastapi import APIRouter
@@ -532,11 +533,18 @@ def _keep_rows(table: str) -> list[dict]:
 
 
 def _put_back_blanked_email_fields(live: dict):
-    """A blanked backup's email row keeps what it has (mail servers, ports,
-    scan hour); only the fields the backup left out come from this server.
-    The whole live row used to be put back, so on a new server the backup's
-    mail servers were lost to its defaults (Claude review of 0148)."""
+    """A blanked backup on a server with an email login or saved password:
+    this server's whole email row is put back. The password belongs to one
+    account on one server (as in Settings, update_email_settings), and the
+    backup's mail servers paired with it would send it to them on the next
+    scan or test; a backup is a zip anyone can edit (Claude review of 0155;
+    0149 did that). On a server without one (a new install), the backup's
+    row keeps its mail servers, ports and scan hour, and only the fields it
+    left out come from this server (Claude review of 0148)."""
     from ..backup import REDACTED_SETTINGS
+    if live.get("username") or live.get("password_encrypted"):
+        _put_back_rows("email_ingest_settings", [live])
+        return
     fields = [k for k in REDACTED_SETTINGS["email_ingest_settings"] if k in live]
     with engine.begin() as conn:
         if conn.execute(text("SELECT COUNT(*) FROM email_ingest_settings")).scalar():
@@ -577,6 +585,30 @@ def _clear_unusable_email_password() -> bool:
         db.close()
 
 
+def _after_the_copy(new_uploads: str, kept_rows: dict, email_kept, aside_before: set, retry: bool = False):
+    """Everything after the backup's database is copied into the live file,
+    in order. Safe to run a second time after a failure part way (GPT review
+    of 0155): the marker is written again, init_db and the put-backs replace
+    rather than add, and on the second run the photos are finished as
+    start-up would (a swap that hadn't started or stopped between its two
+    renames; aside_before: the uploads copies there before this restore).
+    Returns the old photos' folder."""
+    restore_mod.mark_database_replaced(DATA_DIR)  # from here, a stop is finished at start-up
+    engine.dispose()
+    init_db()                                     # an older backup's schema brought up to date
+    for table, rows in kept_rows.items():
+        _put_back_rows(table, rows)
+    if email_kept:
+        _put_back_blanked_email_fields(email_kept[0])
+    old_uploads = None
+    if not retry:
+        old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
+    elif os.path.isdir(new_uploads):
+        old_uploads = restore_mod.finish_swap(new_uploads, UPLOADS_DIR, aside_before)
+    restore_mod.clear_marker(DATA_DIR)
+    return old_uploads
+
+
 @router.post("/api/backup/restore")
 def restore_backup(payload: schemas.RestoreRequest):
     """Replaces the library with the checked backup. See restore.py."""
@@ -588,6 +620,7 @@ def restore_backup(payload: schemas.RestoreRequest):
     if not _restore_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A restore is already running.")
     held = []
+    replaced = finished = False
     try:
         _restoring.set()
         deadline = time.monotonic() + 30
@@ -619,18 +652,18 @@ def restore_backup(payload: schemas.RestoreRequest):
         shutil.rmtree(new_uploads, ignore_errors=True)
         kept, left_out = restore_mod.unpack_uploads(zip_path, new_uploads)
 
+        aside_before = restore_mod.set_aside(UPLOADS_DIR)
         engine.dispose()
         restore_mod.copy_into_live(db_path, DB_PATH)
-        restore_mod.mark_database_replaced(DATA_DIR)  # from here, a stop is finished at start-up
-        engine.dispose()
-        init_db()                                     # an older backup's schema brought up to date
-        for table, rows in kept_rows.items():
-            _put_back_rows(table, rows)
-        if email_kept:
-            _put_back_blanked_email_fields(email_kept[0])
-        old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
-        restore_mod.clear_marker(DATA_DIR)
-        shutil.rmtree(old_uploads, ignore_errors=True)
+        replaced = True
+        try:
+            old_uploads = _after_the_copy(new_uploads, kept_rows, email_kept, aside_before)
+        except Exception:
+            log.exception("Restore: a step after the database copy failed; trying the remaining steps again")
+            old_uploads = _after_the_copy(new_uploads, kept_rows, email_kept, aside_before, retry=True)
+        finished = True                               # the database and the photos match
+        if old_uploads:
+            shutil.rmtree(old_uploads, ignore_errors=True)
         email_cleared = _clear_unusable_email_password()
 
         db = SessionLocal()
@@ -643,10 +676,18 @@ def restore_backup(payload: schemas.RestoreRequest):
         log.info("Restore: %d recipes and %d files restored (%d files left out)", recipes, kept, left_out)
     except HTTPException:
         raise
-    except restore_mod.RestoreError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception:
+    except Exception as e:
+        if isinstance(e, restore_mod.RestoreError) and not replaced:
+            raise HTTPException(status_code=422, detail=str(e))
         log.exception("Restore failed")
+        if replaced and not finished:
+            # The library is the backup's, its photos may not be in place,
+            # and trying again didn't help: both ports stay closed until a
+            # restart (main.restore_guard), and start-up finishes it.
+            _restore_incomplete.set()
+            log.error("Restore: the library was replaced but the restore couldn't finish; the app stays closed "
+                      "(503) until it's restarted, when start-up finishes the restore")
+            raise HTTPException(status_code=500, detail=RESTORE_INCOMPLETE_MESSAGE)
         raise HTTPException(status_code=500, detail="The restore failed; Settings -> Logs has the details. "
                                                     "The data from before it is in the safety backup in the data folder.")
     finally:
@@ -658,7 +699,8 @@ def restore_backup(payload: schemas.RestoreRequest):
         threading.Thread(target=picker.warm_languages, daemon=True, name="picker-languages").start()
         for lock in reversed(held):
             lock.release()
-        _restoring.clear()
+        if not _restore_incomplete.is_set():
+            _restoring.clear()      # unfinished: kept, so sweeps, scans and backups stay off
         _restore_lock.release()
         _remove_pending(payload.token)      # used, or failed: either way it's done with
         _clear_pending_restores()

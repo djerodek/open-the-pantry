@@ -189,13 +189,39 @@ def test_a_new_server_gets_the_backups_mail_servers(client, configured):
     with engine.begin() as c:
         c.execute(text("UPDATE email_ingest_settings SET daily_scan_hour = 5"))
     data = client.get("/api/backup/database.zip").content
-    with engine.begin() as c:                       # a new server: defaults, its own login
+    with engine.begin() as c:                       # a new server: defaults, no login yet
         c.execute(text("UPDATE email_ingest_settings SET imap_host = NULL, smtp_host = NULL, daily_scan_hour = 3, "
-                       "username = 'new@server.example'"))
+                       "username = NULL, password_encrypted = NULL"))
     _restore(client, data)
     with engine.connect() as c:
         row = c.execute(text("SELECT imap_host, smtp_host, daily_scan_hour, username FROM email_ingest_settings")).one()
-    assert tuple(row) == ("imap.home.example", "smtp.home.example", 5, "new@server.example")
+    assert tuple(row) == ("imap.home.example", "smtp.home.example", 5, None)
+
+
+def test_this_servers_password_never_goes_to_the_backups_mail_servers(client, configured, monkeypatch):
+    """Claude review of 0155 (0149's change): provider A's backup restored
+    after a switch to provider B gave B's login and password with A's
+    servers, and the next scan or test would send B's password to A (or to
+    whatever an edited backup names). A server with a login keeps its whole
+    email row."""
+    from sqlalchemy import text
+    from cryptography.fernet import Fernet
+    from app import crypto
+    from app.database import engine
+    monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
+    token = crypto.encrypt_secret("b-password")
+    data = client.get("/api/backup/database.zip").content          # provider A (imap.home.example)
+    data = __import__("tests.test_restore", fromlist=["_rezip"])._rezip(
+        data, change_db=lambda con: con.execute("UPDATE email_ingest_settings SET imap_host = 'imap.evil.example', "
+                                                "smtp_host = 'smtp.evil.example'"))
+    with engine.begin() as c:                                       # provider B, with its password
+        c.execute(text("UPDATE email_ingest_settings SET imap_host = 'imap.b.example', smtp_host = 'smtp.b.example', "
+                       "username = 'cook@b.example', password_encrypted = :t, daily_scan_hour = 7"), {"t": token})
+    _restore(client, data)
+    with engine.connect() as c:
+        row = c.execute(text("SELECT imap_host, smtp_host, username, password_encrypted, daily_scan_hour "
+                             "FROM email_ingest_settings")).one()
+    assert tuple(row) == ("imap.b.example", "smtp.b.example", "cook@b.example", token, 7)
 
 
 def test_the_safety_copy_keeps_the_settings(client, configured):

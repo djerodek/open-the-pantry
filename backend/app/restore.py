@@ -257,7 +257,11 @@ def copy_into_live(source_db: str, live_db: str):
 def swap_dirs(new_dir: str, live_dir: str) -> str:
     """Moves live_dir aside and new_dir into its place. Returns where the
     old one went (deleted by the caller once the restore succeeded)."""
-    old = f"{live_dir}-before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    old = base = f"{live_dir}-before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    n = 1
+    while os.path.exists(old):          # two restores in one second (a retry)
+        old = f"{base}-{n}"
+        n += 1
     os.rename(live_dir, old)
     try:
         os.rename(new_dir, live_dir)
@@ -287,6 +291,28 @@ def mark_database_replaced(data_dir: str) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(path + ".tmp", path)
+
+
+def set_aside(live_dir: str) -> set:
+    """The names of live_dir's moved-aside copies (swap_dirs) there now."""
+    parent, base = os.path.split(live_dir.rstrip("/"))
+    return {n for n in os.listdir(parent or ".") if n.startswith(base + "-before-restore-")}
+
+
+def finish_swap(new_dir: str, live_dir: str, aside_before: set) -> str:
+    """After a swap_dirs that raised: the staged photos into place, whether
+    it hadn't moved anything or stopped between its two renames (live_dir
+    gone, one new aside copy since aside_before). Returns the old photos'
+    folder. For the restore itself, which knows which copies were already
+    there; start-up has to guess (recover_interrupted_restore)."""
+    live = live_dir.rstrip("/")
+    new_aside = sorted(set_aside(live) - aside_before)
+    if not os.path.isdir(live) and len(new_aside) == 1:
+        os.rename(new_dir, live)
+        return os.path.join(os.path.dirname(live), new_aside[0])
+    if new_aside:
+        raise RestoreError("the photos were moved part way; check the uploads folders by hand")
+    return swap_dirs(new_dir, live)
 
 
 def clear_marker(data_dir: str) -> None:

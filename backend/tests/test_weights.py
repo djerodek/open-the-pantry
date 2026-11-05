@@ -41,12 +41,12 @@ def test_volumes_become_grams():
         ("2 tbsp butter", "28 g butter"),
         ("1 stick unsalted butter, softened", "115 g unsalted butter, softened"),
         ("1/2 cup peanut butter", "135 g peanut butter"),
-        ("1/2 cup buttermilk", "115 g buttermilk"),
+        ("1/2 cup buttermilk", "125 g buttermilk"),       # 245 g a cup (0156)
         ("1 1/2 cups bread flour", "180 g bread flour"),
         ("1-2 cups flour", "120-240 g flour"),
         ("1/8 tsp cayenne pepper", "0.2 g cayenne pepper"),
         ("1 tsp ground cinnamon", "2.5 g ground cinnamon"),
-        ("1 cup water or broth", "225 g water or broth"),
+        ("1 cup water or broth", "235 g water or broth"),
         ("45 ml (3 tablespoons) olive oil", "38 g (3 tablespoons) olive oil"),
         ("2 tsp chopped fresh rosemary", "1 g chopped fresh rosemary"),
         ("½ tsp dried rosemary", "0.6 g dried rosemary"),
@@ -66,7 +66,7 @@ def test_french_measures():
         ("2 c. à soupe de beurre", "29 g de beurre"),
         ("1 c. à table de miel", "21 g de miel"),
         ("1/2 c. à thé de sel", "3 g de sel"),
-        ("250 ml de lait", "240 g de lait"),
+        ("250 ml de lait", "260 g de lait"),             # 245 g a cup (0156)
         ("1,5 tasse de sucre", "315 g de sucre"),
     ]
     got = _run([[t, 1] for t, _ in cases])
@@ -81,7 +81,7 @@ def test_after_scaling():
 
 @pytest.mark.parametrize("text", [
     "1 tsp kosher salt", "1 cup ice cream", "1 tsp cream of tartar", "2 cups sugar snap peas",
-    "3/4 tsp each salt and pepper", "1 cup lettuce, shredded", "2 tbsp taco seasoning", "1 stick cinnamon",
+    "3/4 tsp each salt and pepper", "1 cup lettuce, shredded", "2 tbsp taco seasoning",
 ])
 def test_volumes_it_cant_weigh_are_left_as_written(text):
     (kind, out), = _run([[text, 1]])
@@ -153,3 +153,55 @@ def test_french_spoons_agree_with_the_ingredient_parser():
 def test_c_dot_alone_is_still_a_cup(text, want):
     """"c." before a word is a cup; "c. s." is not; a bare "c" is nothing."""
     assert _run([[text, 1]])[0][1] == want
+
+
+def _weigh(cases):
+    """[[text, lang], ...] through weightLineInfo with the recipe's language."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    src = amounts_js() + (f"\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([t, l]) => {{"
+                          "const w = weightLineInfo(t, l); return [w.kept ? 'kept' : w.converted ? 'converted' : 'same', w.text]; })));")
+    out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.parametrize("text,want", [
+    ("2 cups cooked rice", ("converted", "315 g cooked rice")),            # 158 g a cup cooked, not 198 dry
+    ("1 cup cooked brown rice", ("converted", "195 g cooked brown rice")),
+    ("1 cup cooked quinoa", ("converted", "185 g cooked quinoa")),
+    ("1 cup cooked lentils", ("converted", "200 g cooked lentils")),
+    ("1 cup cooked basmati rice", ("kept", "1 cup cooked basmati rice")),  # cooked, not in the table
+    ("1 cup whipped cream", ("kept", "1 cup whipped cream")),
+    ("1 cup granulated sugar substitute", ("kept", "1 cup granulated sugar substitute")),
+    ("1 cup peanut butter chips", ("converted", "170 g peanut butter chips")),
+    ("1/2 cup oil-packed sun-dried tomatoes", ("converted", "55 g oil-packed sun-dried tomatoes")),
+    ("1 cup chopped red pepper", ("kept", "1 cup chopped red pepper")),    # a bell pepper, not black pepper
+    ("1/8 tsp ground red pepper", ("converted", "0.2 g ground red pepper")),
+    ("1 cup heavy whipping cream", ("converted", "240 g heavy whipping cream")),   # "whipping" isn't "whipped"
+    ("1 cup cooked chicken", ("converted", "140 g cooked chicken")),       # "cooked" is part of the name
+    ("1 cup half and half", ("converted", "240 g half and half")),         # not cut at "and"
+    ("1 cup 00 flour", ("converted", "115 g 00 flour")),                   # "00" isn't a second amount
+    ("500 ml d'eau", ("converted", "500 g d'eau")),                        # water 1 g per ml
+    ("1 tasse d'eau", ("converted", "250 g d'eau")),
+    ("0 cup flour", ("converted", "0 g flour")),                           # GPT review of 0155
+    ("1 stick cinnamon", ("same", "1 stick cinnamon")),                    # a stick is a volume for butter only
+    ("1 bâton de cannelle", ("same", "1 bâton de cannelle")),
+    ("1 stick butter", ("converted", "115 g butter")),
+])
+def test_claude_review_0155_weights(text, want):
+    """Claude review of 0155: words that change what a cup weighs, names
+    that couldn't be matched, liquids at the 8-oz convention, cinnamon
+    sticks counted as volumes; GPT's zero."""
+    assert tuple(_weigh([[text, "en"]])[0]) == want
+
+
+def test_french_recipes_get_a_decimal_comma():
+    assert _weigh([["1/8 c. à thé de sel", "fr"], ["1/8 tsp salt", "en"], ["1,5 tasse de sucre", "en"]]) == [
+        ["converted", "0,8 g de sel"], ["converted", "0.8 g salt"], ["converted", "315 g de sucre"]]
+
+
+def test_scaling_reads_00_flour_too():
+    run = _run([["1 cup 00 flour", 2]])
+    assert run == [["converted", "230 g 00 flour"]]        # 2 x 116 g

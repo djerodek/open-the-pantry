@@ -970,7 +970,8 @@
     // Recipe view: units (as written / Weights / Volumes)
     "Units": "Unités",
     "As written": "Tel qu'écrit",
-    "Amounts as written": "Quantités telles qu'écrites",
+    // Contains the visible label (Claude review of 0155: WCAG label in name).
+    "Amounts as written": "Tel qu'écrit, sans conversion",
     "Weights": "Poids",
     "Show volumes as weights": "Afficher les volumes en poids",
     "Volumes": "Volumes",

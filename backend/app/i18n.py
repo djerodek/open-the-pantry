@@ -228,6 +228,8 @@ _FR_PATTERNS = [
        "L'application est occupée (un ajout ou une vérification est en cours). Réessayez dans une minute."),
     _p(r"The restore failed; Settings -> Logs has the details\. The data from before it is in the safety backup in the data folder\.",
        "La restauration a échoué; les détails sont dans Paramètres → Journal. Les données d'avant sont dans la sauvegarde de sécurité du dossier de données."),
+    _p(r"A restore stopped after the library had been replaced and couldn't finish\. Restart the app \(docker compose restart\): it finishes the restore when it starts\. The library from before is in the safety backup \(restore-safety-\*\.zip\) in the data folder\.",
+       "Une restauration s'est arrêtée après le remplacement de la bibliothèque et n'a pas pu se terminer. Redémarrez l'application (docker compose restart) : elle termine la restauration au démarrage. La bibliothèque d'avant est dans la sauvegarde de sécurité (restore-safety-*.zip) du dossier de données."),
     _p(r"Restored from a backup: enter the email password again \(this server's encryption key can't read the one in the backup\)\.",
        "Restauré à partir d'une sauvegarde : entrez de nouveau le mot de passe du courriel (la clé de chiffrement de ce serveur ne peut pas lire celui de la sauvegarde)."),
     _p(r"^File too large\.$", "Fichier trop volumineux."),
