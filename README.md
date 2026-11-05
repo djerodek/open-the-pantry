@@ -528,8 +528,10 @@ How it works:
     50 megapixels is refused.
   - **PDFs**: at most 60 pages, and at most 3 OCR jobs at once. From a PDF's
     photos, only the largest is decoded.
-  - **Downloaded pages**: at most 10 MB and 30 seconds, from public
-    addresses only. Every redirect is checked again.
+  - **Downloaded pages**: at most 10 MB and 30 seconds in all (lookups,
+    connections, redirects and download), from public addresses only.
+    Every redirect is checked again. The log shows a link without its
+    query or password.
   - **Outgoing connections** (mail server, recipe links, cPanel, Let's
     Encrypt) check the certificate against the image's current root list,
     and refuse any chain through a CA key known to be compromised (the

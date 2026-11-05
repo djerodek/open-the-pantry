@@ -3,6 +3,8 @@ import json
 import os
 import re
 import socket
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
 from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
@@ -54,6 +56,24 @@ _UNSAFE_URL_CHARS = re.compile(r"[\\\x00-\x1f\x7f]")
 _NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
 
 
+def log_url(url) -> str:
+    """An address for the log and for messages: scheme://host[:port]/path,
+    without user:password, query or fragment, which can hold tokens or
+    signed parameters (GPT review of 0156). The recipe keeps the full
+    address as its source."""
+    text = str(url)
+    try:
+        p = urlparse(text)
+        host = p.hostname
+        port = f":{p.port}" if p.port else ""
+    except ValueError:
+        host = None
+    if not host:
+        return re.split(r"[?#]", text, maxsplit=1)[0][:200]
+    tail = "?…" if p.query or p.fragment else ""
+    return f"{p.scheme}://{host}{port}{p.path[:200]}{tail}"
+
+
 def _request_host(url: str) -> str | None:
     """The host requests will connect to: read by urllib3 from the URL as
     requests prepares it, not by urlparse."""
@@ -61,11 +81,29 @@ def _request_host(url: str) -> str | None:
     try:
         return urllib3.util.parse_url(requests.Request("GET", url).prepare().url).host
     except Exception:
-        log.info("URL not parsed by requests: %r", url[:200], exc_info=True)
+        log.info("URL not parsed by requests: %r", log_url(url), exc_info=True)
         return None
 
 
-def validate_public_url(url: str) -> str:
+# Name lookups for link imports, so one can be given up on at the fetch's
+# deadline (socket.getaddrinfo has no timeout of its own; the system
+# resolver's can be much longer). A lookup given up on finishes in its
+# thread; four threads at most (GPT review of 0156).
+_DNS_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="url-dns")
+
+
+def _resolve(host: str, deadline: float | None):
+    future = _DNS_POOL.submit(socket.getaddrinfo, host, None)
+    remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+    try:
+        return future.result(timeout=remaining)
+    except _FutureTimeout:
+        future.cancel()
+        log.warning("Looking up %s took longer than the fetch allows (%s seconds)", host, TOTAL_FETCH_SECONDS)
+        raise SiteUnreachableError(f"Looking up {host} took too long. Check the address, or try again later.")
+
+
+def validate_public_url(url: str, deadline: float | None = None) -> str:
     """Reject URLs that resolve to private/loopback/link-local/reserved
     addresses, and return the checked address to connect to. This endpoint
     has no auth in front of it, so without this check it could be used as
@@ -90,7 +128,7 @@ def validate_public_url(url: str) -> str:
         raise UrlValidationError("The address's host is ambiguous.")
 
     try:
-        addrinfo = socket.getaddrinfo(parsed.hostname, None)
+        addrinfo = _resolve(parsed.hostname, deadline)
     except socket.gaierror:
         raise UrlValidationError("Could not resolve host.")
 
@@ -195,7 +233,7 @@ def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
     declared = resp.headers.get("Content-Length")
     if declared and declared.isdigit() and int(declared) > max_bytes:
         resp.close()
-        raise FetchTooLargeError(f"{url} is {int(declared) // 1048576} MB; the limit is {max_bytes // 1048576} MB.")
+        raise FetchTooLargeError(f"{log_url(url)} is {int(declared) // 1048576} MB; the limit is {max_bytes // 1048576} MB.")
 
     def _read_chunk():
         # iter_content(64 KB) blocks until a full 64 KB chunk has arrived,
@@ -213,19 +251,20 @@ def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
     while True:
         if _time.monotonic() > deadline:
             resp.close()
-            raise UrlValidationError(f"{url} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
+            raise UrlValidationError(f"{log_url(url)} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
         chunk = _read_chunk()
         if not chunk:
             break
         total += len(chunk)
         if total > max_bytes:
             resp.close()
-            raise FetchTooLargeError(f"{url} is larger than {max_bytes // 1048576} MB.")
+            raise FetchTooLargeError(f"{log_url(url)} is larger than {max_bytes // 1048576} MB.")
         chunks.append(chunk)
     return b"".join(chunks)
 
 
-def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> requests.Response:
+def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES,
+             deadline: float | None = None) -> requests.Response:
     """requests.get()'s default (allow_redirects=True) follows redirects
     without re-validating them -- a page could return a 302 to
     169.254.169.254 or an internal address, completely bypassing
@@ -239,17 +278,29 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
     now gets the HTML this function already fetched (see ingest_url).
 
     Each hop connects to the address validate_public_url checked (tls.get's
-    pin), so the name isn't looked up a second time (DNS rebinding)."""
-    import time as _time
-    deadline = _time.monotonic() + TOTAL_FETCH_SECONDS
+    pin), so the name isn't looked up a second time (DNS rebinding).
+
+    TOTAL_FETCH_SECONDS covers the whole fetch: every lookup, connection
+    and wait for headers gets what's left of it, not a full `timeout` each
+    (GPT review of 0156: they used to be outside it)."""
+    if deadline is None:
+        deadline = time.monotonic() + TOTAL_FETCH_SECONDS
     current_url = url
     for _ in range(MAX_REDIRECTS + 1):
-        address = validate_public_url(current_url)
+        host = requests.compat.urlparse(current_url).hostname or log_url(current_url)
+        address = validate_public_url(current_url, deadline)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            log.warning("GET %s: the %s-second budget ran out", log_url(current_url), TOTAL_FETCH_SECONDS)
+            raise SiteUnreachableError(
+                f"{host} didn't answer within {TOTAL_FETCH_SECONDS} seconds; some sites only answer web browsers. "
+                "Save the page as a PDF or take a screenshot, and add that instead.")
+        hop_timeout = min(timeout, remaining)
         try:
             # stream=True: the body is read by _read_limited, which stops at
             # max_bytes and at the overall deadline, instead of requests
             # loading the whole response into memory first.
-            resp = http_get(current_url, headers={"User-Agent": USER_AGENT}, timeout=timeout,
+            resp = http_get(current_url, headers={"User-Agent": USER_AGENT}, timeout=hop_timeout,
                             allow_redirects=False, stream=True, pin=address)
             # The body read so far becomes the response's content (requests
             # keeps it in _content; .text and .content read it from there).
@@ -260,29 +311,27 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES) -> re
             finally:
                 resp.close()
         except requests.RequestException as e:
-            log.warning("GET %s failed: %s: %s", current_url, type(e).__name__, e)
-            host = requests.compat.urlparse(current_url).hostname or current_url
-            raise _unreachable(host, e, timeout) from e
+            log.warning("GET %s failed: %s: %s", log_url(current_url), type(e).__name__, e)
+            raise _unreachable(host, e, timeout if hop_timeout == timeout else TOTAL_FETCH_SECONDS) from e
         except UrlValidationError as e:
-            log.warning("GET %s stopped: %s", current_url, e)
+            log.warning("GET %s stopped: %s", log_url(current_url), e)
             raise
-        log.info("GET %s -> %s (%s bytes, %s)", current_url, resp.status_code,
+        log.info("GET %s -> %s (%s bytes, %s)", log_url(current_url), resp.status_code,
                  len(resp.content), resp.headers.get("Content-Type", "?"))
         if resp.is_redirect or resp.is_permanent_redirect:
             next_url = resp.headers.get("Location")
             if not next_url:
                 break
             current_url = requests.compat.urljoin(current_url, next_url)
-            log.info("  redirect -> %s", current_url)
+            log.info("  redirect -> %s", log_url(current_url))
             continue
         if resp.status_code >= 400:
             # Bot-protection pages (Cloudflare etc.) answer 403/503 with an
             # HTML challenge. Its <title> says which, so log it. One line:
             # it's the site's answer, not a fault in the app, so no traceback.
             title = _page_title(resp.text)
-            log.warning("GET %s refused: HTTP %s, page title %r, server %r", current_url,
+            log.warning("GET %s refused: HTTP %s, page title %r, server %r", log_url(current_url),
                         resp.status_code, title, resp.headers.get("Server"))
-            host = requests.compat.urlparse(current_url).hostname or current_url
             if resp.status_code in (401, 403, 429, 503):
                 raise SiteRefusedError(
                     f"{host} refused the request (HTTP {resp.status_code}). Sites with a bot check do this; "
@@ -332,7 +381,7 @@ def _try_recipe_scrapers(url: str, html: str):
     try:
         scraper = scrape_html(html, org_url=url, supported_only=False)
     except Exception as e:
-        log.info("recipe-scrapers: no scraper for %s: %s: %s", url, type(e).__name__, e)
+        log.info("recipe-scrapers: no scraper for %s: %s: %s", log_url(url), type(e).__name__, e)
         return None
 
     try:
@@ -378,7 +427,7 @@ def _try_recipe_scrapers(url: str, html: str):
             method="recipe-scrapers",
         )
     except Exception as e:
-        log.info("recipe-scrapers: parse failed for %s: %s: %s", url, type(e).__name__, e)
+        log.info("recipe-scrapers: parse failed for %s: %s: %s", log_url(url), type(e).__name__, e)
         return None
 
 
@@ -594,10 +643,12 @@ def ingest_url(url: str) -> UrlIngestResult:
     Raises NoRecipeFoundError if no tier finds a recipe. Doesn't check
     completeness: see require_complete().
     """
-    validate_public_url(url)  # SSRF guard -- must run before any fetch, see above
+    # One budget for the check's lookup and the whole fetch.
+    deadline = time.monotonic() + TOTAL_FETCH_SECONDS
+    validate_public_url(url, deadline)  # SSRF guard -- must run before any fetch, see above
 
     # One fetch, through the guarded client, shared by all three tiers.
-    resp = safe_get(url)
+    resp = safe_get(url, deadline=deadline)
     result = parse_html(resp.text, url, status=resp.status_code)
     result.final_url = resp.url or url
     return result
@@ -619,13 +670,13 @@ def parse_html(html: str, url: str, status=None) -> UrlIngestResult:
         try:
             result = attempt()
         except Exception:
-            log.exception("%s: crashed on %s", name, url)
+            log.exception("%s: crashed on %s", name, log_url(url))
             result = None
         if result:
-            log.info("%s: got %r from %s (%d ingredients, %d steps)", name, result.title, url,
+            log.info("%s: got %r from %s (%d ingredients, %d steps)", name, result.title, log_url(url),
                      len(result.ingredients or []), len(result.steps or []))
             return result
-        log.info("%s: nothing usable on %s", name, url)
+        log.info("%s: nothing usable on %s", name, log_url(url))
 
     # Enough about the page to tell "blocked" from "no recipe markup" from
     # "recipe markup we can't read", without logging the page itself.

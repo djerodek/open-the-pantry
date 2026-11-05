@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db, UPLOADS_DIR, TMP_DIR
 from ..ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
-from ..ingestion.url_ingest import ingest_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
+from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
 from ..ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from ..ingestion.image_ingest import ingest_and_segment, ingest_image
 from ..ingestion.ingredient_parser import parse_ingredient_block
@@ -40,7 +40,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
     try:
         result = ingest_url(payload.url)
     except Exception as e:
-        log.warning("Add from URL failed for %s: %s", payload.url, e,
+        log.warning("Add from URL failed for %s: %s", log_url(payload.url), e,
                     exc_info=not isinstance(e, UrlValidationError))
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -51,7 +51,7 @@ def ingest_from_url(payload: schemas.UrlIngestRequest):
     try:
         require_complete(result)
     except IncompleteRecipeError as e:
-        log.info("Add from URL: incomplete recipe from %s: %s", payload.url, e)
+        log.info("Add from URL: incomplete recipe from %s: %s", log_url(payload.url), e)
         incomplete = {"missing": missing_parts(result), "message": str(e)}
 
     parsed_ingredients = parse_ingredient_block(result.ingredients)
@@ -154,7 +154,7 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title,
                               "duplicate_of": same_title[0] if same_title else None})
         except Exception as e:
-            log.warning("Batch URL %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
+            log.warning("Batch URL %s failed: %s", log_url(url), e, exc_info=not isinstance(e, UrlValidationError))
             db.rollback()
             if image_path:
                 stray_path = safe_join(UPLOADS_DIR, image_path)

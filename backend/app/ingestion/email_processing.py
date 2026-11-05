@@ -6,7 +6,7 @@ import uuid
 from .completeness import missing_parts as missing_sections
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
-from .url_ingest import ingest_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
+from .url_ingest import ingest_url, log_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
     SiteUnreachableError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
@@ -300,7 +300,8 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                       f"{', ' + _filename(part) if _filename(part) else ''}, {len(payload)}B]")
     log.info("Parts: %s", " ".join(layout) or "(none)")
     log.info("Found: pdf=%s image=%s urls=%s body=%d chars; skipped=%s",
-             parts["pdf_name"], parts["image_name"], parts["urls"], len(parts["body_text"]), parts["skipped"])
+             parts["pdf_name"], parts["image_name"], [log_url(u) for u in parts["urls"]], len(parts["body_text"]),
+             parts["skipped"])
 
     name_prefix = f"email-{uuid.uuid4().hex}"
     tried = list(parts["skipped"])
@@ -425,7 +426,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
             except Exception as e:
                 # Full traceback for the unexpected; the URL checks and a
                 # site's refusal are already explained in one line.
-                log.warning("Link %s failed: %s", url, e, exc_info=not isinstance(e, UrlValidationError))
+                log.warning("Link %s failed: %s", log_url(url), e, exc_info=not isinstance(e, UrlValidationError))
                 if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, SiteUnreachableError)):
                     pdf_hint = True
                     # The "add that instead" advice is for the app's own

@@ -113,7 +113,9 @@ class ClientErrorReport(BaseModel):
 
 
 class UrlIngestRequest(BaseModel):
-    url: str
+    # As a batch entry and a recipe's source_url (GPT review of 0156: a
+    # longer one was fetched, then the recipe couldn't be saved).
+    url: str = Field(..., max_length=2000)
 
 
 class IngredientOut(IngredientIn):

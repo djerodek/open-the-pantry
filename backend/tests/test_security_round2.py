@@ -84,12 +84,19 @@ def test_downloads_stop_at_the_size_limit():
 
 
 def test_downloads_stop_at_the_time_limit(monkeypatch):
+    import time
     from app.ingestion import url_ingest
+    # While the body is read...
+    with pytest.raises(url_ingest.UrlValidationError, match="longer than"):
+        url_ingest._read_limited(_streaming_response([b"a", b"b"]), "https://slow.example/?token=x",
+                                 10 ** 6, time.monotonic() - 1)
+    # ...and, since 0157, before a connection once the budget is spent.
     monkeypatch.setattr(url_ingest, "TOTAL_FETCH_SECONDS", 0)
     with patch.object(url_ingest, "validate_public_url"), \
-         patch.object(url_ingest, "http_get", return_value=_streaming_response([b"a", b"b"])):
-        with pytest.raises(url_ingest.UrlValidationError, match="longer than"):
+         patch.object(url_ingest, "http_get", return_value=_streaming_response([b"a", b"b"])) as get:
+        with pytest.raises(url_ingest.SiteUnreachableError, match="didn't answer"):
             url_ingest.safe_get("https://slow.example/")
+    assert not get.called
 
 
 def test_normal_page_still_downloads():

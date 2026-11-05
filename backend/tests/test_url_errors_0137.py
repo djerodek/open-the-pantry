@@ -16,7 +16,7 @@ def _data_dir(data_dir):
 @pytest.fixture
 def public(monkeypatch):
     from app.ingestion import url_ingest
-    monkeypatch.setattr(url_ingest, "validate_public_url", lambda url: None)
+    monkeypatch.setattr(url_ingest, "validate_public_url", lambda url, deadline=None: None)
     return url_ingest
 
 

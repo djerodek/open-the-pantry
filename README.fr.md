@@ -604,9 +604,10 @@ Son fonctionnement :
     sont utilisés, et toute image de plus de 50 mégapixels est refusée.
   - **PDF** : au plus 60 pages, et au plus 3 tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
-  - **Pages téléchargées** : au plus 10 Mo et 30 secondes, depuis des
-    adresses publiques seulement. Chaque redirection est vérifiée de
-    nouveau.
+  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout
+    (recherches de nom, connexions, redirections et téléchargement), depuis
+    des adresses publiques seulement. Chaque redirection est vérifiée de
+    nouveau. Le journal montre un lien sans sa requête ni son mot de passe.
   - **Connexions sortantes** (serveur de courriel, liens de recettes,
     cPanel, Let's Encrypt) : le certificat est vérifié d'après la liste de
     racines à jour de l'image, et toute chaîne passant par une clé d'autorité
