@@ -357,7 +357,8 @@
   const SPOON_FRACTIONS = [[0, ""], [1 / 2, "1/2"], [1, ""]];
   const TSP_FRACTIONS = [[0, ""], [1 / 8, "1/8"], [1 / 4, "1/4"], [1 / 2, "1/2"], [3 / 4, "3/4"], [1, ""]];
   // { text, value }: the nearest whole-and-fraction ("1 1/2"), at least the
-  // smallest fraction (never "0").
+  // smallest fraction (never "0"): a tiny amount shows as 1/8 tsp, which can
+  // be many times what it is (0.01 g of cayenne).
   function kitchenAmount(v, fractions) {
     let whole = Math.floor(v);
     let best = fractions[0];

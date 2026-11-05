@@ -508,7 +508,10 @@ Dans Paramètres → Sauvegarde et exportation :
     cPanel, dans `data/https/`, ne sont jamais dans une sauvegarde).
   - Si une restauration échoue après le remplacement de la bibliothèque et
     ne peut pas se terminer, l'application reste fermée (503) jusqu'à son
-    redémarrage; au démarrage, elle termine la restauration.
+    redémarrage; au démarrage, elle termine la restauration. Dans le rare
+    cas où elle ne peut pas le savoir (la restauration n'a même pas pu noter
+    que la bibliothèque était remplacée), le journal nomme les dossiers à
+    vérifier, et les photos ne sont pas nettoyées tant que ce n'est pas réglé.
   - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
     passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
     de notification et les destinataires récents, ainsi que le nom et les

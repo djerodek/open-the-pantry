@@ -117,6 +117,15 @@ def _sweep_orphaned_upload_files():
     unreferenced AND older than the age threshold gets removed -- the age
     check avoids racing an in-flight request that promoted a file moments
     before its commit was due to land."""
+    # A restore's staged photos still there (start-up couldn't tell whether
+    # the library was replaced, and logged it): uploads/ may hold the old
+    # library's photos, which the backup's database doesn't name. Not swept
+    # until someone sorts it out (review of 0157).
+    from . import restore as restore_mod
+    if os.path.isdir(UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX):
+        log.warning("Photo sweep skipped: %s from an unfinished restore is still there",
+                    os.path.basename(UPLOADS_DIR.rstrip("/")) + restore_mod.STAGED_SUFFIX)
+        return
     db = SessionLocal()
     try:
         # Recently deleted recipes keep their photos until deleted for good.

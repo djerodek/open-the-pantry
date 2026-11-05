@@ -446,7 +446,9 @@ In Settings → Backup & export:
     backup).
   - If a restore fails after the library was replaced and can't finish,
     the app stays closed (503) until it's restarted; at start-up it
-    finishes the restore.
+    finishes the restore. In the rare case it can't tell (the restore
+    couldn't even note that the library was replaced), the log names the
+    folders to check, and photos aren't swept until they're sorted out.
   - **What a backup leaves out**: the email login and password, the subject
     keyword, allowed senders, notification address and recent recipients,
     and the HTTPS name and addresses. Anyone on your network can download a

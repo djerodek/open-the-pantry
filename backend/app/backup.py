@@ -505,14 +505,15 @@ def _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unrefe
 
 
 # A cell a spreadsheet would read as a formula: =, +, -, @, tab, CR, LF,
-# their full-width forms (some locales), also after leading spaces (GPT
-# review of 0155; OWASP CSV injection). Prefixed with ' so it's shown as
-# text.
+# their full-width forms (some locales), also after leading spaces, no-break
+# and ideographic spaces included (GPT review of 0155; review of 0157;
+# OWASP CSV injection). Prefixed with ' so it's shown as text.
 _CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n", "＝", "＋", "－", "＠")
+_CSV_LEADING_SPACES = " \u00a0\u2007\u202f\u3000"
 
 
 def _csv_safe(value):
-    if isinstance(value, str) and (value[:1] in _CSV_FORMULA_START or value.lstrip(" ")[:1] in _CSV_FORMULA_START):
+    if isinstance(value, str) and (value[:1] in _CSV_FORMULA_START or value.lstrip(_CSV_LEADING_SPACES)[:1] in _CSV_FORMULA_START):
         return "'" + value
     return value
 

@@ -87,9 +87,10 @@ def test_downloads_stop_at_the_time_limit(monkeypatch):
     import time
     from app.ingestion import url_ingest
     # While the body is read...
-    with pytest.raises(url_ingest.UrlValidationError, match="longer than"):
+    with pytest.raises(url_ingest.UrlValidationError, match="longer than") as e:
         url_ingest._read_limited(_streaming_response([b"a", b"b"]), "https://slow.example/?token=x",
                                  10 ** 6, time.monotonic() - 1)
+    assert "token=x" not in str(e.value)
     # ...and, since 0157, before a connection once the budget is spent.
     monkeypatch.setattr(url_ingest, "TOTAL_FETCH_SECONDS", 0)
     with patch.object(url_ingest, "validate_public_url"), \
