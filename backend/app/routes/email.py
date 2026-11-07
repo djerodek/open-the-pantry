@@ -402,7 +402,9 @@ def _scan_due(now, scan_hour: int, last_scan_at) -> bool:
     """At the scan hour; or later the same day when no scan has run today
     (local time): the hour skipped by a spring-forward change, or a
     container that was down then (review of 0158; backups have a
-    catch-up too). Never scanned at all: only at the hour."""
+    catch-up too). Never scanned at all: only at the hour. A manual "Scan
+    now" sets last_scan_at as well, so after one the catch-up waits for
+    tomorrow; the scan at the hour itself still runs."""
     if now.hour == scan_hour:
         return True
     if now.hour < scan_hour or last_scan_at is None:

@@ -469,7 +469,7 @@
           if (await zipHasEntry(file, "recipes.db")) {
             const st = await adminStatus().catch(() => null);
             if (st && !st.unlocked && !st.https_url) {
-              const ok = await settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
+              const ok = !damagedPasswordFile(st) && await settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
               if (!ok) { status.textContent = ""; importBtn.disabled = false; return; }
             }
           }
@@ -764,7 +764,18 @@
     }
     if (st.https_url) return httpsOnlyDialog(st.https_url);
     if (st.unlocked) return true;
+    if (damagedPasswordFile(st)) return false;
     return settingsPasswordDialog(st.password_set ? "unlock" : "create", Boolean(st.reset));
+  }
+
+  // A damaged admin-password.json: neither unlock nor create works until
+  // it's deleted (0159), so the message instead of a password box that
+  // would only refuse (DeepSeek review of 0159).
+  const DAMAGED_PASSWORD_FILE = "The settings password file (admin-password.json) is damaged. Delete it from the data folder to set a new password; the email password and HTTPS are then cleared, as after any reset.";
+  function damagedPasswordFile(st) {
+    if (!st || !st.damaged) return false;
+    announceError(tx(DAMAGED_PASSWORD_FILE));
+    return true;
   }
 
   // fetch() for a locked route. If the 15 minutes ran out since the panel
@@ -779,6 +790,7 @@
     if (res.status !== 401) return res;
     const body = await res.clone().json().catch(() => ({}));
     if (!body.locked || !prompt) return res;
+    if (damagedPasswordFile(body)) return res;
     const ok = await settingsPasswordDialog(body.password_set ? "unlock" : "create", Boolean(body.reset));
     return ok ? fetch(url, options) : res;
   }
@@ -795,6 +807,9 @@
     $("#admin-lock-now").hidden = !st.unlocked;
     if (st.https_url) {
       statusEl.textContent = tx("HTTPS is on: these open only at {1}", { 1: st.https_url });
+    } else if (st.damaged) {
+      statusEl.textContent = tx(DAMAGED_PASSWORD_FILE);
+      actions.hidden = true;
     } else if (!st.password_set && st.reset) {
       statusEl.textContent = tx("Reset. Creating a new password clears the saved email password and cPanel token and turns HTTPS off.");
     } else if (!st.password_set) {

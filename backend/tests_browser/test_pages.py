@@ -568,3 +568,33 @@ def test_picker_reader_scaling_weights_volumes(server, api, page):
         assert re.search(r"^2 c\. à soupe de beurre$", pg.inner_text(lines), re.M)
     finally:
         api.put("/api/picker/settings", json={"enabled": False})
+
+
+def test_a_damaged_password_file_is_shown(server, page):
+    """DeepSeek review of 0159: a damaged admin-password.json refuses both
+    unlock and create (0159); Settings now says so, and how to reset,
+    instead of offering a password box that would only refuse."""
+    import json as _json
+    import os
+    import urllib.error
+    import urllib.request as _req
+    path = os.path.join(server["data"], "admin-password.json")
+    kept = path + ".kept-by-test"
+    if os.path.exists(path):
+        os.replace(path, kept)
+    open(path, "w").close()
+    try:
+        p = page()
+        _open_settings(p, server["url"])
+        p.page.wait_for_function("document.querySelector('#admin-lock-status').innerText.includes('damaged')")
+        assert not p.page.is_visible("#admin-lock-actions")
+        try:
+            _req.urlopen(server["url"] + "/api/logs")
+            raise AssertionError("the logs opened")
+        except urllib.error.HTTPError as err:
+            code, body = err.code, _json.loads(err.read())
+        assert code in (401, 403) and (code == 403 or body["damaged"] is True), body
+    finally:
+        os.remove(path)
+        if os.path.exists(kept):
+            os.replace(kept, path)

@@ -14,7 +14,8 @@ def _data_dir(data_dir):
     """The app reads its data folder when first imported; set it first."""
 
 
-@pytest.mark.parametrize("title", [" =1+1", " +cmd", "　-1", "  @SUM(1)", " =1"])
+# Written as escapes: they look like plain spaces (DeepSeek review of 0159).
+@pytest.mark.parametrize("title", ["\u00a0=1+1", "\u202f+cmd", "\u3000-1", " \u00a0@SUM(1)", "\u2007=1"])
 def test_no_break_spaces_before_a_formula(title):
     from app import backup
     assert backup._csv_safe(title).startswith("'")

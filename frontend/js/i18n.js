@@ -670,6 +670,8 @@
     ", and check your recipes are there before deleting the old folder.":
       ", et vérifiez que vos recettes y sont avant de supprimer l'ancien dossier.",
     "Restore a full backup by hand": "Restaurer une sauvegarde complète à la main",
+    "The settings password file (admin-password.json) is damaged. Delete it from the data folder to set a new password; the email password and HTTPS are then cleared, as after any reset.":
+      "Le fichier du mot de passe des paramètres (admin-password.json) est endommagé. Supprimez-le du dossier de données pour créer un nouveau mot de passe; le mot de passe de courriel et HTTPS sont alors effacés, comme après toute réinitialisation.",
     "For when the app won't start. Otherwise use the box above.": "Pour quand l'application ne démarre pas. Sinon, utilisez la boîte ci-dessus.",
     "Delete the database's journal files, which would otherwise be applied to the restored database:":
       "Supprimez les fichiers journaux de la base de données, qui seraient sinon appliqués à la base restaurée :",

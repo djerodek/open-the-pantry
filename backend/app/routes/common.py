@@ -137,6 +137,7 @@ def _settings_lock_refusal(request: Request):
               else "Locked. Enter the settings password." if admin_lock.password_set()
               else "Create a settings password first.")
     return JSONResponse(status_code=401, content={"detail": detail, "locked": True,
+                                                  "damaged": admin_lock.damaged(),
                                                   "password_set": admin_lock.password_set(),
                                                   "reset": admin_lock.was_reset()})
 
