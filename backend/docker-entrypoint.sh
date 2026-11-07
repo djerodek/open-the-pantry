@@ -23,9 +23,14 @@ fi
 #
 # Skipped once ownership already matches -- a full recursive chown on every
 # restart gets slow once ./data has accumulated a lot of uploaded images.
+# "Matches" means every file, not just the folder: a backup unzipped by
+# hand with sudo leaves recipes.db and uploads/ owned by root inside a
+# folder that is still the app's, and the app then can't write its
+# database (review of 0158). find stops at the first mismatch.
 current_uid="$(stat -c %u /app/data)"
 current_gid="$(stat -c %g /app/data)"
-if [ "$current_uid" != "$PUID" ] || [ "$current_gid" != "$PGID" ]; then
+if [ "$current_uid" != "$PUID" ] || [ "$current_gid" != "$PGID" ] \
+   || [ -n "$(find /app/data -xdev \( ! -user "$PUID" -o ! -group "$PGID" \) -print -quit 2>/dev/null)" ]; then
     chown -R appuser:appuser /app/data
 fi
 

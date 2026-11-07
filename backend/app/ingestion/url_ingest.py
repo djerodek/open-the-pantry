@@ -74,6 +74,18 @@ def log_url(url) -> str:
     return f"{p.scheme}://{host}{port}{p.path[:200]}{tail}"
 
 
+_URL_IN_TEXT = re.compile(r"https?://[^\s'\"<>)]+", re.IGNORECASE)
+_REQUESTS_URL = re.compile(r"(with url: )([^\s?#]*)[?#]\S*")
+
+
+def redact_urls(text) -> str:
+    """A message for the log with every address in it as log_url() gives
+    it, and the query dropped from requests' "with url: /path?…" (review of
+    0158: 0157 missed these). What the person is shown keeps the links."""
+    text = _URL_IN_TEXT.sub(lambda m: log_url(m.group(0)), str(text))
+    return _REQUESTS_URL.sub(r"\1\2?…", text)
+
+
 def _request_host(url: str) -> str | None:
     """The host requests will connect to: read by urllib3 from the URL as
     requests prepares it, not by urlparse."""
@@ -124,11 +136,21 @@ def validate_public_url(url: str, deadline: float | None = None) -> str:
     if not parsed.hostname:
         raise UrlValidationError("URL has no hostname.")
     host = (_request_host(url) or "").strip("[]").lower()
-    if host != parsed.hostname.lower():
+    # requests sends a Unicode name in its IDNA form ("café.example" as
+    # xn--caf-dma.example), urlparse keeps it as typed: compared, and looked
+    # up, in that form (review of 0158: such names were refused).
+    expected = parsed.hostname.lower()
+    if not expected.isascii():
+        try:
+            import idna
+            expected = idna.encode(expected, uts46=True).decode("ascii")
+        except (idna.IDNAError, UnicodeError):
+            raise UrlValidationError("The address's host isn't a valid name.")
+    if host != expected:
         raise UrlValidationError("The address's host is ambiguous.")
 
     try:
-        addrinfo = _resolve(parsed.hostname, deadline)
+        addrinfo = _resolve(host, deadline)
     except socket.gaierror:
         raise UrlValidationError("Could not resolve host.")
 
@@ -311,7 +333,7 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES,
             finally:
                 resp.close()
         except requests.RequestException as e:
-            log.warning("GET %s failed: %s: %s", log_url(current_url), type(e).__name__, e)
+            log.warning("GET %s failed: %s: %s", log_url(current_url), type(e).__name__, redact_urls(e))
             raise _unreachable(host, e, timeout if hop_timeout == timeout else TOTAL_FETCH_SECONDS) from e
         except UrlValidationError as e:
             log.warning("GET %s stopped: %s", log_url(current_url), e)
@@ -381,7 +403,7 @@ def _try_recipe_scrapers(url: str, html: str):
     try:
         scraper = scrape_html(html, org_url=url, supported_only=False)
     except Exception as e:
-        log.info("recipe-scrapers: no scraper for %s: %s: %s", log_url(url), type(e).__name__, e)
+        log.info("recipe-scrapers: no scraper for %s: %s: %s", log_url(url), type(e).__name__, redact_urls(e))
         return None
 
     try:
@@ -427,7 +449,7 @@ def _try_recipe_scrapers(url: str, html: str):
             method="recipe-scrapers",
         )
     except Exception as e:
-        log.info("recipe-scrapers: parse failed for %s: %s: %s", log_url(url), type(e).__name__, e)
+        log.info("recipe-scrapers: parse failed for %s: %s: %s", log_url(url), type(e).__name__, redact_urls(e))
         return None
 
 
@@ -651,6 +673,12 @@ def ingest_url(url: str) -> UrlIngestResult:
     resp = safe_get(url, deadline=deadline)
     result = parse_html(resp.text, url, status=resp.status_code)
     result.final_url = resp.url or url
+    # A page's photo given as "/img/x.jpg" is relative to the page: it
+    # failed the link check ("Only http/https"), so no photo (review of
+    # 0158).
+    if isinstance(result.image_url, str) and result.image_url.strip():
+        from urllib.parse import urljoin
+        result.image_url = urljoin(result.final_url, result.image_url.strip())
     return result
 
 
@@ -684,7 +712,7 @@ def parse_html(html: str, url: str, status=None) -> UrlIngestResult:
     log.warning(
         "No recipe extracted from %s: HTTP %s, %d bytes, title %r, %d ld+json blocks, "
         "@types seen %s, 'Recipe' in page: %s",
-        url, status, len(html), _page_title(html),
+        log_url(url), status, len(html), _page_title(html),
         html.count("application/ld+json"), sorted(set(ld_types))[:12], "Recipe" in html,
     )
     raise NoRecipeFoundError(

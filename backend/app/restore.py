@@ -33,7 +33,7 @@ import zipfile
 import zlib
 from datetime import datetime
 
-from .file_validation import IMAGE_FORMATS, PDF_MAGIC, detect_image_ext, is_safe_stored_filename, reencode_image
+from .file_validation import IMAGE_FORMATS, PDF_MAGIC, check_zip_size, detect_image_ext, is_safe_stored_filename, reencode_image
 from .logging_setup import get_logger
 
 log = get_logger("restore")
@@ -55,6 +55,7 @@ def kind_of(zip_path: str) -> str:
     """"backup" for this app's full backup, "import" for anything else the
     import path reads (schema.org JSON zip, Paprika). Raises RestoreError
     for a file that is neither."""
+    check_zip_size(zip_path, MAX_ENTRIES, RestoreError)
     try:
         with zipfile.ZipFile(zip_path) as zf:
             names = set(zf.namelist())
@@ -68,6 +69,7 @@ def kind_of(zip_path: str) -> str:
 def inspect(zip_path: str, db_path: str) -> dict:
     """Checks a full backup and unpacks its database to db_path. Returns
     what the screen shows before confirming."""
+    check_zip_size(zip_path, MAX_ENTRIES, RestoreError)
     try:
         zf = zipfile.ZipFile(zip_path)
     except zipfile.BadZipFile:

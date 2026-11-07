@@ -79,6 +79,36 @@ def find(db: Session, title: str | None = None, url: str | None = None,
     return (by_link + by_title)[:limit]
 
 
+class Index:
+    """find()'s two rules (same link, else same title) for many lookups in
+    a row, as an import makes: the library's links and titles normalized
+    once, and each recipe saved meanwhile added. find() per recipe rescans
+    the library, so a large import was quadratic (review of 0158). The
+    first recipe (lowest id) wins, as in find()."""
+
+    def __init__(self, db: Session):
+        self.by_link: dict[str, dict] = {}
+        self.by_title: dict[str, dict] = {}
+        for rid, rtitle, rurl in db.query(models.Recipe.id, models.Recipe.title, models.Recipe.source_url) \
+                .order_by(models.Recipe.id):
+            self.add(rid, rtitle, rurl)
+
+    def add(self, rid: int, title: str | None, url: str | None) -> None:
+        link, name = normalize_url(url), normalize_title(title)
+        if link:
+            self.by_link.setdefault(link, {"id": rid, "title": title, "reason": "link"})
+        if name:
+            self.by_title.setdefault(name, {"id": rid, "title": title, "reason": "title"})
+
+    def same_link(self, url: str | None) -> dict | None:
+        link = normalize_url(url)
+        return self.by_link.get(link) if link else None
+
+    def same_title(self, title: str | None) -> dict | None:
+        name = normalize_title(title)
+        return self.by_title.get(name) if name else None
+
+
 def same_link(db: Session, url: str | None) -> dict | None:
     """The saved recipe with this link, if any."""
     found = find(db, url=url, limit=1)

@@ -33,6 +33,7 @@ log = get_logger("search")
 
 TEXT_COLUMNS = "{title raw_text content_text notes}"
 TAG_COLUMNS = "{tags_text}"
+ALL_COLUMNS = "{title raw_text content_text notes tags_text}"
 # bm25 weights, in the table's column order: title, raw_text, tags_text,
 # content_text (ingredients and steps), notes. A word in the title counts
 # most; the original text least (it repeats the rest, with page noise).
@@ -257,9 +258,26 @@ def run(db: Session, q: str) -> dict:
                 {"m": f"{TAG_COLUMNS} : ({built['include']})"}).fetchall():
             matched.setdefault(rowid, set()).add("tag")
             out["rank"][rowid] = min(score, out["rank"].get(rowid, score))
+        # Words found partly in the text, partly in the tags ("chicken
+        # dinner" for Roast chicken tagged Dinner) match neither query
+        # above; one MATCH over every column decides (review of 0158).
+        for rowid, score, title, *excerpts in db.execute(text(
+                f"SELECT rowid, bm25(recipes_fts, {BM25_WEIGHTS}), highlight(recipes_fts, 0, :a, :b), "
+                f"snippet(recipes_fts, 3, :a, :b, '…', 10), snippet(recipes_fts, 4, :a, :b, '…', 10), "
+                f"snippet(recipes_fts, 1, :a, :b, '…', 10) "
+                f"FROM recipes_fts WHERE recipes_fts MATCH :m"),
+                {"m": f"{ALL_COLUMNS} : ({built['include']})", "a": MARK_START, "b": MARK_END}).fetchall():
+            if rowid in matched:
+                continue
+            matched[rowid] = {"text", "tag"}
+            out["rank"][rowid] = score
+            if MARK_START not in (title or ""):
+                found = next((e for e in excerpts if e and MARK_START in e), None)
+                if found:
+                    out["snippets"][rowid] = found
         out["matched"] = matched
     if built["exclude"]:
         out["excluded"] = {r[0] for r in db.execute(
             text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{{title raw_text content_text notes tags_text}} : ({built['exclude']})"}).fetchall()}
+            {"m": f"{ALL_COLUMNS} : ({built['exclude']})"}).fetchall()}
     return out

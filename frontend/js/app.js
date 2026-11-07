@@ -3074,7 +3074,13 @@
       tx("Showing results for {1} (you typed {2}).", { 1: used.join(", "), 2: typed })).join(" ") : "";
   }
 
+  // Only the newest request's answer is shown: a slow one for the previous
+  // filters used to replace the list after a faster one for the new
+  // filters (review of 0158).
+  let recipesGeneration = 0;
   async function loadRecipes() {
+    const generation = ++recipesGeneration;
+    const stale = () => generation !== recipesGeneration;
     syncBestMatch();
     const params = new URLSearchParams();
     if (state.query) params.set("q", state.query);
@@ -3090,18 +3096,23 @@
     try {
       res = await fetch(`${API}/recipes?${params.toString()}`);
     } catch {
+      if (stale()) return;
       showListError(tx("Couldn't reach Open the Pantry. Check your connection and try again."));
       return;
     }
+    if (stale()) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (stale()) return;
       showListError(res.status === 429
         ? tx("The server is busy with too many requests. Wait a moment and try again.")
         : tx("Couldn't load recipes ({1}).", { 1: typeof err.detail === "string" ? err.detail : tx("error {1}", { 1: res.status }) }));
       return;
     }
+    const recipes = await res.json();
+    if (stale()) return;
     showSearchNote(res);
-    currentRecipes = await res.json();
+    currentRecipes = recipes;
     renderRecipeList(currentRecipes);
     announce(txn(currentRecipes.length, "{n} recipe found", "{n} recipes found"));
     refreshReviewCount();

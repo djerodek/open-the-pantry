@@ -185,10 +185,16 @@ def _match_tags(db: Session, names: list[str], keep_unknown: bool) -> list[schem
     return out
 
 
-def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, Optional[dict]]:
+def _save_imported(db: Session, r: "interchange.ImportedRecipe",
+                   index: "duplicates.Index | None" = None) -> tuple[int, Optional[dict]]:
     """Saves one imported recipe through create_recipe (the same checks and
-    caps as any save). Returns (recipe id, duplicate_of or None)."""
-    same_title = duplicates.find(db, title=r.title, limit=1)
+    caps as any save). Returns (recipe id, duplicate_of or None). index:
+    the import's duplicates.Index, which the new recipe is added to."""
+    if index is not None:
+        found = index.same_title(r.title)
+        same_title = [found] if found else []
+    else:
+        same_title = duplicates.find(db, title=r.title, limit=1)
     parsed = parse_ingredient_block(r.ingredients)
     if r.tags:
         tag_ins = [schemas.TagIn(**t) for t in r.tags]
@@ -223,7 +229,12 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe") -> tuple[int, O
         recipe.notes = r.notes[:50_000] if r.notes else None
         # Still to review in the library it came from: still to review here.
         recipe.needs_review = r.to_review
+    if r.created_at:
+        recipe.created_at = r.created_at      # the date it was added there
+    if r.notes or r.to_review or r.created_at:
         db.commit()
+    if index is not None:
+        index.add(recipe.id, recipe.title, recipe.source_url)
     return recipe.id, (same_title[0] if same_title else None)
 
 
@@ -240,13 +251,14 @@ def _validation_text(e: Exception) -> str:
 def _import_and_save(db: Session, path: str, name: str):
     succeeded, failed, skipped = [], [], []
     with interchange.opened(path, name) as (recipes, problems):
+        index = duplicates.Index(db)
         for r in recipes:
             try:
-                existing = duplicates.same_link(db, r.source_url)
+                existing = index.same_link(r.source_url)
                 if existing:
                     skipped.append({"origin": r.origin, "recipe_id": existing["id"], "title": existing["title"]})
                     continue
-                rid, dup = _save_imported(db, r)
+                rid, dup = _save_imported(db, r, index)
                 succeeded.append({"origin": r.origin, "recipe_id": rid, "title": r.title[:500], "duplicate_of": dup})
             except Exception as e:
                 db.rollback()
@@ -620,7 +632,7 @@ def restore_backup(payload: schemas.RestoreRequest):
     if not _restore_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A restore is already running.")
     held = []
-    replaced = finished = False
+    replaced = finished = staged = False
     try:
         _restoring.set()
         deadline = time.monotonic() + 30
@@ -650,6 +662,7 @@ def restore_backup(payload: schemas.RestoreRequest):
 
         new_uploads = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
         shutil.rmtree(new_uploads, ignore_errors=True)
+        staged = True
         kept, left_out = restore_mod.unpack_uploads(zip_path, new_uploads)
 
         aside_before = restore_mod.set_aside(UPLOADS_DIR)
@@ -697,6 +710,11 @@ def restore_backup(payload: schemas.RestoreRequest):
         search.forget_vocabulary()
         picker.forget_languages()
         threading.Thread(target=picker.warm_languages, daemon=True, name="picker-languages").start()
+        if staged and not replaced:
+            # Nothing was replaced: this restore's staged photos go, or the
+            # photo sweep would stay off and start-up would ask for a check
+            # by hand that isn't needed (review of 0158).
+            shutil.rmtree(UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX, ignore_errors=True)
         for lock in reversed(held):
             lock.release()
         if not _restore_incomplete.is_set():

@@ -6,13 +6,14 @@ import threading
 import time
 from collections import deque
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import anyio
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db, SessionLocal, UPLOADS_DIR, TMP_DIR
 from ..ingestion.email_processing import process_tagged_email
+from ..ingestion.url_ingest import redact_urls
 from ..export import render_recipe_pdf
 from .. import email_client
 from .. import crypto
@@ -149,28 +150,18 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
     # one from the email itself.
     image_path = _promote_temp_file(result.get("image_path")) if result.get("image_path") else None
     # Held to RecipeCreate's limits, as a recipe saved through the API is
-    # (DeepSeek review of 0114): a page's heading or a link can be longer.
-    cap = lambda v, n: (v[:n] if isinstance(v, str) else v)       # noqa: E731
-    url = result.get("source_url")
+    # (DeepSeek review of 0114; ingredients and steps too since 0159).
+    fields, ingredients, steps = schemas.fit_recipe(
+        {k: result.get(k) for k in ("title", "source_url", "servings", "prep_time", "cook_time", "total_time",
+                                     "raw_text")}, result["ingredients"], result["steps"])
     try:
-        recipe = models.Recipe(
-            title=cap(result["title"], 500),
-            source_type="email",
-            source_url=url if isinstance(url, str) and len(url) <= 2000 else None,
-            servings=cap(result.get("servings"), schemas.SERVINGS_MAX),
-            prep_time=cap(result.get("prep_time"), 200),
-            cook_time=cap(result.get("cook_time"), 200),
-            total_time=cap(result.get("total_time"), 200),
-            raw_text=cap(result.get("raw_text"), 1_000_000),
-            ocr_confidence=result.get("ocr_confidence"),
-            image_path=image_path,
-            needs_review=True,
-        )
+        recipe = models.Recipe(**fields, source_type="email", ocr_confidence=result.get("ocr_confidence"),
+                               image_path=image_path, needs_review=True)
         db.add(recipe)
         db.flush()
-        for pos, ing in enumerate(result["ingredients"]):
+        for pos, ing in enumerate(ingredients):
             db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-        for pos, step in enumerate(result["steps"]):
+        for pos, step in enumerate(steps):
             db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
         # A suggested tag that doesn't fit TagIn (a name over 100 characters
         # from a restored library) is left off, not the whole recipe
@@ -293,10 +284,23 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
         for msg_id in msg_ids:
             subject = "(unknown subject)"
             try:
+                allowed = _parse_allowed_senders(settings.allowed_senders)
+                sender = email_client.fetch_sender(imap, msg_id) if allowed else ""
+                if sender and not _sender_allowed(sender, allowed):
+                    # Refused on the header alone, before the download.
+                    scan_log.warning("Scan: ignored message %s from %s: sender not in the allowed list",
+                                     msg_id.decode(errors="replace"), sender)
+                    messages.append(f"IGNORED: an email from {sender}: sender isn't on the allowed list.")
+                    try:
+                        email_client.mark_seen(imap, msg_id)
+                    except Exception:
+                        scan_log.debug("mark_seen failed for ignored message", exc_info=True)
+                    continue
                 try:
                     msg = email_client.fetch_full_message(imap, msg_id)
                 except email_client.MessageTooLargeError as e:
-                    # Won't get smaller on a retry: report and mark read.
+                    # Too large or unreadable (MessageUnreadableError): won't
+                    # change on a retry. Report and mark read.
                     failed += 1
                     line = f"(message {msg_id.decode(errors='replace')}): {e}"
                     messages.append(f"FAILED: {line}")
@@ -324,7 +328,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     # Already saved from this link: reported, not saved again.
                     _discard_temp_file(result.get("image_path"))
                     line = f"{existing['title']} (from \"{subject}\", via {result['source_detail']}) -- already in your library; not saved again"
-                    scan_log.info("Scan: %s", line)
+                    scan_log.info("Scan: %s", redact_urls(line))
                     messages.append(f"OK: {line}")
                     _queue_notification(db, True, line)
                 elif result["success"]:
@@ -337,7 +341,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                         line += " -- no steps were found; check the recipe"
                     if same_title:
                         line += " -- a recipe with this title was already in your library"
-                    scan_log.info("Scan: saved recipe %s: %s", recipe_id, line)
+                    scan_log.info("Scan: saved recipe %s: %s", recipe_id, redact_urls(line))
                     messages.append(f"OK: {line}")
                     _queue_notification(db, True, line)
                 else:
@@ -394,6 +398,19 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             "saved": saved}
 
 
+def _scan_due(now, scan_hour: int, last_scan_at) -> bool:
+    """At the scan hour; or later the same day when no scan has run today
+    (local time): the hour skipped by a spring-forward change, or a
+    container that was down then (review of 0158; backups have a
+    catch-up too). Never scanned at all: only at the hour."""
+    if now.hour == scan_hour:
+        return True
+    if now.hour < scan_hour or last_scan_at is None:
+        return False
+    when = last_scan_at if last_scan_at.tzinfo else last_scan_at.replace(tzinfo=timezone.utc)
+    return when.astimezone().date() < now.date()
+
+
 async def _daily_email_scan_loop():
     """Runs one scan per day at the configured hour. Checks every 15
     minutes rather than sleeping until the target time, so a changed
@@ -411,16 +428,16 @@ async def _daily_email_scan_loop():
                 db = SessionLocal()
                 try:
                     settings = _get_email_settings(db)
-                    return bool(settings.enabled), settings.daily_scan_hour
+                    return bool(settings.enabled), settings.daily_scan_hour, settings.last_scan_at
                 finally:
                     db.close()
 
-            enabled, scan_hour = await anyio.to_thread.run_sync(_due_check)
+            enabled, scan_hour, last_scan_at = await anyio.to_thread.run_sync(_due_check)
             if not enabled:
                 continue
             now = datetime.now()
             today = now.date()
-            if last_scan_day == today or now.hour != scan_hour:
+            if last_scan_day == today or not _scan_due(now, scan_hour, last_scan_at):
                 continue
             last_scan_day = today
             await anyio.to_thread.run_sync(run_email_scan)

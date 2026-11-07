@@ -110,7 +110,30 @@ jobs:
           file: backend/Dockerfile
           pull: true      # the newest python:3.13-slim, not a cached one
           push: false
+          load: true      # kept locally for the start-up check below
+          tags: otp-ci:test
           build-args: CHROME_MAJOR=${{ steps.chrome.outputs.major }}
+
+      - name: Start the image and read a PDF
+        # Until 0159 CI only built the image (review of 0158), though image
+        # changes (0127, 0128, 0153) counted on it. Starts it on an empty
+        # data folder, waits for /healthz, then reads one PDF from the test
+        # corpus, so the PDF and OCR libraries load in the real image.
+        run: |
+          mkdir -p "$RUNNER_TEMP/otp-data"
+          docker run -d --name otp-ci -p 8090:8090 -v "$RUNNER_TEMP/otp-data:/app/data" otp-ci:test
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:8090/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8090/healthz
+          curl -fsS -H "X-Requested-With: OpenThePantry" \
+            -F "file=@backend/tests/corpus/p005-en-pdf-text-layer/input.pdf;type=application/pdf" \
+            http://localhost:8090/api/ingest/pdf | python3 -c "import json, sys; d = json.load(sys.stdin); assert d.get('title'), d; print('PDF read:', d['title'])"
+
+      - name: Container log
+        if: always()
+        run: docker logs otp-ci 2>&1 | tail -100 || true
 
   publish:
     # Only once the tests, the audit, the browser tests and the test build

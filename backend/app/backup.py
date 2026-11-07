@@ -210,9 +210,16 @@ By hand (when the app won't start, or onto a new install):
        docker compose down
 
 2. Find the data folder: it is the LEFT side of the "volumes:" line in
-   docker-compose.yml (./data by default). Unpack this archive into it,
-   replacing what is there, so that recipes.db and uploads/ sit directly
-   inside that folder -- not in a subfolder:
+   docker-compose.yml (./data by default). First delete the database's
+   journal files, if any: left by a stop that wasn't clean, they would be
+   applied to the restored database (bringing back later changes, or
+   damaging it):
+
+       rm -f ./data/recipes.db-wal ./data/recipes.db-shm
+
+   Then unpack this archive into the folder, replacing what is there, so
+   that recipes.db and uploads/ sit directly inside it -- not in a
+   subfolder:
 
        unzip -o open-the-pantry-backup-YYYYMMDD-HHMMSS.zip -d ./data
 
@@ -283,9 +290,16 @@ installation) :
        docker compose down
 
 2. Trouvez le dossier de données : c'est le côté GAUCHE de la ligne « volumes: »
-   dans docker-compose.yml (./data par défaut). Décompressez cette archive
-   dedans, en remplaçant ce qui s'y trouve, pour que recipes.db et uploads/
-   soient directement dans ce dossier, et non dans un sous-dossier :
+   dans docker-compose.yml (./data par défaut). Supprimez d'abord les fichiers
+   journaux de la base de données, s'il y en a : laissés par un arrêt qui n'a
+   pas été propre, ils seraient appliqués à la base restaurée (ramenant des
+   changements plus récents, ou l'endommageant) :
+
+       rm -f ./data/recipes.db-wal ./data/recipes.db-shm
+
+   Puis décompressez cette archive dans le dossier, en remplaçant ce qui s'y
+   trouve, pour que recipes.db et uploads/ soient directement dedans, et non
+   dans un sous-dossier :
 
        unzip -o open-the-pantry-backup-AAAAMMJJ-HHMMSS.zip -d ./data
 

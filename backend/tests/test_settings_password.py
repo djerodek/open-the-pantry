@@ -82,7 +82,7 @@ def test_open_summaries_reveal_no_settings(stranger, client):
 
 def test_unlock_and_lock(stranger):
     st = stranger.get("/api/admin/status").json()
-    assert st == {"password_set": True, "unlocked": False, "seconds_left": 0, "reset": False, "https_url": None}
+    assert st == {"password_set": True, "damaged": False, "unlocked": False, "seconds_left": 0, "reset": False, "https_url": None}
     assert stranger.post("/api/admin/unlock", json={"password": "not it"}).status_code == 401
     r = stranger.post("/api/admin/unlock", json={"password": TEST_SETTINGS_PASSWORD})
     assert r.status_code == 200 and r.json()["unlocked"] is True

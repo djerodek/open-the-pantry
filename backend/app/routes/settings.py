@@ -55,7 +55,8 @@ def clear_logs_endpoint():
 # ---------------------------------------------------------------------------
 def _admin_status(token: str | None, request: Request | None = None) -> dict:
     left = admin_lock.seconds_left(token)
-    return {"password_set": admin_lock.password_set(), "unlocked": left > 0, "seconds_left": left,
+    return {"password_set": admin_lock.password_set(), "damaged": admin_lock.damaged(),
+            "unlocked": left > 0, "seconds_left": left,
             "reset": admin_lock.was_reset(),
             # Set when this request came over plain http:// while HTTPS is on:
             # the page then links to the secure address instead of asking.
@@ -122,6 +123,8 @@ async def admin_create_password(payload: schemas.AdminPasswordIn, request: Reque
     credentials are gone and no password exists yet; the error says so and
     a retry works. The second failure only costs re-entering credentials."""
     _refuse_plain_http(request)
+    if admin_lock.damaged():
+        raise HTTPException(status_code=409, detail=admin_lock.DAMAGED_MESSAGE)
     if admin_lock.password_set():
         raise HTTPException(status_code=409, detail="A settings password already exists.")
     try:
@@ -160,6 +163,8 @@ def admin_unlock(payload: schemas.AdminPasswordIn, request: Request):
     _refuse_plain_http(request)
     if not admin_lock.password_set():
         raise HTTPException(status_code=400, detail="Create a settings password first.")
+    if admin_lock.damaged():
+        raise HTTPException(status_code=409, detail=admin_lock.DAMAGED_MESSAGE)
     try:
         token = admin_lock.unlock(payload.password, _client(request))
     except admin_lock.TooManyTries as e:

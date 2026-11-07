@@ -84,6 +84,9 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
     return recipe
 
 
+MAX_TAG_FILTERS = 50
+
+
 @router.get("/api/recipes", response_model=list[schemas.RecipeSummaryOut])
 def list_recipes(
     response: Response,
@@ -139,6 +142,10 @@ def list_recipes(
         )
 
     # Stacked tag filters: AND logic -- a recipe must carry every selected tag.
+    # At most MAX_TAG_FILTERS (as tags on a recipe): about 1,000 gave a 500
+    # (SQLite's expression depth) and a 240 KB log entry each (review of 0158).
+    if tags and len(tags) > MAX_TAG_FILTERS:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_TAG_FILTERS} tags can be selected at once.")
     if tags:
         for tag_name in tags:
             query = query.filter(

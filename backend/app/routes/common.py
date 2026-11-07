@@ -133,7 +133,8 @@ def _settings_lock_refusal(request: Request):
         return _https_only_response(secure_url)
     if admin_lock.seconds_left(request.cookies.get(admin_lock.COOKIE_NAME)) > 0:
         return None
-    detail = ("Locked. Enter the settings password." if admin_lock.password_set()
+    detail = (admin_lock.DAMAGED_MESSAGE if admin_lock.damaged()
+              else "Locked. Enter the settings password." if admin_lock.password_set()
               else "Create a settings password first.")
     return JSONResponse(status_code=401, content={"detail": detail, "locked": True,
                                                   "password_set": admin_lock.password_set(),

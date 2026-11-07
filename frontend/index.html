@@ -503,6 +503,8 @@
           <p>For when the app won't start. Otherwise use the box above.</p>
           <ol>
             <li>Stop the app: <code>docker compose down</code></li>
+            <li>Delete the database's journal files, which would otherwise be applied to the restored database:
+              <code>rm -f ./data/recipes.db-wal ./data/recipes.db-shm</code></li>
             <li>Unzip the backup into the data folder so <code>recipes.db</code> and
               <code>uploads/</code> are directly inside it:
               <code>unzip -o open-the-pantry-backup-*.zip -d ./data</code></li>

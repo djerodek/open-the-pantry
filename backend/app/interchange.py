@@ -38,6 +38,7 @@ import re
 import zipfile
 from dataclasses import dataclass, field
 
+from .file_validation import check_zip_size
 from .ingestion.url_ingest import _flatten_instructions
 from .logging_setup import get_logger
 from .text_rules import is_part_name
@@ -48,6 +49,7 @@ EXT_KEY = "x-open-the-pantry"
 EXT_VERSION = 1
 
 MAX_ENTRIES = 20_000                  # files in one archive
+NOTES_MAX = 50_000                    # as NotesUpdate: an export's notes come back whole (review of 0158)
 MAX_ENTRY_BYTES = 25 * 1024 * 1024    # one unpacked file (a recipe or a photo)
 MAX_TOTAL_BYTES = 2 * 1024 ** 3       # everything unpacked
 MAX_RECIPES = 5_000                   # recipes in one import
@@ -250,9 +252,27 @@ class ImportedRecipe:
     # a file of 5,000 recipes with photos is never in memory all at once.
     image_loader: object = None
     image_url: str | None = None
+    created_at: object = None     # datetime, when the file gives one (dateCreated, Paprika's "created")
 
     def photo(self) -> bytes | None:
         return self.image_loader() if self.image_loader else self.image_bytes
+
+
+def _date(value):
+    """An ISO date ("2024-03-01T12:00:00+00:00", Paprika's "2024-03-01
+    12:00:00") as an aware datetime, or None: not before 1990, not in the
+    future. Exported, so read back: an imported recipe used to get today's
+    date (review of 0158)."""
+    from datetime import datetime, timezone
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        when = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when if datetime(1990, 1, 1, tzinfo=timezone.utc) <= when <= datetime.now(timezone.utc) else None
 
 
 def _text(value, limit: int) -> str | None:
@@ -337,10 +357,11 @@ def from_jsonld(item: dict, origin: str, read_member=None) -> ImportedRecipe:
         cook_time=_text(ext.get("cook_time") or item.get("cookTime"), 200),
         total_time=_text(ext.get("total_time") or item.get("totalTime"), 200),
         source_url=_text(item.get("url") if isinstance(item.get("url"), str) else None, 2000),
+        created_at=_date(item.get("dateCreated")),
     )
     if ext:
         r.source_type = _text(ext.get("source_type"), 20) or "import"
-        r.notes = _text(ext.get("notes"), 20_000)
+        r.notes = _text(ext.get("notes"), NOTES_MAX)
         r.favorite = bool(ext.get("favorite"))
         r.to_review = ext.get("to_review") is True
         r.tastiness_rating = _rating(ext.get("tastiness_rating"))
@@ -393,7 +414,8 @@ def from_paprika(obj: dict, origin: str, photo_loader=None) -> ImportedRecipe:
         cook_time=_text(obj.get("cook_time"), 200),
         total_time=_text(obj.get("total_time"), 200),
         source_url=_text(obj.get("source_url"), 2000),
-        notes=_text(obj.get("notes"), 20_000),
+        notes=_text(obj.get("notes"), NOTES_MAX),
+        created_at=_date(obj.get("created")),
         favorite=bool(obj.get("on_favorites")),
         tastiness_rating=_rating(obj.get("rating")),
         difficulty_rating=_DIFFICULTY.get((_text(obj.get("difficulty"), 40) or "").lower()),
@@ -492,6 +514,7 @@ def opened(path: str, filename: str):
     with open(path, "rb") as f:
         head = f.read(4)
     if head.startswith(b"PK"):
+        check_zip_size(path, MAX_ENTRIES, ImportFileError)
         try:
             zf = zipfile.ZipFile(path)
         except zipfile.BadZipFile:

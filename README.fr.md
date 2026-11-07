@@ -125,9 +125,12 @@ Sauvegarde et exportation → Restaurer ou importer (voir
 [Sauvegarde et restauration](#sauvegarde-et-restauration)). Si
 l'application ne démarre pas, faites-le à la main :
 1. Lancez `docker compose down`.
-2. Décompressez dans le dossier de données :
+2. Supprimez les fichiers journaux de la base de données, qui seraient
+   sinon appliqués à la base restaurée :
+   `rm -f ./data/recipes.db-wal ./data/recipes.db-shm`.
+3. Décompressez dans le dossier de données :
    `unzip -o open-the-pantry-backup-*.zip -d ./data`.
-3. Lancez `docker compose up -d`.
+4. Lancez `docker compose up -d`.
 
 Une sauvegarde ne contient ni `encryption.key`, ni `admin-password.json`, ni
 `https/`. Sur une nouvelle installation, copiez-les depuis l'ancien dossier,

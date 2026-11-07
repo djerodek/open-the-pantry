@@ -284,6 +284,43 @@ class MessageTooLargeError(Exception):
     pass
 
 
+class MessageUnreadableError(MessageTooLargeError):
+    """An email that can't be parsed (parts nested hundreds deep): no retry
+    will read it, so the scan reports it and marks it read, as an email
+    over the size limit (review of 0158: it was retried, with a failure
+    notice, on every scan)."""
+
+
+MAX_PART_DEPTH = 50   # multipart levels; real mail has a few
+
+
+def _part_depth(msg) -> int:
+    deepest, stack = 0, [(msg, 1)]
+    while stack:
+        part, depth = stack.pop()
+        deepest = max(deepest, depth)
+        if depth > MAX_PART_DEPTH:
+            break
+        payload = part.get_payload() if part.is_multipart() else None
+        if isinstance(payload, list):
+            stack.extend((p, depth + 1) for p in payload)
+    return deepest
+
+
+def fetch_sender(imap_conn: imaplib.IMAP4, msg_id: bytes) -> str:
+    """The From header alone, so a sender off the allowed list is refused
+    before the whole email is downloaded and parsed; "" when it can't be
+    read (the check after the download still applies)."""
+    try:
+        status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (FROM)])")
+        if status != "OK" or not data or not isinstance(data[0], tuple):
+            return ""
+        return email.message_from_bytes(data[0][1]).get("From", "") or ""
+    except Exception:
+        log.debug("fetch_sender: From header not read", exc_info=True)
+        return ""
+
+
 def message_size(imap_conn: imaplib.IMAP4, msg_id: bytes):
     """RFC822.SIZE for one message, or None if the server doesn't say."""
     import re as _re
@@ -311,7 +348,13 @@ def fetch_full_message(imap_conn: imaplib.IMAP4, msg_id: bytes) -> email.message
     status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[])")
     if status != "OK" or not data or not isinstance(data[0], tuple):
         raise EmailConnectionError(f"Could not fetch message {msg_id!r}")
-    return email.message_from_bytes(data[0][1])
+    try:
+        msg = email.message_from_bytes(data[0][1])
+    except RecursionError:
+        raise MessageUnreadableError("email can't be read: its parts are nested too deeply")
+    if _part_depth(msg) > MAX_PART_DEPTH:
+        raise MessageUnreadableError(f"email can't be read: its parts are nested more than {MAX_PART_DEPTH} levels deep")
+    return msg
 
 
 def mark_seen(imap_conn: imaplib.IMAP4, msg_id: bytes):

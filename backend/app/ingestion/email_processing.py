@@ -6,7 +6,7 @@ import uuid
 from .completeness import missing_parts as missing_sections
 from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
 from .image_ingest import ingest_image
-from .url_ingest import ingest_url, log_url, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
+from .url_ingest import ingest_url, log_url, redact_urls, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
     SiteUnreachableError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
@@ -461,5 +461,5 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     elif incomplete_hint:
         reason += (" If the PDF or photo stops before the recipe card, send one that includes it. "
                    "Otherwise add the recipe in the app, from screenshots or by hand.")
-    log.warning(reason)
+    log.warning(redact_urls(reason))
     return _failure(reason)

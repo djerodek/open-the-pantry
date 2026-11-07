@@ -62,6 +62,8 @@ def _p(english: str, french: str):
 # Ordered: longer and more specific patterns before the fragments they
 # contain. French uses a (regular) space before ":"; Quebec style.
 _FR_PATTERNS = [
+    _p(r"At most (\d+) tags can be selected at once\.", r"Au plus \1 étiquettes peuvent être choisies à la fois."),
+    _p(r"This archive's list of files is too large\.", "La liste des fichiers de cette archive est trop grande."),
     # Request guards
     _p(r"This host name isn't allowed\. Add it to RECIPE_APP_ALLOWED_HOSTS in docker-compose\.yml\.",
        "Ce nom d'hôte n'est pas autorisé. Ajoutez-le à RECIPE_APP_ALLOWED_HOSTS dans docker-compose.yml."),
@@ -443,6 +445,14 @@ _FR_PATTERNS = [
     _p(r"The result email couldn't be sent: ", "Le courriel de résultat n'a pas pu être envoyé : "),
     _p(r'^IGNORED: "(.*)" from (.*): sender isn\'t on the allowed list\.$',
        r"IGNORÉ : « \1 » de \2 : l'expéditeur n'est pas dans la liste autorisée."),
+    _p(r"^IGNORED: an email from (.*): sender isn't on the allowed list\.$",
+       r"IGNORÉ : un courriel de \1 : l'expéditeur n'est pas dans la liste autorisée."),
+    _p(r"email can't be read: its parts are nested more than (\d+) levels deep",
+       r"courriel illisible : ses parties sont imbriquées sur plus de \1 niveaux"),
+    _p(r"email can't be read: its parts are nested too deeply", "courriel illisible : ses parties sont trop imbriquées"),
+    _p(r"The address's host isn't a valid name\.", "Le nom d'hôte de l'adresse n'est pas valide."),
+    _p(r"The settings password file \(admin-password\.json\) is damaged\. Delete it from the data folder to set a new password; the email password and HTTPS are then cleared, as after any reset\.",
+       "Le fichier du mot de passe des paramètres (admin-password.json) est endommagé. Supprimez-le du dossier de données pour créer un nouveau mot de passe; le mot de passe de courriel et HTTPS sont alors effacés, comme après toute réinitialisation."),
     _p(r"^FAILED: ", "ÉCHEC : "),
     _p(r"^OK: ", "OK : "),
     _p(r' \(from "(.*?)", via PDF attachment\)(?=$| -- )', r" (de « \1 », par la pièce jointe PDF)"),

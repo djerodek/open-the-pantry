@@ -105,19 +105,36 @@ class TooManyTries(Exception):
         self.wait = wait
 
 
+DAMAGED_MESSAGE = ("The settings password file (admin-password.json) is damaged. Delete it from the data folder "
+                   "to set a new password; the email password and HTTPS are then cleared, as after any reset.")
+
+
 def _read() -> dict | None:
+    """The password file's contents; None when it's missing or damaged
+    (no password then opens anything)."""
     try:
         with open(PASSWORD_PATH, encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict) and {"salt", "hash", "n", "r", "p"} <= d.keys():
             return d
-    except (OSError, ValueError):
-        pass
+        log.error("admin-password.json is damaged: not the expected fields")
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        log.error("admin-password.json is damaged or unreadable: %s", e)
     return None
 
 
+def damaged() -> bool:
+    """The file is there but can't be used."""
+    return os.path.exists(PASSWORD_PATH) and _read() is None
+
+
 def password_set() -> bool:
-    return _read() is not None
+    """A password file exists. A damaged one counts: it used to read as "no
+    password", and anyone on the network could then create one (review of
+    0158). Only deleting the file resets the password."""
+    return os.path.exists(PASSWORD_PATH)
 
 
 def was_reset() -> bool:
@@ -149,6 +166,10 @@ def _write(password: str):
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(d, f)
+        # On disk before it replaces the old one: a power cut could leave an
+        # empty file (review of 0158).
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, PASSWORD_PATH)
 
 

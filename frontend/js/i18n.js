@@ -671,6 +671,8 @@
       ", et vérifiez que vos recettes y sont avant de supprimer l'ancien dossier.",
     "Restore a full backup by hand": "Restaurer une sauvegarde complète à la main",
     "For when the app won't start. Otherwise use the box above.": "Pour quand l'application ne démarre pas. Sinon, utilisez la boîte ci-dessus.",
+    "Delete the database's journal files, which would otherwise be applied to the restored database:":
+      "Supprimez les fichiers journaux de la base de données, qui seraient sinon appliqués à la base restaurée :",
     "Unzip the backup into the data folder so": "Décompressez la sauvegarde dans le dossier de données pour que",
     "and": "et",
     "are directly inside it:": "s'y trouvent directement :",

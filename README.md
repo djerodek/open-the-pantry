@@ -109,8 +109,10 @@ Everything lives in one folder, the left side of the `volumes:` line
 import (see [Backup and restore](#backup-and-restore)). If the app won't
 start, do it by hand:
 1. Run `docker compose down`.
-2. Unzip into the data folder: `unzip -o open-the-pantry-backup-*.zip -d ./data`.
-3. Run `docker compose up -d`.
+2. Delete the database's journal files, which would otherwise be applied
+   to the restored database: `rm -f ./data/recipes.db-wal ./data/recipes.db-shm`.
+3. Unzip into the data folder: `unzip -o open-the-pantry-backup-*.zip -d ./data`.
+4. Run `docker compose up -d`.
 
 A backup doesn't contain `encryption.key`, `admin-password.json` or `https/`.
 On a new install, either copy those across from the old folder, or set up

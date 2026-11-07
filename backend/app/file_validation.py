@@ -218,3 +218,57 @@ def validate_and_save_pdf_bytes(content: bytes, dest_dir: str, name_prefix: str,
     with open(dest_path, "wb") as f:
         f.write(content)
     return final_name
+
+
+# ---------------------------------------------------------------- zip size
+
+# Average bytes per central-directory entry allowed (header 46 bytes plus a
+# name and extra fields; this app's own entries are about 110).
+ZIP_DIR_BYTES_PER_ENTRY = 256
+
+
+def zip_directory_size(path: str):
+    """(entries, central directory bytes) from a zip's end record, and its
+    Zip64 record when there is one, without reading the directory itself;
+    None when there's no end record (zipfile then refuses the file)."""
+    import struct
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        tail_len = min(size, 22 + 65535)
+        f.seek(size - tail_len)
+        tail = f.read(tail_len)
+        i = tail.rfind(b"PK\x05\x06")
+        if i < 0 or len(tail) - i < 22:
+            return None
+        _, _, _, _, entries, dir_bytes, dir_offset, _ = struct.unpack("<IHHHHIIH", tail[i:i + 22])
+        if entries == 0xFFFF or dir_bytes == 0xFFFFFFFF or dir_offset == 0xFFFFFFFF:
+            eocd_at = size - tail_len + i
+            if eocd_at < 20:
+                return None
+            f.seek(eocd_at - 20)
+            sig, _, z64_at, _ = struct.unpack("<IIQI", f.read(20))
+            if sig != 0x07064B50 or z64_at + 56 > size:
+                return None
+            f.seek(z64_at)
+            rec = f.read(56)
+            if rec[:4] != b"PK\x06\x06":
+                return None
+            entries, dir_bytes = struct.unpack("<QQ", rec[32:48])
+    return entries, dir_bytes
+
+
+def check_zip_size(path: str, max_entries: int, error) -> None:
+    """Refuses (raises error(message)) a zip whose end record gives more
+    than max_entries entries, or a central directory larger than they
+    need, before zipfile.ZipFile reads the directory into memory: about 460
+    bytes of Python objects per entry, so a 77 MB directory of tiny entries
+    cost 822 MB (review of 0158). zipfile reads entries until the size the
+    record gives, so the size bound holds even if the count lies."""
+    found = zip_directory_size(path)
+    if found is None:
+        return
+    entries, dir_bytes = found
+    if entries > max_entries:
+        raise error(f"This archive has {entries} files; the limit is {max_entries}.")
+    if dir_bytes > max_entries * ZIP_DIR_BYTES_PER_ENTRY:
+        raise error("This archive's list of files is too large.")

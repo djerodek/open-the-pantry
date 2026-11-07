@@ -130,23 +130,16 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             )
             if result.image_url:
                 image_path = _download_and_save_showcase_image(result.image_url, UPLOADS_DIR, f"url-img-{uuid.uuid4().hex}")
-            recipe = models.Recipe(
-                title=result.title,
-                source_type="url",
-                source_url=url,
-                servings=result.servings,
-                prep_time=result.prep_time,
-                cook_time=result.cook_time,
-                total_time=result.total_time,
-                raw_text=result.raw_text,
-                image_path=image_path,
-                needs_review=True,
-            )
+            fields, parsed_ingredients, steps = schemas.fit_recipe(
+                {"title": result.title, "source_url": url, "servings": result.servings, "prep_time": result.prep_time,
+                 "cook_time": result.cook_time, "total_time": result.total_time, "raw_text": result.raw_text},
+                parsed_ingredients, result.steps)
+            recipe = models.Recipe(**fields, source_type="url", image_path=image_path, needs_review=True)
             db.add(recipe)
             db.flush()
             for pos, ing in enumerate(parsed_ingredients):
                 db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-            for pos, step in enumerate(result.steps):
+            for pos, step in enumerate(steps):
                 db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)
@@ -263,19 +256,16 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
                 pdf_result.raw_text,
             )
             same_title = duplicates.find(db, title=segmented["title_guess"], limit=1)
-            recipe = models.Recipe(
-                title=segmented["title_guess"],
-                source_type="pdf",
-                servings=segmented.get("servings"),
-                raw_text=pdf_result.raw_text,
-                ocr_confidence=pdf_result.avg_ocr_confidence,
-                needs_review=True,
-            )
+            fields, parsed_ingredients, steps = schemas.fit_recipe(
+                {"title": segmented["title_guess"], "servings": segmented.get("servings"),
+                 "raw_text": pdf_result.raw_text}, parsed_ingredients, segmented["steps"])
+            recipe = models.Recipe(**fields, source_type="pdf", ocr_confidence=pdf_result.avg_ocr_confidence,
+                                   needs_review=True)
             db.add(recipe)
             db.flush()
             for pos, ing in enumerate(parsed_ingredients):
                 db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-            for pos, step in enumerate(segmented["steps"]):
+            for pos, step in enumerate(steps):
                 db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
             tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
             _apply_tags(db, recipe, tag_ins)

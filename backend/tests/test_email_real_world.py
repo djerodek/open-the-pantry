@@ -461,7 +461,8 @@ def test_blocked_page_is_diagnosable_from_the_log(client, data_dir, tmp_path):
     assert "urls=['https://blocked.example/recipe']" in text        # footer link gone
     assert "GET https://blocked.example/recipe -> 403" in text
     assert "'Just a moment...'" in text and "'cloudflare'" in text
-    assert "Traceback" in text                                       # full error, not just the message
+    # No "Traceback" check: a refusal is explained in one line since 0137;
+    # the check passed only on tracebacks earlier tests left in the log.
 
 
 def test_passwords_are_not_logged(client, data_dir, monkeypatch):

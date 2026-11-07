@@ -380,14 +380,17 @@ if API_KEY:
 @app.middleware("http")
 async def restore_guard(request: Request, call_next):
     # The count lives in routes.common, where restore_backup reads it.
-    if common._restore_incomplete.is_set() and request.url.path != "/healthz":
-        return JSONResponse(status_code=503, content={"detail": common.RESTORE_INCOMPLETE_MESSAGE})
-    if _restoring.is_set() and request.url.path != "/healthz":
-        return JSONResponse(status_code=503, content={"detail": "A backup is being restored. Try again in a minute."},
-                            headers={"Retry-After": "30"})
+    # Counted first, then checked: checked first, a restore could see the
+    # count low between the check and the count and start while this
+    # request runs (review of 0158).
     with _inflight_lock:
         common._inflight += 1
     try:
+        if common._restore_incomplete.is_set() and request.url.path != "/healthz":
+            return JSONResponse(status_code=503, content={"detail": common.RESTORE_INCOMPLETE_MESSAGE})
+        if _restoring.is_set() and request.url.path != "/healthz":
+            return JSONResponse(status_code=503, content={"detail": "A backup is being restored. Try again in a minute."},
+                                headers={"Retry-After": "30"})
         return await call_next(request)
     finally:
         with _inflight_lock:
@@ -503,7 +506,11 @@ async def _database_busy_handler(request: Request, exc: sqlalchemy.exc.Operation
     so a 503 that says to try again instead of a bare 500. Any other
     OperationalError is still a 500."""
     if not _database_busy(exc):
-        log.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+        # The error and the start of the statement, not the traceback: it
+        # holds the whole SQL, which a crafted request can make huge (about
+        # 240 KB a request; review of 0158).
+        log.error("Database error on %s %s: %s; statement: %.300s", request.method, request.url.path,
+                  exc.orig, exc.statement)
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     log.warning("Database busy on %s %s: %s", request.method, request.url.path, exc.orig)
     # In French through the response translation, like any detail.

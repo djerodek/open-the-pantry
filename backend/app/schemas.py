@@ -67,6 +67,36 @@ class TagIn(BaseModel):
     subgroup: Optional[str] = Field(default=None, max_length=60)
 
 
+# RecipeCreate's limits, for the paths that save a recipe without going
+# through it (batch links, batch PDFs, email): a page's 600-character
+# heading saved fine, then Edit -> Save refused it (review of 0158).
+_RECIPE_TEXT_LIMITS = {"title": 500, "servings": None, "prep_time": 200, "cook_time": 200, "total_time": 200,
+                       "raw_text": 1_000_000}
+_INGREDIENT_LIMITS = {"raw_line": 2000, "quantity": 100, "unit": 100, "name": 2000}
+
+
+def fit_recipe(fields: dict, ingredients: list[dict], steps: list[str]):
+    """(fields, ingredients, steps) cut to what RecipeCreate accepts: texts
+    shortened, at most 500 ingredients and 500 steps, a source_url over
+    2000 characters dropped."""
+    out = dict(fields)
+    for key, limit in _RECIPE_TEXT_LIMITS.items():
+        value = out.get(key)
+        if isinstance(value, str):
+            out[key] = value[:SERVINGS_MAX if limit is None else limit]
+    url = out.get("source_url")
+    if url is not None and not (isinstance(url, str) and len(url) <= 2000):
+        out["source_url"] = None
+    fitted = []
+    for ing in ingredients[:500]:
+        ing = dict(ing)
+        for key, limit in _INGREDIENT_LIMITS.items():
+            if isinstance(ing.get(key), str):
+                ing[key] = ing[key][:limit]
+        fitted.append(ing)
+    return out, fitted, [s[:20_000] if isinstance(s, str) else s for s in steps[:500]]
+
+
 class RecipeCreate(BaseModel):
     title: str = Field(..., max_length=500)
     source_type: str = Field(..., max_length=20)  # 'url' | 'pdf' | 'screenshot' | 'manual' | 'email'

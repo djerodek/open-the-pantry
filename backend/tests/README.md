@@ -91,3 +91,5 @@ bug coming back: no recipe data through `innerHTML`, a `try` around
 one, change the assertion to the new structure; don't delete it. Where a
 browser can check the behaviour itself, `tests_browser/` is the better
 place.
+
+`test_claude_review_0158.py` covers the review of 0158 (`claude/reviews/review-0158.md`): restoring by hand (WAL files, file owners), zip directories, search across text and tags, the tag filter limit, staged photos, URLs in the log, auto-saved recipes, import notes, dates and duplicate checks, nested emails, Unicode hosts, a damaged password file, the email scan's catch-up, relative photos, and CI starting the image.

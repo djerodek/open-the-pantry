@@ -9,6 +9,8 @@ Pillow==13.0.0
 opencv-python-headless==4.14.0.94
 beautifulsoup4==4.12.3
 requests==2.34.2
+# url_ingest compares a Unicode host in the IDNA form requests sends (0159).
+idna==3.20
 # url_ingest reads bodies with HTTPResponse.read1(), added in urllib3 2.0.
 urllib3==2.8.0
 weasyprint==70.0
