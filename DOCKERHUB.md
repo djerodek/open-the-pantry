@@ -8,28 +8,20 @@ Interface in English or French. No LLM dependency.
 
 ## ⚠️ Run this on your own network only
 
-**No authentication by default.** Anyone who can reach this container can read,
-modify, and delete every recipe, and use its API. There is no login screen and
-no user accounts. The exceptions: Email ingest, HTTPS, Logs and Email PDF, which
-use your email account or DNS login, and restoring a backup over the library,
-need a settings password created in the app (15-minute unlock). Forgotten: delete `data/admin-password.json`; the new
-password then clears the saved email password and HTTPS, to be set up again.
+**There is no login.** Anyone who can reach the container can read, change
+and delete every recipe. Only Email ingest, HTTPS, Logs, Email PDF and
+restoring a backup need a settings password, created in the app.
 
-**Do not expose it to the internet.** Run it on your LAN, or reach it remotely
-via VPN (WireGuard, Tailscale, OpenVPN) or behind a reverse proxy that enforces
-authentication itself.
-
-This isn't theoretical: a vulnerability letting any unauthenticated caller read
-arbitrary files from the container and delete the app's own database was found
-and fixed late in development, after multiple review passes had reported the
-code clean. It's fixed and regression-tested — but others may exist. The network
+**Don't expose it to the internet.** Use it on your LAN, or from outside
+through a VPN or a reverse proxy that does its own authentication. A
+serious file-access bug was found and fixed late in development, after
+several reviews had called the code clean; others may exist. The network
 boundary is the real protection.
 
 ## 📋 Unmaintained
 
-Built with AI coding tools for personal home use, published in case it's useful
-to others. Provided as-is: no support, no issue triage, no commitment to fix
-bugs or ship security updates. Forks welcome.
+Built with AI coding tools for personal use and published as-is: no
+support, no commitment to fixes. Forks welcome.
 
 ---
 
@@ -64,94 +56,57 @@ Then:
 
 (`env_file` with `required: false` needs Docker Compose 2.24 or later.)
 
-Open http://localhost:8090 — data persists in `./data` beside the compose file.
-Then create the settings password right away (Settings → Email ingest asks for
-it): until it exists, the first person on your network to open that section
-sets it.
+Open `http://<server>:8090`; data lives in `./data`. Then create the
+settings password right away (Settings → Email ingest asks for it): until it
+exists, the first person on your network to open that section sets it.
 
-Updating:
-
-    docker compose pull && docker compose up -d
-
-The image is rebuilt every Sunday with the newest base image, trusted
-roots and Chrome version (for link imports); a weekly cron job running the
-command above after that keeps a server current.
-
-Pin the image by digest (`djerodek/open-the-pantry@sha256:...`) instead of
-`main` if you want to control exactly when updates apply.
+**Updating:** `docker compose pull && docker compose up -d`. The image is
+rebuilt every Sunday (newest base image, trusted roots and Chrome version);
+a weekly cron job running that command keeps a server current. Pin a digest
+(`djerodek/open-the-pantry@sha256:...`) instead of `main` to choose when.
 
 ## How it differs
 
 Compared with Mealie and Tandoor (their documentation, October 2026):
-photos, screenshots and PDFs are read with OCR and rules on your server, no
-AI model, API key or GPU (Mealie's photo import needs an image-capable AI
-provider; Tandoor reads photos and PDFs through an AI model). It learns
-from your corrections, reads English and Quebec French, takes recipes by
-email, and picks a random one for you. **Not for you if** you want meal
-planning, shopping lists, nutrition or several user accounts: Mealie and
-Tandoor have those.
+photos, screenshots and PDFs are read with OCR and rules on your server, with
+no AI model, API key or GPU. It learns from your corrections, reads English
+and Quebec French, takes recipes by email, and picks a random one for you.
+**Not for you if** you want meal planning, shopping lists, nutrition or
+several user accounts.
 
 ## Features
 
-- Ingest from URL (100+ site parsers, JSON-LD, heuristic fallback), PDF
-  (text-layer detection, OCR only where needed), screenshots (single or
-  combined multi-screenshot), or manual entry
-- Reads English and French recipes: headings, units, and English + French
-  OCR
-- Learns from your own saved recipes, on the server (no LLM, no outside
-  service): how your photo, PDF and email imports are laid out, and how you
-  tag; used only where it beats the built-in rules on your recipes, and
-  each suggested tag says where it came from (a keyword, or learned)
-- Optional email ingest (off by default): email a link, PDF, photo or the
-  recipe text to a dedicated inbox
-- Optional "What to eat?" page (off by default): a second, read-only page on
-  port 8091 that picks a random recipe by meal type, cooking style, main
-  ingredient, pace or language (English/French, guessed from the recipe and
-  correctable in Edit recipe), shuffles through titles and stops on one to read and
-  print right there, halved, doubled, or with weights or volumes (read-only;
-  edit in the main app); no login, so anyone
-  who can reach the port can read your recipes; switched on in Settings
-- Tag groups: meal type, cooking style (incl. cocktails), main ingredient,
-  plus your own groups and keywords; automatic tag suggestions (English and
-  French words), applied to new recipes or, after a review, to all of them
-- Full-text search across recipes and tags, forgiving typos, best match
-  first, with `-word` to leave words out; stacked filters; pace and
-  cook-time filters; sort by date, title, rating, cook time or difficulty
-- Ratings, favorites, per-recipe notes (marked on the recipe cards),
-  showcase images; duplicate a recipe to make a variant
-- Recipes saved without review (batch links, batch PDFs, email) are marked
-  "To review", with a list of what to check, until you've looked at them
-- Print, PDF, self-contained HTML, or a JPG image to share; email the PDF
-  to someone straight from the Share menu
-- English or French (Quebec) interface, chosen per device, including
-  exports and notification emails
-- PWA: installable, offline shell, pull down to refresh (and pick up a new
-  version), light/dark (true black) themes, adjustable text size, keyboard
-  and screen-reader accessible
-- Optional "keep screen awake" while a recipe is open (needs HTTPS; see
-  below)
-- Optional HTTPS on your LAN with a real Let's Encrypt certificate, set up
-  from Settings (cPanel-managed domains; see the README)
-- Half or double a recipe's ingredient amounts on its page (½ / 1× / 2×),
-  units included ("1 cup" → "2 cups"); show volumes as grams (Weights) or
-  weights as cups and spoons (Volumes)
-- Select several recipes to delete them, or to add or remove a tag on all
-  of them at once; merge two into one, choosing each part
-- Library check in Settings: recipes missing ingredients, steps, tags or a
-  photo, and ones that look like the same recipe
-- Deleted recipes wait 30 days in Recently deleted, where they can be put
-  back
-- Warns when a recipe being added is already in the library (same link or
-  title); batch and emailed links already saved are skipped
-- Share a page's link to the app (Android share sheet, or an iPhone
-  Shortcut) to import it
-- Automatic daily backups (optional), kept to the newest N, in the data
-  folder or on another disk (`RECIPE_APP_BACKUP_DIR`)
-- Full backup (restore it from Settings; email login, keyword, allowed senders and HTTPS
-  details are left out), every recipe as PDFs, or every recipe as schema.org
-  JSON for other recipe apps; import schema.org JSON or a Paprika export
-- Logs: Settings → Logs (view, download, clear), `docker logs
-  open-the-pantry`, or `data/logs/app.log`
+- **Add recipes** from a link (100+ site parsers, schema.org, the page
+  itself), a PDF (OCR only where needed), screenshots (one or several
+  combined), email (optional), or typed in; one at a time with a review
+  screen, or in batches marked *To review*. Already-saved links are flagged.
+- **English and French** (Quebec): the interface, per device, and the
+  recipes it reads.
+- **Learns from your corrections**, on the server: how your imports are
+  laid out and how you tag, used only where it beats the built-in rules.
+- **Find recipes**: tag groups with automatic suggestions, full-text search
+  (typos forgiven, best match first, `-word` to leave out), stacked filters,
+  ratings, pace, cook time.
+- **On a recipe**: ½ / 1× / 2× scaling, and As written / Weights / Volumes
+  (volumes as grams, or weights as cups and spoons); notes; keep the screen
+  awake (needs HTTPS).
+- **Manage**: edit, duplicate, merge two recipes, tag or delete several at
+  once, Recently deleted (30 days), and a library check.
+- **Share**: print, PDF, self-contained HTML, JSON, a JPG image, or email
+  the PDF from the Share menu.
+- **What to eat?** (optional, port 8091): a read-only page that picks a
+  random recipe from your choices, with the same scaling and units. It has
+  no login, so anyone who can reach the port can read your recipes.
+- **HTTPS on your LAN** (optional): a real Let's Encrypt certificate, set
+  up from Settings for cPanel-managed domains.
+- **Backups**: full backups (credentials left out) on demand or daily, to
+  another disk if you like (`RECIPE_APP_BACKUP_DIR`), restored from
+  Settings; every recipe as PDFs or schema.org JSON; import schema.org JSON
+  or a Paprika export.
+- **PWA**: installable, light/dark themes, adjustable text size, keyboard
+  and screen-reader accessible.
+- **Logs**: Settings → Logs, `docker logs open-the-pantry`, or
+  `data/logs/app.log`.
 
 Full documentation, source, and security notes:
 https://github.com/djerodek/open-the-pantry

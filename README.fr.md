@@ -70,32 +70,26 @@ personne de votre réseau à ouvrir une de ces sections le choisit.
 
 - **Construire depuis les sources** plutôt : `docker compose -f docker-compose.build.yml up -d --build`.
 - **Mises à jour** : `docker compose pull && docker compose up -d`. La base
-  de données est mise à jour automatiquement au démarrage, sans toucher aux
-  recettes.
-  - `:main`, l'étiquette qu'utilise le fichier compose, suit chaque
-    construction. Pour choisir quand mettre à jour, épinglez une empreinte :
-    `image: djerodek/open-the-pantry@sha256:<empreinte>`.
-    `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
-    affiche celle de l'image qui tourne.
-  - L'image est reconstruite chaque dimanche (intégration continue, plus
-    bas). Pour la suivre, une tâche cron hebdomadaire sur le serveur après
-    celle-ci, par exemple le dimanche à 5 h :
+  de données est mise à jour au démarrage, sans toucher aux recettes.
+  - `:main` suit chaque construction et est reconstruite chaque dimanche.
+    Pour la suivre, une tâche cron hebdomadaire après celle-ci (p. ex. le
+    dimanche à 5 h) :
     `cd /chemin/vers/open-the-pantry && docker compose pull -q && docker compose up -d && docker image prune -f`.
-    `up -d` ne recrée le conteneur que si l'image a changé. Avec HTTPS,
-    donnez les deux fichiers compose à chaque commande.
-- **Images** : `linux/amd64` et `linux/arm64` (un NAS, un VPS, un Raspberry
-  Pi). Les fichiers compose publient les ports sur toutes les adresses de
-  la machine; sur un VPS ou toute machine ayant une adresse publique,
-  placez-les derrière un pare-feu ou un VPN (les ports publiés par Docker
-  contournent ufw), puisque l'application n'a pas de connexion. L'application tourne sous un utilisateur non root (UID 1000, ou
-  `PUID`/`PGID`). Au démarrage, le conteneur corrige le propriétaire du
-  dossier de données : aucun `chown` n'est nécessaire.
-- **Mémoire** : environ 160 Mo au repos, jusqu'à environ 3,4 Go au pire
-  (trois grosses numérisations à la fois). Les fichiers compose ont des
-  lignes `mem_limit`/`cpus` en commentaire pour fixer un plafond.
-- **Fuseau horaire** : réglez `TZ` dans le fichier compose (il est livré
-  avec `UTC`). Il fixe l'heure de la vérification quotidienne du courriel
-  et des sauvegardes automatiques.
+    Avec HTTPS, donnez les deux fichiers compose à chaque commande.
+  - Pour choisir quand mettre à jour, épinglez plutôt une empreinte :
+    `image: djerodek/open-the-pantry@sha256:<empreinte>`
+    (`docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`).
+- **Images** : `linux/amd64` et `linux/arm64`. Les ports sont publiés sur
+  toutes les adresses de la machine; sur une machine ayant une adresse
+  publique, placez-les derrière un pare-feu ou un RPV (les ports publiés
+  par Docker contournent ufw). L'application tourne sous l'UID 1000 (ou
+  `PUID`/`PGID`) et corrige le propriétaire du dossier de données au
+  démarrage.
+- **Mémoire** : environ 160 Mo au repos, jusqu'à environ 3,4 Go avec trois
+  grosses numérisations à la fois (lignes `mem_limit`/`cpus` en commentaire
+  dans le fichier compose).
+- **Fuseau horaire** : `TZ` (livré avec `UTC`) fixe l'heure de la
+  vérification du courriel et des sauvegardes automatiques.
 
 ### Vos données
 
@@ -142,15 +136,14 @@ passe des paramètres.
 HTTPS est désactivé par défaut. **Paramètres → HTTPS** donne à
 l'application une adresse `https://` avec un vrai certificat Let's Encrypt,
 pour votre réseau local et votre RPV seulement; rien n'est exposé à
-Internet. Les navigateurs refusent certaines fonctions aux pages en
-`http://` : ici, « garder l'écran allumé » et l'installation de
-l'application sur Android.
+Internet. « Garder l'écran allumé » et l'installation sur Android en ont
+besoin.
 
-Cela fonctionne avec un domaine dont le DNS est géré dans **cPanel**.
-L'application crée un enregistrement pour un nouveau nom (p. ex.
-`pantry.example.com`) qui pointe vers l'adresse locale de votre serveur.
-Elle prouve que le nom vous appartient avec un enregistrement temporaire,
-et elle renouvelle le certificat d'elle-même.
+Cela fonctionne avec un domaine dont le DNS est géré dans **cPanel** :
+l'application crée un enregistrement pour un nouveau nom (p. ex.
+`pantry.example.com`) qui pointe vers l'adresse locale du serveur, prouve
+que le nom vous appartient avec un enregistrement temporaire, et renouvelle
+le certificat d'elle-même.
 
 **Mise en place :**
 1. Dans cPanel, créez un jeton d'API (Sécurité → Gérer les jetons d'API).
@@ -164,32 +157,30 @@ et elle renouvelle le certificat d'elle-même.
    - le jeton;
    - le nom à utiliser.
 
-   Appuyez sur **Enregistrer l'identifiant**. Le jeton est enregistré chiffré et
-   n'est plus jamais affiché.
+   Appuyez sur **Enregistrer l'identifiant** (le jeton est enregistré
+   chiffré et n'est plus jamais affiché).
 3. Entrez l'adresse locale du serveur et un courriel pour Let's Encrypt,
-   puis appuyez sur **Configurer HTTPS**. Après une minute ou deux, le lien
-   s'affiche, p. ex. `https://pantry.example.com:8443`. Sur un iPhone,
-   ajoutez cette adresse à l'écran d'accueil de nouveau : les réglages comme
-   la langue et le thème sont gardés par adresse.
+   puis **Configurer HTTPS**. Après une minute ou deux, le lien s'affiche,
+   p. ex. `https://pantry.example.com:8443`. Sur un iPhone, ajoutez-le de
+   nouveau à l'écran d'accueil : la langue et le thème sont gardés par
+   adresse.
 
-Le fichier compose par défaut publie déjà le port 8443, et aucun
-redémarrage n'est nécessaire. Pour `https://` sans port, publiez plutôt
-`443:8443` et réglez le port à 443 dans les paramètres (seulement si rien
-d'autre sur la machine n'utilise le 443). L'ancienne adresse
-`http://…:8090` continue de fonctionner.
+Le port 8443 est déjà publié et aucun redémarrage n'est nécessaire. Pour
+`https://` sans port, publiez `443:8443` et réglez le port à 443 dans les
+paramètres (si rien d'autre n'utilise le 443). `http://…:8090` continue de
+fonctionner.
 
 **Garde-fous :**
-- L'application ne crée et ne modifie que l'enregistrement du nom
-  enregistré. Un nom déjà utilisé est refusé : votre site Web ne peut pas
-  être redirigé.
-- Le nom ne peut pointer que vers une adresse privée ou de RPV : `10.x`,
-  `172.16`–`172.31`, `192.168.x`, ou `100.64`–`100.127` pour Tailscale.
-- Au plus 5 demandes de certificat par semaine, la limite de Let's Encrypt.
-- Si vous changez le nom d'utilisateur ou l'adresse cPanel sans entrer le
-  jeton de nouveau, le jeton enregistré est effacé.
+- Seul l'enregistrement du nom enregistré est créé ou modifié, et un nom
+  déjà utilisé est refusé : votre site Web ne peut pas être redirigé.
+- Le nom ne peut pointer que vers une adresse privée ou de RPV (`10.x`,
+  `172.16`–`172.31`, `192.168.x`, `100.64`–`100.127` pour Tailscale).
+- Au plus 5 demandes de certificat par semaine (la limite de Let's Encrypt).
+- Changer le nom d'utilisateur ou l'adresse cPanel sans entrer le jeton de
+  nouveau l'efface.
 - Si le nom ne se résout pas chez vous, votre routeur bloque peut-être les
-  réponses DNS qui pointent vers des adresses privées (« protection contre
-  le DNS rebinding »). Autorisez votre domaine là.
+  réponses DNS vers des adresses privées (« protection contre le DNS
+  rebinding ») : autorisez votre domaine là.
 
 `CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` et `PANTRY_DOMAIN` dans
 un fichier `.env` fonctionnent toujours, et ont priorité sur ce qui est
@@ -213,26 +204,22 @@ cPanel.
 ### Facultatif : On mange quoi? (une recette au hasard)
 
 C'est désactivé par défaut. **On mange quoi?** est une petite page en
-lecture seule, sur son propre port, le 8091. Vous choisissez des critères si
-vous voulez (type de repas, mode de cuisson, ingrédient principal, rythme,
-langue) et vous appuyez sur **Choisis pour moi**. Des titres défilent et s'arrêtent sur une
-recette qui correspond. **Autre chose** en choisit une autre, sans
-répétition tant que toutes ne sont pas sorties; au-delà de 500
-correspondances, seules les 500 dernières montrées sont retenues. Touchez la
-carte pour lire la recette, ou l'imprimer. La recette a les mêmes boutons
-½ / 1× / 2× et Tel qu'écrit / Poids / Volumes que l'application principale
-(affichage seulement; le choix est gardé sur cet appareil). **Modifier dans
-Open the Pantry** l'ouvre dans l'application principale.
+lecture seule, sur son propre port, le 8091. Choisissez des critères si vous
+voulez (type de repas, mode de cuisson, ingrédient principal, rythme,
+langue) et appuyez sur **Choisis pour moi** : des titres défilent et
+s'arrêtent sur une recette qui correspond. **Autre chose** en choisit une
+autre, sans répétition tant que toutes ne sont pas sorties (jusqu'aux 500
+dernières). Touchez la carte pour lire ou imprimer la recette, avec les
+mêmes boutons d'ajustement et d'unités que l'application principale;
+**Modifier dans Open the Pantry** l'y ouvre.
 
-- Dans un groupe, les choix sont des options (Souper ou Dîner). D'un groupe
+- Dans un groupe, les choix sont des options (Souper ou Dîner); d'un groupe
   à l'autre, tous doivent correspondre.
 - Les recettes mieux notées sortent un peu plus souvent (5★ a une fois et
   demie plus de chances que 1★). Les cocktails ne sont jamais choisis.
-- Langue (English ou Français) s'affiche quand vous avez des recettes dans
-  les deux. La langue de chaque recette est devinée d'après ses ingrédients
-  et ses étapes; si c'est faux, changez-la sous Langue dans Modifier la
-  recette.
-- Elle retient vos choix sur chaque appareil, et a son propre sélecteur de
+- Langue s'affiche quand vous avez des recettes dans les deux; une langue
+  mal devinée se corrige sous Langue dans Modifier la recette.
+- Les choix sont retenus sur chaque appareil; elle a son propre sélecteur de
   langue.
 
 **Activez-la** dans Paramètres → On mange quoi?. Elle démarre aussitôt, et
@@ -284,22 +271,16 @@ désactivée.
 - **Par courriel** : voir
   [Réception par courriel](#réception-par-courriel-facultatif).
 - **Vérifier avant d'enregistrer.** Une recette seule ouvre un écran de
-  vérification : les champs, à côté du texte lu dans la source. Les
-  recettes enregistrées sans cet écran sont marquées *À vérifier* : lots,
-  courriels et importations. Le menu latéral les liste. **Vérifier** ouvre
-  la recette avec une liste de points à contrôler; **C'est correct** retire la
-  marque.
-- **Les recettes incomplètes sont refusées.** Si un lien, un PDF, une photo
-  ou un courriel donne des ingrédients sans étapes (ou l'inverse),
-  l'importation échoue. L'application dit ce qui manque et propose une
-  autre façon de faire. Pour un lien, c'est souvent d'enregistrer la page en
-  PDF (Safari : Partager → Options → PDF). **Continuer quand même** ouvre ce
-  qui a été lu.
-- **Déjà dans votre bibliothèque?** Quand vous ajoutez une recette dont le
-  lien ou le titre correspond à une recette enregistrée, l'application vous
-  le dit, avec un lien vers celle-ci. Appuyez de nouveau sur Enregistrer pour
-  l'ajouter quand même. Les lots et les courriels sautent un lien déjà
-  enregistré.
+  vérification, les champs à côté du texte lu. Les lots, courriels et
+  importations sont enregistrés *À vérifier* (listés au menu latéral);
+  **C'est correct** retire la marque.
+- **Les recettes incomplètes sont refusées** (des ingrédients sans étapes,
+  ou l'inverse), avec ce qui manque et une autre façon de faire, souvent
+  enregistrer la page en PDF (Safari : Partager → Options → PDF).
+  **Continuer quand même** ouvre ce qui a été lu.
+- **Déjà dans votre bibliothèque?** Un lien ou un titre qui correspond est
+  signalé, avec un lien vers la recette; Enregistrer de nouveau l'ajoute
+  quand même. Les lots et les courriels sautent un lien déjà enregistré.
 - **Les recettes en français** sont lues comme celles en anglais : titres de
   section, numéros d'étapes, unités (« 2 c. à soupe », « 1,5 tasse ») et OCR
   dans les deux langues.
@@ -319,17 +300,19 @@ Elle essaie, dans l'ordre :
 3. les liens du message;
 4. le texte lui-même.
 
-Le courriel sans le mot-clé n'est jamais lu.
+Le courriel sans le mot-clé n'est jamais lu. Une vérification manquée à
+son heure (conteneur arrêté) se fait plus tard le même jour.
 
 - **Les résultats** sont renvoyés par courriel, en `[SUCCESS]`, `[FAILURE]`
   ou `[PARTIAL]`, regroupés sur une période d'attente. Un échec liste ce qui
   a été essayé, et pourquoi chaque essai a abandonné. Les résultats qui
   n'ont pas pu être envoyés attendent la vérification suivante.
-- **Le courriel illisible est refusé.** Une photo ou un PDF numérisé que
-  l'OCR ne lit pas de façon fiable est refusé plutôt qu'enregistré en texte
-  brouillé. Tout courriel de plus de 30 Mo l'est aussi.
+- **Le courriel illisible est refusé** et marqué lu : une photo ou un PDF
+  numérisé que l'OCR ne lit pas de façon fiable, un courriel de plus de
+  30 Mo, ou trop imbriqué.
 - **Expéditeurs acceptés.** « Accepter les courriels seulement de » limite les
-  adresses ou les domaines qui peuvent ajouter des recettes.
+  adresses ou les domaines qui peuvent ajouter des recettes. Les autres
+  expéditeurs sont refusés d'après la ligne From, avant le téléchargement.
 - **Envoyer un courriel de test** vérifie l'envoi et la lecture séparément,
   et dit ce qu'il a trouvé sur le port si une connexion échoue.
 - **Utilisez une adresse dédiée**, avec un mot de passe d'application, qui
@@ -341,38 +324,28 @@ Le courriel sans le mot-clé n'est jamais lu.
 - **Les étiquettes** forment trois groupes intégrés (type de repas, mode de
   cuisson, ingrédient principal), plus vos propres groupes et les étiquettes
   Personnalisées.
-  - Des étiquettes sont suggérées à partir de mots-clés quand une recette
-    est ajoutée, en français et en anglais. Les repas suivent l'usage
-    québécois : déjeuner, dîner, souper.
-  - Paramètres → Étiquettes peut ajouter les étiquettes suggérées à toutes
-    les recettes (vous cochez lesquelles), et gérer les groupes, les
-    étiquettes et leurs mots-clés.
+  - Des étiquettes sont suggérées à partir de mots-clés, en français et en
+    anglais (repas selon l'usage québécois : déjeuner, dîner, souper).
+    Paramètres → Étiquettes gère les groupes, les étiquettes et les
+    mots-clés, et peut étiqueter toutes les recettes.
 - **L'apprentissage** (Paramètres → Apprentissage, activé par défaut)
-  entraîne deux petits modèles à partir de vos propres recettes corrigées :
-  l'un lit les importations, l'autre suggère des étiquettes.
-  - Chaque modèle n'est utilisé que s'il fait mieux que les règles
-    intégrées. Les paramètres affichent les scores.
-  - Chaque étiquette suggérée dit d'où elle vient (le mot-clé trouvé, ou
-    *appris*).
-  - Les recettes encore *À vérifier* ne servent pas à l'apprentissage.
-  - Les modèles sont gardés dans `data/ml/`. Ils sont reconstruits
-    automatiquement, et ne sont pas dans les sauvegardes.
+  entraîne deux petits modèles sur vos recettes corrigées, l'un pour lire
+  les importations et l'autre pour les étiquettes, chacun utilisé seulement
+  là où il fait mieux que les règles intégrées (les paramètres affichent
+  les scores). Les recettes encore *À vérifier* n'y servent pas. Les
+  modèles (`data/ml/`) sont reconstruits automatiquement et ne sont pas
+  dans les sauvegardes.
 - **La recherche** couvre les titres, les ingrédients, les étapes, les
   notes, le texte d'origine et les étiquettes. Les mots correspondent à
   partir du début (« poul » trouve poulet), et chaque mot doit correspondre.
   Les accents et les majuscules ne comptent pas.
-  - **Les fautes de frappe sont pardonnées.** Un mot par lequel rien ne
-    commence dans votre bibliothèque est associé aux mots les plus proches
-    qui s'y trouvent : « pouelt » trouve poulet, « tomates » trouve tomate.
-    La page indique ce qu'elle a cherché. Les mots de moins de quatre
-    lettres ne sont pas corrigés.
-  - **Excluez des mots** avec un moins : `poulet -cari`, ou `-noix` seul.
-    Le mot et ses pluriels sont exclus.
-  - **La pertinence d'abord** pendant une recherche : un mot dans le titre
-    compte le plus, puis les étiquettes et les ingrédients. Choisissez un
-    autre tri pour changer cela.
-  - Quand la correspondance n'est pas dans le titre, la fiche montre où
-    elle se trouve, avec les mots surlignés.
+  - **Les fautes de frappe sont pardonnées** (« pouelt » trouve poulet, pour
+    les mots de quatre lettres ou plus); la page indique ce qu'elle a
+    cherché.
+  - **Excluez des mots** avec un moins : `poulet -cari` (pluriels compris).
+  - **La pertinence d'abord** : le titre compte le plus, puis les étiquettes
+    et les ingrédients. Quand la correspondance n'est pas dans le titre, la
+    fiche montre où, surlignée.
 - **Les filtres** : cumulez les étiquettes (une recette doit les avoir
   toutes), le rythme et le temps de cuisson noté. **Triez** par date, titre,
   note, temps de cuisson ou difficulté. **Effacer les filtres** remet tout à
@@ -388,47 +361,29 @@ Le courriel sans le mot-clé n'est jamais lu.
   partages, sauf si vous le demandez.
 - **La photo** : prise de la source, téléversée, remplacée ou retirée.
 - **Voir l'original** ouvre la page d'où vient la recette.
-- **Ajuster avec ½ / 1× / 2×.** Cela réécrit la quantité au début de
-  chaque ligne d'ingrédient, dans le même style que l'original (« 1 1/2
-  tasse » → « 3 tasses », « 250 g » → « 125 g », « 2 à 3 » → « 4 à 6 »).
-  L'unité suit la nouvelle quantité (« 1 gousse » → « 2 gousses »), et les
-  portions sont ajustées aussi.
-  - Les quantités dans les étapes ne changent pas.
-  - Les lignes qu'elle ne peut pas ajuster sans risque sont marquées « (tel
-    qu'écrit) » : « 1.000 g » (mille, ou un?), et deux quantités sur une
-    ligne, comme « 1 lb 8 oz ».
-  - Rien n'est enregistré : la recette s'ouvre à 1× la fois suivante.
-- **Tel qu'écrit / Poids / Volumes**, un à la fois, après l'ajustement
-  s'il y en a un, à partir de la même table d'environ 220 ingrédients
-  courants (`frontend/js/weights.js`). La recette d'On mange quoi? les a
-  aussi. Une petite note sous les boutons
-  rappelle que les conversions sont approximatives.
-  - **Poids** affiche les volumes en grammes (« 1 tasse de farine » → « 125
-    g de farine », « 1 cup flour » → « 120 g flour ») : tasses (250 ml; un
-    « cup » américain fait 236,6 ml), cuillères à soupe et à thé, fl oz,
-    ml, litres et bâtons de beurre.
-  - **Volumes** affiche les poids (g, kg, oz, lb, livres) en volumes dans
-    la langue de la recette, en fractions de cuisine : tasse (250 ml), c.
-    à soupe et c. à thé en français (« 30 g de beurre » → « 2 c. à soupe
-    de beurre »), cups, tbsp et tsp américains en anglais. « oz » est lu
-    comme un poids; « fl oz » est déjà un volume.
-  - Un ingrédient sans valeur connue (sel casher, dont le poids dépend de
-    la marque; mélanges d'épices; pâtes; sauces; viande; une forme cuite,
-    fouettée ou un substitut que la table n'a pas) reste tel qu'écrit,
-    marqué, comme les lignes à deux quantités (« 3 c. à soupe plus 1 c. à
-    thé », « 1 lb 8 oz »). Un large intervalle a une unité à chaque bout
-    (« 1/2 c. à thé à 3/4 tasse »).
-  - Les nombres (« 2 œufs ») et les étapes ne changent pas. Le choix est
-    gardé sur cet appareil.
+- **Ajuster avec ½ / 1× / 2×.** La quantité au début de chaque ligne
+  d'ingrédient est réécrite dans le style de l'original (« 1 1/2 tasse » →
+  « 3 tasses », « 2 à 3 » → « 4 à 6 »); l'unité et les portions suivent.
+  Rien n'est enregistré.
+- **Tel qu'écrit / Poids / Volumes**, après l'ajustement, à partir d'une
+  table d'environ 220 ingrédients (`frontend/js/weights.js`); le choix est
+  gardé sur l'appareil. **Poids** affiche les volumes en grammes (« 1 tasse
+  de farine » → « 125 g de farine »); **Volumes** affiche les poids en
+  tasses et cuillères dans la langue de la recette (« 30 g de beurre » →
+  « 2 c. à soupe de beurre »; une tasse fait 250 ml). Une note sous les
+  boutons rappelle que les conversions sont approximatives.
+- **Les lignes qu'elle ne peut pas traiter sans risque restent telles
+  qu'écrites**, marquées : « 1.000 g » (mille, ou un?), deux quantités sur
+  une ligne (« 1 lb 8 oz »), et les ingrédients sans valeur fiable (sel
+  casher, mélanges d'épices, pâtes, viande, formes cuites ou fouettées).
+  Les quantités dans les étapes ne changent pas.
 - **Garder l'écran allumé** pendant qu'une recette est ouverte, sur toutes
   les recettes (Paramètres) ou sur une seule. Il faut HTTPS.
 
 ### Gérer la bibliothèque
 
-- **Modifier** n'importe quelle recette. Le texte d'origine est affiché à
-  côté des champs, pour comparer.
-- **Dupliquer** fait une copie à transformer en variante. Elle a sa propre
-  copie de la photo.
+- **Modifier** n'importe quelle recette, avec le texte d'origine à côté.
+  **Dupliquer** fait une variante avec sa propre copie de la photo.
 - **Le mode Sélectionner** (le bouton à droite de la barre d'outils) agit
   sur plusieurs recettes à la fois :
   - les **supprimer**;
@@ -440,17 +395,12 @@ Le courriel sans le mot-clé n'est jamais lu.
     supprimées. Une fusion qui donnerait plus de 50 étiquettes, ou des
     notes personnelles de plus de 50 000 caractères, est refusée avec la
     raison.
-- **Récemment supprimées.** Une recette supprimée disparaît partout et
-  attend 30 jours dans **Récemment supprimées**, au menu latéral. De là, on
-  peut la remettre, ou la supprimer tout de suite. Après 30 jours, elle est
+- **Récemment supprimées** (menu latéral) garde une recette supprimée 30
+  jours, pour la remettre ou la supprimer tout de suite; elle est ensuite
   supprimée pour de bon, avec sa photo.
-- **Paramètres → Vérification de la bibliothèque** liste :
-  - les recettes sans ingrédients, étapes, étiquettes ou photo;
-  - les recettes dont le fichier de photo manque;
-  - les recettes encore à vérifier;
-  - les recettes qui semblent être la même.
-
-  Chaque titre ouvre la recette.
+- **Paramètres → Vérification de la bibliothèque** liste les recettes sans
+  ingrédients, étapes, étiquettes ou photo (ou dont le fichier de photo
+  manque), encore à vérifier, ou qui semblent être la même.
 
 ### Partager
 
@@ -461,15 +411,13 @@ fiche :
   n'inclut jamais la photo;
 - **Télécharger le HTML** : un seul fichier autonome, avec la photo;
 - **Télécharger en JSON** : au format schema.org;
-- **Image (JPG)** : la recette dessinée en une image de 1080 px dans votre
-  navigateur, sans travail pour le serveur. Activez **Inclure mes notes**
-  pour les ajouter. Sur un téléphone en HTTPS, **Partager…** ouvre la
-  feuille de partage du téléphone;
+- **Image (JPG)** : une image de 1080 px dessinée dans le navigateur, notes
+  au choix; sur un téléphone en HTTPS, **Partager…** ouvre la feuille de
+  partage;
 - **Copier en texte**;
-- **Envoyer le PDF par courriel** : il part du compte de réception par
-  courriel, vers jusqu'à cinq adresses (au plus 10 courriels à l'heure). Il
-  apparaît une fois ce compte configuré, et demande le mot de passe des
-  paramètres. « Choisir dans les contacts » ne fonctionne que sur Android.
+- **Envoyer le PDF par courriel** : depuis le compte de réception par
+  courriel, vers jusqu'à cinq adresses (10 courriels à l'heure), avec le mot
+  de passe des paramètres.
 
 Les exportations utilisent la langue de l'interface pour leurs libellés. La
 recette elle-même est exportée telle qu'écrite.
@@ -496,36 +444,28 @@ Dans Paramètres → Sauvegarde et exportation :
     fichier compose a les lignes, en commentaire.
   - Seuls les fichiers de sauvegarde de l'application y sont supprimés.
   - Changer l'horaire demande le mot de passe des paramètres.
+- **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
+  passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
+  de notification et les destinataires récents, ainsi que le nom et les
+  adresses HTTPS. N'importe qui sur votre réseau peut télécharger une
+  sauvegarde, alors ils n'y sont jamais. Le certificat et l'identifiant
+  cPanel (`data/https/`) ne sont dans aucune sauvegarde.
 - **Restaurer ou importer** prend un fichier et le traite selon son type.
-  - **Une sauvegarde complète remplace la bibliothèque**, après une
-    vérification et une confirmation. Elle demande le mot de passe des
-    paramètres. Une copie de sécurité de la bibliothèque actuelle est
-    d'abord écrite (`restore-safety-<date>.zip`), et aucun redémarrage
-    n'est nécessaire. La configuration HTTPS de ce serveur, l'horaire des
-    sauvegardes automatiques et les détails de courriel qu'une sauvegarde
-    laisse de côté (ci-dessous) sont gardés. Un serveur qui a un identifiant
-    de courriel garde tous ses paramètres de courriel; un serveur sans (une
-    nouvelle installation) prend les noms et ports des serveurs de courriel
-    de la sauvegarde. La copie de sécurité garde la base de données entière :
-    la restaurer annule la restauration (le certificat HTTPS et l'identifiant
-    cPanel, dans `data/https/`, ne sont jamais dans une sauvegarde).
-  - Si une restauration échoue après le remplacement de la bibliothèque et
-    ne peut pas se terminer, l'application reste fermée (503) jusqu'à son
-    redémarrage; au démarrage, elle termine la restauration. Dans le rare
-    cas où elle ne peut pas le savoir (la restauration n'a même pas pu noter
-    que la bibliothèque était remplacée), le journal nomme les dossiers à
-    vérifier, et les photos ne sont pas nettoyées tant que ce n'est pas réglé.
-  - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de
-    passe de courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse
-    de notification et les destinataires récents, ainsi que le nom et les
-    adresses HTTPS. N'importe qui sur votre réseau peut télécharger une
-    sauvegarde, alors ils n'y sont jamais (la copie de sécurité de la
-    restauration, qui reste dans le dossier de données, les contient). Sur
-    un nouveau serveur, entrez-les de nouveau.
+  - **Une sauvegarde complète remplace la bibliothèque** (mot de passe des
+    paramètres, puis une vérification et une confirmation; sans
+    redémarrage). Une copie de sécurité de la bibliothèque actuelle est
+    d'abord écrite (`restore-safety-<date>.zip`, paramètres compris) : la
+    restaurer annule la restauration. Ce serveur garde sa configuration
+    HTTPS, l'horaire des sauvegardes et ses paramètres de courriel; une
+    nouvelle installation prend les noms et ports des serveurs de courriel
+    de la sauvegarde.
+  - Si une restauration échoue en cours de route, l'application reste
+    fermée (503) jusqu'à son redémarrage, et termine la restauration au
+    démarrage. Si elle ne peut pas savoir si la bibliothèque a été
+    remplacée, le journal nomme les dossiers à vérifier.
   - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
     `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une
-    recette dont le lien est déjà enregistré est sautée. Les archives sont
-    lues avec des limites de taille.
+    recette dont le lien est déjà enregistré est sautée.
 
 ### Interface
 
@@ -574,7 +514,9 @@ Son fonctionnement :
   `admin-password.json`.
 - **Oublié?** Supprimez `admin-password.json`, puis créez un nouveau mot de
   passe. Le créer efface le mot de passe de courriel et le jeton cPanel
-  enregistrés, et désactive HTTPS. Tout le reste est gardé.
+  enregistrés, et désactive HTTPS. Tout le reste est gardé. Un fichier
+  endommagé n'est pas pris pour « aucun mot de passe » : les paramètres le
+  disent, et le supprimer permet de réinitialiser.
 
 ### Tout le reste
 
@@ -610,31 +552,34 @@ Son fonctionnement :
     sont utilisés, et toute image de plus de 50 mégapixels est refusée.
   - **PDF** : au plus 60 pages, et au plus 3 tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
-  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout
-    (recherches de nom, connexions, redirections et téléchargement), depuis
-    des adresses publiques seulement. Chaque redirection est vérifiée de
-    nouveau. Le journal montre un lien sans sa requête ni son mot de passe.
-  - **Connexions sortantes** (serveur de courriel, liens de recettes,
-    cPanel, Let's Encrypt) : le certificat est vérifié d'après la liste de
-    racines à jour de l'image, et toute chaîne passant par une clé d'autorité
-    connue comme compromise est refusée (les clés d'eMudhra, octobre 2026).
-  - **Exportations** : tout le texte des recettes y est échappé.
+  - **Archives** (sauvegardes, importations) : au plus 20 000 fichiers,
+    vérifié avant de lire la liste des fichiers, et taille limitée à la
+    décompression.
+  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout, depuis
+    des adresses publiques seulement; chaque redirection est vérifiée de
+    nouveau.
+  - **Connexions sortantes** (courriel, liens, cPanel, Let's Encrypt) : le
+    certificat est vérifié d'après les racines à jour de l'image, et les
+    chaînes passant par une clé d'autorité compromise connue sont refusées
+    (eMudhra, octobre 2026).
+  - **Exportations** : tout le texte des recettes est échappé; les titres
+    dans `index.csv` ne peuvent pas s'exécuter comme formules de tableur.
   - **Noms de fichiers enregistrés** : ils doivent avoir exactement la forme
     que l'application génère.
+  - Les pages de documentation automatique de l'API (`/docs`,
+    `/openapi.json`) sont désactivées.
 - **Identifiants.** Le mot de passe de courriel et le jeton cPanel sont
   chiffrés (Fernet) avec `encryption.key`, ou avec
-  `RECIPE_APP_ENCRYPTION_KEY` si vous la réglez. Le réglage garde la clé
-  hors du dossier de données. Pour générer une clé :
-  `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
-  - L'API ne renvoie jamais le mot de passe.
-  - Changer le serveur ou le nom d'utilisateur de courriel efface le mot de
-    passe enregistré, sauf s'il est entré de nouveau dans le même
-    enregistrement.
-  - La sauvegarde laisse la clé de côté.
-- **Le jeton cPanel ne peut faire qu'une chose par l'application** : gérer
-  le seul nom enregistré. Mais quiconque ferait tourner du code dans le
-  conteneur aurait le jeton lui-même. Donnez-lui donc une date
-  d'expiration et, là où cPanel le permet, un accès DNS seulement.
+  `RECIPE_APP_ENCRYPTION_KEY`, qui garde la clé hors du dossier de données
+  (pour en générer une :
+  `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
+  L'API ne renvoie jamais le mot de passe; changer le serveur ou le nom
+  d'utilisateur de courriel l'efface, sauf s'il est entré de nouveau; les
+  sauvegardes laissent la clé de côté.
+- **Le jeton cPanel** ne peut gérer que le nom enregistré par
+  l'application, mais du code qui tournerait dans le conteneur aurait le
+  jeton lui-même : donnez-lui une date d'expiration et, là où cPanel le
+  permet, un accès DNS seulement.
 - **Limite de requêtes** : 120 requêtes d'API par minute par adresse
   (`RECIPE_APP_RATE_LIMIT` pour la changer). Le port d'On mange quoi?
   partage la même limite de requêtes par adresse. Derrière un mandataire,
@@ -680,8 +625,8 @@ Il consigne :
 - les erreurs des pages.
 
 Il ne contient jamais de mots de passe, de clés, de corps de courriels ni
-de contenu de pages. Les objets, les expéditeurs et les URL des courriels
-sont consignés.
+de contenu de pages. Les objets et les expéditeurs des courriels sont
+consignés, et les liens sans leur requête ni leur mot de passe.
 
 Pour trouver un type d'entrée, filtrez avec `grep` :
 `docker logs open-the-pantry 2>&1 | grep otp.scan`. Les autres étiquettes
@@ -705,31 +650,22 @@ Les tests demandent les mêmes paquets système que l'image Docker
 et chaque exécution utilise un dossier de données temporaire.
 
 - `tests/README.md` indique quels fichiers de test couvrent quelle
-  fonction.
-- Le corpus d'importation relit de vraies sources (vos recettes vérifiées,
-  ou des fichiers que vous ajoutez) après un changement et signale celles
-  qui sortent moins bien : `python -m app.corpus`, décrit dans
-  `tests/README.md`.
+  fonction, et décrit le corpus d'importation (`python -m app.corpus`), qui
+  relit de vraies sources après un changement et signale celles qui
+  sortent moins bien.
 - Chaque test de navigateur échoue aussi sur une erreur JavaScript ou une
-  violation de la Content-Security-Policy.
-- `test_accessibility.py` passe axe-core sur chaque écran, en
-  anglais/clair et en français/sombre, et échoue sur toute constatation
-  sérieuse ou critique. La règle du zoom est désactivée, puisque le zoom
-  l'est exprès. Un balayage automatique trouve environ le tiers des
-  problèmes d'accessibilité.
+  violation de la Content-Security-Policy. `test_accessibility.py` passe
+  axe-core sur chaque écran (anglais/clair, français/sombre); la règle du
+  zoom est désactivée, puisque le zoom l'est exprès.
 
 L'intégration continue (`.github/workflows/ci.yml`) s'exécute à chaque
-envoi, chaque dimanche et sur demande (Actions -> CI -> Run workflow).
-Elle lance les deux suites de tests, un audit des dépendances (qui échoue
-sur toute vulnérabilité connue) et une construction Docker. L'image
-publiée n'est construite qu'une fois ces étapes réussies; l'exécution
-hebdomadaire la reconstruit donc avec l'image de base et les certificats
-racines les plus récents. Chaque construction cherche aussi la version
-stable actuelle de Chrome, pour le nom de navigateur qu'envoient les
-importations par lien (certains sites refusent une version périmée); si
-le service de versions de Google ne répond pas, elle prend la version
-inscrite dans `url_ingest.py`. GitHub suspend les exécutions planifiées
-après 60 jours sans commit.
+envoi, chaque dimanche et sur demande. Elle lance les deux suites de
+tests, un audit des dépendances, et une construction Docker démarrée et
+vérifiée. L'image n'est publiée qu'une fois ces étapes réussies;
+l'exécution hebdomadaire la reconstruit donc avec l'image de base, les
+racines et la version de Chrome les plus récentes (le nom de navigateur
+qu'envoient les importations par lien). GitHub suspend les exécutions
+planifiées après 60 jours sans commit.
 
 ```
 backend/app/        application FastAPI (main.py : démarrage, middleware), modèles, sauvegarde, HTTPS, On mange quoi?

@@ -61,28 +61,23 @@ those sections sets it.
 
 - **Build from source** instead: `docker compose -f docker-compose.build.yml up -d --build`.
 - **Updates**: `docker compose pull && docker compose up -d`. The database
-  is upgraded automatically at start-up, without touching your recipes.
-  - `:main`, the tag the compose file uses, follows every build. To decide
-    when to upgrade, pin a digest: `image: djerodek/open-the-pantry@sha256:<digest>`.
-    `docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`
-    shows the digest of the image you're running.
-  - The image is rebuilt every Sunday (CI, below). To follow it, a weekly
-    cron job on the server after that, e.g. Sunday 05:00:
+  is upgraded at start-up, without touching your recipes.
+  - `:main` follows every build, and is rebuilt every Sunday. To follow it,
+    run a weekly cron job after that (e.g. Sunday 05:00):
     `cd /path/to/open-the-pantry && docker compose pull -q && docker compose up -d && docker image prune -f`.
-    `up -d` only recreates the container when the image changed. With
-    HTTPS, give both compose files to each command.
-- **Images**: `linux/amd64` and `linux/arm64` (a NAS, a VPS, a Raspberry Pi).
-  The compose files publish the ports on every address of the machine; on
-  a VPS or any machine with a public address, put them behind a firewall
-  or VPN (Docker's published ports bypass ufw), since the app has no login.
-  The app runs as a non-root user (UID 1000, or set `PUID`/`PGID`). On
-  start the container fixes the data folder's ownership, so you don't need
-  to `chown` anything.
-- **Memory**: about 160 MB idle, up to about 3.4 GB in the worst case
-  (three large scans at once). The compose files have commented-out
-  `mem_limit`/`cpus` lines if you want a hard cap.
-- **Time zone**: set `TZ` in the compose file (it ships as `UTC`). It sets
-  the hour of the daily email scan and of the automatic backups.
+    With HTTPS, give both compose files to each command.
+  - To decide when to upgrade, pin a digest instead:
+    `image: djerodek/open-the-pantry@sha256:<digest>`
+    (`docker image inspect --format '{{index .RepoDigests 0}}' djerodek/open-the-pantry:main`).
+- **Images**: `linux/amd64` and `linux/arm64`. The ports are published on
+  every address of the machine; on one with a public address, put them
+  behind a firewall or VPN (Docker's published ports bypass ufw). The app
+  runs as UID 1000 (or `PUID`/`PGID`) and fixes the data folder's
+  ownership at start.
+- **Memory**: about 160 MB idle, up to about 3.4 GB with three large scans
+  at once (commented-out `mem_limit`/`cpus` lines are in the compose file).
+- **Time zone**: `TZ` (ships as `UTC`) sets the hour of the email scan and
+  the automatic backups.
 
 ### Your data
 
@@ -122,14 +117,13 @@ email and HTTPS again and create a new settings password.
 
 HTTPS is off by default. **Settings → HTTPS** gives the app an `https://`
 address with a real Let's Encrypt certificate, for your LAN and VPN only;
-nothing is exposed to the internet. Browsers keep some features from plain
-`http://` pages: here, that's "keep screen awake" and installing the app
-on Android.
+nothing is exposed to the internet. "Keep screen awake" and installing the
+app on Android need it.
 
-This works with a domain whose DNS is managed in **cPanel**. The app
-creates one record for a new name (e.g. `pantry.example.com`) pointing at
-your server's LAN address. It proves you own the name with a temporary
-record, and it renews the certificate by itself.
+It works with a domain whose DNS is managed in **cPanel**: the app creates
+one record for a new name (e.g. `pantry.example.com`) pointing at your
+server's LAN address, proves ownership with a temporary record, and renews
+the certificate by itself.
 
 **Setting it up:**
 1. In cPanel, create an API token (Security → Manage API Tokens). Give it
@@ -140,31 +134,27 @@ record, and it renews the certificate by itself.
    - the token;
    - the name to use.
 
-   Press **Save login**. The token is stored encrypted and never shown
-   again.
-3. Enter the server's LAN address and an email address for Let's Encrypt,
-   then press **Set up HTTPS**. After a minute or two it shows the link,
-   e.g. `https://pantry.example.com:8443`. On an iPhone, add that address to
-   the Home Screen again: settings such as language and theme are kept per
-   address.
+   Press **Save login** (the token is stored encrypted, never shown again).
+3. Enter the server's LAN address and an email for Let's Encrypt, then
+   **Set up HTTPS**. After a minute or two it shows the link, e.g.
+   `https://pantry.example.com:8443`. On an iPhone, add it to the Home
+   Screen again: language and theme are kept per address.
 
-The default compose file already publishes port 8443, and no restart is
-needed. If you want `https://` with no port, publish `443:8443` instead and
-set the port to 443 in Settings (only if nothing else on the machine uses
-443). The old `http://…:8090` address keeps working.
+Port 8443 is already published and no restart is needed. For `https://`
+with no port, publish `443:8443` and set the port to 443 in Settings (if
+nothing else uses 443). `http://…:8090` keeps working.
 
 **Safeguards:**
-- The app only ever creates or changes the record for the saved name. A
-  name that is already in use is refused, so your website can't be
-  repointed.
-- The name can only point at a private or VPN address: `10.x`,
-  `172.16`–`172.31`, `192.168.x`, or Tailscale's `100.64`–`100.127`.
-- At most 5 certificate requests a week, which is Let's Encrypt's limit.
-- If you change the cPanel username or address without re-entering the
-  token, the saved token is cleared.
-- If the name doesn't resolve at home, your router may be blocking DNS
-  answers that point at private addresses ("DNS rebind protection"). Allow
-  your domain there.
+- Only the saved name's record is ever created or changed, and a name
+  already in use is refused, so your website can't be repointed.
+- The name can only point at a private or VPN address (`10.x`,
+  `172.16`–`172.31`, `192.168.x`, Tailscale's `100.64`–`100.127`).
+- At most 5 certificate requests a week (Let's Encrypt's limit).
+- Changing the cPanel username or address without re-entering the token
+  clears it.
+- If the name doesn't resolve at home, your router may block DNS answers
+  pointing at private addresses ("DNS rebind protection"): allow your
+  domain there.
 
 `CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` and `PANTRY_DOMAIN` in a
 `.env` file still work, and take priority over what's saved in the app. A
@@ -184,23 +174,20 @@ does the same job with Traefik. Don't use it alongside the cPanel route.
 ### Optional: What to eat? (a random recipe)
 
 This is off by default. **What to eat?** is a small read-only page on its
-own port, 8091. You pick choices if you want (meal type, cooking style, main
-ingredient, pace, language) and press **Pick one**. Titles roll past and it stops on a
-matching recipe. **Something else** picks again, with no repeats until every
-match has been shown; with more than 500 matches, only the latest 500 shown
-are remembered. Tap the card to read the recipe, or print it. The recipe
-has the same ½ / 1× / 2× and As written / Weights / Volumes buttons as in
-the main app (view only; the choice is kept on that device). **Edit in Open
-the Pantry** opens it in the main app.
+own port, 8091. Pick choices if you want (meal type, cooking style, main
+ingredient, pace, language) and press **Pick one**: titles roll past and it
+stops on a matching recipe. **Something else** picks again, with no repeats
+until every match has been shown (up to the latest 500). Tap the card to
+read or print the recipe, with the same scaling and units buttons as the
+main app; **Edit in Open the Pantry** opens it there.
 
-- Within a group the choices are alternatives (Dinner or Lunch). Across
+- Within a group the choices are alternatives (Dinner or Lunch); across
   groups, all must match.
 - Better-rated recipes come up a little more often (5★ is 1.5 times as
   likely as 1★). Cocktails are never picked.
-- Language (English or Français) shows when your recipes are in both. Each
-  recipe's language is guessed from its ingredients and steps; if a guess is
-  wrong, change it under Language in Edit recipe.
-- It remembers your choices on each device, and has its own language switch.
+- Language shows when your recipes are in both; a wrong guess is fixed
+  under Language in Edit recipe.
+- Choices are remembered on each device; it has its own language switch.
 
 **Turn it on** in Settings → What to eat?. It starts at once, and a link
 appears in the top bar.
@@ -244,20 +231,17 @@ more than you want, leave it off.
   Either way, the link is filled in, but nothing is imported until you
   press **Fetch recipe**.
 - **By email**: see [Email ingest](#email-ingest-optional).
-- **Review before saving.** A single recipe opens a review screen: the
-  fields, next to the text that was read from the source. Recipes saved
-  without that screen are marked *To review*: batches, emails and imports.
-  The side menu lists them. **Review** opens the recipe with a list of
-  things to check; **Looks right** clears the mark.
-- **Incomplete recipes are refused.** If a link, PDF, photo or email gives
-  ingredients but no steps (or the other way round), the import fails. The
-  app says what's missing and suggests another way in. For a link, that's
-  usually to save the page as a PDF (Safari: Share → Options → PDF).
-  **Continue anyway** opens what was read.
-- **Already in your library?** When you add a recipe whose link or title
-  matches a saved one, the app tells you, with a link to the saved recipe.
-  Press Save again to add it anyway. Batches and emails skip a link that is
-  already saved.
+- **Review before saving.** A single recipe opens a review screen, the
+  fields beside the text that was read. Batches, emails and imports are
+  saved as *To review* (listed in the side menu); **Looks right** clears
+  the mark.
+- **Incomplete recipes are refused** (ingredients but no steps, or the
+  reverse), with what's missing and another way in, usually saving the
+  page as a PDF (Safari: Share → Options → PDF). **Continue anyway** opens
+  what was read.
+- **Already in your library?** A matching link or title is pointed out,
+  with a link to the saved recipe; Save again adds it anyway. Batches and
+  emails skip a link that's already saved.
 - **French recipes** are read the same way as English ones: headings, step
   numbers, units ("2 c. à soupe", "1,5 tasse"), and OCR in both languages.
 - **Each ingredient line is kept as written**, and is also parsed into
@@ -276,17 +260,18 @@ The app tries, in order:
 3. links in the body;
 4. the text itself.
 
-Mail without the keyword is never read.
+Mail without the keyword is never read. A scan missed at its hour (the
+container was down) runs later the same day.
 
 - **Results** are emailed back as `[SUCCESS]`, `[FAILURE]` or `[PARTIAL]`,
   grouped within a cooldown window. A failure lists what was tried, and why
   each attempt gave up. Results that couldn't be sent wait for the next
   scan.
-- **Unreadable mail is refused.** A photo or scanned PDF that OCR can't read
-  reliably is refused rather than saved as garbled text. So is any mail
-  over 30 MB.
+- **Unreadable mail is refused** and marked read: a photo or scanned PDF
+  OCR can't read reliably, mail over 30 MB, or mail nested too deeply.
 - **Allowed senders.** "Only accept email from" limits which addresses or
-  domains can add recipes.
+  domains can add recipes. Other senders are refused from the From line,
+  before the mail is downloaded.
 - **Send test email** checks sending and reading separately, and says what
   it found on the port if a connection fails.
 - **Use a dedicated email address**, with an app-specific password, that
@@ -297,33 +282,23 @@ Mail without the keyword is never read.
 
 - **Tags** come in three built-in groups (meal type, cooking style, main
   ingredient), plus your own groups and Custom tags.
-  - Tags are suggested from keywords when a recipe is added, in English and
-    French. Meal words follow Quebec usage: déjeuner is breakfast, dîner is
-    lunch, souper is supper.
-  - Settings → Tags can add suggested tags to every recipe (you tick which
-    ones), and manage groups, tags and their keywords.
+  - Tags are suggested from keywords in English and French (Quebec meal
+    words: déjeuner is breakfast, dîner lunch, souper supper). Settings →
+    Tags manages groups, tags and keywords, and can tag every recipe.
 - **Learning** (Settings → Learning, on by default) trains two small models
-  on your own corrected recipes: one reads imports, the other suggests tags.
-  - Each model is used only when it does better than the built-in rules.
-    Settings shows the scores.
-  - Each suggested tag says where it came from (the keyword that matched,
-    or *learned*).
-  - Recipes still *To review* aren't learned from.
-  - The models are stored in `data/ml/`. They are rebuilt automatically,
-    and aren't in backups.
+  on your corrected recipes, one for reading imports and one for tags, each
+  used only where it beats the built-in rules (Settings shows the scores).
+  Recipes still *To review* aren't learned from. The models (`data/ml/`)
+  are rebuilt automatically and aren't in backups.
 - **Search** covers titles, ingredients, steps, notes, original text and
   tags. Words match from their start ("chick" finds chicken), and every word
   must match. Accents and capitals don't matter.
-  - **Typos are forgiven.** A word nothing in your library starts with is
-    matched to the closest words that are in it: "chiken" finds chicken,
-    "berries" finds berry. The page says what it searched for. Words under
-    four letters aren't corrected.
-  - **Leave words out** with a minus: `chicken -curry`, or `-nuts` on its
-    own. The word and its plurals are left out ("-egg" keeps eggplant).
-  - **Best match first** while searching: a word in the title counts most,
-    then tags and ingredients. Pick another sort to change that.
-  - When the match isn't in the title, the card shows where it was, with
-    the words highlighted.
+  - **Typos are forgiven** ("chiken" finds chicken, for words of four
+    letters or more); the page says what it searched for.
+  - **Leave words out** with a minus: `chicken -curry` ("-egg" keeps
+    eggplant).
+  - **Best match first**: the title counts most, then tags and ingredients.
+    When the match isn't in the title, the card shows where, highlighted.
 - **Filters**: stack tags (a recipe must have all of them), pace, and the
   cook time you logged. **Sort** by date, title, rating, cook time or
   difficulty. **Clear filters** resets everything.
@@ -337,43 +312,26 @@ Mail without the keyword is never read.
 - **Notes**: your own text. They're kept out of shares unless you ask.
 - **Photo**: added from the source, uploaded, replaced or removed.
 - **View original** opens the page the recipe came from.
-- **Scale with ½ / 1× / 2×.** This rewrites the amount at the start of each
-  ingredient line, in the same style it was written ("1 1/2 cups" → "3
-  cups", "250 g" → "125 g", "2-3" → "4-6"). The unit follows the new amount
-  ("1 cup" → "2 cups", "1 gousse" → "2 gousses"), and the servings scale too.
-  - Amounts in the steps aren't changed.
-  - Lines it can't scale safely are marked "(as written)": "1,000 g" (a
-    thousand, or one?), and two amounts on one line such as "1 lb 8 oz".
-  - Nothing is saved: the recipe opens at 1× next time.
-- **As written / Weights / Volumes**, one at a time, after any scaling,
-  from the same table of about 220 common ingredients
-  (`frontend/js/weights.js`). What to eat?'s recipe has them too. A small note under the buttons says the
-  conversions are approximate.
-  - **Weights** shows volumes as grams ("1 cup flour" → "120 g flour", "2
-    c. à soupe de beurre" → "29 g de beurre"): cups (US cup; a French
-    "tasse" is 250 ml), tablespoons, teaspoons, fl oz, ml, litres and
-    sticks of butter.
-  - **Volumes** shows weights (g, kg, oz, lb) as volumes in the recipe's
-    language, in kitchen fractions: US cups, tbsp and tsp in English ("200
-    g flour" → "1 2/3 cups flour"), tasse (250 ml), c. à soupe and c. à
-    thé in French ("30 g de beurre" → "2 c. à soupe de beurre"). "oz" is
-    read as a weight; "fl oz" is already a volume.
-  - An ingredient it has no figure for (kosher salt, whose weight depends
-    on the brand; spice blends; pastes; sauces; meat; a cooked, whipped or
-    substitute form the table doesn't list) stays as written, marked, as do
-    lines with two amounts ("3 tbsp plus 1 tsp", "1 lb 8 oz"). A wide range
-    gets a unit for each end ("1/2 tsp-3/4 cup").
-  - Counts ("2 eggs") and the steps aren't changed. The choice is kept on
-    this device.
+- **Scale with ½ / 1× / 2×.** The amount at the start of each ingredient
+  line is rewritten in the style it was written in ("1 1/2 cups" → "3
+  cups", "2-3" → "4-6"); the unit and the servings follow. Nothing is saved.
+- **As written / Weights / Volumes**, after any scaling, from a table of
+  about 220 ingredients (`frontend/js/weights.js`); the choice is kept on
+  the device. **Weights** shows volumes as grams ("1 cup flour" → "120 g
+  flour"); **Volumes** shows weights as cups and spoons in the recipe's
+  language ("30 g de beurre" → "2 c. à soupe de beurre"; a French tasse is
+  250 ml). A note under the buttons says conversions are approximate.
+- **Lines it can't handle safely stay as written**, marked: "1,000 g" (a
+  thousand, or one?), two amounts on one line ("1 lb 8 oz"), and
+  ingredients with no reliable figure (kosher salt, spice blends, pastes,
+  meat, cooked or whipped forms). Amounts in the steps aren't changed.
 - **Keep screen awake** while a recipe is open, on every recipe (Settings)
   or on one. This needs HTTPS.
 
 ### Managing the library
 
-- **Edit** any recipe. The original text is shown alongside the fields, for
-  checking.
-- **Duplicate** makes a copy to turn into a variant. It gets its own copy
-  of the photo.
+- **Edit** any recipe, with the original text alongside. **Duplicate**
+  makes a variant with its own copy of the photo.
 - **Select mode** (the button at the right of the toolbar) works on several
   recipes at once:
   - **Delete** them;
@@ -383,17 +341,11 @@ Mail without the keyword is never read.
     ratings, notes. Tags from both are kept. The other recipe goes to
     Recently deleted. A merge that would give more than 50 tags, or notes
     over 50,000 characters, is refused with the reason.
-- **Recently deleted.** A deleted recipe disappears everywhere and waits 30
-  days under **Recently deleted** in the side menu. From there you can put
-  it back, or delete it now. After 30 days it is deleted for good, with its
-  photo.
-- **Settings → Library check** lists:
-  - recipes without ingredients, steps, tags or a photo;
-  - recipes whose photo file is missing;
-  - recipes still to review;
-  - recipes that look like the same one.
-
-  Each title opens the recipe.
+- **Recently deleted** (side menu) keeps a deleted recipe for 30 days, to
+  put back or delete now; then it's deleted for good, with its photo.
+- **Settings → Library check** lists recipes missing ingredients, steps,
+  tags or a photo (or whose photo file is gone), still to review, or that
+  look like the same one.
 
 ### Sharing
 
@@ -403,14 +355,11 @@ From a recipe's **Share** menu, or a card's share button:
   includes the photo;
 - **Download HTML**: one self-contained file, with the photo;
 - **Download JSON**: schema.org format;
-- **Image (JPG)**: the recipe drawn as one 1080 px picture in your browser,
-  with no work for the server. Turn on **Include my notes** to add them. On
-  a phone over HTTPS, **Share…** opens the phone's share sheet;
+- **Image (JPG)**: one 1080 px picture drawn in the browser, notes
+  optional; on a phone over HTTPS, **Share…** opens the share sheet;
 - **Copy as text**;
-- **Email PDF**: sends from the email-ingest account, to up to five
-  addresses (at most 10 emails an hour). It appears once that account is
-  set up, and needs the settings password. "Choose from contacts" works
-  on Android only.
+- **Email PDF**: from the email-ingest account to up to five addresses (10
+  emails an hour), with the settings password.
 
 Exports use the interface language for their labels. The recipe itself is
 exported as written.
@@ -435,31 +384,24 @@ In Settings → Backup & export:
     lines, commented out.
   - Only the app's own backup files are ever deleted there.
   - Changing the schedule needs the settings password.
+- **What a backup leaves out**: the email login and password, subject
+  keyword, allowed senders, notification address and recent recipients,
+  and the HTTPS name and addresses. Anyone on your network can download a
+  backup, so these never go in one. The certificate and cPanel login
+  (`data/https/`) aren't in any backup.
 - **Restore or import** takes one file and handles it by type.
-  - **A full backup replaces the library**, after a check and a
-    confirmation. It needs the settings password. A safety copy of the
-    current library is written first (`restore-safety-<date>.zip`), and no
-    restart is needed. This server's HTTPS setup, automatic-backup schedule,
-    and the email details a backup leaves out (below) are kept. A server
-    with an email login keeps all its email settings; one without (a new
-    install) takes the backup's mail server names and ports. The safety
-    copy keeps the database whole, so restoring it undoes the restore (the
-    HTTPS certificate and cPanel login, in `data/https/`, are never in a
-    backup).
-  - If a restore fails after the library was replaced and can't finish,
-    the app stays closed (503) until it's restarted; at start-up it
-    finishes the restore. In the rare case it can't tell (the restore
-    couldn't even note that the library was replaced), the log names the
-    folders to check, and photos aren't swept until they're sorted out.
-  - **What a backup leaves out**: the email login and password, the subject
-    keyword, allowed senders, notification address and recent recipients,
-    and the HTTPS name and addresses. Anyone on your network can download a
-    backup, so these never go in one (the restore's own safety copy, which
-    stays in the data folder, does have them). On a new server, enter them
-    again.
+  - **A full backup replaces the library** (settings password, then a check
+    and a confirmation; no restart). A safety copy of the current library
+    is written first (`restore-safety-<date>.zip`, settings included), so
+    restoring it undoes the restore. This server keeps its HTTPS setup,
+    backup schedule and email settings; a new install takes the backup's
+    mail server names and ports.
+  - If a restore fails partway, the app stays closed (503) until it's
+    restarted, and finishes the restore at start-up. If it can't tell
+    whether the library was replaced, the log names the folders to check.
   - **Anything else adds its recipes**: schema.org `.json`, a `.zip` of
     them, or a Paprika export (`.paprikarecipes`). A recipe whose link is
-    already saved is skipped. Archives are read with size limits.
+    already saved is skipped.
 
 ### Interface
 
@@ -501,7 +443,8 @@ How it works:
 - **Storage.** It's stored as a salted scrypt hash in `admin-password.json`.
 - **Forgotten?** Delete `admin-password.json`, then create a new password.
   Creating it clears the saved email password and cPanel token, and turns
-  HTTPS off. Everything else is kept.
+  HTTPS off. Everything else is kept. A damaged file isn't taken for "no
+  password": Settings says so, and deleting it is the way to reset.
 
 ### Everything else
 
@@ -532,28 +475,27 @@ How it works:
     50 megapixels is refused.
   - **PDFs**: at most 60 pages, and at most 3 OCR jobs at once. From a PDF's
     photos, only the largest is decoded.
-  - **Downloaded pages**: at most 10 MB and 30 seconds in all (lookups,
-    connections, redirects and download), from public addresses only.
-    Every redirect is checked again. The log shows a link without its
-    query or password.
-  - **Outgoing connections** (mail server, recipe links, cPanel, Let's
-    Encrypt) check the certificate against the image's current root list,
-    and refuse any chain through a CA key known to be compromised (the
-    eMudhra keys of October 2026).
-  - **Exports** escape all recipe text.
+  - **Archives** (backups, imports): at most 20,000 files, checked before
+    the file list is read, and size-limited when unpacked.
+  - **Downloaded pages**: at most 10 MB and 30 seconds in all, from public
+    addresses only; every redirect is checked again.
+  - **Outgoing connections** (mail, links, cPanel, Let's Encrypt) check the
+    certificate against the image's current roots, and refuse chains
+    through known-compromised CA keys (eMudhra, October 2026).
+  - **Exports** escape all recipe text; titles in `index.csv` can't run as
+    spreadsheet formulas.
   - **Stored file names** must have the exact shape the app generates.
-- **Credentials.** The email password and cPanel token are encrypted (Fernet)
-  with `encryption.key`, or with `RECIPE_APP_ENCRYPTION_KEY` if you set it.
-  The setting keeps the key out of the data folder. To generate a key:
-  `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
-  - The API never returns the password.
-  - Changing the email server or username clears the saved password,
-    unless you enter it again in the same save.
-  - The backup leaves the key out.
-- **The cPanel token can do only one thing through the app:** manage the
-  one saved name. But anyone who got code running in the container would
-  have the token itself. So give it an expiry date and, where cPanel allows
-  it, DNS access only.
+  - The automatic API documentation pages (`/docs`, `/openapi.json`) are
+    off.
+- **Credentials.** The email password and cPanel token are encrypted
+  (Fernet) with `encryption.key`, or with `RECIPE_APP_ENCRYPTION_KEY`, which
+  keeps the key out of the data folder (generate one with
+  `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
+  The API never returns the password; changing the email server or username
+  clears it unless you enter it again; backups leave the key out.
+- **The cPanel token** can only manage the one saved name through the app,
+  but code running in the container would have the token itself: give it
+  an expiry date and, where cPanel allows it, DNS access only.
 - **Rate limit**: 120 API requests a minute per address (set
   `RECIPE_APP_RATE_LIMIT` to change it). The What to eat? port shares the
   same per-address request limit. Behind a proxy, all clients share the
@@ -596,7 +538,7 @@ It records:
 - errors from the pages.
 
 It never contains passwords, keys, email bodies or page contents. Email
-subjects, senders and URLs are logged.
+subjects and senders are logged, and links without their query or password.
 
 To find one kind of entry, filter with `grep`: `docker logs open-the-pantry
 2>&1 | grep otp.scan`. The other tags are `otp.email`, `otp.url`,
@@ -618,26 +560,20 @@ The tests need the same system packages as the Docker image
 (`tesseract-ocr` and WeasyPrint's libraries; see the `Dockerfile`), and each
 run uses a temporary data folder.
 
-- `tests/README.md` lists which test files cover which feature.
-- The import corpus re-reads real inputs (your own checked recipes, or
-  files you add) after a change and reports any that come out worse:
-  `python -m app.corpus`, described in `tests/README.md`.
+- `tests/README.md` lists which test files cover which feature, and
+  describes the import corpus (`python -m app.corpus`), which re-reads real
+  inputs after a change and reports any that come out worse.
 - Every browser test also fails on a JavaScript error or a
-  Content-Security-Policy violation.
-- `test_accessibility.py` runs axe-core on every screen, in English/light
-  and French/dark, and fails on serious or critical findings. The zoom
-  rule is switched off, since zoom is off on purpose. An automated scan
-  catches roughly a third of accessibility problems.
+  Content-Security-Policy violation. `test_accessibility.py` runs axe-core
+  on every screen (English/light, French/dark); the zoom rule is off, since
+  zoom is off on purpose.
 
 CI (`.github/workflows/ci.yml`) runs on every push, every Sunday, and on
-demand (Actions -> CI -> Run workflow). It runs both test suites, a
-dependency audit (which fails on any known vulnerability) and a Docker
-build. The published image is built only once those pass, so the weekly
-run also refreshes it with the newest base image and trusted roots. Each
-build also looks up Chrome's current stable version for the browser name
-link imports send (some sites refuse an outdated one); if Google's
-version service can't be reached, the build uses the version in
-`url_ingest.py`. GitHub pauses scheduled runs after 60 days without a commit.
+demand. It runs both test suites, a dependency audit, and a Docker build
+that is started and checked. The image is published only once those pass,
+so the weekly run refreshes it with the newest base image, trusted roots
+and Chrome version (the browser name link imports send). GitHub pauses
+scheduled runs after 60 days without a commit.
 
 ```
 backend/app/        FastAPI app (main.py: start-up, middleware), models, backup, HTTPS, picker
