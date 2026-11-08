@@ -111,10 +111,11 @@ DAMAGED_MESSAGE = ("The settings password file (admin-password.json) is damaged.
 
 def _valid(d) -> bool:
     """Every field of the shape _write makes: salt 16 bytes and hash 32
-    bytes as hex, n a power of two and r, p small whole numbers (not
-    booleans), within scrypt's memory bound. Keys alone weren't enough: a
-    hash of 123 passed, then unlocking raised a TypeError (GPT review of
-    0160)."""
+    bytes as hex, n a power of two and r, p small whole numbers, within
+    scrypt's memory bound. "type(v) is int" rather than isinstance: True
+    and False are ints in Python and would pass as 1 and 0. Keys alone
+    weren't enough: a hash of 123 passed, then unlocking raised a
+    TypeError (GPT review of 0160)."""
     def whole(v, lo, hi):
         return type(v) is int and lo <= v <= hi
 
