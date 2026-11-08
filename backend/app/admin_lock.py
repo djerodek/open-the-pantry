@@ -109,13 +109,36 @@ DAMAGED_MESSAGE = ("The settings password file (admin-password.json) is damaged.
                    "to set a new password; the email password and HTTPS are then cleared, as after any reset.")
 
 
+def _valid(d) -> bool:
+    """Every field of the shape _write makes: salt 16 bytes and hash 32
+    bytes as hex, n a power of two and r, p small whole numbers (not
+    booleans), within scrypt's memory bound. Keys alone weren't enough: a
+    hash of 123 passed, then unlocking raised a TypeError (GPT review of
+    0160)."""
+    def whole(v, lo, hi):
+        return type(v) is int and lo <= v <= hi
+
+    def hex_of(v, n_bytes):
+        if not isinstance(v, str) or len(v) != 2 * n_bytes:
+            return False
+        try:
+            bytes.fromhex(v)
+        except ValueError:
+            return False
+        return True
+    return (isinstance(d, dict) and hex_of(d.get("salt"), 16) and hex_of(d.get("hash"), 32)
+            and whole(d.get("n"), 2, 2 ** 20) and d["n"] & (d["n"] - 1) == 0
+            and whole(d.get("r"), 1, 32) and whole(d.get("p"), 1, 16)
+            and 128 * d["n"] * d["r"] <= 64 * 1024 * 1024)
+
+
 def _read() -> dict | None:
     """The password file's contents; None when it's missing or damaged
     (no password then opens anything)."""
     try:
         with open(PASSWORD_PATH, encoding="utf-8") as f:
             d = json.load(f)
-        if isinstance(d, dict) and {"salt", "hash", "n", "r", "p"} <= d.keys():
+        if _valid(d):
             return d
         log.error("admin-password.json is damaged: not the expected fields")
     except FileNotFoundError:
@@ -178,10 +201,11 @@ def _verify(password: str) -> bool:
     if d is None:
         return False
     try:
-        got = _hash(password, bytes.fromhex(d["salt"]), int(d["n"]), int(d["r"]), int(d["p"]))
-    except (ValueError, TypeError):
+        got = _hash(password, bytes.fromhex(d["salt"]), d["n"], d["r"], d["p"])
+        return hmac.compare_digest(got.hex(), d["hash"])
+    except (ValueError, TypeError, MemoryError):
+        log.error("admin-password.json couldn't be checked", exc_info=True)
         return False
-    return hmac.compare_digest(got.hex(), d["hash"])
 
 
 def _new_session() -> str:

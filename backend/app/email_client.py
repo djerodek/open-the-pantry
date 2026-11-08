@@ -278,6 +278,7 @@ def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> 
 # this the full message is downloaded and parsed in memory before any limit
 # applies.
 MAX_MESSAGE_BYTES = 30 * 1024 * 1024
+SENDER_SHOWN = 200          # characters of a From header in messages and logs
 
 
 class MessageTooLargeError(Exception):
@@ -312,10 +313,11 @@ def fetch_sender(imap_conn: imaplib.IMAP4, msg_id: bytes) -> str:
     before the whole email is downloaded and parsed; "" when it can't be
     read (the check after the download still applies)."""
     try:
-        status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (FROM)])")
+        # At most 2 KB of it, whatever the header holds (GPT review of 0160).
+        status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (FROM)]<0.2048>)")
         if status != "OK" or not data or not isinstance(data[0], tuple):
             return ""
-        return email.message_from_bytes(data[0][1]).get("From", "") or ""
+        return (email.message_from_bytes(data[0][1][:2048]).get("From", "") or "")[:SENDER_SHOWN]
     except Exception:
         log.debug("fetch_sender: From header not read", exc_info=True)
         return ""
@@ -339,12 +341,20 @@ def message_size(imap_conn: imaplib.IMAP4, msg_id: bytes):
     return None
 
 
-def fetch_full_message(imap_conn: imaplib.IMAP4, msg_id: bytes) -> email.message.Message:
+def check_message_size(imap_conn: imaplib.IMAP4, msg_id: bytes) -> None:
+    """Raises MessageTooLargeError over MAX_MESSAGE_BYTES, before anything
+    of the message is fetched (the From header included; GPT review of
+    0160)."""
     size = message_size(imap_conn, msg_id)
     if size is not None and size > MAX_MESSAGE_BYTES:
         raise MessageTooLargeError(
             f"email is {size / 1048576:.0f} MB; the limit is {MAX_MESSAGE_BYTES // 1048576} MB"
         )
+
+
+def fetch_full_message(imap_conn: imaplib.IMAP4, msg_id: bytes, size_checked: bool = False) -> email.message.Message:
+    if not size_checked:
+        check_message_size(imap_conn, msg_id)
     status, data = imap_conn.fetch(msg_id, "(BODY.PEEK[])")
     if status != "OK" or not data or not isinstance(data[0], tuple):
         raise EmailConnectionError(f"Could not fetch message {msg_id!r}")

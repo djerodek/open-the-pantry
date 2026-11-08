@@ -285,19 +285,22 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             subject = "(unknown subject)"
             try:
                 allowed = _parse_allowed_senders(settings.allowed_senders)
-                sender = email_client.fetch_sender(imap, msg_id) if allowed else ""
-                if sender and not _sender_allowed(sender, allowed):
-                    # Refused on the header alone, before the download.
-                    scan_log.warning("Scan: ignored message %s from %s: sender not in the allowed list",
-                                     msg_id.decode(errors="replace"), sender)
-                    messages.append(f"IGNORED: an email from {sender}: sender isn't on the allowed list.")
-                    try:
-                        email_client.mark_seen(imap, msg_id)
-                    except Exception:
-                        scan_log.debug("mark_seen failed for ignored message", exc_info=True)
-                    continue
                 try:
-                    msg = email_client.fetch_full_message(imap, msg_id)
+                    # The size first: nothing of a message over the limit is
+                    # fetched, its From header included (GPT review of 0160).
+                    email_client.check_message_size(imap, msg_id)
+                    sender = email_client.fetch_sender(imap, msg_id) if allowed else ""
+                    if sender and not _sender_allowed(sender, allowed):
+                        # Refused on the header alone, before the download.
+                        scan_log.warning("Scan: ignored message %s from %s: sender not in the allowed list",
+                                         msg_id.decode(errors="replace"), sender)
+                        messages.append(f"IGNORED: an email from {sender}: sender isn't on the allowed list.")
+                        try:
+                            email_client.mark_seen(imap, msg_id)
+                        except Exception:
+                            scan_log.debug("mark_seen failed for ignored message", exc_info=True)
+                        continue
+                    msg = email_client.fetch_full_message(imap, msg_id, size_checked=True)
                 except email_client.MessageTooLargeError as e:
                     # Too large or unreadable (MessageUnreadableError): won't
                     # change on a retry. Report and mark read.
@@ -313,9 +316,9 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
                 if not _sender_allowed(msg.get("From", ""), _parse_allowed_senders(settings.allowed_senders)):
-                    scan_log.warning("Scan: ignored %r from %s: sender not in the allowed list",
-                                     subject, msg.get("From", "?"))
-                    messages.append(f"IGNORED: \"{subject}\" from {msg.get('From', '?')}: sender isn't on the allowed list.")
+                    shown = str(msg.get("From", "?"))[:email_client.SENDER_SHOWN]
+                    scan_log.warning("Scan: ignored %r from %s: sender not in the allowed list", subject, shown)
+                    messages.append(f"IGNORED: \"{subject}\" from {shown}: sender isn't on the allowed list.")
                     try:
                         email_client.mark_seen(imap, msg_id)
                     except Exception:

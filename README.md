@@ -271,7 +271,8 @@ container was down) runs later the same day.
   OCR can't read reliably, mail over 30 MB, or mail nested too deeply.
 - **Allowed senders.** "Only accept email from" limits which addresses or
   domains can add recipes. Other senders are refused from the From line,
-  before the mail is downloaded.
+  before the mail is downloaded. A From line can be forged: this filters
+  mail, it doesn't prove who sent it.
 - **Send test email** checks sending and reading separately, and says what
   it found on the port if a connection fails.
 - **Use a dedicated email address**, with an app-specific password, that

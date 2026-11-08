@@ -170,15 +170,20 @@ def test_a_failure_before_staging_leaves_an_earlier_staged_folder(client, monkey
 
 # ---------------------------------------------------------------- L2: URLs in the log
 
-@pytest.mark.parametrize("text,secret", [
-    ("No recipe found. Tried: link https://example.com/a?token=SECRET1: no recipe", "SECRET1"),
-    ("HTTPSConnectionPool(host='example.com', port=443): Max retries exceeded with url: /b?token=SECRET2", "SECRET2"),
-    ("Soup (from \"x\", via URL in body (https://u:pw@example.com/c?sig=SECRET3))", "SECRET3"),
+@pytest.mark.parametrize("text,secret,kept", [
+    ("No recipe found. Tried: link https://example.com/a?token=SECRET1: no recipe", "SECRET1", "https://example.com/a?…"),
+    ("HTTPSConnectionPool(host='example.com', port=443): Max retries exceeded with url: /b?token=SECRET2", "SECRET2",
+     "with url: /b?…"),
+    ("Soup (from \"x\", via URL in body (https://u:pw@example.com/c?sig=SECRET3))", "SECRET3", "https://example.com/c?…"),
 ])
-def test_redact_urls(text, secret):
+def test_redact_urls(text, secret, kept):
+    """Separate assertions: `a and b or c` let the second case pass on "/b?…"
+    alone (GPT review of 0160)."""
     from app.ingestion.url_ingest import redact_urls
     out = redact_urls(text)
-    assert secret not in out and "pw@" not in out and "example.com" in out or "/b?…" in out
+    assert secret not in out
+    assert "pw@" not in out
+    assert kept in out, out
 
 
 def test_no_recipe_log_has_no_query(monkeypatch):
@@ -348,7 +353,7 @@ def test_the_scan_marks_it_read_and_refuses_a_stranger_before_downloading(client
     monkeypatch.setattr(email_client, "search_unseen_by_subject", lambda imap, kw: [b"1", b"2"])
     monkeypatch.setattr(email_client, "fetch_sender", lambda imap, i: "Stranger <bad@x.example>" if i == b"1" else "friend@example.com")
 
-    def full(imap, i):
+    def full(imap, i, **kw):
         assert i == b"2", "the stranger's email was downloaded"
         raise email_client.MessageUnreadableError("email can't be read: its parts are nested too deeply")
     monkeypatch.setattr(email_client, "fetch_full_message", full)

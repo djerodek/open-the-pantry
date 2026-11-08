@@ -252,6 +252,7 @@ _FR_PATTERNS = [
     _p(r"No recipes found in this zip \(schema\.org \.json files or a Paprika export\)\.",
        "Aucune recette trouvée dans ce zip (fichiers .json schema.org ou exportation Paprika)."),
     _p(r"This archive has (\d+) files; the limit is (\d+)\.", r"Cette archive contient \1 fichiers; la limite est \2."),
+    _p(r"This archive has more than (\d+) files; the limit is (\d+)\.", r"Cette archive contient plus de \1 fichiers; la limite est \2."),
     _p(r"This archive unpacks to more than 2 GB\.", "Cette archive dépasse 2 Go une fois décompressée."),
     _p(r"More than (\d+) recipes in one file; the rest were left out\.", r"Plus de \1 recettes dans un fichier; les autres ont été laissées de côté."),
     _p(r"Could not build the PDF archive\.", "Impossible de créer l'archive PDF."),

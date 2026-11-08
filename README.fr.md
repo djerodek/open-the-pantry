@@ -313,6 +313,8 @@ son heure (conteneur arrêté) se fait plus tard le même jour.
 - **Expéditeurs acceptés.** « Accepter les courriels seulement de » limite les
   adresses ou les domaines qui peuvent ajouter des recettes. Les autres
   expéditeurs sont refusés d'après la ligne From, avant le téléchargement.
+  Une ligne From peut être falsifiée : c'est un filtre, pas une preuve de
+  l'expéditeur.
 - **Envoyer un courriel de test** vérifie l'envoi et la lecture séparément,
   et dit ce qu'il a trouvé sur le port si une connexion échoue.
 - **Utilisez une adresse dédiée**, avec un mot de passe d'application, qui

@@ -228,9 +228,11 @@ ZIP_DIR_BYTES_PER_ENTRY = 256
 
 
 def zip_directory_size(path: str):
-    """(entries, central directory bytes) from a zip's end record, and its
-    Zip64 record when there is one, without reading the directory itself;
-    None when there's no end record (zipfile then refuses the file)."""
+    """(entries, central directory bytes, directory end offset) from a
+    zip's end record, and its Zip64 record when there is one, without
+    reading the directory itself; None when there's no end record (zipfile
+    then refuses the file). The directory ends where the (Zip64) end record
+    starts."""
     import struct
     size = os.path.getsize(path)
     with open(path, "rb") as f:
@@ -241,6 +243,7 @@ def zip_directory_size(path: str):
         if i < 0 or len(tail) - i < 22:
             return None
         _, _, _, _, entries, dir_bytes, dir_offset, _ = struct.unpack("<IHHHHIIH", tail[i:i + 22])
+        dir_end = size - tail_len + i
         if entries == 0xFFFF or dir_bytes == 0xFFFFFFFF or dir_offset == 0xFFFFFFFF:
             eocd_at = size - tail_len + i
             if eocd_at < 20:
@@ -254,7 +257,30 @@ def zip_directory_size(path: str):
             if rec[:4] != b"PK\x06\x06":
                 return None
             entries, dir_bytes = struct.unpack("<QQ", rec[32:48])
-    return entries, dir_bytes
+            dir_end = z64_at
+    return entries, dir_bytes, dir_end
+
+
+def _count_directory_records(path: str, dir_bytes: int, dir_end: int, stop: int) -> int:
+    """Central-directory records actually there, counted from their headers
+    (46 bytes plus the name, extra and comment lengths they give), stopping
+    at `stop`. The end record's count can lie: 100,000 entries listed as 10
+    stayed under the size bound, and zipfile parsed them all (GPT review of
+    0160). The bytes read are already bounded by check_zip_size."""
+    import struct
+    if dir_end < dir_bytes:
+        return 0
+    with open(path, "rb") as f:
+        f.seek(dir_end - dir_bytes)
+        data = f.read(dir_bytes)
+    count = pos = 0
+    while pos + 46 <= len(data) and count < stop:
+        if data[pos:pos + 4] != b"PK\x01\x02":
+            break                    # zipfile refuses what follows
+        name_len, extra_len, comment_len = struct.unpack("<HHH", data[pos + 28:pos + 34])
+        pos += 46 + name_len + extra_len + comment_len
+        count += 1
+    return count
 
 
 def check_zip_size(path: str, max_entries: int, error) -> None:
@@ -267,8 +293,10 @@ def check_zip_size(path: str, max_entries: int, error) -> None:
     found = zip_directory_size(path)
     if found is None:
         return
-    entries, dir_bytes = found
+    entries, dir_bytes, dir_end = found
     if entries > max_entries:
         raise error(f"This archive has {entries} files; the limit is {max_entries}.")
     if dir_bytes > max_entries * ZIP_DIR_BYTES_PER_ENTRY:
         raise error("This archive's list of files is too large.")
+    if _count_directory_records(path, dir_bytes, dir_end, max_entries + 1) > max_entries:
+        raise error(f"This archive has more than {max_entries} files; the limit is {max_entries}.")
