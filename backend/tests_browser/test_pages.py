@@ -598,3 +598,25 @@ def test_a_damaged_password_file_is_shown(server, page):
         os.remove(path)
         if os.path.exists(kept):
             os.replace(kept, path)
+
+
+def test_file_inputs_match_the_buttons_and_hints(server, page):
+    """0164: the iOS 16px text-field rule also caught file inputs, so "no
+    file selected" was the largest text in Restore or import while the
+    native button and the hint stayed small. The file name is hint-sized
+    and the button is drawn like the Continue button beside it."""
+    p = page()
+    _open_settings(p, server["url"])
+    got = p.page.evaluate("""() => {
+      const f = document.getElementById('import-file');
+      const px = (el, pseudo) => parseFloat(getComputedStyle(el, pseudo || null).fontSize);
+      const btn = getComputedStyle(f, '::file-selector-button');
+      const cont = getComputedStyle(document.getElementById('import-btn'));
+      const hint = document.querySelector('#import-box .field-hint');
+      return {name: px(f), hint: px(hint), button: px(f, '::file-selector-button'),
+              cont: px(document.getElementById('import-btn')),
+              radius: btn.borderTopLeftRadius === cont.borderTopLeftRadius,
+              padding: btn.paddingLeft === cont.paddingLeft};
+    }""")
+    assert got["name"] <= got["hint"], got
+    assert got["button"] == got["cont"] and got["radius"] and got["padding"], got

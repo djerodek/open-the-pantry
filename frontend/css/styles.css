@@ -1220,7 +1220,6 @@ main {
    like it might not take input at all. */
 .field input[type="text"],
 .field input[type="url"],
-.field input[type="file"],
 .field input[type="password"],
 .field input[type="email"],
 .field input[type="number"],
@@ -1367,6 +1366,30 @@ main {
   line-height: 1.2;
 }
 .btn-secondary:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
+
+/* File inputs: the browser's grey "Choose File" button drawn as a
+   .btn-secondary, and the file name in hint size and colour. They used to
+   take the 16px text-field size while the native button stayed small, so
+   "no file selected" was the largest text in the section. */
+input[type="file"] {
+  max-width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.78rem;   /* .field-hint */
+  color: var(--color-ink-muted);
+}
+input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  background: var(--color-bg-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  line-height: 1.2;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
 
 /* Destructive actions read as destructive. Used for Delete, which now sits
    next to Edit at the foot of the recipe -- without this they would look
@@ -1748,8 +1771,9 @@ main {
 /* No zooming (see the viewport tag in index.html; Settings has text size).
    iOS zooms the page into any text field whose font is under 16px when it's
    tapped -- that was the zoom that happened during normal use, since fields
-   here were 0.9rem (14.4px). touch-action stops double-tap zoom. */
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+   here were 0.9rem (14.4px). touch-action stops double-tap zoom. File
+   inputs aren't text fields (no zoom) and are styled with the buttons. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
 textarea,
 select,
 .field input[type="text"], .field input[type="url"], .field input[type="password"],
@@ -1904,7 +1928,6 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 
 /* Settings -> Backup & export -> Import recipes */
 .import-box { margin-top: 1.25rem; padding-top: 0.9rem; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
-.import-box input[type="file"] { max-width: 100%; font-size: 0.85rem; }
 .restore-confirm { width: 100%; padding: 0.7rem 0.9rem; border: 1px solid var(--color-alert); border-radius: var(--radius); }
 .restore-confirm p { margin: 0 0 0.6rem; font-size: 0.9rem; }
 .restore-confirm-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
