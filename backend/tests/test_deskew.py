@@ -86,3 +86,73 @@ def test_skew_angle_is_the_same_under_both_opencv_angle_conventions(skew):
     new_style = ((500.0, 400.0), (600.0, 300.0), float(skew % 90 or 90))
     old_style = ((500.0, 400.0), (300.0, 600.0), new_style[2] - 90.0)
     assert _skew_angle(new_style) == pytest.approx(_skew_angle(old_style), abs=1e-3)  # boxPoints is float32
+
+
+# ---- Claude review of 0165: coloured titles, photos, pages on a table
+
+def _recipe_page(title_fill=(150, 222, 214)):
+    img = Image.new("RGB", (1000, 700), "white")
+    d = ImageDraw.Draw(img)
+    d.text((60, 40), "SUMMER SALAD", font=text_font(64, bold=True), fill=title_fill)
+    for n, line in enumerate(["Ingredients", "2 cups spinach", "1 cucumber, sliced", "Toss everything together."]):
+        d.text((60, 170 + n * 60), line, font=text_font(36), fill=(40, 40, 40))
+    return img
+
+
+def test_a_light_coloured_title_is_read(tmp_path):
+    """The teal titles (gray about 206) went white at the threshold: 0 of 9
+    read. The darkest colour channel reads them."""
+    from app.ingestion.image_ingest import ingest_image
+    _recipe_page().save(tmp_path / "p.png")
+    assert "SUMMER" in ingest_image(str(tmp_path / "p.png")).raw_text.upper()
+
+
+def test_photos_keep_the_gray_mix_and_text_gets_the_darkest_channel():
+    """A dark photo (a yellow mango's blue channel is near 0) broke the
+    page's layout, so photos keep the usual gray."""
+    from app.ingestion.deskew import darkest_channel
+    img = _recipe_page()
+    ImageDraw.Draw(img).rectangle((500, 400, 950, 680), fill=(240, 200, 30))     # the "photo"
+    out = darkest_channel(img)
+    assert out[600, 700] > 150                 # gray of yellow, not its blue channel (30)
+    teal = np.argwhere(np.all(np.asarray(img) == (150, 222, 214), axis=2))[0]
+    assert out[tuple(teal)] == 150             # the title: its darkest channel
+    assert darkest_channel(np.zeros((5, 5), np.uint8)).shape == (5, 5)
+
+
+def _on_a_table(page: Image.Image, angle: float) -> np.ndarray:
+    rng = np.random.default_rng(3)
+    turned = page.rotate(angle, expand=True, resample=Image.BICUBIC)
+    mask = Image.new("L", page.size, 255).rotate(angle, expand=True)
+    table = Image.fromarray(rng.normal(55, 15, (turned.height * 6 // 5, turned.width * 5 // 4)).clip(0, 255).astype(np.uint8))
+    table = table.convert("RGB")
+    table.paste(turned, ((table.width - turned.width) // 2, (table.height - turned.height) // 2), mask)
+    return np.asarray(table)
+
+
+@pytest.mark.parametrize("angle", [-8, 4, 10])
+def test_a_tilted_page_on_a_table_is_straightened_and_cropped(angle, tmp_path):
+    """On a dark table the angle came from the table (0 degrees) and 0-62%
+    of the words were read at 6-10 degrees."""
+    from app.ingestion.deskew import crop_to_page
+    from app.ingestion.image_ingest import ingest_image
+    photo = _on_a_table(_recipe_page(title_fill=(30, 30, 30)), angle)
+    gray = np.asarray(Image.fromarray(photo).convert("L"))
+    cropped = crop_to_page(gray)
+    assert cropped.shape[0] < gray.shape[0] and cropped.shape[1] < gray.shape[1]
+    Image.fromarray(photo).save(tmp_path / "p.jpg", quality=90)
+    text = ingest_image(str(tmp_path / "p.jpg")).raw_text.lower()
+    assert all(w in text for w in ("summer", "spinach", "cucumber", "together")), text
+
+
+def test_an_upright_bright_area_or_a_page_on_white_is_left_alone():
+    """A dark-mode screenshot with a bright card, or a page that fills the
+    frame, isn't cropped: only a tilted page is."""
+    from app.ingestion.deskew import crop_to_page
+    dark = np.full((800, 600), 20, np.uint8)
+    dark[100:500, 50:550] = 245                       # an upright card
+    assert crop_to_page(dark) is dark
+    page = np.asarray(_recipe_page().convert("L"))
+    assert crop_to_page(page) is page
+    tilted_on_white = np.asarray(Image.fromarray(page).rotate(6, expand=True, fillcolor=255))
+    assert crop_to_page(tilted_on_white) is tilted_on_white

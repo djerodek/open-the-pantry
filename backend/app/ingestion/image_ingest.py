@@ -1,10 +1,9 @@
 import cv2
 import numpy as np
 from PIL import Image
-import pytesseract
 
-from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS, ocr_lang, OCR_TIMEOUT_SECONDS  # reuse the same heuristic segmentation and pixel budget
-from .deskew import deskew_grayscale, auto_orient
+from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS, ocr_text_and_confidence  # reuse the same heuristic segmentation and pixel budget
+from .deskew import deskew_grayscale, auto_orient, darkest_channel, crop_to_page
 from ..file_validation import IMAGE_FORMATS, JPEG_QUALITY
 from ..logging_setup import get_logger
 
@@ -18,15 +17,16 @@ class ImageIngestResult:
 
 
 def _preprocess(image_path: str):
-    """Grayscale + orientation + deskew + threshold + upscale via OpenCV,
-    improves Tesseract accuracy on screenshots (rendered text, usually clean)
-    and photographed pages alike (including ones photographed sideways or at
-    a slight angle). Returns (image, degrees rotated clockwise)."""
+    """Darkest channel + the page cropped from a table + orientation +
+    deskew + threshold + upscale via OpenCV, improves Tesseract accuracy on
+    screenshots (rendered text, usually clean) and photographed pages alike
+    (including ones photographed sideways or at a slight angle). Returns
+    (image, degrees rotated clockwise)."""
     img = cv2.imread(image_path)
     if img is None:
-        return Image.open(image_path, formats=IMAGE_FORMATS).convert("L"), 0
+        return Image.fromarray(darkest_channel(Image.open(image_path, formats=IMAGE_FORMATS))), 0
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = crop_to_page(darkest_channel(img))
     oriented, rotated = auto_orient(Image.fromarray(gray))
     gray = deskew_grayscale(np.array(oriented))
 
@@ -69,17 +69,7 @@ def ingest_image(image_path: str) -> ImageIngestResult:
     processed, rotated = _preprocess(image_path)
     if rotated:
         _rotate_stored_file(image_path, rotated)
-    text = pytesseract.image_to_string(processed, lang=ocr_lang(), timeout=OCR_TIMEOUT_SECONDS)
-
-    try:
-        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
-                                         timeout=OCR_TIMEOUT_SECONDS)
-        confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
-        avg_conf = sum(confidences) / len(confidences) if confidences else None
-    except Exception:
-        log.warning("OCR confidence unavailable for %s", image_path, exc_info=True)
-        avg_conf = None
-
+    text, avg_conf = ocr_text_and_confidence(processed)
     return ImageIngestResult(raw_text=text, ocr_confidence=avg_conf)
 
 

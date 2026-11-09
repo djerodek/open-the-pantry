@@ -469,7 +469,7 @@ def test_every_tesseract_run_has_a_time_limit():
                     and node.func.attr.startswith("image_to_")):
                 calls += 1
                 assert any(k.arg == "timeout" for k in node.keywords), (f.name, node.lineno)
-    assert calls == 5
+    assert calls == 2          # orientation, then one pass for the text and its confidence (0167)
 
 
 def test_tall_scanned_pages_render_within_the_pixel_budget():
@@ -538,3 +538,101 @@ def test_steps_stop_at_ratings_and_reviews():
                      "Step 1", "Preheat the oven.", "Step 2", "Roast the chops.",
                      "Reviews (9)", "Great recipe, loved it.", "17 Ratings", "5 star 15"])
     assert segment_raw_text(raw)["steps"] == ["Preheat the oven.", "Roast the chops."]
+
+
+# ---- Claude review of 0165: real cookbook pages (teal titles, two columns,
+# steps without a heading)
+
+def test_steps_after_an_ingredients_heading_without_numbers():
+    """An Ingredients heading, no Method heading, unnumbered steps:
+    everything after the heading had become ingredients."""
+    r = segment_raw_text("LA RACLETTE CLASSIQUE\nINGREDIENTS\nSautéed potatoes\nraclette cheese of choice\n"
+                         "mini pickles\npickled onions\n\nHEAT the ingredients and PUT the melted cheese on top.\n")
+    assert r["ingredients"] == ["Sautéed potatoes", "raclette cheese of choice", "mini pickles", "pickled onions"]
+    assert r["steps"] == ["HEAT the ingredients and PUT the melted cheese on top."]
+    short = segment_raw_text("PINA COLADA\nINGREDIENTS\n220g of pineapple\n3-4 ice cubes\na pinch of nutmeg\nBLEND and SERVE.\n")
+    assert short["steps"] == ["BLEND and SERVE."] and short["ingredients"][-1] == "a pinch of nutmeg"
+
+
+def test_a_repeated_ingredient_isnt_the_title():
+    """"salt and pepper" under two parts was taken as the name: the
+    repeated-line rule only looks above the ingredients."""
+    r = segment_raw_text("Les Brigands\nPASTRY BASE\npuff pastry\nparchment paper\n"
+                         "ROLL the pastry and BAKE it for 20 minutes.\nCHEESE MIX\n200g of goat's cheese\n"
+                         "salt and pepper\nMIX the cheese until smooth.\nONIONS\n2 large onions\nsalt and pepper\n"
+                         "CHOP the onions and cook them slowly.\n")
+    assert r["title_guess"] != "Salt and pepper" and r["title_guess"].lower() != "salt and pepper"
+
+
+def test_lowercase_items_stay_separate_and_wrapped_lines_join():
+    from app.ingestion.pdf_ingest import _clean_ingredients
+    assert _clean_ingredients(["Sautéed potatoes", "raclette cheese of choice", "mini pickles"]) == \
+        ["Sautéed potatoes", "raclette cheese of choice", "mini pickles"]
+    assert _clean_ingredients(["2 tbsp olive oil", "fresh mint leaves"]) == ["2 tbsp olive oil", "fresh mint leaves"]
+    assert _clean_ingredients(["2/3 of a tsp of Dijon mustard sauce", "salt and pepper"])[-1] == "salt and pepper"
+    # Wrapped: left off mid-phrase, or a long measured line's last words.
+    assert _clean_ingredients(["2 mangos almost ripe, but still firm,", "peeled and cut into batonnets"]) == \
+        ["2 mangos almost ripe, but still firm, peeled and cut into batonnets"]
+    assert _clean_ingredients(["1 cup finely chopped fresh flat-leaf", "parsley"]) == \
+        ["1 cup finely chopped fresh flat-leaf parsley"]
+
+
+def test_a_part_name_in_capitals_after_a_comma_and_a_byline_without_items():
+    """OCR read a paragraph's full stop as a comma, so "SALAD" was taken as
+    the paragraph going on and the parts were lost; "LES BRIGANDS" under
+    the title, with nothing under it, became a part."""
+    r = segment_raw_text("THAI MANGO SALAD\nLE TUKTUK\nDRESSING\n170g of palm sugar\n1/4 c. of fish sauce\n"
+                         "BRING the sauce and sugar to a boil, let it cool,\nSALAD\n2 mangos, cut into batonnets\n"
+                         "3 French shallots, finely chopped\nMIX the mango and shallots with the sauce.\n")
+    assert r["ingredients"][0] == "Dressing:" and "Salad:" in r["ingredients"]
+    assert not any("tuktuk" in i.lower() for i in r["ingredients"])
+    assert r["steps"][0].startswith("BRING")
+
+
+def _words(*rows):
+    """image_to_data's dictionary for lines of (left, word) pairs: one
+    paragraph, 20 px high words, 10 px per character."""
+    keys = ("level", "block_num", "par_num", "line_num", "left", "width", "height", "text", "conf")
+    d = {k: [] for k in keys}
+    for n, row in enumerate(rows, 1):
+        for left, word in row:
+            for k, v in zip(keys, (5, 1, 1, n, left, 10 * len(word), 20, word, 90)):
+                d[k].append(v)
+    return d
+
+
+def test_two_columns_are_read_one_after_the_other():
+    """Tesseract read straight across the gap: "1 cup uncooked rice indian
+    spices:" (5 pages of 9)."""
+    from app.ingestion.pdf_ingest import _lines_from_words
+    data = _words([(100, "Sautéed"), (190, "potatoes"), (600, "mini"), (650, "pickles")],
+                  [(100, "raclette"), (190, "cheese"), (600, "pickled"), (680, "onions")])
+    assert _lines_from_words(data, 1100) == "Sautéed potatoes\nraclette cheese\nmini pickles\npickled onions\n"
+    # One line across the gap, or a lone wide space: left as it is.
+    prose = _words([(100, "HEAT"), (160, "the"), (600, "cheese")], [(100, "and"), (140, "serve"), (210, "it"), (240, "now")])
+    assert _lines_from_words(prose, 1100) == "HEAT the cheese\nand serve it now\n"
+    crossing = _words([(100, "a"), (600, "b")], [(100, "c"), (600, "d")], [(100, "a"), (130, "line"), (190, "that"),
+                                                                          (250, "runs"), (310, "across"), (380, "it"),
+                                                                          (410, "all"), (450, "the"), (490, "way"),
+                                                                          (540, "and"), (580, "on")])
+    assert _lines_from_words(crossing, 1100).startswith("a b\nc d\n")
+
+
+def test_one_tesseract_run_gives_the_text_and_the_confidence(monkeypatch, tmp_path):
+    """Each photo was read twice; image_to_data already has the text."""
+    import pytesseract
+    from PIL import ImageDraw
+
+    from app.ingestion import image_ingest
+
+    from .conftest import text_font
+
+    def refuse(*a, **k):
+        raise AssertionError("a second Tesseract run")
+    monkeypatch.setattr(pytesseract, "image_to_string", refuse)
+    img = Image.new("RGB", (900, 200), "white")
+    ImageDraw.Draw(img).text((40, 60), "Mix the flour and sugar.", fill="black",
+                             font=text_font(40))
+    img.save(tmp_path / "p.png")
+    r = image_ingest.ingest_image(str(tmp_path / "p.png"))
+    assert "flour" in r.raw_text and r.ocr_confidence and r.ocr_confidence > 50

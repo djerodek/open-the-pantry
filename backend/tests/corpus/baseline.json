@@ -64,5 +64,17 @@
     "servings": 1.0,
     "steps": 1.0,
     "title": 1.0
+  },
+  "p010-en-cookbook-page": {
+    "ingredients": 0.9778,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0
+  },
+  "p011-en-page-on-a-table": {
+    "ingredients": 1.0,
+    "servings": 1.0,
+    "steps": 1.0,
+    "title": 1.0
   }
 }

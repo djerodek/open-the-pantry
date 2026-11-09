@@ -4,7 +4,7 @@ import pdfplumber
 import pytesseract
 from PIL import Image
 
-from .deskew import deskew_grayscale, auto_orient
+from .deskew import deskew_grayscale, auto_orient, darkest_channel
 from ..logging_setup import get_logger
 
 log = get_logger("pdf")
@@ -275,7 +275,7 @@ def _preprocess_for_ocr(pil_image: Image.Image) -> Image.Image:
     itself stayed inside MAX_OCR_PIXELS. An image already over the budget
     is scaled down instead (the render is sized to fit, so this is a
     safety net)."""
-    oriented, _ = auto_orient(pil_image.convert("L"))
+    oriented, _ = auto_orient(Image.fromarray(darkest_channel(pil_image)))
     gray_arr = deskew_grayscale(np.array(oriented))
     gray = Image.fromarray(gray_arr)
 
@@ -320,20 +320,95 @@ def _ocr_image(pil_image: Image.Image):
     # and would divide by zero in the upscale below.
     if not pil_image.width or not pil_image.height:
         return "", None
-    processed = _preprocess_for_ocr(pil_image)
-    text = pytesseract.image_to_string(processed, lang=ocr_lang(), timeout=OCR_TIMEOUT_SECONDS)
+    return ocr_text_and_confidence(_preprocess_for_ocr(pil_image))
 
-    # Per-word confidence average, used to drive the "OCR quality: low" badge.
-    try:
-        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
-                                         timeout=OCR_TIMEOUT_SECONDS)
-        confidences = [int(c) for c in data["conf"] if c not in ("-1", -1)]
-        avg_conf = sum(confidences) / len(confidences) if confidences else None
-    except Exception:
-        log.warning("_ocr_image: caught error, continuing", exc_info=True)
-        avg_conf = None
 
-    return text, avg_conf
+def ocr_text_and_confidence(processed: Image.Image):
+    """The text Tesseract reads and its average word confidence (0-100, or
+    None; it drives the "OCR quality: low" badge), from one run. There were
+    two, one for the text and one for the confidence, and the second already
+    held the text (Claude review of 0165). Two-column lists are read column
+    by column (_lines_from_words)."""
+    data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
+                                     timeout=OCR_TIMEOUT_SECONDS)
+    confidences = []
+    for c in data["conf"]:
+        try:
+            if float(c) != -1:
+                confidences.append(float(c))
+        except (TypeError, ValueError):
+            continue
+    avg_conf = sum(confidences) / len(confidences) if confidences else None
+    return _lines_from_words(data, processed.width), avg_conf
+
+
+# A gap this wide between two words on one line is a gutter between
+# columns, not a space: several times the text's height, and a fair part of
+# the page.
+COLUMN_GAP_HEIGHTS = 4
+COLUMN_GAP_PAGE = 0.05
+
+
+def _lines_from_words(data: dict, page_width: int) -> str:
+    """The text as image_to_string gives it (a line per line, a blank line
+    between paragraphs), except that a paragraph laid out in two columns --
+    a two-column ingredient list -- is given left column first, then right.
+    Tesseract read across the gap: "1 cup uncooked rice indian spices:"
+    (Claude review of 0165, 5 pages of 9). A paragraph is only taken as two
+    columns when at least two of its lines split at the same place and no
+    line crosses it."""
+    paragraphs = {}
+    for i, word in enumerate(data["text"]):
+        if int(data["level"][i]) != 5 or not str(word).strip():
+            continue
+        key = (data["block_num"][i], data["par_num"][i])
+        para = paragraphs.setdefault(key, {})
+        para.setdefault(data["line_num"][i], []).append(
+            (int(data["left"][i]), int(data["width"][i]), int(data["height"][i]), str(word).strip()))
+    out = []
+    for para in paragraphs.values():
+        lines = [sorted(words) for _, words in sorted(para.items())]
+        out.append("\n".join(_column_order(lines, page_width)))
+    return "\n\n".join(out) + ("\n" if out else "")
+
+
+def _column_order(lines, page_width: int) -> list[str]:
+    def text(words):
+        return " ".join(w[3] for w in words)
+
+    def split(words):
+        heights = sorted(w[2] for w in words)
+        gap = max(COLUMN_GAP_HEIGHTS * heights[len(heights) // 2], COLUMN_GAP_PAGE * page_width)
+        parts = [[words[0]]]
+        for prev, word in zip(words, words[1:]):
+            if word[0] - (prev[0] + prev[1]) > gap:
+                parts.append([])
+            parts[-1].append(word)
+        return parts
+
+    parted = [split(words) for words in lines]
+    two = [p for p in parted if len(p) == 2]
+    if len(two) < 2 or any(len(p) > 2 for p in parted):
+        return [text(words) for words in lines]
+    starts = sorted(p[1][0][0] for p in two)
+    col = starts[len(starts) // 2]
+    tol = COLUMN_GAP_PAGE * page_width
+    left, right = [], []
+    for p in parted:
+        if len(p) == 2:
+            if abs(p[1][0][0] - col) > tol or p[0][-1][0] + p[0][-1][1] > col:
+                return [text(words) for words in lines]
+            left.append(text(p[0]))
+            right.append(text(p[1]))
+        else:
+            words = p[0]
+            if words[0][0] >= col - tol:
+                right.append(text(words))
+            elif words[-1][0] + words[-1][1] < col:
+                left.append(text(words))
+            else:
+                return [text(words) for words in lines]
+    return left + right
 
 
 # "Ingredients" alone on a line, optionally followed by a recipe card's
@@ -459,11 +534,36 @@ _OCR_BULLET = re.compile(r"^\s*[«»¢•·*+~]+\s+")
 _LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*$")
 
 
+# A line ending this way goes on on the next line.
+_WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|et|ou|avec|de|du|des|d'|à|au|aux|en|"
+                       r"pour|le|la|les|un|une|dans))\s*$", re.IGNORECASE)
+_SALT_AND_PEPPER = re.compile(r"^\s*(?:salt\s+(?:and|&)\s+(?:black\s+)?pepper|sel\s+et\s+poivre)\b", re.IGNORECASE)
+
+
+WRAP_MIN_CHARS = 25
+
+
+def _wrapped(prev: str, line: str) -> bool:
+    """A line starting in lowercase is the rest of the one before when that
+    one left off mid-phrase ("…but still firm," + "peeled and cut into
+    batonnets"), or is a measured line whose last word or two went over
+    ("1 cup chopped flat-leaf" + "parsley"). Not otherwise: a cookbook that
+    writes its items in lowercase ("mini pickles", "pickled onions", no
+    amounts) had them all joined into one (Claude review of 0165)."""
+    if _WRAP_END.search(prev):
+        return True
+    # Long enough to have run out of room: "2 tbsp olive oil" + "fresh mint
+    # leaves" are two items of a column.
+    return bool(_QTY_START.match(prev)) and len(prev) >= WRAP_MIN_CHARS and len(line.split()) <= 3 \
+        and not _SALT_AND_PEPPER.match(line) and not _INGREDIENT_TAIL.search(line)
+
+
 def _clean_ingredients(lines):
     """Drop page furniture, join wrapped lines, and label sub-headings.
 
     A line that doesn't start with a quantity is a continuation of the one
-    before if that one left a bracket open or this one starts in lowercase:
+    before if that one left a bracket open, or this one starts in lowercase
+    and that one left off mid-phrase (_wrapped):
     "1 ¼ teaspoons Prague powder #1 (curing" + "salt)". Sub-headings are
     kept -- dropping them loses which ingredients belong to which part --
     but reworded so they read as a heading, not as an ingredient.
@@ -497,7 +597,7 @@ def _clean_ingredients(lines):
             continue
         prev = out[-1] if out else None
         continues = prev is not None and not prev.endswith(":") and not _QTY_START.match(line) and (
-            prev.count("(") > prev.count(")") or line[:1].islower() or line[:1] in ")],;"
+            prev.count("(") > prev.count(")") or line[:1] in ")],;" or (line[:1].islower() and _wrapped(prev, line))
         )
         if continues:
             out[-1] = f"{prev} {line}"
@@ -602,7 +702,7 @@ def _whole_title(lines, i) -> str:
     return t
 
 
-def _guess_title(lines, ing_line_index):
+def _guess_title(lines, ing_line_index, first_ing_index=None):
     """The recipe's name, not whatever happens to be the first line.
 
     Printed web pages start with the date and "Page 1 of 1"; blog pages start
@@ -610,7 +710,9 @@ def _guess_title(lines, ing_line_index):
       1. the line just above the author byline closest before the
          ingredients -- recipe cards put "Title" then "By: Name";
       2. a short line that appears more than once (the name is repeated in
-         the article heading, the card, and often the print header);
+         the article heading, the card, and often the print header), first
+         seen above the ingredients: "salt and pepper" under two parts of a
+         recipe was taken as its name (Claude review of 0165);
       3. the first line that isn't page furniture.
     A name broken over two lines is joined (_whole_title), and tidied
     (_tidy_title).
@@ -659,7 +761,8 @@ def _guess_title(lines, ing_line_index):
         if (ok(l) and 1 <= len(l.split()) <= 8 and not l.endswith(".")
                 and any(sum(c.isalpha() for c in w) >= 4 for w in l.split())):
             counts[l.lower()] = counts.get(l.lower(), 0) + 1
-    repeated = [n for n, l in enumerate(lines) if counts.get(l.lower(), 0) >= 2]
+    above = first_ing_index if first_ing_index is not None else len(lines)
+    repeated = [n for n, l in enumerate(lines[:above]) if counts.get(l.lower(), 0) >= 2]
     if repeated:
         return _tidy_title(_whole_title(lines, repeated[0]))
 
@@ -857,8 +960,11 @@ def _component_recipe(body: list[str]):
         if _yield_of(line) and servings is None:
             servings = _yield_of(line)
             kinds.append("yield")
-        elif prev_kind == "prose" and not re.search(r"[.!?:]\s*$", prev_line):
-            kinds.append("prose")                     # the paragraph goes on
+        elif (prev_kind == "prose" and not re.search(r"[.!?:]\s*$", prev_line)
+              and not (line.isupper() and len(line.split()) <= 4 and not re.search(r"[.!?]\s*$", line))):
+            # The paragraph goes on, unless this is a part name in capitals
+            # ("SALAD") after a paragraph whose full stop OCR read as a comma.
+            kinds.append("prose")
         elif _is_prose(line):                         # "9 Cook the garlic." is a circled step number
             kinds.append("prose")
         elif _QTY_START.match(line) or (_INGREDIENT_TAIL.search(line) and len(line.split()) <= 12):
@@ -897,8 +1003,10 @@ def _component_recipe(body: list[str]):
     ingredients, steps = [], []
     after_method = False      # a part name follows a method paragraph
     part_label = None
-    for kind, lines in runs:
+    for n, (kind, lines) in enumerate(runs):
         if kind == "label":
+            if n + 1 < len(runs) and runs[n + 1][0] == "label":
+                continue          # nothing under it: a byline ("LES BRIGANDS"), not a part
             label = label_text(lines[0])
             ingredients.append(label)
             if after_method:
@@ -964,11 +1072,23 @@ def rule_segment_raw_text(raw_text: str) -> dict:
         rest = lines[i + 1:]
         first_step = next((k for k, l in enumerate(rest)
                            if _STEP_START.match(l) and not _QTY_START.match(_STEP_START.sub("", l))), None)
-        if first_step is not None:
+        if first_step is None:
+            # No numbered step either: the steps are the first method text
+            # after an ingredient, as where there are no headings ("HEAT the
+            # ingredients and PUT…", "BLEND and SERVE."). Everything had
+            # become ingredients (Claude review of 0165, 4 pages of 9).
+            # The lines before it must read as items, short and not
+            # sentences: an article's "Ingredients" section of paragraphs
+            # ("Butter. Use your favourite brand…") isn't a recipe.
+            prose = next((k for k, l in enumerate(rest) if _is_prose(l) or (k > 0 and _short_step(l))), None)
+            if prose and all(len(_OCR_BULLET.sub("", l).split()) <= 10 for l in rest[:prose]):
+                ingredients = _clean_ingredients(rest[:prose])
+                steps = _prose_steps(rest[prose:])
+            else:
+                ingredients = _clean_ingredients(rest)
+        else:
             ingredients = _clean_ingredients(rest[:first_step])
             steps = _clean_steps(rest[first_step:])
-        else:
-            ingredients = _clean_ingredients(rest)
     else:
         # No headings at all: an app screenshot with a checklist of
         # ingredients, then the method. Ingredients are the quantity lines;
@@ -997,8 +1117,12 @@ def rule_segment_raw_text(raw_text: str) -> dict:
 
     # A yield line read as an ingredient ("Makes 12 cookies") is the servings.
     ingredients = [l for l in ingredients if not _yield_of(l)]
+    # Without an Ingredients heading, the first measured line marks where
+    # the ingredients start, for the title's "repeated line" rule.
+    first_ing = chosen_ing if chosen_ing is not None else next(
+        (k for k, l in enumerate(lines) if _QTY_START.match(l)), None)
     return {
-        "title_guess": _guess_title(lines, chosen_ing),
+        "title_guess": _guess_title(lines, chosen_ing, first_ing),
         "ingredients": ingredients,
         "steps": steps,
         "servings": servings,

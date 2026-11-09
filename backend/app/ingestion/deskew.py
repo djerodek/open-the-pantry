@@ -36,6 +36,101 @@ def _skew_angle(rect) -> float:
     return best if best is not None else 0.0
 
 
+def darkest_channel(image) -> np.ndarray:
+    """A grayscale array for OCR: each pixel's darkest colour channel, except
+    inside photos, which keep the usual gray mix.
+
+    The gray mix turned light coloured text white: a cookbook's teal titles
+    (gray about 206) went above the threshold and were never read (Claude
+    review of 0165: 0 titles of 9). The darkest channel reads them, but it
+    also darkens a photo (a yellow mango's blue channel is near 0), and a
+    dark photo broke Tesseract's layout of the whole page: columns and
+    lines cut into pieces. Photos are the large dense areas that aren't
+    page background; text, even a big title, is thin and sparse. Black and
+    gray text read the same either way. Takes a BGR or RGB array, or a PIL
+    image."""
+    arr = np.asarray(image.convert("RGB")) if hasattr(image, "convert") else np.asarray(image)
+    if arr.ndim == 2:
+        return arr
+    arr = arr[:, :, :3]
+    darkest = arr.min(axis=2)
+    gray = cv2.cvtColor(np.ascontiguousarray(arr), cv2.COLOR_RGB2GRAY)  # the channel order barely matters here
+    photos = _photo_mask(darkest)
+    return np.where(photos, gray, darkest).astype(np.uint8)
+
+
+PHOTO_MIN_AREA = 0.02       # of the image
+PHOTO_MIN_SIDE = 0.08       # of the image's height and width
+PHOTO_MIN_FILL = 0.6        # of its rectangle that isn't background
+
+
+def _photo_mask(darkest: np.ndarray) -> np.ndarray:
+    h, w = darkest.shape
+    ink = (darkest < 235).astype(np.uint8)
+    ink = cv2.dilate(ink, np.ones((3, 3), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    mask = np.zeros((h, w), bool)
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i]
+        if (area >= PHOTO_MIN_AREA * w * h and bh >= PHOTO_MIN_SIDE * h and bw >= PHOTO_MIN_SIDE * w
+                and area >= PHOTO_MIN_FILL * bw * bh):
+            mask[y:y + bh, x:x + bw] = True
+    return mask
+
+
+# A page photographed on a table: Otsu's threshold took the table as ink,
+# so the angle came from the table (0 degrees) and the dark edges filled
+# what Tesseract read (Claude review of 0165: 0-62% of the words at 6-10
+# degrees). The page is the largest bright shape; it's straightened by its
+# own edges and cropped to. Only when it's tilted: an upright bright card
+# or photo in a screenshot (dark mode) is left alone, as is a page that
+# fills the frame.
+PAGE_MIN_AREA = 0.25        # of the image
+PAGE_MAX_AREA = 0.97
+PAGE_MIN_FILL = 0.9         # the shape's area over its rectangle's: a page, not a blob
+PAGE_MIN_TILT = 0.5
+PAGE_MAX_TILT = 30.0
+PAGE_MIN_CONTRAST = 60      # the page's mean brightness over its surroundings'
+
+
+def crop_to_page(gray: np.ndarray) -> np.ndarray:
+    h, w = gray.shape
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, bright = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Close the text inside the page so it doesn't cut the shape up.
+    k = max(3, (min(h, w) // 60) | 1)
+    bright = cv2.morphologyEx(bright, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    contours, _ = cv2.findContours(bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return gray
+    page = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(page)
+    rect = cv2.minAreaRect(page)
+    (cx, cy), (rw, rh), _ = rect
+    if not (PAGE_MIN_AREA * w * h <= area <= PAGE_MAX_AREA * w * h) or area < PAGE_MIN_FILL * rw * rh:
+        return gray
+    angle = _skew_angle(rect)
+    if not (PAGE_MIN_TILT <= abs(angle) <= PAGE_MAX_TILT):
+        return gray
+    mask = np.zeros_like(gray)
+    cv2.drawContours(mask, [page], -1, 255, -1)
+    inside, outside = gray[mask > 0], gray[mask == 0]
+    if outside.size and float(inside.mean()) - float(outside.mean()) < PAGE_MIN_CONTRAST:
+        return gray
+    matrix = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    turned = cv2.warpAffine(gray, matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    # The rectangle's sides after turning: the longer one runs the way the
+    # page's horizontal edge does.
+    pts = cv2.transform(np.array([cv2.boxPoints(rect)]), matrix)[0]
+    x0, y0 = np.floor(pts.min(axis=0)).astype(int)
+    x1, y1 = np.ceil(pts.max(axis=0)).astype(int)
+    m = 3                                                   # just inside the edge
+    x0, y0, x1, y1 = max(0, x0 + m), max(0, y0 + m), min(w, x1 - m), min(h, y1 - m)
+    if x1 - x0 < w // 5 or y1 - y0 < h // 5:
+        return gray
+    return turned[y0:y1, x0:x1]
+
+
 def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     """
     Detect and correct small rotational skew (a tilted phone photo of a

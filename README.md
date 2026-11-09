@@ -215,8 +215,9 @@ more than you want, leave it off.
   the PDF becomes the recipe's photo. You can add one file, or up to 20 at
   once.
 - **From a photo or screenshot.** OCR reads it, after turning it upright
-  and straightening it. **Combine multiple** joins up to 10 screenshots into
-  one recipe. OCR doesn't read handwriting: type those recipes in.
+  and straightening it; a page photographed on a table is cropped from it
+  first. Coloured titles and two-column ingredient lists are read too.
+  **Combine multiple** joins up to 10 screenshots into one recipe. OCR doesn't read handwriting: type those recipes in.
 - **Typed in.** Fields for everything, plus a photo. In the Ingredients or
   Steps box, a short line ending in ":" starts a section, e.g. "Sauce:".
 - **Shared from another app.**

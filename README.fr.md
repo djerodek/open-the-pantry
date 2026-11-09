@@ -251,7 +251,9 @@ désactivée.
   l'endroit. La plus grande photo du PDF devient la photo de la recette. On
   peut ajouter un fichier, ou jusqu'à 20 à la fois.
 - **À partir d'une photo ou d'une capture d'écran.** L'OCR la lit, après
-  l'avoir remise à l'endroit et redressée. **Combiner plusieurs** réunit
+  l'avoir remise à l'endroit et redressée; une page photographiée sur une
+  table en est d'abord découpée. Les titres en couleur et les listes
+  d'ingrédients sur deux colonnes sont lus aussi. **Combiner plusieurs** réunit
   jusqu'à 10 captures en une seule recette. L'OCR ne lit pas l'écriture à la
   main : tapez ces recettes.
 - **Tapée à la main.** Des champs pour tout, plus une photo. Dans la boîte
