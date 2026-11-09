@@ -1,9 +1,17 @@
+import io
 import os
 import sys
+import zlib
+from unittest.mock import patch
 
 import pytest
+from PIL import Image
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import NameObject, NumberObject, StreamObject
 
-from app.ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError  # noqa: E402
+from app.ingestion import pdf_ingest
+from app.ingestion.pdf_ingest import (PdfTooLargeError, extract_largest_embedded_image, extract_pdf_text,
+                                      segment_raw_text)
 
 
 def test_segment_handles_ingredients_before_steps():
@@ -184,3 +192,349 @@ def test_gmail_body_numbered_steps_without_heading():
     assert len(steps) == 2
     assert steps[0].startswith("Cook, rinse, and drain the noodles: Stops cooking")
     assert steps[1].startswith("Sear the pork:") and steps[1].endswith("just cooked.")
+
+
+def _pdf_with_mask(mask_w: int, mask_h: int, mask_data_len: int, fmt: str = "PNG") -> bytes:
+    import base64
+
+    from weasyprint import HTML
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 100, 50)).save(buf, format=fmt)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    mime = "image/jpeg" if fmt == "JPEG" else "image/png"
+    pdf = HTML(string=f'<img src="data:{mime};base64,{b64}" width="400" height="300">').write_pdf()
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(pdf)))
+    mask = StreamObject()
+    mask.set_data(zlib.compress(b"\xff" * mask_data_len))
+    mask.update({
+        NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Image"),
+        NameObject("/Width"): NumberObject(mask_w), NameObject("/Height"): NumberObject(mask_h),
+        NameObject("/ColorSpace"): NameObject("/DeviceGray"),
+        NameObject("/BitsPerComponent"): NumberObject(8),
+        NameObject("/Filter"): NameObject("/FlateDecode"),
+    })
+    ref = writer._add_object(mask)
+    for page in writer.pages:
+        for xobj in pdf_ingest._image_xobjects(page, 0, set()):
+            xobj[NameObject("/SMask")] = ref
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+# OCR of two screenshots of a grocery-store app recipe (Spicy shrimp
+# fusilli), exactly as Tesseract read them. The steps were lost: "Method 2
+# steps" and "Ingredients 13 total" weren't taken as headings, "Step 1" not
+# as a step marker, and the phone's status bar landed in the ingredients.
+SHRIMP_OCR = """Spicy shrimp fusilli
+
+2024-10-14 7:39 PM
+
+7:38 a 7 @®
+
+< Q. Search for a product
+
+Ingredients 13 total
+
+8 oz Fusilli
+
+2 tbsp olive oil, divided
+
+1 pkg Uncooked Extra Large Black Tiger Shrimp, thawed
+1/2 tsp hot pepper flakes
+
+1 onion, finely diced
+
+3 cloves garlic, minced
+
+1 can diced tomatoes
+
+1/4 tsp salt
+
+1/4 tsp pepper
+
+1/4 tsp dried oregano
+
+1 cup loosely packed baby arugula
+1 tbsp lemon juice
+
+2 tosp finely chopped fresh parsley
+
+
+Method 2 steps
+
+Step 1
+
+Boil water in large skillet set over high heat. Cook pasta
+until al dente (cook slightly less than package directions).
+Reserve 1/2 cup (125 mL) pasta cooking water. Drain
+pasta; set aside. Heat 1 tbsp (15 mL) oil in same skillet set
+over medium heat. Add shrimp and hot pepper flakes;
+sauté 3 to 4 min. until shrimp are pink and firm. Transfer
+to plate.
+
+Step 2
+
+Heat remaining oil in skillet. Add onion and garlic. Cook
+about 2 min. to soften. Stir in tomatoes, 1/2 cup (125 mL)
+water (not the pasta water), salt, pepper and oregano;
+bring to a boil. Reduce heat to medium-low; simmer about
+15 min. until sauce is thickened. Add pasta, reserved
+pasta water and shrimp into skillet; stir to coat. Just
+before serving, stir in arugula and lemon juice; sprinkle
+with parsley."""
+
+
+@pytest.mark.parametrize("title,kept", [
+    ("Death by Chocolate Cake", "Death by Chocolate Cake"), ("Stand by Me Brownies", "Stand by Me Brownies"),
+    ("Pulled Pork Sandwich by Samuel Fortier, Anna Lee", "Pulled Pork Sandwich"),
+    ("Lemon Tart by Anna Smith", "Lemon Tart"),
+])
+def test_a_byline_goes_a_dish_name_stays(title, kept):
+    from app.ingestion.pdf_ingest import _tidy_title
+    assert _tidy_title(title) == kept
+
+
+def test_a_section_label_in_front_of_a_quantity_is_kept():
+    from app.ingestion.pdf_ingest import _clean_ingredients
+    assert _clean_ingredients(["For the dough: 2 cups flour", "1 tsp salt", "Noodles: 8 oz wheat noodles"]) == \
+        ["For the dough:", "2 cups flour", "1 tsp salt", "8 oz wheat noodles"]
+    assert _clean_ingredients(["Pour la pâte: 250 g de farine"]) == ["Pour la pâte:", "250 g de farine"]
+
+
+def test_short_steps_without_headings():
+    from app.ingestion.pdf_ingest import rule_segment_raw_text as seg
+    r = seg("Pancakes\n1 cup flour\n2 eggs\nMix everything.\nFry.")
+    assert r["ingredients"] == ["1 cup flour", "2 eggs"] and r["steps"] == ["Mix everything.", "Fry."]
+    assert seg("Cake\n2 cups flour\n3 eggs\nBake 20 min.")["steps"] == ["Bake 20 min."]
+    # A cooking verb at the start of an ingredient line isn't a step.
+    r = seg("Steak\n2 lb top sirloin\nTop sirloin trimmings\n1 tsp salt\nGrill it.")
+    assert "Top sirloin trimmings" not in r["steps"] and r["steps"] == ["Grill it."]
+
+
+def test_an_oversized_soft_mask_is_not_decoded(tmp_path):
+    """A 400 x 300 photo with a 20,000 x 20,000 soft mask passed 0104's
+    check: only the mask's filter was looked at."""
+    path = tmp_path / "m.pdf"
+    path.write_bytes(_pdf_with_mask(20000, 20000, 1000))
+    from pypdf.generic import _image_xobject
+    decoded = []
+    with patch.object(_image_xobject, "_xobj_to_image", side_effect=lambda *a, **k: decoded.append(1)):
+        assert extract_largest_embedded_image(str(path)) is None
+    assert decoded == []
+
+
+def test_a_jpeg_with_a_soft_mask_is_skipped_before_decoding(tmp_path):
+    """pypdf returns it as JPEG 2000, which the app doesn't accept."""
+    path = tmp_path / "j.pdf"
+    path.write_bytes(_pdf_with_mask(400, 300, 400 * 300, fmt="JPEG"))
+    from pypdf.generic import _image_xobject
+    decoded = []
+    with patch.object(_image_xobject, "_xobj_to_image", side_effect=lambda *a, **k: decoded.append(1)):
+        assert extract_largest_embedded_image(str(path)) is None
+    assert decoded == []
+
+
+def test_a_soft_mask_without_a_size_is_refused():
+    class X(dict):
+        def get_object(self):
+            return self
+    image = X({"/Filter": NameObject("/FlateDecode"), "/Width": 400, "/Height": 300,
+               "/SMask": X({"/Filter": NameObject("/FlateDecode")})})
+    assert not pdf_ingest._decode_allowed(image, 40_000_000)
+    image["/SMask"]["/Width"], image["/SMask"]["/Height"] = 400, 300
+    assert pdf_ingest._decode_allowed(image, 40_000_000)
+
+
+def test_a_photo_with_a_normal_soft_mask_is_still_extracted(tmp_path):
+    path = tmp_path / "ok.pdf"
+    path.write_bytes(_pdf_with_mask(400, 300, 400 * 300))
+    data = extract_largest_embedded_image(str(path))
+    with Image.open(io.BytesIO(data)) as im:
+        assert im.size == (400, 300)
+
+
+def test_pdf_photos_use_the_same_limit(tmp_path):
+    import base64
+
+    from weasyprint import HTML
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (1, 2, 3)).save(buf, format="JPEG")
+    pdf = HTML(string=f'<img src="data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}">').write_pdf()
+
+    def declared(w, h):
+        writer = PdfWriter(clone_from=PdfReader(io.BytesIO(pdf)))
+        for page in writer.pages:
+            for xobj in pdf_ingest._image_xobjects(page, 0, set()):
+                xobj[NameObject("/Width")] = NumberObject(w)
+                xobj[NameObject("/Height")] = NumberObject(h)
+        path = tmp_path / f"{w}.pdf"
+        out = io.BytesIO()
+        writer.write(out)
+        path.write_bytes(out.getvalue())
+        return str(path)
+
+    from unittest.mock import patch
+
+    from pypdf.generic import _image_xobject
+    for (w, h), expect_decode in (((10_000, 5_100), False), ((8_000, 6_000), True)):
+        decoded = []
+        with patch.object(_image_xobject, "_xobj_to_image", side_effect=lambda *a, **k: decoded.append(1)):
+            pdf_ingest.extract_largest_embedded_image(declared(w, h))
+        assert bool(decoded) is expect_decode, (w, h)
+
+
+@pytest.mark.parametrize("footer", ["©", "Copyright", "  ©  ", "COPYRIGHT"])
+def test_a_bare_copyright_line_ends_the_steps(footer):
+    from app.ingestion.pdf_ingest import rule_segment_raw_text
+    s = rule_segment_raw_text("\n".join(["Bread", "Ingredients", "2 cups flour", "Method",
+                                         "Mix the flour.", "Bake 30 minutes.", footer, "Breads (7)"]))
+    assert s["steps"] == ["Mix the flour.", "Bake 30 minutes."]
+
+
+def test_preprocess_for_ocr_caps_extreme_upscale():
+    """A 12 x 60000 px render (a 3 x 14400 pt page rendered within budget)
+    used to upscale to 1500 px wide unconditionally -- 1500 x 7,500,000 =
+    11.2 gigapixels."""
+    from PIL import Image
+
+    from app.ingestion import pdf_ingest
+
+    narrow_tall = Image.new("L", (12, 60000), color=255)
+    result = pdf_ingest._preprocess_for_ocr(narrow_tall)
+    assert result.width * result.height <= pdf_ingest.MAX_OCR_PIXELS * 1.02
+
+
+def test_preprocess_for_ocr_downscales_an_already_oversized_render():
+    """Safety net for an image that reaches preprocessing over budget: the
+    old code only ever upscaled narrow images, so an already-too-big one
+    passed through untouched."""
+    from PIL import Image
+
+    from app.ingestion import pdf_ingest
+
+    oversized = Image.new("L", (6200, 6200), color=255)
+    result = pdf_ingest._preprocess_for_ocr(oversized)
+    assert result.width * result.height <= pdf_ingest.MAX_OCR_PIXELS * 1.02
+
+
+def test_huge_page_renders_within_budget():
+    """The first attempt only shrank the image after rendering: a 200 x 200
+    inch page still rendered at 72 dpi (the old floor), 14400 x 14400 =
+    207 MP, 1.7 GB peak, before the cap could apply."""
+    from app.ingestion.pdf_ingest import MAX_OCR_PIXELS, _ocr_resolution
+    dpi = _ocr_resolution(14400, 14400)
+    assert (200 * dpi) ** 2 <= MAX_OCR_PIXELS
+
+
+def test_image_preprocess_caps_extreme_upscale(tmp_path):
+    """A 20 x 40000 px upload asked for 4.5 gigapixels after the
+    upscale-to-1500-wide step."""
+    from PIL import Image
+
+    from app.ingestion import image_ingest
+
+    p = tmp_path / "tall.png"
+    Image.new("RGB", (20, 40000), color=(255, 255, 255)).save(p)
+    processed, _ = image_ingest._preprocess(str(p))
+    assert processed.size[0] * processed.size[1] <= image_ingest.MAX_OCR_PIXELS * 1.02
+
+
+def test_rotated_photo_keeps_jpeg_quality(tmp_path):
+    from PIL import Image
+
+    from app.file_validation import JPEG_QUALITY
+    from app.ingestion.image_ingest import _rotate_stored_file
+
+    p = tmp_path / "photo.jpg"
+    Image.effect_noise((600, 400), 60).convert("RGB").save(p, format="JPEG", quality=JPEG_QUALITY)
+    before = p.stat().st_size
+    _rotate_stored_file(str(p), 90)
+    # At the old default (75) the re-save of a noisy image shrank by well
+    # over a third; at the same quality it stays close to the original size.
+    assert p.stat().st_size > before * 0.8
+
+
+def test_every_tesseract_run_has_a_time_limit():
+    """(5) A crafted image held a heavy-job slot with no limit."""
+    import ast
+    from pathlib import Path
+
+    from app.ingestion.pdf_ingest import OCR_TIMEOUT_SECONDS
+    assert 0 < OCR_TIMEOUT_SECONDS <= 300
+    calls = 0
+    for f in (Path(__file__).resolve().parents[1] / "app").rglob("*.py"):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr.startswith("image_to_")):
+                calls += 1
+                assert any(k.arg == "timeout" for k in node.keywords), (f.name, node.lineno)
+    assert calls == 5
+
+
+def test_tall_scanned_pages_render_within_the_pixel_budget():
+    """An 8.5 x 200 inch image-only page rendered at 300 dpi was 153 MP."""
+    from app.ingestion.pdf_ingest import MAX_OCR_PIXELS, _ocr_resolution
+    for w, h in [(612, 14400), (393, 14400), (14400, 14400)]:
+        dpi = _ocr_resolution(w, h)
+        assert (w / 72 * dpi) * (h / 72 * dpi) <= MAX_OCR_PIXELS * 1.02
+    assert _ocr_resolution(612, 792) == 300          # an ordinary page is unchanged
+
+
+def test_grocery_app_screenshot_steps_are_found():
+    from app.ingestion.pdf_ingest import segment_raw_text
+    s = segment_raw_text(SHRIMP_OCR)
+    assert s["title_guess"] == "Spicy shrimp fusilli"
+    assert len(s["ingredients"]) == 13
+    assert s["ingredients"][0] == "8 oz Fusilli"
+    assert "2 tbsp finely chopped fresh parsley" in s["ingredients"]        # OCR "tosp"
+    assert not any("7:38" in i for i in s["ingredients"])                   # status bar
+    assert len(s["steps"]) == 2
+    assert s["steps"][0].startswith("Boil water") and s["steps"][0].endswith("Transfer to plate.")
+    assert s["steps"][1].startswith("Heat remaining oil") and s["steps"][1].endswith("sprinkle with parsley.")
+
+
+def test_step_label_is_not_the_steps_heading():
+    from app.ingestion.pdf_ingest import HEADING_INGREDIENTS, HEADING_STEPS
+    for h in ["Method", "Method 2 steps", "Directions:", "Instructions (4)", "Steps"]:
+        assert HEADING_STEPS.match(h), h
+    for h in ["Ingredients", "Ingredients 13 total", "Ingredients 1X 2X", "Ingredients (8)"]:
+        assert HEADING_INGREDIENTS.match(h), h
+    for not_h in ["Step 1", "Step 2:", "Method of cooking is key"]:
+        assert not HEADING_STEPS.match(not_h), not_h
+
+
+def test_screenshot_without_headings_gets_its_steps():
+    """An app screenshot with a checklist of ingredients and circled step
+    numbers, no "Ingredients"/"Method" headings. OCR turns the checkboxes
+    into "LJ" and the circled numbers into "@", "9", "(c)"; the steps used
+    to be lost and the title came out as "LJ"."""
+    from app.ingestion.pdf_ingest import segment_raw_text
+    raw = "\n".join([
+        "Test Beef Stew", "2024-02-20 8:57 PM", "7:34 94", "",
+        "2 tbsp olive oil", "2 lb beef chuck", "3 garlic cloves", "2 onions",
+        "LJ", "L", "LJ", "1 sprig thyme", "AA & a example.com", "",
+        "Cut the beef into chunks. Pat dry", "then season well.", "",
+        "@ Brown the beef in batches over high", "heat. Remove to a plate.", "",
+        "9 Cook garlic and onion for 3 minutes.", "",
+        "© Return the beef and simmer for 2 hours.", "",
+        "faa) Serve with mashed potatoes!!",
+    ])
+    s = segment_raw_text(raw)
+    assert s["title_guess"] == "Test Beef Stew"
+    assert s["ingredients"] == ["2 tbsp olive oil", "2 lb beef chuck", "3 garlic cloves", "2 onions", "1 sprig thyme"]
+    assert s["steps"] == [
+        "Cut the beef into chunks. Pat dry then season well.",
+        "Brown the beef in batches over high heat. Remove to a plate.",
+        "Cook garlic and onion for 3 minutes.",
+        "Return the beef and simmer for 2 hours.",
+        "Serve with mashed potatoes!!",
+    ]
+
+
+def test_steps_stop_at_ratings_and_reviews():
+    from app.ingestion.pdf_ingest import segment_raw_text
+    raw = "\n".join(["Test Pork Chops", "Ingredients", "4 pork chops", "2 apples", "Directions",
+                     "Step 1", "Preheat the oven.", "Step 2", "Roast the chops.",
+                     "Reviews (9)", "Great recipe, loved it.", "17 Ratings", "5 star 15"])
+    assert segment_raw_text(raw)["steps"] == ["Preheat the oven.", "Roast the chops."]

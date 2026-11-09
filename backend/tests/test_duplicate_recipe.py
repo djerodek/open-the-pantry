@@ -1,5 +1,6 @@
 """Duplicate a recipe (owner's request): a full copy with its own photo,
 titled "(copy)", without the favourite or "To review" marks."""
+import os
 import uuid
 
 import pytest
@@ -7,11 +8,6 @@ import pytest
 from .conftest import TINY_PNG
 
 H = {"X-Requested-With": "OpenThePantry"}
-
-
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
 
 
 def test_a_copy_has_everything_and_its_own_photo(client):
@@ -68,3 +64,26 @@ def test_copy_title_in_french_and_unknown_recipe(client):
         assert client.post("/api/recipes/999999999/duplicate", headers=H).status_code == 404
     finally:
         client.post("/api/recipes/batch-delete", headers=H, json={"ids": [src["id"], copy["id"]]})
+
+
+def test_a_failed_duplicate_photo_copy_leaves_nothing(client, monkeypatch):
+    from app import main, routes
+    photo = client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).json()["stored_file"]
+    r = client.post("/api/recipes", headers=H, json={"title": "With photo", "source_type": "manual",
+                                                     "image_path": photo}).json()
+    try:
+        before = set(os.listdir(main.UPLOADS_DIR))
+        titles = {x["title"] for x in client.get("/api/recipes").json()}
+
+        def half_copy(src, dst):
+            with open(dst, "wb") as f:
+                f.write(b"partial")
+            raise OSError(28, "No space left on device")
+        monkeypatch.setattr(routes.common.shutil, "copyfile", half_copy)
+        res = client.post(f"/api/recipes/{r['id']}/duplicate", headers=H)
+        assert res.status_code == 500 and "Nothing was changed" in res.json()["detail"]
+        assert set(os.listdir(main.UPLOADS_DIR)) == before
+        assert {x["title"] for x in client.get("/api/recipes").json()} == titles
+    finally:
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
+        client.delete(f"/api/recently-deleted/{r['id']}", headers=H)

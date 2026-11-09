@@ -10,11 +10,6 @@ import pytest
 H = {"X-Requested-With": "OpenThePantry"}
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def _flagged(client, rid):
     return client.get(f"/api/recipes/{rid}").json()["needs_review"]
 
@@ -24,9 +19,9 @@ def _count(client):
 
 
 def test_unattended_imports_are_flagged_and_reviewed_ones_are_not(client, monkeypatch):
-    from app import main
-    from app import routes
+    from app import main, routes
     from app.database import SessionLocal
+
     from .test_duplicates import _Fetched
     from .test_incomplete_sources import WHOLE, _pdf
     before = _count(client)
@@ -69,7 +64,9 @@ def test_email_scan_lists_what_it_saved(client, monkeypatch):
     """The scan's results in Settings name the recipes it added, so each can
     be deleted there."""
     from cryptography.fernet import Fernet
+
     from app import crypto
+
     from .test_duplicates import _scan, _settings_payload
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
     client.put("/api/email-settings", json=_settings_payload(enabled=True, password="pw"))
@@ -87,9 +84,8 @@ def test_email_scan_lists_what_it_saved(client, monkeypatch):
 
 
 def test_hints(client):
-    from app import review
+    from app import models, review
     from app.database import SessionLocal
-    from app import models
     db = SessionLocal()
     try:
         r = models.Recipe(title="Hint Soup", source_type="pdf", raw_text="Hint Soup\n...", ocr_confidence=61.4,
@@ -171,6 +167,7 @@ def test_learning_leaves_out_recipes_still_to_review(client):
 def test_json_export_keeps_the_flag(client):
     import io
     import zipfile
+
     from app import models
     from app.database import SessionLocal
     sfx = uuid.uuid4().hex[:6]

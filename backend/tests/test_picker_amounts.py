@@ -9,11 +9,6 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 @pytest.fixture(scope="module")
 def picker_client(client):
     from app.main import picker_app

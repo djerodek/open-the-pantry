@@ -139,16 +139,6 @@ def test_recipe_dialog_opens_on_the_tap():
     assert "if (ticket !== detailTicket || detailOverlay.hidden) return;" in body
 
 
-def test_largest_text_size_fits_a_phone():
-    """Settings -> Text size goes up to 26px. At that size 15rem is 390px,
-    wider than most phones: the card grid must not demand it, and the
-    recipe header must be free to put Share below the title rather than
-    under the close button."""
-    css = CSS.read_text(encoding="utf-8")
-    assert "repeat(auto-fill, minmax(min(15rem, 100%), 1fr))" in css
-    assert ".recipe-detail-header { display: flex; flex-wrap: wrap;" in css
-
-
 # ---------------------------------------------------------------------------
 # What to eat? (frontend-picker/, app/picker.py)
 # ---------------------------------------------------------------------------
@@ -437,20 +427,6 @@ def test_scaling_makes_the_unit_agree():
     assert run([["4 servings", 0.5, "servings"], ["2 personnes", 0.5, "servings"]]) == ["2 servings", "1 personne"]
 
 
-def test_scale_buttons_in_the_recipe_view():
-    """The controls live in amounts.js (0155), used by the recipe view and
-    by What to eat?'s reader."""
-    amounts = (CSS.parents[1] / "js" / "amounts.js").read_text(encoding="utf-8")
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
-    css = CSS.read_text(encoding="utf-8")
-    assert '[[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]]' in amounts
-    detail = amounts[amounts.index("  function ingredientControls("):]
-    assert "scaleLineInfo(text, factor)" in detail and "scaleServings(servings, factor)" in detail
-    assert 'tx("as written")' in detail
-    assert "window.OTP_AMOUNTS.ingredientControls({" in js
-    assert "@media print { .scale-buttons, .units-disclaimer { display: none !important; } }" in css
-
-
 def test_shared_link_opens_add_from_url():
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     manifest = __import__("json").loads((CSS.parents[1] / "manifest.json").read_text(encoding="utf-8"))
@@ -462,24 +438,3 @@ def test_shared_link_opens_add_from_url():
     assert "openSharedLink();" in js[js.index("(async function init() {"):]
     sw = (CSS.parents[1] / "service-worker.js").read_text(encoding="utf-8")
     assert 'if (!url.pathname.startsWith("/api/") && url.search) return false;' in sw
-
-
-def test_settings_are_in_three_groups():
-    """Settings: Display, Recipes, Server, each section in one of them."""
-    import re
-    html = (CSS.parents[1] / "index.html").read_text(encoding="utf-8")
-    modal = html[html.index('id="settings-modal"'):html.index("<!-- Settings password: create")]
-    groups = re.findall(r'<h3 class="settings-group-title" id="settings-group-(\w+)">', modal)
-    assert groups == ["display", "recipes", "server"]
-    titles = re.findall(r'<div class="filter-section-title"[^>]*>([^<]+)<', modal)
-    parts = re.split(r'<section class="settings-group"', modal)
-    assert parts[0].count("filter-section-title") == 0          # nothing outside a group
-    assert sum(p.count("filter-section-title") for p in parts[1:]) == len(titles) == 14      # + Library check (0111)
-    assert "Settings password" in parts[3] and "Email ingest" in parts[3] and "Backup &amp; export" in parts[2]
-    assert "Library check" in parts[2]
-
-
-def test_hidden_always_hides():
-    """A class's display value used to beat the hidden attribute: "Change
-    password" showed before any password existed."""
-    assert "[hidden] { display: none !important; }" in CSS.read_text(encoding="utf-8")

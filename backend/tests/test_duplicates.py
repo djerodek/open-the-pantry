@@ -6,6 +6,8 @@
 - Unattended adds: a batch link or an emailed link already saved is skipped;
   a title already used is saved with a note.
 """
+import json
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,11 +15,6 @@ import pytest
 from .test_email_ingest import _settings_payload
 
 H = {"X-Requested-With": "OpenThePantry"}
-
-
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
 
 
 def test_normalize():
@@ -71,8 +68,7 @@ class _Fetched:
 
 
 def test_batch_links_skip_a_saved_link_and_note_a_saved_title(client, monkeypatch):
-    from app import main
-    from app import routes
+    from app import main, routes
     a = _make(client, "Dup Batch Stew", "https://example.com/dup-batch-stew")
     fetched = []
 
@@ -118,6 +114,7 @@ def _scan(client, result):
 
 def test_email_skips_a_saved_link_and_notes_a_saved_title(client, monkeypatch):
     from cryptography.fernet import Fernet
+
     from app import crypto
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
     client.put("/api/email-settings", json=_settings_payload(enabled=True, password="pw"))
@@ -149,3 +146,110 @@ def test_result_lines_translate_with_a_note_after_them():
     assert translate(line, "fr") == "OK : Pie (de « Fw: pie », par la pièce jointe PDF) -- aucune étape trouvée; vérifiez la recette"
     line = 'OK: Pie (from "x", via URL in body (a.com)) -- already in your library; not saved again'
     assert translate(line, "fr") == "OK : Pie (de « x », par l'URL dans le corps (a.com)) -- déjà dans votre bibliothèque; pas enregistrée de nouveau"
+
+
+BAD = ["https://example.com:443443/stew", "https://example.com:abc/stew", "http://[::1/x"]
+
+
+def test_the_import_index_agrees_with_find(client):
+    from app import duplicates
+    from app.database import SessionLocal
+    title, url = f"Index soup {uuid.uuid4().hex[:6]}", f"https://example.com/{uuid.uuid4().hex[:6]}"
+    rid = client.post("/api/recipes", headers=H, json={"title": title, "source_type": "url", "source_url": url,
+                                                       "ingredients": [{"raw_line": "1 egg"}], "steps": ["Boil."]}).json()["id"]
+    try:
+        with SessionLocal() as db:
+            index = duplicates.Index(db)
+            assert index.same_link(url + "?utm_source=x")["id"] == duplicates.same_link(db, url + "?utm_source=x")["id"] == rid
+            assert index.same_title(title.upper())["id"] == duplicates.find(db, title=title.upper(), limit=1)[0]["id"]
+            assert index.same_link("https://example.com/none") is None
+            index.add(999_999, "Brand new", "https://example.com/new")
+            assert index.same_title("brand  NEW")["id"] == 999_999
+    finally:
+        client.delete(f"/api/recipes/{rid}", headers=H)
+        client.delete(f"/api/recently-deleted/{rid}", headers=H)
+
+
+def test_an_import_scans_the_library_once(client, monkeypatch):
+    from app import duplicates
+    calls = {"find": 0}
+    real = duplicates.find
+
+    def counted(*a, **k):
+        calls["find"] += 1
+        return real(*a, **k)
+    monkeypatch.setattr(duplicates, "find", counted)
+    recipes = [{"@context": "https://schema.org", "@type": "Recipe", "name": f"Bulk {i} {uuid.uuid4().hex[:4]}",
+                "recipeIngredient": ["1 egg"], "recipeInstructions": "Boil."} for i in range(20)]
+    r = client.post("/api/import/recipes", headers=H,
+                    files={"file": ("r.json", json.dumps(recipes).encode(), "application/json")}).json()
+    try:
+        assert len(r["succeeded"]) == 20 and calls["find"] == 0
+    finally:
+        for s in r["succeeded"]:
+            client.delete(f"/api/recipes/{s['recipe_id']}", headers=H)
+            client.delete(f"/api/recently-deleted/{s['recipe_id']}", headers=H)
+
+
+def test_bad_ports_are_not_addresses():
+    from app.duplicates import normalize_url
+    for url in BAD:
+        assert normalize_url(url) is None, url
+    assert normalize_url("https://example.com:8443/stew") == "example.com:8443/stew"
+
+
+def test_a_saved_recipe_with_a_bad_port_breaks_nothing(client, monkeypatch):
+    from app import main, models, routes
+    from app.database import SessionLocal
+
+    from .test_duplicates import _Fetched
+    db = SessionLocal()
+    r = models.Recipe(title="R9 bad port", source_type="url", source_url=BAD[0])
+    db.add(r)
+    db.commit()
+    rid = r.id
+    db.close()
+    monkeypatch.setattr(routes.ingest, "ingest_url", lambda url: _Fetched("R9 batch " + url[-1]))
+    made = []
+    try:
+        assert client.get("/api/recipes/duplicates", params={"url": "https://example.com/stew"}).json() == []
+        assert client.get("/api/recipes/duplicates", params={"url": BAD[1]}).status_code == 200
+        res = client.post("/api/ingest/url/batch", headers=H,
+                          json={"urls": ["https://example.com/r9-a", BAD[0], "https://example.com/r9-b"]})
+        assert res.status_code == 200
+        body = res.json()
+        made = [s["recipe_id"] for s in body["succeeded"]]
+        assert len(made) == 3          # a bad link is just a link: the fetch decides (faked here)
+    finally:
+        client.post("/api/recipes/batch-delete", headers=H, json={"ids": [rid] + made})
+
+
+def test_a_failure_in_the_link_check_is_that_links_failure(client, monkeypatch):
+    from app import duplicates, main, routes
+
+    from .test_duplicates import _Fetched
+    monkeypatch.setattr(routes.ingest, "ingest_url", lambda url: _Fetched("R9 second " + url[-1]))
+
+    def boom(db, url):
+        if url.endswith("boom"):
+            raise RuntimeError("check failed")
+        return None
+
+    monkeypatch.setattr(duplicates, "same_link", boom)
+    res = client.post("/api/ingest/url/batch", headers=H,
+                      json={"urls": ["https://example.com/r9-1", "https://example.com/boom", "https://example.com/r9-3"]})
+    body = res.json()
+    try:
+        assert res.status_code == 200
+        assert [f["url"] for f in body["failed"]] == ["https://example.com/boom"]
+        assert len(body["succeeded"]) == 2
+    finally:
+        client.post("/api/recipes/batch-delete", headers=H, json={"ids": [s["recipe_id"] for s in body["succeeded"]]})
+
+
+def test_only_the_schemes_own_port_is_dropped():
+    from app.duplicates import normalize_url
+    assert normalize_url("http://example.test:80/r") == normalize_url("http://example.test/r") == "example.test/r"
+    assert normalize_url("https://example.test:443/r") == "example.test/r"
+    assert normalize_url("http://example.test:443/r") == "example.test:443/r"
+    assert normalize_url("https://example.test:80/r") == "example.test:80/r"

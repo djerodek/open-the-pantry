@@ -61,6 +61,12 @@ def test_largest_text_has_no_sideways_scroll(server, api, page):
     p.page.wait_for_selector(".recipe-card")
     assert p.page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--base-font-size').trim()") == "26px"
     assert p.page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    # The open recipe too: its header wraps (Share goes below the title)
+    # rather than pushing the dialog wider than the phone.
+    p.page.click("text=A rather long recipe title that wraps on a narrow phone screen >> nth=0")
+    p.page.wait_for_selector("#recipe-detail-heading")
+    assert p.page.evaluate("(() => { const m = document.getElementById('recipe-detail-modal');"
+                           " return m.scrollWidth <= m.clientWidth + 1 && m.getBoundingClientRect().right <= innerWidth + 1; })()")
 
 
 def test_picker_reader_without_a_photo(server, api, page):
@@ -477,7 +483,8 @@ def test_print_gives_only_the_chosen_recipe(server, api, page):
     # What the print styles show: the recipe, no list, no controls.
     pg.emulate_media(media="print")
     assert not pg.is_visible("#recipe-list-region") and pg.is_visible("#recipe-detail-heading")
-    for sel in ("#recipe-detail-body .card-quick-controls", ".recipe-record-actions", ".photo-controls"):
+    for sel in ("#recipe-detail-body .card-quick-controls", ".recipe-record-actions", ".photo-controls",
+                ".scale-buttons", ".units-disclaimer"):
         assert pg.locator(sel).count() and not pg.is_visible(sel), sel
     # No recipe open: the list prints, the closed dialog's last recipe doesn't.
     pg.emulate_media(media="screen")

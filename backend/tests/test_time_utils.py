@@ -1,12 +1,9 @@
 import os
 import sys
 
-from app.time_utils import (  # noqa: E402
-    ddhhmm_to_minutes,
-    minutes_to_ddhhmm,
-    minutes_to_label,
-    available_time_buckets,
-)
+import pytest
+
+from app.time_utils import available_time_buckets, ddhhmm_to_minutes, minutes_to_ddhhmm, minutes_to_label  # noqa: E402
 
 
 def test_ddhhmm_round_trip():
@@ -91,3 +88,29 @@ def test_available_time_buckets_boundary_exact_multiple():
     """A duration exactly on a 20-minute boundary shouldn't add a
     redundant bucket beyond it."""
     assert [b["minutes"] for b in available_time_buckets([60])] == [20, 40, 60]
+
+
+@pytest.mark.parametrize("value", ["24:00", "30:15", "00:24:00"])
+def test_hours_are_under_24_in_both_forms(value):
+    from app.time_utils import ddhhmm_error, ddhhmm_to_minutes
+    assert ddhhmm_to_minutes(value) is None and ddhhmm_error(value)
+
+
+def test_long_cook_time_buckets_stay_a_short_row():
+    from app.time_utils import available_time_buckets
+    b = available_time_buckets([60 * 1440])
+    days = [x["minutes"] // 1440 for x in b if x["minutes"] > 1440]
+    assert days == [2, 3, 4, 5, 6, 7, 14, 21, 28, 35, 42, 49, 56, 60]
+    assert b[-1]["label"] == "60d"
+    assert len([x for x in b if x["minutes"] % 60 == 0]) <= 40       # the first row of the filter
+    assert [x["minutes"] // 1440 for x in available_time_buckets([8 * 1440 + 380])][-3:] == [6, 7, 9]
+
+
+def test_long_cook_times_still_allowed_and_buckets_stay_small():
+    """8-day bacon cure must still work; the filter list stays short."""
+    from app.time_utils import available_time_buckets, ddhhmm_to_minutes
+    m = ddhhmm_to_minutes("08:06:20")
+    assert m == 8 * 1440 + 6 * 60 + 20
+    buckets = available_time_buckets([m])
+    assert len(buckets) < 100
+    assert buckets[-1]["minutes"] >= m and buckets[-1]["label"] == "9d"

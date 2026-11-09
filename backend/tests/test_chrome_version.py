@@ -11,11 +11,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def _script():
     spec = importlib.util.spec_from_file_location("chrome_major", ROOT / ".github/scripts/chrome_major.py")
     mod = importlib.util.module_from_spec(spec)

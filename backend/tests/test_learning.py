@@ -1,6 +1,7 @@
 """Settings -> Learning: the line classifier for imports and the learned
 tag suggestions (app/ml)."""
 import io
+import json
 import os
 import zipfile
 
@@ -9,7 +10,6 @@ import pytest
 
 from tests.ml_corpus import corpus
 from tests.ml_tag_corpus import tagged_recipes
-
 
 # ---------------------------------------------------------------------------
 # The numpy classifiers
@@ -37,7 +37,9 @@ def test_softmax_and_sigmoid_learn_and_round_trip(tmp_path):
 def test_feature_columns_are_stable_across_processes():
     """Python's hash() is salted per process; the model would read garbage
     after a restart if columns came from it."""
-    import subprocess, sys
+    import subprocess
+    import sys
+
     from app.ml.linear import feature_index
     code = "from app.ml.linear import feature_index; print(feature_index('w:flour'))"
     for seed in ("1", "2"):
@@ -94,8 +96,8 @@ def test_segmenter_beats_the_rules_where_they_struggle_and_is_used():
     never do worse than the rules on any layout. (It used to check steps
     only "or layout == screenshot", which hid screenshot steps being wrong
     every time -- DeepSeek review of 0067.)"""
-    from app.ml import segmenter as S
     from app.ingestion import pdf_ingest as P
+    from app.ml import segmenter as S
     model, report = S.train(_examples(corpus(30, seed=11)))
     assert report["status"] == "active", report
     assert report["learned_accuracy"] >= report["rules_accuracy"] + S.MIN_GAIN
@@ -140,8 +142,8 @@ def test_segmenter_needs_enough_imported_recipes():
 def test_learned_result_falls_back_to_the_rules_when_it_finds_nothing(monkeypatch):
     """A model that finds no ingredients or no steps where the rules did
     hands back None, so the rules' result is used."""
-    from app.ml import segmenter as S
     from app.ingestion import pdf_ingest as P
+    from app.ml import segmenter as S
     model, _ = S.train(_examples(corpus(16, seed=2)))
     raw = corpus(1, seed=4, layouts=["email"])[0][0]
     rules = P.rule_segment_raw_text(raw)
@@ -172,8 +174,8 @@ def test_segment_raw_text_uses_the_hook_and_survives_its_failure():
 # ---------------------------------------------------------------------------
 
 def _tag_examples(data):
-    from app.ml import tags as T
     from app.ingestion import tagger
+    from app.ml import tags as T
     return [T.TagExample(i, t, ing, st, tags, {(n, c) for n, c, _ in tagger.keyword_suggestions(t, ing, st)})
             for i, (t, ing, st, tags) in enumerate(data)]
 
@@ -230,8 +232,8 @@ def test_learned_tags_merge_with_the_keywords():
 
 @pytest.fixture
 def learning_reset(client):
-    from app.ml import service
     from app.ingestion import pdf_ingest, tagger
+    from app.ml import service
     yield service
     pdf_ingest.set_learned_segmenter(None)
     tagger.set_learned_tagger(None)
@@ -430,9 +432,10 @@ def test_name_is_translated_only_in_the_https_list():
 
 
 def test_the_damaged_key_message_says_what_to_do_here():
-    from app.i18n import translate
-    from app import https_setup
     import inspect
+
+    from app import https_setup
+    from app.i18n import translate
     src = inspect.getsource(https_setup.save_login)
     assert "Settings → Email ingest explains" not in src
     msg = ("The token wasn't saved: encryption.key in the data folder is damaged (the email password uses it "
@@ -448,6 +451,7 @@ def test_the_damaged_key_message_says_what_to_do_here():
 def test_tag_learning_is_bounded_by_the_most_used_tags():
     """400 tags used to be trained together: 72 s and 2.8 GB."""
     import random
+
     from app.ml import tags as T
     rng = random.Random(3)
     names = [f"tag{i}" for i in range(120)]
@@ -489,8 +493,7 @@ def test_training_takes_a_heavy_job_slot(learning_reset, monkeypatch):
 
 
 def test_main_hands_the_ocr_semaphore_to_learning(client):
-    from app import main
-    from app import routes
+    from app import main, routes
     from app.ml import service
     assert service._heavy_gate is routes.common._heavy_job_semaphore
 
@@ -520,8 +523,7 @@ def test_a_tag_made_by_saving_a_recipe_can_be_suggested_after_training(client, s
 
 def test_a_deletion_drops_the_tag_before_it_commits(client, learning_reset, monkeypatch):
     service = learning_reset
-    from app import main
-    from app import routes
+    from app import main, routes
     g = client.post("/api/tag-groups", json={"label": "Race group"}).json()
     t = client.post("/api/tags", json={"name": "Racy", "category": g["key"], "keywords": ""}).json()
     seen = []
@@ -538,6 +540,7 @@ def test_a_deletion_drops_the_tag_before_it_commits(client, learning_reset, monk
 
 def test_known_tag_refreshes_are_atomic():
     import threading
+
     from app.ml import service
     order = []
 
@@ -585,9 +588,22 @@ def test_a_damaged_model_file_means_rules_only(client, learning_reset):
 
 def test_safe_join_treats_uncomparable_paths_as_outside(monkeypatch):
     import os.path
+
     from app.file_validation import safe_join
 
     def boom(paths):
         raise ValueError("Paths don't have the same drive")
     monkeypatch.setattr(os.path, "commonpath", boom)
     assert safe_join("/tmp", "abcdef0123456789abcdef0123456789.jpg") is None
+
+
+def test_status_doesnt_claim_a_model_it_couldnt_read(tmp_path, monkeypatch):
+    from app.ml import service
+    monkeypatch.setattr(service, "_path", lambda name: str(tmp_path / name))
+    (tmp_path / "model.json").write_text(json.dumps({
+        "format": service.FORMAT, "files": {"segmenter": "seg.npz"},
+        "segmenter": {"status": "active"}, "tags": {"status": "off"}}))
+    (tmp_path / "seg.npz").write_bytes(b"truncated")
+    monkeypatch.setattr(service, "enabled", lambda: True)
+    service.load()
+    assert service._report == {}

@@ -1,11 +1,11 @@
 """Recently deleted (0109): a deleted recipe is hidden everywhere, can be
 put back for 30 days, then goes for good with its files."""
+import io
 import os
 import sqlite3
 import time
 import uuid
 import zipfile
-import io
 from datetime import datetime, timedelta, timezone
 
 from .conftest import TINY_PNG
@@ -30,8 +30,8 @@ def _bin(client):
 
 
 def _set_deleted_at(rid, when):
-    from app.database import SessionLocal
     from app import models
+    from app.database import SessionLocal
     db = SessionLocal()
     try:
         r = db.query(models.Recipe).execution_options(include_deleted=True).filter_by(id=rid).one()
@@ -152,3 +152,24 @@ def test_backups_count_only_the_library(client):
 def test_an_older_database_gets_the_column():
     from app.init_db import NEW_RECIPE_COLUMNS
     assert NEW_RECIPE_COLUMNS["deleted_at"] == "DATETIME"
+
+
+def test_emptying_recently_deleted_commits_in_chunks(client, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    from app import main, routes
+    monkeypatch.setattr(routes.recipes, "DELETE_CHUNK", 2)
+    ids = []
+    for n in range(5):
+        r = client.post("/api/recipes", headers=H, json={"title": f"Chunk {n}", "source_type": "manual",
+                                                         "ingredients": [{"raw_line": "1 egg"}], "steps": ["Boil."]})
+        ids.append(r.json()["id"])
+        client.delete(f"/api/recipes/{ids[-1]}", headers=H)
+    commits = []
+    real = Session.commit
+    monkeypatch.setattr(Session, "commit", lambda self: commits.append(1) or real(self))
+    before = client.get("/api/recently-deleted").json()["recipes"]
+    r = client.delete("/api/recently-deleted", headers=H)
+    assert r.json()["deleted"] == len(before) >= 5
+    assert len(commits) == -(-len(before) // 2)
+    assert client.get("/api/recently-deleted").json()["recipes"] == []

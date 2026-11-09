@@ -43,7 +43,7 @@ def test_servings_is_not_a_filter_or_search_term(client, sample_recipe_payload):
 
 
 def test_export_shows_servings_and_real_world_cook_time(client, sample_recipe_payload):
-    from tests.test_friday_batch import FR
+    FR = {"X-App-Lang": "fr"}
     rec = _make(client, sample_recipe_payload, title="Export facts")
     client.patch(f"/api/recipes/{rec['id']}/rating", json={"servings": "4-6", "actual_cook_time": "01:04:15"})
     en = client.get(f"/api/recipes/{rec['id']}/export.html").text
@@ -88,3 +88,27 @@ def test_a_zero_cook_time_is_no_cook_time(client, sample_recipe_payload):
 def test_a_long_web_yield_is_cut_to_the_cap():
     from app.ingestion.url_ingest import UrlIngestResult
     assert len(UrlIngestResult("t", ["a"], ["b"], servings="y" * 300).servings) == 100
+
+
+def _recipe(client, title, notes=None, **extra):
+    body = {"title": title, "source_type": "manual",
+            "ingredients": [{"raw_line": "2 cups flour"}], "steps": ["Mix."]}
+    body.update(extra)
+    r = client.post("/api/recipes", json=body)
+    assert r.status_code == 200, r.text
+    rid = r.json()["id"]
+    if notes is not None:
+        assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": notes}).status_code == 200
+    return rid
+
+
+def test_stored_none_servings_are_cleared_at_startup(client):
+    from sqlalchemy import text
+
+    from app.database import engine
+    from app.init_db import init_db
+    rid = _recipe(client, "Servings None Text")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE recipes SET servings = 'None' WHERE id = :i"), {"i": rid})
+    init_db()
+    assert client.get(f"/api/recipes/{rid}").json()["servings"] is None

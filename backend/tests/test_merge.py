@@ -1,4 +1,5 @@
 """Merge two recipes (0110): POST /api/recipes/merge."""
+import os
 import uuid
 
 from .conftest import TINY_PNG
@@ -94,3 +95,111 @@ def test_bad_merges(client):
                                                         "take": {"title": "both"}}).status_code == 422
     finally:
         _cleanup(client, a["id"])
+
+
+def _rice_recipe(client, title, tags=(), photo=False):
+    image = None
+    if photo:
+        image = client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).json()["stored_file"]
+    r = client.post("/api/recipes", json={"title": title, "source_type": "manual", "image_path": image,
+                                          "ingredients": [{"raw_line": "1 cup rice"}], "steps": ["Cook."],
+                                          "tags": [{"name": t, "category": "custom"} for t in tags]})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+H = {"X-Requested-With": "OpenThePantry"}
+
+
+def test_a_merge_that_would_cut_notes_or_tags_is_refused(client):
+    from app.routes.recipes import NOTES_MAX
+    sfx = uuid.uuid4().hex[:6]
+    a, b = _rice_recipe(client, f"Merge long A {sfx}"), _rice_recipe(client, f"Merge long B {sfx}")
+    try:
+        client.patch(f"/api/recipes/{a['id']}/notes", json={"notes": "a" * NOTES_MAX})
+        client.patch(f"/api/recipes/{b['id']}/notes", json={"notes": "Keep me."})
+        both = {"keep_id": a["id"], "other_id": b["id"], "take": {"notes": "both"}}
+        r = client.post("/api/recipes/merge", json=both)
+        assert r.status_code == 400 and "50,000 characters" in r.json()["detail"]
+        fr = client.post("/api/recipes/merge", json=both, headers={"X-App-Lang": "fr"}).json()["detail"]
+        assert fr.startswith("Les notes des deux recettes dépassent ensemble 50 000 caractères.")
+        # Nothing changed, and the other recipe is still in the library.
+        assert client.get(f"/api/recipes/{b['id']}").json()["notes"] == "Keep me."
+        assert len(client.get(f"/api/recipes/{a['id']}").json()["notes"]) == NOTES_MAX
+        # One recipe's notes: fine.
+        assert client.post("/api/recipes/merge", json={**both, "take": {"notes": "keep"}}).status_code == 200
+    finally:
+        _cleanup(client, a["id"], b["id"])
+
+    c = _rice_recipe(client, f"Merge tags C {sfx}", tags=[f"MT{sfx}-{i}" for i in range(30)])
+    d = _rice_recipe(client, f"Merge tags D {sfx}", tags=[f"MT{sfx}-{i}" for i in range(20, 55)])
+    g = _rice_recipe(client, f"Merge tags G {sfx}", tags=[f"MT{sfx}-{i}" for i in range(60, 80)])
+    try:
+        # 30 + 35, 10 shared: 55, over the 50 a recipe holds.
+        r = client.post("/api/recipes/merge", json={"keep_id": c["id"], "other_id": d["id"]})
+        assert r.status_code == 400, r.text
+        assert r.json()["detail"] == "Together these recipes have 55 tags; a recipe can have at most 50. Remove some tags first."
+        assert client.get(f"/api/recipes/{d['id']}").status_code == 200
+        assert len(client.get(f"/api/recipes/{c['id']}").json()["tags"]) == 30
+        # Exactly 50: merged, every tag kept.
+        r = client.post("/api/recipes/merge", json={"keep_id": c["id"], "other_id": g["id"]})
+        assert r.status_code == 200 and len(r.json()["tags"]) == 50
+    finally:
+        _cleanup(client, c["id"], d["id"], g["id"])
+
+
+def test_a_refused_merge_leaves_no_photo_behind(client):
+    from app.main import UPLOADS_DIR
+    from app.routes.recipes import NOTES_MAX
+    sfx = uuid.uuid4().hex[:6]
+    keep = _rice_recipe(client, f"Leak keep {sfx}", tags=[f"LK{sfx}-{i}" for i in range(30)])
+    other = _rice_recipe(client, f"Leak other {sfx}", tags=[f"LO{sfx}-{i}" for i in range(30)], photo=True)
+    plain = _rice_recipe(client, f"Leak plain {sfx}", photo=True)
+    try:
+        before = set(os.listdir(UPLOADS_DIR))
+        # Over the tag limit, the other's photo chosen.
+        r = client.post("/api/recipes/merge", json={"keep_id": keep["id"], "other_id": other["id"],
+                                                    "take": {"photo": "other"}})
+        assert r.status_code == 400 and "tags" in r.json()["detail"]
+        assert set(os.listdir(UPLOADS_DIR)) == before
+        # Over the notes limit, the same.
+        client.patch(f"/api/recipes/{keep['id']}/notes", json={"notes": "a" * NOTES_MAX})
+        client.patch(f"/api/recipes/{plain['id']}/notes", json={"notes": "b"})
+        r = client.post("/api/recipes/merge", json={"keep_id": keep["id"], "other_id": plain["id"],
+                                                    "take": {"photo": "other", "notes": "both"}})
+        assert r.status_code == 400 and "notes" in r.json()["detail"]
+        assert set(os.listdir(UPLOADS_DIR)) == before
+        # Allowed: the copy is made, and is the kept recipe's photo.
+        r = client.post("/api/recipes/merge", json={"keep_id": keep["id"], "other_id": plain["id"],
+                                                    "take": {"photo": "other", "notes": "keep"}})
+        assert r.status_code == 200, r.text
+        assert set(os.listdir(UPLOADS_DIR)) - before == {r.json()["image_path"]}
+    finally:
+        for rid in (keep["id"], other["id"], plain["id"]):
+            client.delete(f"/api/recipes/{rid}")
+            client.delete(f"/api/recently-deleted/{rid}")
+
+
+def test_a_failed_merge_photo_copy_leaves_nothing(client, monkeypatch):
+    from app import main, routes
+    photo = client.post("/api/upload-image", files={"file": ("p.png", TINY_PNG, "image/png")}).json()["stored_file"]
+    a = client.post("/api/recipes", headers=H, json={"title": "Keep", "source_type": "manual"}).json()
+    b = client.post("/api/recipes", headers=H, json={"title": "Other", "source_type": "manual",
+                                                     "image_path": photo}).json()
+    try:
+        before = set(os.listdir(main.UPLOADS_DIR))
+
+        def half_copy(src, dst):
+            with open(dst, "wb") as f:
+                f.write(b"partial")
+            raise OSError(28, "No space left on device")
+        monkeypatch.setattr(routes.common.shutil, "copyfile", half_copy)
+        r = client.post("/api/recipes/merge", headers=H, json={"keep_id": a["id"], "other_id": b["id"],
+                                                              "take": {"photo": "other"}})
+        assert r.status_code == 500 and "Nothing was changed" in r.json()["detail"]
+        assert set(os.listdir(main.UPLOADS_DIR)) == before
+        assert client.get(f"/api/recipes/{b['id']}").status_code == 200      # not merged
+    finally:
+        for rid in (a["id"], b["id"]):
+            client.delete(f"/api/recipes/{rid}", headers=H)
+            client.delete(f"/api/recently-deleted/{rid}", headers=H)

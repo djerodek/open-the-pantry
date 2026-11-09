@@ -1,3 +1,9 @@
+import re
+import uuid
+
+import pytest
+
+
 def test_create_and_get_recipe(client, sample_recipe_payload):
     r = client.post("/api/recipes", json=sample_recipe_payload)
     assert r.status_code == 200
@@ -237,8 +243,10 @@ def test_edit_round_trip_preserves_unedited_fields(client, sample_recipe_payload
     (title + ingredients changed, everything else round-tripped) leaves
     the untouched fields intact."""
     import os
-    from .conftest import TINY_PNG
+
     from app.database import UPLOADS_DIR
+
+    from .conftest import TINY_PNG
 
     r = client.post("/api/recipes", json=sample_recipe_payload)
     recipe_id = r.json()["id"]
@@ -380,3 +388,198 @@ def test_sort_orders_and_always_puts_blanks_last(client, sample_recipe_payload):
     finally:
         for rid in made:
             client.delete(f"/api/recipes/{rid}")
+
+
+BIG = "99999999999999999999"
+
+
+H = {"X-Requested-With": "OpenThePantry"}
+
+
+def _routes_with_int_path(app):
+    from tests.conftest import app_routes
+    for route in app_routes(app):
+        path = getattr(route, "path", "")
+        if re.search(r"\{\w+_id\}", path):
+            for method in sorted(getattr(route, "methods", None) or ()):
+                if method != "HEAD":
+                    yield method, re.sub(r"\{\w+_id\}", BIG, path)
+
+
+def _recipe(client, title, notes=None, **extra):
+    body = {"title": title, "source_type": "manual",
+            "ingredients": [{"raw_line": "2 cups flour"}], "steps": ["Mix."]}
+    body.update(extra)
+    r = client.post("/api/recipes", json=body)
+    assert r.status_code == 200, r.text
+    rid = r.json()["id"]
+    if notes is not None:
+        assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": notes}).status_code == 200
+    return rid
+
+
+def test_fit_recipe():
+    from app import schemas
+    fields, ings, steps = schemas.fit_recipe(
+        {"title": "t" * 900, "source_url": "https://example.com/" + "a" * 3000, "servings": "4" * 999, "prep_time": None},
+        [{"raw_line": "r" * 3000, "quantity": "1" * 200, "unit": None, "name": "n"}] * 600, ["s" * 30_000] * 700)
+    assert len(fields["title"]) == 500 and fields["source_url"] is None and len(fields["servings"]) == schemas.SERVINGS_MAX
+    assert len(ings) == 500 and len(ings[0]["raw_line"]) == 2000 and len(ings[0]["quantity"]) == 100
+    assert len(steps) == 500 and len(steps[0]) == 20_000
+
+
+def test_every_id_in_a_path_is_checked_on_the_main_port(client):
+    found = list(_routes_with_int_path(client.app))
+    assert len(found) >= 12
+    for method, path in found:
+        r = client.request(method, path, headers=H, json={})
+        assert r.status_code == 422, (method, path, r.status_code)
+    # In range, nothing changes: an unknown id is still a 404.
+    assert client.get("/api/recipes/0").status_code == 404
+    assert client.get("/api/recipes/-5").status_code == 404
+    assert client.get(f"/api/recipes/{2**63 - 1}").status_code == 404
+
+
+def test_query_and_body_integers_are_checked(client):
+    assert client.get(f"/api/recipes?max_minutes={BIG}").status_code == 422
+    assert client.get(f"/api/recipes?max_minutes={2**63 - 1}").status_code == 200
+    r = client.post("/api/recipes/batch-delete", headers=H, json={"ids": [int(BIG)]})
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("field,value", [
+    ("title", "x" * 501),
+    ("raw_text", "x" * 1_000_001),
+    ("ingredients", [{"raw_line": "x" * 2001}]),
+    ("steps", ["x" * 20_001]),
+    ("steps", ["Mix."] * 501),
+], ids=["title-501", "raw_text-1000001", "ingredient-2001", "step-20001", "steps-501"])
+# Short ids: pytest -v prints each test's id, and the values themselves
+# made one line a megabyte long, which stalled GitHub's live log view.
+def test_recipe_fields_are_capped(client, sample_recipe_payload, field, value):
+    r = client.post("/api/recipes", json={**sample_recipe_payload, field: value})
+    assert r.status_code == 422
+
+
+def test_json_bodies_are_capped(client):
+    from app import main, routes
+    big = b'{"ids": [' + b"1," * (main.MAX_JSON_BODY_BYTES // 2) + b'1]}'
+    r = client.post("/api/recipes/batch-delete", content=big, headers={"Content-Type": "application/json"})
+    assert r.status_code == 413
+    # Without a Content-Length (chunked), counted as it arrives.
+    def chunks():
+        yield b'{"ids": ['
+        for _ in range(40):
+            yield b"1," * (1024 * 1024)
+        yield b"1]}"
+    r = client.post("/api/recipes/batch-delete", content=chunks(), headers={"Content-Type": "application/json"})
+    assert r.status_code == 413
+    # Uploads aren't affected (they stream to disk with their own limits).
+    assert client.post("/api/recipes/batch-delete", json={"ids": []}).status_code == 200
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/api/recipes/batch-delete", {"ids": list(range(10_001))}),
+    ("/api/ingest/url/batch", {"urls": ["https://example.com/" + "a" * 2000]}),
+    ("/api/tags/suggest", {"title": "x", "ingredients": ["a" * 2001]}),
+    ("/api/tags/auto-apply", {"selections": [{"id": 1, "tags": ["t" * 101]}]}),
+])
+def test_lists_and_their_items_are_bounded(client, path, body):
+    assert client.post(path, json=body).status_code == 422
+
+
+def test_an_invalid_suggested_tag_is_left_off_not_the_recipe(client, monkeypatch):
+    from app import main, models, routes
+    warned = []
+    monkeypatch.setattr(main.log, "warning", lambda msg, *a, **k: warned.append(msg))
+    from app.database import SessionLocal
+    result = {"title": "Moules emailed", "ingredients": [{"raw_line": "1 kg mussels"}],
+              "steps": ["Steam the mussels."], "raw_text": "1 kg mussels\nSteam the mussels.",
+              "tags": [{"name": "Fish", "category": "Diet"}, {"name": "x" * 150, "category": "Diet"}]}
+    with SessionLocal() as db:
+        rid = routes.email._save_email_recipe(db, result, "[RECIPE]")
+    try:
+        with SessionLocal() as db:
+            assert [t.name for t in db.get(models.Recipe, rid).tags] == ["Fish"]
+        assert any("left off" in m for m in warned)
+    finally:
+        client.delete(f"/api/recipes/{rid}")
+        client.delete(f"/api/recently-deleted/{rid}")
+
+
+def test_list_says_which_recipes_have_notes(client):
+    with_notes = _recipe(client, "Has Notes Card", notes="Use less salt.")
+    blank_notes = _recipe(client, "Blank Notes Card", notes="   ")
+    rows = {r["id"]: r for r in client.get("/api/recipes?q=Notes Card").json()}
+    assert rows[with_notes]["has_notes"] is True
+    assert rows[blank_notes]["has_notes"] is False
+    assert "notes" not in rows[with_notes]  # the text itself stays out of the list
+
+
+def test_tag_in_an_unknown_group_is_saved_under_custom(client):
+    r = client.post("/api/recipes", json={
+        "title": "Unknown Group Tag", "source_type": "manual", "steps": ["x"],
+        "tags": [{"name": "Mystery", "category": "nonexistent-group", "subgroup": "x"}]})
+    assert r.status_code == 200
+    tag = next(t for t in r.json()["tags"] if t["name"] == "Mystery")
+    assert tag["category"] == "custom" and tag["subgroup"] is None
+
+
+def test_null_clears_the_cook_time_and_absent_leaves_it(client):
+    rid = _recipe(client, "Cook Time Null")
+    assert client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:01:30"}).status_code == 200
+    client.patch(f"/api/recipes/{rid}/rating", json={"favorite": True})
+    assert client.get(f"/api/recipes/{rid}").json()["actual_cook_time"] == "00:01:30"
+    client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": None})
+    assert client.get(f"/api/recipes/{rid}").json()["actual_cook_time"] is None
+
+
+def test_recipe_list_loads_tags_in_one_query(client):
+    """list_recipes read each recipe's tags lazily: one extra SELECT per
+    recipe in the list."""
+    from sqlalchemy import event
+
+    from app.database import engine
+
+    for i in range(6):
+        client.post("/api/recipes", json={"title": f"Tagged {i}", "source_type": "manual",
+                                          "tags": [{"name": "Dinner", "category": "meal_type"}], "steps": ["x"]})
+    statements = []
+    listener = lambda conn, cursor, stmt, *a: statements.append(stmt)
+    event.listen(engine, "before_cursor_execute", listener)
+    try:
+        r = client.get("/api/recipes?sort=created&direction=desc")
+    finally:
+        event.remove(engine, "before_cursor_execute", listener)
+    assert r.status_code == 200 and len(r.json()) >= 6
+    tag_selects = [s for s in statements if "FROM tags" in s or "JOIN tags" in s]
+    assert len(tag_selects) <= 1, f"{len(tag_selects)} tag queries for one list"
+
+
+def test_rate_limit_ignores_photos_and_static_files(client, monkeypatch):
+    """Scrolling ~100 photo recipes used the whole 120/min budget on
+    thumbnails, then /api/recipes got 429 and the list read "No recipes
+    match"."""
+    import app.main as m
+    monkeypatch.setattr(m, "RATE_LIMIT_MAX_REQUESTS", 5)
+    m._request_log.clear()
+    for _ in range(20):
+        client.get("/uploads/img-" + uuid.uuid4().hex + ".png")
+    assert client.get("/api/recipes").status_code == 200
+    m._request_log.clear()
+
+
+def test_rate_limit_still_applies_to_the_api(client, monkeypatch):
+    import app.main as m
+    monkeypatch.setattr(m, "RATE_LIMIT_MAX_REQUESTS", 3)
+    m._request_log.clear()
+    codes = [client.get("/api/tags").status_code for _ in range(5)]
+    assert codes[:3] == [200, 200, 200] and codes[3] == 429
+    m._request_log.clear()
+
+
+@pytest.mark.parametrize("value", ["00:99:99", "01:24:00", "00:00:60", "20000:00:00", "61:00:00"])
+def test_out_of_range_cook_times_are_rejected(client, value):
+    r = client.post("/api/recipes", json={"title": "T", "source_type": "manual", "ingredients": [],
+                                         "steps": [], "tags": [], "actual_cook_time": value})
+    assert r.status_code == 422

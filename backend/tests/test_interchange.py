@@ -8,17 +8,13 @@ import json
 import os
 import uuid
 import zipfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from .conftest import TINY_PNG
 
 H = {"X-Requested-With": "OpenThePantry"}
-
-
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
 
 
 def _upload_photo(client):
@@ -205,3 +201,147 @@ def test_bad_files(client, monkeypatch):
             zf.writestr(f"{i}.json", b"{}")
     res = _import(client, "many.zip", out.getvalue())
     assert res.status_code == 422 and "limit is 2" in res.json()["detail"]
+
+
+def _zip(entries):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, body in entries.items():
+            zf.writestr(name, body)
+    return out.getvalue()
+
+
+def _zip_stored(entries):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as zf:
+        for name, body in entries.items():
+            zf.writestr(name, body)
+    return out.getvalue()
+
+
+def test_notes_and_dates_survive_a_json_round_trip(client):
+    rid = client.post("/api/recipes", headers=H, json={
+        "title": f"Round trip {uuid.uuid4().hex[:6]}", "source_type": "manual",
+        "ingredients": [{"raw_line": "1 egg"}], "steps": ["Boil."]}).json()["id"]
+    assert client.patch(f"/api/recipes/{rid}/notes", headers=H, json={"notes": "n" * 30_000}).status_code == 200
+    from app import models
+    from app.database import SessionLocal
+    with SessionLocal() as db:
+        db.get(models.Recipe, rid).created_at = datetime(2021, 5, 4, 12, 0, tzinfo=timezone.utc)
+        db.commit()
+    data = client.get("/api/backup/recipes-json.zip").content
+    client.delete(f"/api/recipes/{rid}", headers=H)
+    client.delete(f"/api/recently-deleted/{rid}", headers=H)
+    r = client.post("/api/import/recipes", headers=H, files={"file": ("r.zip", data, "application/zip")}).json()
+    new = next(s["recipe_id"] for s in r["succeeded"] if s["title"].startswith("Round trip"))
+    others = [s["recipe_id"] for s in r["succeeded"] if s["recipe_id"] != new]
+    try:
+        got = client.get(f"/api/recipes/{new}").json()
+        assert len(got["notes"]) == 30_000
+        with SessionLocal() as db:
+            assert db.get(models.Recipe, new).created_at.date().isoformat() == "2021-05-04"
+    finally:
+        for i in [new] + others:
+            client.delete(f"/api/recipes/{i}", headers=H)
+            client.delete(f"/api/recently-deleted/{i}", headers=H)
+
+
+def test_dates_read_on_import():
+    from app.interchange import _date
+    assert _date("2024-03-01 12:00:00").year == 2024              # Paprika's form
+    assert _date("2024-03-01T12:00:00+02:00").utcoffset() == timedelta(hours=2)
+    for bad in (None, "", "yesterday", "1850-01-01", (datetime.now(timezone.utc) + timedelta(days=9)).isoformat(), 5):
+        assert _date(bad) is None, bad
+
+
+def test_one_photo_named_by_many_recipes_is_read_within_the_budget(tmp_path, monkeypatch):
+    from app import interchange
+    big = TINY_PNG + b"\0" * 400_000
+    recipes = [{"@type": "Recipe", "name": f"R{i}", "image": "images/p.png",
+                "recipeIngredient": ["1 egg"], "recipeInstructions": ["Boil."]} for i in range(30)]
+    path = tmp_path / "many.zip"
+    path.write_bytes(_zip({"recipes/all.json": json.dumps(recipes), "images/p.png": big}))
+    monkeypatch.setattr(interchange, "UNPACK_BUDGET", 5 * len(big))
+    with interchange.opened(str(path), "many.zip") as (found, problems):
+        assert len(found) == 30 and all(r.image_bytes is None for r in found)   # nothing read yet
+        photos = [r.photo() for r in found]
+    assert 1 <= sum(1 for p in photos if p) < 5
+    assert any("of unpacking" in p["error"] for p in problems)
+
+
+def test_paprika_gzip_bombs_stop_at_the_budget(tmp_path, monkeypatch):
+    from app import interchange
+    bomb = gzip.compress(json.dumps({"name": "X", "ingredients": "1 egg", "directions": "Boil.",
+                                     "notes": "a" * 2_000_000}).encode())
+    assert len(bomb) < 20_000
+    path = tmp_path / "bombs.paprikarecipes"
+    path.write_bytes(_zip({f"r{i}.paprikarecipe": bomb for i in range(50)}))
+    monkeypatch.setattr(interchange, "UNPACK_BUDGET", 10 * 2_000_000)
+    with interchange.opened(str(path), "bombs.paprikarecipes") as (found, problems):
+        assert len(found) < 12 and any("of unpacking" in p["error"] for p in problems)
+
+
+def test_paprika_photos_are_read_when_saved(client):
+    data = _zip({"p.paprikarecipe": gzip.compress(json.dumps({
+        "name": "R10 Paprika photo", "ingredients": "1 egg", "directions": "Boil.",
+        "photo_data": base64.b64encode(TINY_PNG).decode()}).encode())})
+    body = client.post("/api/import/recipes", headers=H,
+                       files={"file": ("x.paprikarecipes", data, "application/zip")}).json()
+    rid = body["succeeded"][0]["recipe_id"]
+    try:
+        assert client.get(f"/uploads/{client.get(f'/api/recipes/{rid}').json()['image_path']}").status_code == 200
+    finally:
+        client.delete(f"/api/recipes/{rid}", headers=H)
+
+
+def test_a_big_json_file_is_read_only_up_to_the_limit(tmp_path, monkeypatch):
+    from app import interchange
+    monkeypatch.setattr(interchange, "MAX_RECIPES", 3)
+    calls = []
+    real = interchange.from_jsonld
+    monkeypatch.setattr(interchange, "from_jsonld", lambda *a, **k: calls.append(1) or real(*a, **k))
+    many = [{"@type": "Recipe", "name": f"R{i}", "recipeIngredient": ["1 egg"], "recipeInstructions": ["Boil."]}
+            for i in range(50)]
+    path = tmp_path / "big.zip"
+    path.write_bytes(_zip_stored({"recipes/a.json": json.dumps(many)}))
+    recipes, problems = interchange.read_file(str(path), "big.zip")
+    assert len(recipes) == 3 and len(calls) == 3
+    assert any("More than 3 recipes" in p["error"] for p in problems)
+    assert len(interchange._recipe_items(many, 4)) == 4
+    # A plain .json file the same way.
+    path = tmp_path / "big.json"
+    path.write_text(json.dumps(many))
+    calls.clear()
+    recipes, problems = interchange.read_file(str(path), "big.json")
+    assert len(recipes) == 3 and len(calls) == 3 and problems
+
+
+def test_malformed_import_files_are_refused_not_500(client):
+    import gzip
+    deep = "[" * 10_000 + "]" * 10_000
+    r = client.post("/api/import/recipes", headers=H, files={"file": ("deep.json", deep.encode(), "application/json")})
+    assert r.status_code == 422
+    paprika = _zip_stored({"x.paprikarecipe": gzip.compress(json.dumps({
+        "name": "GPT difficulty number", "ingredients": "1 egg", "directions": "Boil.", "difficulty": 3,
+        "categories": "not a list", "rating": "five"}).encode())})
+    body = client.post("/api/import/recipes", headers=H,
+                       files={"file": ("p.paprikarecipes", paprika, "application/zip")}).json()
+    try:
+        assert len(body["succeeded"]) == 1 and body["failed"] == []
+    finally:
+        client.post("/api/recipes/batch-delete", headers=H, json={"ids": [s["recipe_id"] for s in body["succeeded"]]})
+
+
+def test_one_bad_record_is_that_records_failure(tmp_path, monkeypatch):
+    from app import interchange
+    real = interchange.from_jsonld
+
+    def picky(item, *a, **k):
+        if item.get("name") == "bad":
+            raise TypeError("unexpected field")
+        return real(item, *a, **k)
+    monkeypatch.setattr(interchange, "from_jsonld", picky)
+    path = tmp_path / "two.json"
+    path.write_text(json.dumps([{"@type": "Recipe", "name": "bad"}, {"@type": "Recipe", "name": "good"}]))
+    recipes, problems = interchange.read_file(str(path), "two.json")
+    assert [r.title for r in recipes] == ["good"] and len(problems) == 1

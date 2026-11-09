@@ -1,28 +1,54 @@
-"""DeepSeek review of 0083.
-
-- The tmp/uploads sweeps ran on the event loop. A delete in uploads/ waits
-  on backup.UPLOADS_LOCK, which a full backup holds for its whole archive
-  build, so a sweep that met a backup froze every request on both ports
-  until the backup ended. Both sweeps now run in a worker thread; a failed
-  periodic sweep is logged instead of ending the loop.
-- The picker port shares the main port's per-address request limit (one
-  rate_limiter); the README now says so.
-"""
+"""Startup and background jobs: the app starting despite failures, the
+periodic sweeps, extra listeners, and the version fingerprint."""
 import asyncio
+import logging
 import os
 import threading
 import time
 import uuid
-from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi")
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
+def _snapshot():
+    out = {}
+    for name in UVICORN_LOGGERS:
+        lg = logging.getLogger(name)
+        out[name] = (lg.level, list(lg.handlers), lg.propagate, lg.disabled)
+    return out
+
+
+@pytest.fixture
+def main_port_logging():
+    """uvicorn's loggers as the main server sets them up (`uvicorn app.main:app`
+    at the default info level), restored afterwards."""
+    import uvicorn
+    saved = {n: (logging.getLogger(n).level, list(logging.getLogger(n).handlers),
+                 logging.getLogger(n).propagate, logging.getLogger(n).disabled) for n in UVICORN_LOGGERS}
+    uvicorn.Config("app.main:app", log_level="info")      # what the main server's Config does
+    assert logging.getLogger("uvicorn.access").isEnabledFor(logging.INFO)
+    yield
+    for n, (level, handlers, propagate, disabled) in saved.items():
+        lg = logging.getLogger(n)
+        lg.setLevel(level)
+        lg.handlers = handlers
+        lg.propagate = propagate
+        lg.disabled = disabled
+
+
+@pytest.mark.parametrize("module", ["picker", "https_setup"])
+def test_extra_listener_leaves_the_main_ports_logging_alone(main_port_logging, module):
+    import importlib
+
+    from fastapi import FastAPI
+    mod = importlib.import_module(f"app.{module}")
+    before = _snapshot()
+    mod._make_server(FastAPI())
+    assert _snapshot() == before
+    assert logging.getLogger("uvicorn.access").isEnabledFor(logging.INFO)
+    assert logging.getLogger("uvicorn.access").handlers      # access_log=False would empty them
 
 
 def test_a_sweep_during_a_backup_does_not_freeze_the_event_loop(client):
@@ -97,7 +123,23 @@ def test_a_failed_periodic_sweep_is_logged_and_the_loop_goes_on(monkeypatch):
     assert "Periodic tmp/uploads sweep failed" in logged
 
 
-def test_readme_says_the_picker_shares_the_request_limit():
-    for name, phrase in (("README.md", "same per-address request limit"),
-                         ("README.fr.md", "même limite de requêtes par adresse")):
-        assert phrase in (ROOT / name).read_text(encoding="utf-8"), name
+def test_a_failed_first_sweep_doesnt_stop_the_app_starting(client, monkeypatch):
+    import sqlalchemy.exc
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    async def locked():
+        raise sqlalchemy.exc.OperationalError("DELETE", {}, Exception("database is locked"))
+    monkeypatch.setattr(main, "_run_sweeps", locked)
+    logged = []
+    monkeypatch.setattr(main.log, "exception", lambda msg, *a, **k: logged.append(msg))
+    with TestClient(main.app) as c:                       # runs the start-up
+        assert c.get("/healthz").status_code == 200
+    assert any("Start-up sweep failed" in m for m in logged)
+
+
+def test_version_endpoint_reports_a_fingerprint(client):
+    r = client.get("/api/version")
+    assert r.status_code == 200
+    assert isinstance(r.json()["frontend"], str) and r.json()["frontend"]

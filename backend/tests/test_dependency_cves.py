@@ -10,6 +10,7 @@ import base64
 import io
 import os
 import re
+from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
@@ -197,3 +198,40 @@ def test_patched_library_versions():
 
     assert v(PIL.__version__) >= (13, 0, 0)
     assert v(pypdf.__version__) >= (6, 21, 4)    # 7 advisories in 6.21.2 (security audit of 0140)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_josepy_is_pinned():
+    req = (ROOT / "backend/requirements.txt").read_text(encoding="utf-8")
+    assert "\njosepy==" in req
+
+
+def test_dnspython_has_the_name_decompression_fix():
+    """CVE-2026-114605 (fixed in 2.9.0): a crafted DNS reply could take
+    excessive CPU. https_setup resolves the domain's DNS records with it.
+    The CI dependency audit failed on 2.8.0 (2026-10-30)."""
+    from pathlib import Path
+
+    import dns.version
+    assert (dns.version.MAJOR, dns.version.MINOR) >= (2, 9)
+    req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    assert "\ndnspython==2.9.1\n" in req
+
+
+def test_opencv_is_the_patched_release():
+    """4.14.0.94 updates the bundled FFmpeg (CVE-2026-8461); the app reads
+    still images only, so this is upkeep."""
+    import cv2
+    assert tuple(int(x) for x in cv2.__version__.split(".")[:2]) >= (4, 14)
+
+
+def test_pypdf_has_the_loop_and_memory_fixes():
+    """(3) 7 advisories in 6.21.2 (crafted PDFs: infinite loops, memory)."""
+    from pathlib import Path
+
+    import pypdf
+    assert tuple(int(x) for x in pypdf.__version__.split(".")[:3]) >= (6, 21, 4)
+    req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    assert "\npypdf==6.21.4\n" in req

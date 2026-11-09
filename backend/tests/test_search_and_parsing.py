@@ -3,7 +3,14 @@ reproduced against the previous code first.
 
 app.* is imported inside tests only; see the note in test_backup.py.
 """
+import json
+import uuid
+
 import pytest
+
+from app import search
+
+from .test_restore import H
 
 
 def _make(client, title, ingredients, steps, **extra):
@@ -97,6 +104,7 @@ def test_old_database_is_migrated_without_corruption(tmp_path):
     c.commit(); c.close()
 
     from unittest.mock import patch
+
     from app import init_db
     with patch.object(init_db, "DB_PATH", str(db)):
         init_db._migrate_and_setup_schema()
@@ -113,6 +121,7 @@ def test_old_database_is_migrated_without_corruption(tmp_path):
 def test_json_ld_sections_keep_their_steps():
     """HowToSection used to be reduced to its heading: ['For the dough']."""
     import json
+
     from app.ingestion.url_ingest import _try_json_ld
     data = {"@context": "https://schema.org", "@type": "Recipe", "name": "Pie",
             "recipeIngredient": ["2 cups flour"],
@@ -148,3 +157,65 @@ def test_lines_saved_from_the_ui_are_parsed_and_kept_verbatim(client):
         assert ings[1]["quantity"] is None and ings[1]["name"] == "Salt to taste"
     finally:
         client.delete(f"/api/recipes/{rid}")
+
+
+def _recipe(client, title, ingredient):
+    r = client.post("/api/recipes", json={"title": title, "source_type": "manual",
+                                          "ingredients": [{"raw_line": ingredient}], "steps": ["Cook."]})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _search(client, q):
+    search.forget_vocabulary()
+    r = client.get("/api/recipes", params={"q": q})
+    assert r.status_code == 200, r.text
+    return [x["title"] for x in r.json()], json.loads(r.headers.get("X-Search-Corrected", "{}"))
+
+
+def test_words_found_in_text_and_tags_together(client):
+    tag = f"Dinnerx{uuid.uuid4().hex[:5]}"
+    word = f"chickenx{uuid.uuid4().hex[:5]}"
+    rid = client.post("/api/recipes", headers=H, json={
+        "title": f"Roast {word}", "source_type": "manual", "ingredients": [{"raw_line": "1 bird"}],
+        "steps": ["Roast."], "tags": [{"name": tag, "category": "meal_type"}]}).json()["id"]
+    try:
+        for q in (word, tag, f"{word} {tag}", f"roast {tag}"):
+            got = client.get("/api/recipes", params={"q": q}).json()
+            assert rid in [r["id"] for r in got], q
+        both = next(r for r in client.get("/api/recipes", params={"q": f"{word} {tag}"}).json() if r["id"] == rid)
+        assert both["matched_via"] == ["tag", "text"]
+    finally:
+        client.delete(f"/api/recipes/{rid}", headers=H)
+        client.delete(f"/api/recently-deleted/{rid}", headers=H)
+
+
+def test_at_most_50_tags_in_a_filter(client):
+    assert client.get("/api/recipes", params=[("tags", f"t{i}") for i in range(50)]).status_code == 200
+    r = client.get("/api/recipes", params=[("tags", f"t{i}") for i in range(1000)])
+    assert r.status_code == 422 and "50" in r.json()["detail"]
+
+
+def test_control_characters_in_a_search(client):
+    """A NUL ended FTS5's quoted term early: "unterminated string", a 500."""
+    for q in ("chicken\x00", "\x00", "chi\x00cken", "a\x01b\x7f", "rosemarry\x00chicken"):
+        assert client.get("/api/recipes", params={"q": q}).status_code == 200, repr(q)
+    assert search.parse("chi\x00cken\tpie") == (["chi", "cken", "pie"], [])
+
+
+def test_a_binned_recipe_offers_no_corrections(client):
+    r = _recipe(client, "Zanzibarquinoa salad", "1 cup zanzibarquinoa")
+    try:
+        assert _search(client, "zanzibarquinoe")[0] == ["Zanzibarquinoa salad"]
+        client.delete(f"/api/recipes/{r['id']}")                   # to Recently deleted
+        titles, corrected = _search(client, "zanzibarquinoe")
+        assert titles == [] and corrected == {}
+        assert _search(client, "zanzibarquinoa") == ([], {})
+        # Put back: found again, typo and all.
+        assert client.post(f"/api/recently-deleted/{r['id']}/restore").status_code == 200
+        assert _search(client, "zanzibarquinoe")[0] == ["Zanzibarquinoa salad"]
+    finally:
+        client.delete(f"/api/recipes/{r['id']}")
+        client.delete(f"/api/recently-deleted/{r['id']}")
+    # Deleted for good from the bin: the index stays consistent.
+    assert _search(client, "zanzibarquinoa") == ([], {})

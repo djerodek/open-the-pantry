@@ -17,11 +17,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def _name(cn):
     return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
 
@@ -153,8 +148,9 @@ def test_a_pinned_connection_checks_the_certificate_against_the_name(pki, server
     """Claude security audit of 0140: url_ingest connects to the address it
     checked (no second lookup). Over https the certificate is still checked
     against the name, not the address."""
-    from app import tls
     import requests
+
+    from app import tls
     root = str(pki["dir"] / "root.pem")
     assert tls.get(f"https://localhost:{server}/", pin="127.0.0.1", timeout=5, verify=root).text == "ok"
     with pytest.raises(requests.exceptions.SSLError):          # the certificate is for localhost

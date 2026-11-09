@@ -11,7 +11,6 @@ from unittest.mock import patch
 import pytest
 
 
-
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(data_dir):
     pass
@@ -87,6 +86,7 @@ def test_refusal_reason_is_translated():
 def test_bot_check_refusal_is_explained(caplog):
     import requests
     from requests.structures import CaseInsensitiveDict
+
     from app.ingestion import url_ingest
 
     resp = requests.Response()
@@ -203,3 +203,36 @@ def test_notes_are_capped(client):
     rid = client.post("/api/recipes", json={"title": "Notes Cap", "source_type": "manual", "steps": ["x"]}).json()["id"]
     assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": "a" * 50_000}).status_code == 200
     assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": "a" * 50_001}).status_code == 422
+
+
+def test_a_line_break_in_a_logged_name_stays_on_one_line(tmp_path):
+    """(7) An attachment's filename with a line break added a fake entry."""
+    import logging
+
+    from app.logging_setup import OneLineFormatter
+    handler_file = tmp_path / "app.log"
+    h = logging.FileHandler(handler_file, encoding="utf-8")
+    h.setFormatter(OneLineFormatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"))
+    log = logging.getLogger("otp.test-oneline")
+    log.addHandler(h)
+    log.propagate = False
+    try:
+        log.warning("Parts: %s", "recipe.pdf\n2026-10-31 12:00:00 INFO    otp.admin: Settings password created\rx")
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            log.exception("with a traceback")
+    finally:
+        log.removeHandler(h)
+        h.close()
+    lines = handler_file.read_text(encoding="utf-8").split("\n")
+    assert "Settings password created" in lines[0] and "\\n2026-10-31" in lines[0] and "\\rx" in lines[0]
+    assert not lines[1].startswith("2026-10-31 12:00:00")
+    assert any(line.startswith("Traceback") for line in lines)          # still on its own lines
+
+
+def test_the_app_logs_with_the_one_line_formatter():
+    import logging
+
+    from app.logging_setup import OneLineFormatter
+    assert all(isinstance(h.formatter, OneLineFormatter) for h in logging.getLogger("otp").handlers)

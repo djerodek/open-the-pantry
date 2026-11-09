@@ -10,11 +10,6 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def _csp(r):
     return {d.split()[0]: d.split()[1:] for d in r.headers["content-security-policy"].split("; ")}
 
@@ -66,3 +61,27 @@ def test_pages_have_no_inline_script():
         assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", html), f
         assert not re.search(r"\son[a-z]+\s*=", html), f
         assert "javascript:" not in html, f
+
+
+def test_neither_port_can_be_framed(client):
+    from app.main import picker_app
+    pc = TestClient(picker_app)
+    for c, paths in ((client, ["/", "/index.html", "/js/app.js", "/api/recipes", "/healthz", "/api/recipes/0"]),
+                     (pc, ["/", "/api/picker/options", "/healthz", "/nothing-here"])):
+        for path in paths:
+            r = c.get(path)
+            assert r.headers.get("x-frame-options") == "DENY", path
+            assert "frame-ancestors 'none'" in r.headers.get("content-security-policy", ""), path
+
+
+def test_app_files_revalidate_but_api_and_photos_do_not(client):
+    assert client.get("/healthz").headers.get("cache-control") != "no-cache"
+    assert client.get("/api/version").headers.get("cache-control") != "no-cache"
+    # Any non-API GET gets it, found or not (the static mount may be absent
+    # in a test checkout).
+    assert client.get("/index.html").headers.get("cache-control") == "no-cache"
+
+
+def test_uploads_are_never_sniffed(client):
+    """(10) nosniff on every response, /uploads included."""
+    assert client.get("/healthz").headers["X-Content-Type-Options"] == "nosniff"

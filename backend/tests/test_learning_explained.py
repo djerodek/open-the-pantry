@@ -10,11 +10,6 @@ from tests.ml_tag_corpus import tagged_recipes
 H = {"X-Requested-With": "OpenThePantry"}
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def test_each_suggestion_says_where_it_came_from():
     from app.ingestion import tagger
     args = ("Baked salmon", ["salmon", "lemon"], "Bake 20 minutes.")

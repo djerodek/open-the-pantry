@@ -4,11 +4,6 @@ saved. Each test is one rule, on text written here, not theirs."""
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def seg(*lines):
     from app.ingestion.pdf_ingest import rule_segment_raw_text
     return rule_segment_raw_text("\n".join(lines))

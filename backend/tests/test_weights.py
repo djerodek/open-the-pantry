@@ -190,7 +190,7 @@ def _weigh(cases):
     ("1 bâton de cannelle", ("same", "1 bâton de cannelle")),
     ("1 stick butter", ("converted", "115 g butter")),
 ])
-def test_claude_review_0155_weights(text, want):
+def test_more_weight_conversions(text, want):
     """Claude review of 0155: words that change what a cup weighs, names
     that couldn't be matched, liquids at the 8-oz convention, cinnamon
     sticks counted as volumes; GPT's zero."""

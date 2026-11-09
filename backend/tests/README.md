@@ -5,41 +5,46 @@ functions in Node and are skipped without it. The pages' own tests are in
 `../tests_browser/` (headless Chromium, `python -m pytest tests_browser`),
 with the accessibility scan in `test_accessibility.py`.
 
-Files are named two ways. **Feature files** hold the tests for one part of
-the app. **Review files** (`test_<reviewer>_…`) hold the regression tests
-for the findings of one outside code review; each file's opening note says
-what was broken and why, and each test failed on the code before its fix.
-New tests go in the feature file when there is one.
+Each file holds the tests for one part of the app; new tests go in the
+file for the part they test. A test for a fixed bug says in its docstring
+what was broken and which patch or review found it, and it failed on the
+code before the fix. (Until 0165, those tests were kept in one file per
+review; they were moved into these files with their history in git.)
 
 ## By feature
 
-| Feature | Feature files | Also in review files |
-|---|---|---|
-| Recipes: create, edit, delete, list, sort | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py`, `test_recently_deleted.py`, `test_merge.py` | `test_stability.py`, `test_friday_batch.py`, `test_claude_review_round8.py`, `test_gpt_review_0119.py` (merge limits), `test_gpt_review_0123.py` (no photo left by a refused merge), `test_gpt_review_0129.py` (merge photo copy failing), `test_claude_review_0138.py` (indexes, busy database as 503, deletes in chunks) |
-| Search | `test_search_and_parsing.py`, `test_search_typos.py` | `test_claude_review_round11.py` (control characters, Recently deleted out of the index) |
-| Import from a link | `test_incomplete_sources.py` | `test_security.py`, `test_security_round2.py` (address and size checks), `test_review_round2_followup.py` (slow downloads), `test_claude_review_round9.py`, `test_deepseek_review_0133.py` (a recipe under `mainEntity`), `test_url_errors_0137.py` (plain messages when a site can't be reached), `test_ci_and_import_gaps_0138.py` (prep and cook times), `test_chrome_version.py` (the Chrome version CI looks up), `test_claude_review_0155.py` (JSON-LD fields of the wrong type), `test_gpt_review_0156.py` (the 30-second budget covers lookups and connections; URL length; no query in the log) |
-| Import from a PDF or photo (reading the text) | `test_pdf_ingest.py`, `test_component_recipes.py`, `test_deskew.py`, `test_incomplete_sources.py` | `test_review_round2_followup.py` (OCR limits), `test_sept27_fixes.py`, `test_deepseek_0073.py`, `test_deepseek_review_0096.py`, `test_import_layouts_0132.py` (rules from the owner's corpus), `test_gpt_review_0132.py` (bare copyright line), `test_claude_review_0148.py` (titles with "by") |
-| Ingredients (parsing, scaling) | `test_ingredient_parser.py`, `test_ui_consistency.py` (scaling), `test_weights.py` (Weights), `test_volumes.py` (Volumes; browser: `test_units_as_written_weights_volumes`) | `test_claude_review_round9.py`, `test_claude_review_round13.py` (long digit runs) |
-| French | `test_french.py`, `test_i18n_catalog.py` | `test_friday_batch.py` (server messages), `test_deepseek_0073.py` |
-| Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py`, `test_batch_tags.py` | `test_deepseek_round.py`, `test_deepseek_review_0133.py` (mussels "à la"), `test_gpt_review_0134.py` (mussels "de bouchot", "en sauce"; baking tins by name) |
-| Learning | `test_learning.py`, `test_learning_explained.py` | |
-| Import corpus (real inputs read again) | `test_corpus.py` | |
-| Already in your library? | `test_duplicates.py`, `test_library_check.py` | `test_claude_review_round9.py`, `test_gpt_review_0093.py` |
-| Duplicate a recipe | `test_duplicate_recipe.py` | `test_gpt_review_0132.py` (photo copy failing) |
-| Review queue (To review) | `test_review_queue.py` | |
-| Email ingest | `test_email_ingest.py`, `test_email_real_world.py` | `test_deepseek_round.py`, `test_security_round2.py` (saved password), `test_qwen_review.py`, `test_claude_review_round13.py` (inbox certificate, unknown charsets, scan failures logged), `test_claude_review_round14.py` (codec names that aren't text encodings), `test_deepseek_review_0133.py` (an invalid suggested tag left off), `test_ci_and_import_gaps_0138.py` (greeting and sign-off), `test_gpt_review_0160.py` (size checked before the From line; From fetched bounded and shown short) |
-| Backup and export | `test_backup.py`, `test_interchange.py`, `test_scheduled_backup.py` | `test_qwen_review.py`, `test_deepseek_0083.py`, `test_gpt_review_0093.py`, `test_gpt_review_0104.py` (names in the same second, backup folder owner), `test_claude_review_round13.py` (a failed automatic backup tried again), `test_gpt_review_0129.py` (a failure after the day's success retried), `test_gpt_review_0134.py` (one backup when clocks go back), `test_claude_review_0138.py` (export source line, language, long words); `tests_browser/test_pages.py` (Print), `test_backup_settings_0143.py` (credentials left out of backups), `test_gpt_review_0147.py` (photo in the PDF bundle), `test_gpt_review_0155.py`, `test_review_0157.py` (formulas in index.csv) |
-| Restore | `test_restore.py` | `test_gpt_review_0093.py`, `test_deepseek_review_0143.py` (interrupted restore), `test_backup_settings_0143.py` (schedule, mail servers and safety copy across a restore; this server's password never paired with the backup's mail servers), `test_gpt_review_0155.py` (a failed restore retried or kept closed; full vs blanked mark; safety-copy text), `test_review_0157.py` (no photo sweep while staged photos wait), `test_gpt_review_0160.py` (a zip's real entry count) |
-| Settings password | `test_settings_password.py`, `test_claude_review_0158.py` (a damaged password file), `test_gpt_review_0160.py` (wrong kinds of values in it) | browser: `test_a_damaged_password_file_is_shown` |
-| HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` | |
-| Security (uploads, paths, cross-site, headers, outgoing TLS) | `test_tls_distrust.py` (compromised CA keys, pinned connections), `test_security_audit_0140.py` (link host checks and DNS rebinding, OCR time limits, one-line logs, nosniff, photo names, PDF export fetching), `test_security.py`, `test_security_round2.py`, `test_security_headers.py`, `test_dependency_cves_0104.py` (image decoders, PDF photos, library versions) | `test_claude_review_round8.py`, `test_gpt_review_0104.py` (soft masks, re-encoding memory), `test_deepseek_review_0114.py` (body and field limits), `test_gpt_review_0119.py` (upload sizes as they arrive), `test_claude_review_round13.py` (trusted roots in the image, publishing after CI), `test_ci_and_import_gaps_0138.py` (Node 24 actions, weekly run), `test_deepseek_review_0133.py` (HTTPS port range, photo copy names, josepy pinned), `test_gpt_review_0134.py` (HTTPS job lock taken by its caller, progress cleared, dnspython 2.9), `test_deepseek_review_0143.py` (cPanel values, NAT64, no HTML from data, wildcard hosts), `test_claude_review_0148.py` (no route map, CSV formulas, build context, CI token) |
-| Logs | `test_log_review.py` | `test_claude_review_round7.py` |
-| What to eat? | `test_picker.py`, `test_picker_amounts.py` (the reader's scaling, Weights and Volumes; browser: `test_picker_reader_scaling_weights_volumes`) | `test_gpt_review_0078.py`, `test_claude_review_round7.py`, `test_claude_review_round8.py`, `test_claude_review_round14.py` (language guesses kept), `test_gpt_review_0129.py` (same-length edits) |
-| Things kept in two places (French text, page vs server rules) | `test_ui_consistency.py`, `test_i18n_catalog.py` | `test_deepseek_review_0096.py` (part names) |
-| Times and dates | `test_time_utils.py` | `test_stability.py`, `test_deepseek_0073.py`, `test_qwen_review.py` |
+| Feature | Files |
+|---|---|
+| Recipes: create, edit, delete, list, sort, API limits | `test_api_core.py`, `test_pace_filter.py`, `test_servings.py`, `test_showcase_image.py`, `test_recently_deleted.py` |
+| Merge and duplicate a recipe | `test_merge.py`, `test_duplicate_recipe.py` |
+| The database (indexes, busy as 503, older databases) | `test_database.py` |
+| Search | `test_search_and_parsing.py`, `test_search_typos.py` |
+| Import from a link | `test_url_import.py` (what's read, the download budget, URLs in the log), `test_url_errors.py`, `test_incomplete_sources.py`, `test_chrome_version.py` |
+| Import from a PDF or photo | `test_pdf_ingest.py`, `test_component_recipes.py`, `test_deskew.py`, `test_import_layouts.py`, `test_incomplete_sources.py` |
+| Ingredients (parsing, scaling, units) | `test_ingredient_parser.py`, `test_ui_consistency.py` (scaling), `test_weights.py`, `test_volumes.py` |
+| Recipe language, French | `test_language.py`, `test_french.py`, `test_i18n_catalog.py` |
+| Tags and the tagger | `test_tagger.py`, `test_auto_tag.py`, `test_tag_groups.py`, `test_batch_tags.py` |
+| Learning | `test_learning.py`, `test_learning_explained.py` |
+| Import corpus | `test_corpus.py` |
+| Already in your library? | `test_duplicates.py`, `test_library_check.py` |
+| Review queue (To review) | `test_review_queue.py` |
+| Email ingest | `test_email_ingest.py`, `test_email_real_world.py` |
+| Share and export (PDF, HTML, JSON, Email PDF) | `test_export.py` |
+| Backup | `test_backup.py`, `test_backup_settings.py`, `test_scheduled_backup.py`, `test_interchange.py` (schema.org, Paprika) |
+| Restore | `test_restore.py` |
+| Settings password | `test_settings_password.py` |
+| HTTPS | `test_https_setup.py`, `test_tls_key_containment.py` |
+| Security (addresses, uploads, paths, hosts, outgoing TLS) | `test_security.py`, `test_security_headers.py`, `test_tls_distrust.py`, `test_dependency_cves.py` |
+| Logs | `test_logs.py` |
+| Startup and background jobs | `test_startup.py` |
+| What to eat? | `test_picker.py`, `test_picker_amounts.py` |
+| Things kept in two places | `test_ui_consistency.py`, `test_i18n_catalog.py` |
+| Page behaviour without a browser | `test_frontend_source.py` |
+| CI and the Docker image | `test_ci_and_image.py` |
+| Times and dates | `test_time_utils.py` |
 
-The "also in" column lists where to look, not every file that touches a
-feature: a review file often covers several.
+The pages themselves: `tests_browser/test_pages.py` (each test names the
+patch whose bug it would have caught) and `test_accessibility.py`.
 
 ## Import corpus
 
@@ -84,14 +89,13 @@ entry).
 
 ## Tests that read the source
 
-Some tests (`test_ui_consistency.py`, and a few review files) check the
-text of `app.js`, `styles.css` or a workflow for a structure that stops a
-bug coming back: no recipe data through `innerHTML`, a `try` around
-`localStorage`, a control that stops a card's link. When a refactor breaks
-one, change the assertion to the new structure; don't delete it. Where a
-browser can check the behaviour itself, `tests_browser/` is the better
-place.
-
-`test_claude_review_0158.py` covers the review of 0158 (`claude/reviews/review-0158.md`): restoring by hand (WAL files, file owners), zip directories, search across text and tags, the tag filter limit, staged photos, URLs in the log, auto-saved recipes, import notes, dates and duplicate checks, nested emails, Unicode hosts, a damaged password file, the email scan's catch-up, relative photos, and CI starting the image.
-
-`test_gpt_review_0160.py` covers GPT's review of 0159 and 0160: every value in the password file checked (a wrong kind reads as damaged, not a 500), a zip's real number of entries counted when its end record lists fewer, and an email's size checked before its From line is fetched, with that line bounded and shortened in messages.
+A test should check what the code does. Reading a file's text is kept for
+what a test can't run: the CI workflow, the Dockerfile and entrypoint
+(`test_ci_and_image.py`), pinned library versions (`test_dependency_cves.py`),
+rules over the whole app (every outgoing connection through the TLS guard,
+every Tesseract run with a time limit, every image open naming its formats),
+values kept in two places (`test_ui_consistency.py`, `test_i18n_catalog.py`),
+and page behaviour no browser test covers yet (`test_frontend_source.py`).
+When a browser test covers the same thing, the source check goes. When a
+refactor breaks a source check, change it to the new structure; don't
+delete it.

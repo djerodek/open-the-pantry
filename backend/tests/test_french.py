@@ -61,7 +61,7 @@ def test_french_recipe_sections():
 
 
 def test_french_heading_variants():
-    from app.ingestion.pdf_ingest import HEADING_STEPS, HEADING_INGREDIENTS
+    from app.ingestion.pdf_ingest import HEADING_INGREDIENTS, HEADING_STEPS
     for h in ["Préparation", "Preparation :", "Étapes", "Etapes", "Méthode", "Mode de préparation", "Marche à suivre"]:
         assert HEADING_STEPS.match(h), h
     for h in ["Ingrédients", "Ingredients :", "INGRÉDIENTS"]:
@@ -101,8 +101,9 @@ def test_unmeasured_ingredient_is_not_step_one(tail):
 
 
 def test_ocr_reads_french_when_available():
-    from app.ingestion.pdf_ingest import ocr_lang
     import pytesseract
+
+    from app.ingestion.pdf_ingest import ocr_lang
     assert ocr_lang() == ("eng+fra" if "fra" in pytesseract.get_languages(config="") else "eng")
 
 
@@ -111,3 +112,116 @@ def test_unmeasured_ingredient_is_kept_as_an_ingredient():
     raw = "\n".join(["Test Stew", "2 lb beef chuck", "2 onions", "Salt and pepper to taste",
                      "Brown the beef in a heavy pot over high heat."])
     assert segment_raw_text(raw)["ingredients"] == ["2 lb beef chuck", "2 onions", "Salt and pepper to taste"]
+
+
+FR = {"X-App-Lang": "fr"}
+
+
+def _recipe(client, title, notes=None, **extra):
+    body = {"title": title, "source_type": "manual",
+            "ingredients": [{"raw_line": "2 cups flour"}], "steps": ["Mix."]}
+    body.update(extra)
+    r = client.post("/api/recipes", json=body)
+    assert r.status_code == 200, r.text
+    rid = r.json()["id"]
+    if notes is not None:
+        assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": notes}).status_code == 200
+    return rid
+
+
+def test_translation_keeps_every_set_cookie():
+    import asyncio
+
+    from starlette.requests import Request
+    from starlette.responses import StreamingResponse
+
+    from app.main import interface_language
+
+    async def call_next(request):      # what Starlette hands a middleware: a streamed body
+        body = b'{"detail": "Not found"}'
+
+        async def chunks():
+            yield body
+        r = StreamingResponse(chunks(), media_type="application/json", headers={"content-length": str(len(body))})
+        r.set_cookie("a", "1")
+        r.set_cookie("b", "2")
+        return r
+    scope = {"type": "http", "method": "GET", "path": "/x", "headers": [(b"x-app-lang", b"fr")],
+             "query_string": b""}
+    out = asyncio.run(interface_language(Request(scope), call_next))
+    cookies = [v for k, v in out.raw_headers if k == b"set-cookie"]
+    assert len(cookies) == 2
+    lengths = [v for k, v in out.raw_headers if k == b"content-length"]
+    assert lengths == [str(len(out.body)).encode()]
+
+
+def test_a_compressed_json_response_is_left_alone():
+    import asyncio
+
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    from app import main
+    body = b"\x1f\x8b compressed"
+    resp = Response(content=body, media_type="application/json", headers={"Content-Encoding": "gzip"})
+
+    async def call_next(request):
+        return resp
+    req = Request({"type": "http", "method": "GET", "path": "/api/x", "headers": [(b"x-app-lang", b"fr")],
+                   "query_string": b""})
+    out = asyncio.run(main.interface_language(req, call_next))
+    assert out is resp
+
+
+def test_error_messages_follow_the_app_language(client):
+    assert client.get("/api/recipes/999999").json()["detail"] == "Recipe not found"
+    assert client.get("/api/recipes/999999", headers=FR).json()["detail"] == "Recette introuvable"
+    # ?lang= for a plain navigation that can't send the header
+    assert client.get("/api/recipes/999999?lang=fr").json()["detail"] == "Recette introuvable"
+
+
+def test_unknown_language_falls_back_to_english(client):
+    r = client.get("/api/recipes/999999", headers={"X-App-Lang": "de"})
+    assert r.json()["detail"] == "Recipe not found"
+
+
+def test_composed_messages_are_translated_part_by_part():
+    from app import i18n
+    msg = ("Sending (SMTP) failed: Could not connect/login to SMTP (mail.x.example:465, implicit TLS): "
+           "timed out -- Diagnosis: mail.x.example:465 accepts the connection but never answers. "
+           "Usually a firewall or proxy in between, or the wrong port.\n"
+           "Reading: OK -- logged in to the inbox. Recipes can still be ingested; only the result "
+           "notifications can't be sent until sending works.")
+    fr = i18n.translate(msg, "fr")
+    assert fr.startswith("L'envoi (SMTP) a échoué : Connexion ou authentification SMTP impossible "
+                         "(mail.x.example:465, TLS implicite) : timed out -- Diagnostic : ")
+    assert "Lecture : OK." in fr and "Sending" not in fr and "Reading" not in fr
+    assert i18n.translate(msg, "en") == msg
+
+
+def test_scan_result_lines_are_translated():
+    from app import i18n
+    assert i18n.translate('OK: Pie (from "[RECIPE] pie", via PDF attachment)', "fr") == \
+        "OK : Pie (de « [RECIPE] pie », par la pièce jointe PDF)"
+    assert i18n.translate('FAILED: "x": No recipe found. Tried: body: empty.', "fr") == \
+        'ÉCHEC : "x": Aucune recette trouvée. Essais : corps : vide.'
+
+
+def test_large_json_and_non_json_responses_pass_through(client):
+    r = client.get("/api/recipes", headers=FR)
+    assert r.status_code == 200 and isinstance(r.json(), list)
+
+
+def test_validation_errors_are_translated(client):
+    rid = _recipe(client, "Temps Invalide")
+    en = client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:30:00"})
+    fr = client.patch(f"/api/recipes/{rid}/rating", json={"actual_cook_time": "00:30:00"}, headers=FR)
+    assert en.status_code == fr.status_code == 422
+    assert "Hours must be under 24" in en.json()["detail"][0]["msg"]
+    assert fr.json()["detail"][0]["msg"].startswith("Les heures doivent être inférieures à 24")
+
+
+def test_the_count_message_reads_in_french():
+    from app.i18n import translate
+    assert translate("This archive has more than 20000 files; the limit is 20000.", "fr") == \
+        "Cette archive contient plus de 20000 fichiers; la limite est 20000."

@@ -16,11 +16,6 @@ EN_STEPS = ["Melt the butter in a pan.", "Add the onions and stir until soft."]
 EN_INGS = ["1 cup of flour", "2 tablespoons butter", "1 pinch of salt"]
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 def _ings(lines):
     return [{"raw_line": line} for line in lines]
 

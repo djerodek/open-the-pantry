@@ -16,15 +16,11 @@ SECRET = {"username": "cook@home.example", "password_encrypted": "gAAAA-secret-t
           "recent_recipients": '["aunt@family.example"]', "last_problem": "IMAP login failed for cook@home.example"}
 
 
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
-
-
 @pytest.fixture
 def configured():
     """Email and HTTPS settings as a configured server has them."""
     from sqlalchemy import text
+
     from app.database import engine
     with engine.begin() as c:
         before = [dict(r) for r in c.execute(text("SELECT * FROM email_ingest_settings")).mappings()]
@@ -76,6 +72,7 @@ def test_automatic_backups_too(client, configured, tmp_path):
 
 def test_the_live_settings_are_untouched(client, configured):
     from sqlalchemy import text
+
     from app.database import engine
     client.get("/api/backup/database.zip")
     with engine.connect() as c:
@@ -84,6 +81,7 @@ def test_the_live_settings_are_untouched(client, configured):
 
 def test_a_restore_keeps_this_servers_email_settings(client, configured):
     from sqlalchemy import text
+
     from app.database import engine
     data = client.get("/api/backup/database.zip").content
     tok = client.post("/api/backup/restore/check", headers=H,
@@ -127,6 +125,7 @@ def test_a_backup_says_it_was_blanked(client, configured, tmp_path):
         assert c.execute(f"SELECT version FROM {REDACTED_MARK_TABLE}").fetchone() == (1,)
     assert settings_blanked(str(path)) is True
     from sqlalchemy import text
+
     from app.database import engine
     from app.init_db import init_db
     with engine.begin() as c:
@@ -163,6 +162,7 @@ def test_a_restore_keeps_this_servers_backup_schedule(client):
     """Claude review of 0148: restoring a backup taken with automatic
     backups off turned them off again, without a word."""
     from sqlalchemy import text
+
     from app.database import engine
     data = client.get("/api/backup/database.zip").content
     with engine.begin() as c:
@@ -185,6 +185,7 @@ def test_a_new_server_gets_the_backups_mail_servers(client, configured):
     """Claude review of 0148: the whole live row was put back, so a new
     server's defaults replaced the backup's mail servers and scan hour."""
     from sqlalchemy import text
+
     from app.database import engine
     with engine.begin() as c:
         c.execute(text("UPDATE email_ingest_settings SET daily_scan_hour = 5"))
@@ -204,8 +205,9 @@ def test_this_servers_password_never_goes_to_the_backups_mail_servers(client, co
     servers, and the next scan or test would send B's password to A (or to
     whatever an edited backup names). A server with a login keeps its whole
     email row."""
-    from sqlalchemy import text
     from cryptography.fernet import Fernet
+    from sqlalchemy import text
+
     from app import crypto
     from app.database import engine
     monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
@@ -228,6 +230,7 @@ def test_the_safety_copy_keeps_the_settings(client, configured):
     """Claude review of 0148: the copy made before a restore stays in the
     data folder and is how a restore is undone, so it isn't blanked."""
     import os
+
     from app.database import DATA_DIR
     body = _restore(client, client.get("/api/backup/database.zip").content)
     raw = _db_bytes(open(os.path.join(DATA_DIR, body["safety_backup"]), "rb").read())
@@ -239,6 +242,7 @@ def test_the_safety_copy_says_it_needs_the_key(client, configured):
     credentials, so its RESTORE.txt must not say encryption.key isn't
     needed; a downloaded backup's still does. Both languages."""
     import os
+
     from app import backup
     from app.database import DATA_DIR
     body = _restore(client, client.get("/api/backup/database.zip").content)
@@ -255,6 +259,7 @@ def test_the_safety_copy_says_it_needs_the_key(client, configured):
 def test_waiting_notifications_dont_carry_the_keyword(client, configured):
     """Claude review of 0148: result lines quote email subjects."""
     from sqlalchemy import text
+
     from app.database import engine
     with engine.begin() as c:
         c.execute(text("INSERT INTO email_notification_queue (success, message) VALUES (1, :m)"),

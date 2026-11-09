@@ -21,6 +21,12 @@ def data_dir(tmp_path_factory):
     return d
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _data_dir_first(data_dir):
+    """The app reads its data folder when first imported: every test sets it
+    first, so a test runs the same alone or in any file."""
+
+
 @pytest.fixture(scope="session")
 def client(data_dir):
     """Session-scoped: app.main's single-instance lock and DB init are
@@ -29,6 +35,7 @@ def client(data_dir):
     should use distinctive titles/tags or clean up what they create rather
     than assume a pristine DB per test."""
     from fastapi.testclient import TestClient
+
     from app.main import app
 
     # X-Requested-With: every write from the app's own pages carries it (see

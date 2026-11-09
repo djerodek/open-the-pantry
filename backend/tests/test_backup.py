@@ -7,12 +7,17 @@ shows up the day someone actually restores a backup, so it gets an explicit
 regression test rather than being trusted to a comment.
 """
 
+import csv
 import io
 import json
 import os
 import shutil
 import sqlite3
 import zipfile
+from datetime import datetime
+from unittest.mock import patch
+
+import pytest
 
 # NOTE: app.* is imported INSIDE the tests, never at module scope.
 # Importing app.database runs os.makedirs(DATA_DIR) at import time, and
@@ -217,9 +222,13 @@ def test_backup_contains_exactly_the_photos_the_database_refers_to(client, data_
     """External review: the archive listed uploads/ after the snapshot, so it
     could hold photos nothing referred to, or miss one a recipe did. It now
     takes the list from the snapshot, and reports anything missing."""
-    import io, json, os, zipfile
-    from app.database import UPLOADS_DIR, SessionLocal
+    import io
+    import json
+    import os
+    import zipfile
+
     from app import models
+    from app.database import UPLOADS_DIR, SessionLocal
 
     stray = "img-00000000-0000-4000-8000-000000000001.png"
     open(os.path.join(UPLOADS_DIR, stray), "wb").write(b"orphan")
@@ -243,7 +252,9 @@ def test_backup_contains_exactly_the_photos_the_database_refers_to(client, data_
 
 def test_upload_deletion_waits_for_a_running_backup(tmp_path, monkeypatch):
     """A delete during a backup waits until the photos are copied."""
-    import threading, time
+    import threading
+    import time
+
     from app import backup
 
     f = tmp_path / "photo.jpg"
@@ -256,3 +267,125 @@ def test_upload_deletion_waits_for_a_running_backup(tmp_path, monkeypatch):
         assert f.exists() and not done, "delete must not run while the backup holds the lock"
     t.join(2)
     assert done and not f.exists()
+
+
+H = {"X-Requested-With": "OpenThePantry"}
+
+
+FR = {"X-App-Lang": "fr"}
+
+
+def _recipe(client, title, notes=None, **extra):
+    body = {"title": title, "source_type": "manual",
+            "ingredients": [{"raw_line": "2 cups flour"}], "steps": ["Mix."]}
+    body.update(extra)
+    r = client.post("/api/recipes", json=body)
+    assert r.status_code == 200, r.text
+    rid = r.json()["id"]
+    if notes is not None:
+        assert client.patch(f"/api/recipes/{rid}/notes", json={"notes": notes}).status_code == 200
+    return rid
+
+
+def test_titles_dont_become_formulas_in_index_csv(client):
+    r = client.post("/api/recipes", headers=H, json={"title": "=HYPERLINK(\"http://x.example\",\"click\")",
+                                                     "source_type": "url", "ingredients": [{"raw_line": "1 egg"}],
+                                                     "steps": ["Boil."]}).json()
+    try:
+        z = zipfile.ZipFile(io.BytesIO(client.get("/api/backup/pdfs.zip").content))
+        rows = list(csv.DictReader(io.StringIO(z.read("index.csv").decode("utf-8"))))
+        titles = [row["title"] for row in rows if row["id"] == str(r["id"])]
+        assert titles == ["'=HYPERLINK(\"http://x.example\",\"click\")"]
+        assert all(not row["title"].startswith(("=", "+", "-", "@")) for row in rows)
+    finally:
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
+        client.delete(f"/api/recently-deleted/{r['id']}", headers=H)
+
+
+def test_backup_instructions_follow_the_app_language(client):
+    _recipe(client, "Backup Langue")
+    r = client.get("/api/backup/database.zip", headers=FR)
+    assert r.status_code == 200
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert "RESTAURER.txt" in names and "RESTORE.txt" not in names
+
+
+def test_a_second_backup_in_the_same_second_gets_its_own_name(tmp_path, monkeypatch, data_dir):
+    from app import scheduled_backup
+    monkeypatch.setattr(scheduled_backup, "BACKUP_DIR", str(tmp_path / "b"))
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 23, 13, 0, 0)
+
+    monkeypatch.setattr(scheduled_backup, "datetime", Frozen)
+    contents = iter([b"first", b"second", b"third"])
+
+    def build(dest):
+        with open(dest, "wb") as f:
+            f.write(next(contents))
+        return {}
+
+    names = [scheduled_backup.make(10, build)["name"] for _ in range(3)]
+    assert names == ["open-the-pantry-backup-20261023-130000.zip",
+                     "open-the-pantry-backup-20261023-130000-2.zip",
+                     "open-the-pantry-backup-20261023-130000-3.zip"]
+    with open(tmp_path / "b" / names[0], "rb") as f:
+        assert f.read() == b"first"                          # not replaced
+    assert [b["name"] for b in scheduled_backup.listing()] == names[::-1]   # newest first
+    assert scheduled_backup.prune(1) == names[1::-1]
+    assert os.listdir(tmp_path / "b") == [names[2]]
+
+
+@pytest.mark.parametrize("title", ["=1+1", "\n=1+1", "＝1+1", "＋cmd", "－1", "＠SUM(1)", "  =1+1", "\t=1", "\r=1"])
+def test_index_csv_titles_cant_become_formulas(title):
+    from app import backup
+    assert backup._csv_safe(title).startswith("'")
+    out = io.StringIO()
+    csv.writer(out).writerow([backup._csv_safe(title)])
+    assert next(csv.reader(io.StringIO(out.getvalue())))[0].startswith("'")
+
+
+@pytest.mark.parametrize("title", ["Lasagna", "1-2-3 cake", "Crêpes", "", "Sauce: tomato"])
+def test_ordinary_titles_are_left_alone(title):
+    from app import backup
+    assert backup._csv_safe(title) == title
+
+
+def test_a_photo_removed_during_a_backup_is_listed_not_fatal(client, data_dir):
+    from PIL import Image
+
+    from app import backup, models
+    from app.database import UPLOADS_DIR, SessionLocal
+
+    name = "img-00000000-0000-4000-8000-0000000000aa.png"
+    Image.new("RGB", (10, 10)).save(os.path.join(UPLOADS_DIR, name))
+    db = SessionLocal()
+    r = models.Recipe(title="Backup Race", source_type="manual", image_path=name)
+    db.add(r); db.commit(); rid = r.id; db.close()
+
+    real_write = zipfile.ZipFile.write
+
+    def write(self, filename, arcname=None, *a, **k):
+        if str(filename).endswith(name):
+            os.remove(filename)          # gone between the check and the copy
+        return real_write(self, filename, arcname, *a, **k)
+
+    try:
+        with patch.object(zipfile.ZipFile, "write", write):
+            resp = client.get("/api/backup/database.zip")
+        assert resp.status_code == 200
+        z = zipfile.ZipFile(io.BytesIO(resp.content))
+        manifest = json.loads(z.read("manifest.json"))
+        assert name in manifest["missing_uploads"]
+        assert f"uploads/{name}" not in z.namelist()
+    finally:
+        client.post("/api/recipes/batch-delete", json={"ids": [rid]})
+
+
+# Written as escapes: they look like plain spaces (DeepSeek review of 0159).
+@pytest.mark.parametrize("title", ["\u00a0=1+1", "\u202f+cmd", "\u3000-1", " \u00a0@SUM(1)", "\u2007=1"])
+def test_no_break_spaces_before_a_formula(title):
+    from app import backup
+    assert backup._csv_safe(title).startswith("'")

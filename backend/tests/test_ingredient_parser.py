@@ -1,7 +1,8 @@
 import os
 import sys
+import time
 
-from app.ingestion.ingredient_parser import parse_ingredient_line, parse_ingredient_block  # noqa: E402
+from app.ingestion.ingredient_parser import parse_ingredient_block, parse_ingredient_line  # noqa: E402
 
 
 def test_basic_quantity_unit_name():
@@ -72,3 +73,27 @@ def test_parse_block_skips_blank_lines():
     lines = ["2 cups flour", "", "  ", "1 tsp salt"]
     results = parse_ingredient_block(lines)
     assert len(results) == 2
+
+
+def test_a_long_digit_run_parses_at_once():
+    from app.ingestion.ingredient_parser import MAX_LINE, parse_ingredient_block, parse_ingredient_line
+    started = time.monotonic()
+    out = parse_ingredient_block(["1" * 40_000, "2" * 1_000_000])
+    assert time.monotonic() - started < 1          # was 3.5 s for the 40,000 alone
+    assert [len(i["raw_line"]) for i in out] == [40_000, 1_000_000]    # kept whole: refused on save, not cut
+    assert all(len(i["name"]) <= MAX_LINE for i in out)
+    # The amounts it reads are unchanged.
+    for line, qty in [("1 1/2 cups flour", "1 1/2"), ("3/4 cup sugar", "3/4"), ("1-2 tbsp oil", "1-2"),
+                      ("1 to 1 1/2 cups milk", "1 to 1 1/2"), ("2–2½ cups stock", "2–2½"), ("1½ tsp salt", "1½"),
+                      ("1,5 tasse de lait", "1,5"), ("2 eggs", "2"), ("1-1/2 cups rice", "1-1/2")]:
+        assert parse_ingredient_line(line)["quantity"] == qty, line
+
+
+def test_an_ingredient_ending_in_a_colon_isnt_a_part_name():
+    from app.interchange import _instructions
+    from app.text_rules import is_part_name
+    assert is_part_name("Sauce:") and is_part_name("Pour la pâte :")
+    assert not is_part_name("Salt and pepper to taste:") and not is_part_name("Persil, pour garnir :")
+    assert not is_part_name("Just a line") and not is_part_name("one two three four five six seven:")
+    assert _instructions(["Salt and pepper to taste:", "Stir."]) == [
+        {"@type": "HowToStep", "text": "Salt and pepper to taste:"}, {"@type": "HowToStep", "text": "Stir."}]

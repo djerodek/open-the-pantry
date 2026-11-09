@@ -9,8 +9,10 @@ app.* is imported inside tests only; see the note in test_backup.py.
 """
 import base64
 import json
-from urllib.parse import urlparse, parse_qs
+import threading
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -101,8 +103,9 @@ def creds(monkeypatch):
 @pytest.fixture
 def fresh_settings(client):
     import os
+
+    from app import https_setup, models
     from app.database import SessionLocal
-    from app import models, https_setup
     for p in (https_setup.REQUESTS_PATH, https_setup.LOGIN_PATH):
         if os.path.exists(p):
             os.remove(p)
@@ -269,11 +272,13 @@ def test_a_busy_port_does_not_stop_the_app(monkeypatch, tmp_path, fresh_settings
     that must only end the listener."""
     import asyncio
     import socket
-    from app import https_setup
+
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.x509.oid import NameOID
+
+    from app import https_setup
 
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "pantry.example.test")])
@@ -360,6 +365,7 @@ def test_a_saved_name_that_isnt_the_one_in_env_isnt_renewed(monkeypatch, cpanel,
 def test_certificate_requests_are_capped_per_week(monkeypatch, cpanel, creds, fresh_settings):
     import json
     import os
+
     from app import https_setup
     fake, _ = cpanel
     now = datetime.now(timezone.utc)
@@ -466,3 +472,126 @@ def test_the_login_can_be_cleared(client, no_env, fresh_settings):
     client.put("/api/https/credentials", json=LOGIN)
     cred = client.delete("/api/https/credentials").json()["credentials"]
     assert cred["found"] is False and cred["username"] == ""
+
+
+H = {"X-Requested-With": "OpenThePantry"}
+
+
+def test_the_reset_message_has_french(monkeypatch):
+    from app import https_setup
+    from app.i18n import translate
+
+    def denied(*a, **k):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(https_setup, "_stored_login", lambda: {"token_encrypted": "x"})
+    monkeypatch.setattr(https_setup, "_write_login", denied)
+    monkeypatch.setattr(https_setup.os, "remove", denied)
+    with pytest.raises(https_setup.HttpsError) as e:
+        https_setup.forget_token()
+    fr = translate(str(e.value), "fr")
+    assert fr.startswith("Le jeton cPanel") and "(Permission denied)" in fr
+
+
+@pytest.mark.parametrize("url,ok", [
+    ("https://cpanel.example.com:2083", True), ("https://cpanel.example.com", True),
+    ("https://cpanel.example.com:99999", False), ("https://cpanel.example.com:0", False),
+])
+def test_cpanel_address_port_range(data_dir, monkeypatch, url, ok):
+    """Port 99999 was accepted."""
+    from app import https_setup
+    saved = []
+    monkeypatch.setattr(https_setup, "_value", lambda name: (None, False))
+    monkeypatch.setattr(https_setup, "_stored_login", lambda: {})
+    monkeypatch.setattr(https_setup, "_normal_domain", lambda d: None)     # stop right after the address check
+    try:
+        https_setup.save_login("user", url, "pantry.example.com", "token")
+    except https_setup.HttpsError as e:
+        saved.append(str(e))
+    address_refused = any("cPanel address" in m for m in saved)
+    assert address_refused is (not ok)
+
+
+@pytest.mark.parametrize("port,ok", [(8443, True), (1, True), (65535, True), (0, False), (70000, False), (-1, False)])
+def test_the_https_port_is_a_port(port, ok):
+    from pydantic import ValidationError
+
+    from app import schemas
+    body = {"domain": "pantry.example.com", "lan_address": "192.168.1.2", "email": "me@example.com", "port": port}
+    if ok:
+        assert schemas.HttpsSetupIn(**body).port == port
+    else:
+        with pytest.raises(ValidationError):
+            schemas.HttpsSetupIn(**body)
+
+
+@pytest.mark.parametrize("user,token,ok", [
+    ("marc", "ABCDEF0123456789ABCDEF0123456789", True), ("marc.d", "tok-en_1", True),
+    ("marc\n", "TOKEN", False), ("marc", "TOKEN\r\nX-Evil: 1", False), ("ma:rc", "TOKEN", False),
+    ("marc", "TO KEN", False), ("", "TOKEN", False), ("marc", "AbC+/x9=", True),
+])
+def test_cpanel_values_are_checked_before_the_header(user, token, ok):
+    from app import https_setup
+    if ok:
+        assert https_setup.CpanelDns("https://cp.example.test:2083", user, token).auth == f"cpanel {user}:{token}"
+    else:
+        with pytest.raises(https_setup.HttpsError):
+            https_setup.CpanelDns("https://cp.example.test:2083", user, token)
+
+
+def test_settings_refuse_a_bad_cpanel_token(client):
+    from app import admin_lock
+    with patch.object(admin_lock, "is_locked_path", return_value=False):
+        r = client.put("/api/https/credentials", headers=H,
+                       json={"username": "marc", "base_url": "https://cp.example.test:2083",
+                             "domain": "pantry.example.test", "token": "TOKEN\nX"})
+    assert r.status_code == 400 and "spaces, line breaks or colons" in r.json()["detail"]
+
+
+def test_run_setup_takes_the_lock_itself(monkeypatch):
+    from app import https_setup
+    ran = []
+    monkeypatch.setattr(https_setup, "_setup", lambda *a: ran.append(https_setup._job_lock.locked()))
+    assert https_setup.run_setup(None, None, {}) is True
+    assert ran == [True] and not https_setup._job_lock.locked()
+    # Held elsewhere (reserved(), a running job): not run, and not released.
+    with https_setup.reserved():
+        assert https_setup.run_setup(None, None, {}) is False
+        assert https_setup._job_lock.locked()
+    assert ran == [True] and not https_setup._job_lock.locked()
+
+
+def test_start_job_releases_after_its_thread(monkeypatch):
+    from app import https_setup
+    done = threading.Event()
+    monkeypatch.setattr(https_setup, "_setup", lambda *a: done.set())
+    assert https_setup.start_job(None, None, {})
+    assert done.wait(5)
+    for _ in range(100):
+        if not https_setup._job_lock.locked():
+            break
+        threading.Event().wait(0.01)
+    assert not https_setup._job_lock.locked()
+
+
+@pytest.mark.parametrize("via", ["run_setup", "start_job"])
+def test_progress_cleared_when_setup_fails_early(monkeypatch, via):
+    """GPT review of 0135: _setup failing before its own clean-up (no
+    database session) left the progress shown as running."""
+    from app import https_setup
+    done = threading.Event()
+
+    def boom(*a):
+        done.set()
+        raise RuntimeError("no database")
+    monkeypatch.setattr(https_setup, "SessionLocal", boom)
+    if via == "run_setup":
+        with pytest.raises(RuntimeError):
+            https_setup.run_setup(None, None, {})
+    else:
+        assert https_setup.start_job(None, None, {})
+        assert done.wait(5)
+    for _ in range(100):
+        if not https_setup._job_lock.locked():
+            break
+        threading.Event().wait(0.01)
+    assert not https_setup._job_lock.locked() and https_setup._progress["running"] is False

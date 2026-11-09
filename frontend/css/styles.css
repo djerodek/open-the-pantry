@@ -1911,7 +1911,7 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 /* Recipe view: ½ / 1x / 2x beside the Ingredients heading. */
 .ingredients-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.75rem; }
 .ingredients-head h2 { margin-right: auto; }
-.scale-buttons { display: inline-flex; gap: 0.3rem; }
+.scale-buttons { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.3rem; }
 .scale-button {
   min-width: 2.75rem; min-height: 2.5rem; padding: 0.2rem 0.6rem;
   border: 1px solid var(--color-border); border-radius: 999px;
@@ -1920,7 +1920,9 @@ a.btn-primary { display: inline-block; text-decoration: none; }
 }
 .scale-button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-bg-raised); border-color: var(--color-ink); }
 /* As written / Weights / Volumes (amounts.js), under ½ / 1× / 2×. */
-.units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
+.units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; max-width: 100%; }
+/* The rows wrap: at the largest text size on a phone, Volumes ran past
+   the dialog's edge (found by the browser test in 0165). */
 .units-disclaimer { margin: 0; font-size: 0.72rem; color: var(--color-ink-muted, inherit); }
 .unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }
 .scale-note { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-ink-muted); }

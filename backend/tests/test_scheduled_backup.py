@@ -2,16 +2,12 @@
 import os
 import zipfile
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
 
 H = {"X-Requested-With": "OpenThePantry"}
-
-
-@pytest.fixture(autouse=True)
-def _data_dir(data_dir):
-    """The app reads its data folder when first imported; set it first."""
 
 
 @pytest.fixture
@@ -73,8 +69,7 @@ def test_a_failed_backup_is_recorded_and_says_why(client, folder, monkeypatch):
 
 
 def test_a_half_written_backup_never_gets_a_real_name(client, folder, monkeypatch):
-    from app import main
-    from app import routes
+    from app import main, routes
     def broken(dest):
         open(dest, "wb").write(b"half")
         raise OSError(28, "No space left on device")
@@ -94,11 +89,78 @@ def test_changing_the_schedule_needs_the_password(client, folder):
 
 
 def test_not_during_a_restore(client, folder):
-    from app import main, scheduled_backup
-    from app import routes
+    from app import main, routes, scheduled_backup
     main._restoring.set()
     try:
         with pytest.raises(scheduled_backup.BackupError):
             routes.backup.run_scheduled_backup()
     finally:
         main._restoring.clear()
+
+
+def test_a_failed_backup_is_tried_again():
+    from app.scheduled_backup import due
+    tz = timezone(timedelta(hours=-4))
+    at3 = datetime(2026, 10, 18, 3, 5, tzinfo=tz)
+    yesterday = at3 - timedelta(days=1)
+    # Failed at 3:05: not again within the hour, then hourly until one works.
+    assert not due(True, 3, yesterday, at3 + timedelta(minutes=30), failed_at=at3)
+    assert due(True, 3, yesterday, at3 + timedelta(hours=1), failed_at=at3)
+    assert due(True, 3, yesterday, at3.replace(hour=14), failed_at=at3.replace(hour=13))
+    # Once one works, the next is tomorrow at 3.
+    assert not due(True, 3, at3.replace(hour=14), at3.replace(hour=15))
+    # "Back up now" at 1:00 doesn't stand in for the 3:00 one.
+    assert due(True, 3, at3.replace(hour=1), at3)
+    # Never worked: at once, failures still an hour apart.
+    assert due(True, 3, None, at3)
+    assert not due(True, 3, None, at3, failed_at=at3 - timedelta(minutes=10))
+
+
+def test_a_failed_backup_keeps_the_last_good_one(client, monkeypatch, tmp_path):
+    from app import main, routes, scheduled_backup
+    from app.database import SessionLocal
+    monkeypatch.setattr(scheduled_backup, "BACKUP_DIR", str(tmp_path / "b"))
+    routes.backup.run_scheduled_backup()
+    with SessionLocal() as db:
+        good = routes.backup._backup_schedule(db).last_success_at
+    assert good is not None
+
+    def fail(*a, **k):
+        raise scheduled_backup.BackupError("disk full")
+    monkeypatch.setattr(scheduled_backup, "make", fail)
+    try:
+        routes.backup.run_scheduled_backup()
+    except scheduled_backup.BackupError:
+        pass
+    with SessionLocal() as db:
+        row = routes.backup._backup_schedule(db)
+        assert row.last_ok is False and row.last_success_at == good and row.last_run_at > good
+
+
+def test_a_failure_after_the_days_success_is_retried():
+    from app.scheduled_backup import due
+    tz = timezone(timedelta(hours=-4))
+    at = lambda h, m=0: datetime(2026, 10, 18, h, m, tzinfo=tz)   # noqa: E731
+    # Scheduled backup worked at 3:00; Back up now failed at 4:00.
+    assert not due(True, 3, at(3), at(4, 30), failed_at=at(4))     # within the hour
+    for h in (5, 6, 7):
+        assert due(True, 3, at(3), at(h, 5), failed_at=at(4))      # was False all day
+    # A success after the failure ends the retries.
+    assert not due(True, 3, at(5), at(6, 5), failed_at=at(4))
+
+
+def test_one_backup_when_clocks_go_back():
+    from app.scheduled_backup import due
+    tz = ZoneInfo("America/Toronto")
+    first = datetime(2026, 11, 1, 1, 30, tzinfo=tz, fold=0)         # EDT, 05:30 UTC
+    second = datetime(2026, 11, 1, 1, 20, tzinfo=tz, fold=1)        # EST, 06:20 UTC
+    assert second.astimezone(timezone.utc) > first.astimezone(timezone.utc)
+    made = first.astimezone(timezone.utc).replace(tzinfo=None)      # as SQLite gives it back
+    assert not due(True, 1, made, second)
+    # The next day at 1:00, as usual.
+    assert due(True, 1, made, datetime(2026, 11, 2, 1, 5, tzinfo=tz))
+    # Spring forward: March 8 has no 2:00, so a 2:00 backup is made by the
+    # 36-hour catch-up that afternoon (unchanged; noted in the change log).
+    made = datetime(2026, 3, 7, 2, 5, tzinfo=tz).astimezone(timezone.utc).replace(tzinfo=None)
+    assert not due(True, 2, made, datetime(2026, 3, 8, 15, 0, tzinfo=tz))
+    assert due(True, 2, made, datetime(2026, 3, 8, 15, 10, tzinfo=tz))

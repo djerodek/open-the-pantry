@@ -526,7 +526,7 @@ button.stage-card:hover .stage-title { color: var(--color-accent-text); }
    controls and classes as the main app's recipe view (styles.css). */
 .reader-ingredients .ingredients-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 1.25rem 0 0.5rem; }
 .reader-ingredients .ingredients-head h3 { margin: 0 auto 0 0; }
-.scale-buttons { display: inline-flex; gap: 0.3rem; }
+.scale-buttons { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.3rem; }
 .scale-button {
   min-width: 2.75rem; min-height: 2.5rem; padding: 0.2rem 0.6rem;
   border: 1px solid var(--color-border); border-radius: 999px;
@@ -534,7 +534,7 @@ button.stage-card:hover .stage-title { color: var(--color-accent-text); }
   font: inherit; font-size: 0.9rem; cursor: pointer;
 }
 .scale-button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-bg-raised); border-color: var(--color-ink); }
-.units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
+.units-control { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; max-width: 100%; }
 .units-disclaimer { margin: 0; font-size: 0.72rem; color: var(--color-ink-muted); }
 .unscaled-mark { color: var(--color-ink-muted); font-size: 0.85em; }
 .scale-note { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-ink-muted); }

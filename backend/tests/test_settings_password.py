@@ -2,20 +2,23 @@
 everything else in the app stays open (admin_lock.py)."""
 import io
 import json
+import os
 import re
 import zipfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from .conftest import TEST_SETTINGS_PASSWORD
+from .test_restore import H
 
 
 @pytest.fixture
 def stranger(client):
     """Someone else on the network: same app, no unlock cookie."""
-    from app.main import app
     from app import admin_lock
+    from app.main import app
     c = TestClient(app, headers={"X-Requested-With": "OpenThePantry"})
     yield c
     with admin_lock._lock:
@@ -25,8 +28,8 @@ def stranger(client):
 @pytest.fixture
 def secure_stranger(client):
     """Someone else, over https:// (needed once HTTPS is on)."""
-    from app.main import app
     from app import admin_lock
+    from app.main import app
     c = TestClient(app, base_url="https://testserver", headers={"X-Requested-With": "OpenThePantry"})
     yield c
     with admin_lock._lock:
@@ -175,9 +178,9 @@ def credentials(own_file, client):
     """Saved email password and a working HTTPS setup, restored afterwards."""
     import os
     from datetime import datetime, timedelta, timezone
-    from app import https_setup
+
+    from app import https_setup, models
     from app.database import SessionLocal
-    from app import models
     from app.routes.email import _get_email_settings
 
     db = SessionLocal()
@@ -217,6 +220,7 @@ def credentials(own_file, client):
 
 def _state():
     import os
+
     from app import https_setup
     from app.database import SessionLocal
     from app.routes.email import _get_email_settings
@@ -378,8 +382,9 @@ def test_once_https_is_on_the_password_needs_the_secure_address(credentials, str
 
 def test_the_server_itself_may_use_plain_http():
     from types import SimpleNamespace
-    from app.routes.common import _https_only_url
     from unittest.mock import patch
+
+    from app.routes.common import _https_only_url
     on = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": True}
     with patch("app.main.https_setup.status", return_value=on):
         for host, expected in [("127.0.0.1", None), ("::1", None), ("192.168.1.30", on["url"])]:
@@ -392,6 +397,7 @@ def test_https_that_isnt_listening_doesnt_lock_out_settings():
     use), the secure address doesn't answer, so plain http must still work."""
     from types import SimpleNamespace
     from unittest.mock import patch
+
     from app.routes.common import _https_only_url
     req = SimpleNamespace(url=SimpleNamespace(scheme="http"), client=SimpleNamespace(host="192.168.1.30"))
     down = {"enabled": True, "url": "https://pantry.example.com:8443", "listening": False}
@@ -416,6 +422,7 @@ def test_a_reset_during_https_setup_clears_nothing(credentials, secure_stranger,
     """ChatGPT review of 0057: the email password was cleared before the
     running HTTPS job made the request fail."""
     import os
+
     from app import https_setup
     secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     os.remove(credentials.PASSWORD_PATH)
@@ -434,6 +441,7 @@ def test_a_setup_started_during_a_reset_is_refused(credentials, secure_stranger,
     reset now holds the setup lock throughout, so the setup is the one
     refused, and the reset completes."""
     import os
+
     from app import https_setup
     secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     os.remove(credentials.PASSWORD_PATH)
@@ -455,7 +463,9 @@ def test_forget_certificate_needs_this_threads_reservation():
     """DeepSeek review of 0067: it only checked that someone held the job
     lock, which a running setup on another thread also does."""
     import threading
+
     import pytest
+
     from app import https_setup
     assert https_setup._job_lock.acquire(blocking=False)       # a setup job elsewhere holds it
     try:
@@ -511,8 +521,8 @@ def test_simultaneous_guesses_are_counted_one_by_one(own_file):
 
 def test_credentials_without_a_settings_password_are_logged_at_startup(monkeypatch):
     import logging
-    from app import main
-    from app import routes
+
+    from app import main, routes
     monkeypatch.setattr(main.admin_lock, "password_set", lambda: False)
     monkeypatch.setattr(main.https_setup, "status", lambda: {"enabled": True})
     msgs = []
@@ -546,6 +556,7 @@ def test_a_reset_survives_certificate_files_that_cant_be_deleted(credentials, se
     deleted (read-only folder, another owner) made every try at the new
     password a bare 500. HTTPS is off by then, so it's logged and skipped."""
     import os
+
     from app import https_setup
     secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     os.remove(credentials.PASSWORD_PATH)
@@ -568,6 +579,7 @@ def test_a_reset_stops_if_the_saved_token_cant_be_removed(credentials, secure_st
     """The cPanel token is the one thing the new password must not reach:
     if it can't be removed, no password, and a message saying what to fix."""
     import os
+
     from app import https_setup
     secure_stranger.post("/api/admin/password", json={"password": "first-password"})
     https_setup._write_login({"username": "u", "token_encrypted": "blob"})
@@ -586,3 +598,69 @@ def test_a_reset_stops_if_the_saved_token_cant_be_removed(credentials, secure_st
     # Writable again: the retry goes through and the token is gone.
     assert secure_stranger.post("/api/admin/password", json={"password": "second-password"}).status_code == 200
     assert "token_encrypted" not in https_setup._stored_login()
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+
+
+GOOD = {"salt": "00" * 16, "hash": "11" * 32, "n": 2 ** 14, "r": 8, "p": 1}
+
+
+def test_a_damaged_password_file_isnt_no_password(client, monkeypatch):
+    from app import admin_lock
+
+    # The suite's own password file moved aside and put back as it was
+    # (same file, same time), so the shared client stays unlocked after.
+    kept = admin_lock.PASSWORD_PATH + ".kept-by-test"
+    os.replace(admin_lock.PASSWORD_PATH, kept)
+    with open(admin_lock.PASSWORD_PATH, "w") as f:
+        f.write("")
+    try:
+        assert admin_lock.password_set() and admin_lock.damaged() and not admin_lock.was_reset()
+        for path, body in (("/api/admin/password", {"password": "a-new-password-1"}),
+                           ("/api/admin/unlock", {"password": "a-new-password-1"})):
+            r = client.post(path, headers=H, json=body)
+            assert r.status_code in (409, 403), (path, r.text)
+            if r.status_code == 409:
+                assert "damaged" in r.json()["detail"]
+        assert admin_lock.seconds_left("anything") == 0
+    finally:
+        os.replace(kept, admin_lock.PASSWORD_PATH)
+    assert client.get("/api/admin/status").json().get("unlocked") is not False
+    src = (ROOT / "backend/app/admin_lock.py").read_text(encoding="utf-8")
+    assert "os.fsync(f.fileno())" in src[src.index("def _write("):]
+
+
+@pytest.mark.parametrize("change", [
+    {"hash": 123}, {"salt": "zz" * 16}, {"hash": "11" * 31}, {"n": "16384"}, {"r": True}, {"p": 1.0},
+    {"n": 2 ** 21}, {"n": 3000}, {"r": 64}, {"n": 2 ** 20, "r": 8}, {"salt": None},
+])
+def test_wrong_kinds_of_values_are_damaged(change):
+    from app import admin_lock
+    assert admin_lock._valid(GOOD)
+    assert not admin_lock._valid({**GOOD, **change}), change
+
+
+def test_a_wrongly_typed_file_reads_as_damaged_not_a_crash(client):
+    """End to end: the recovery message instead of a 500."""
+    from app import admin_lock
+    kept = admin_lock.PASSWORD_PATH + ".kept-by-test"
+    os.replace(admin_lock.PASSWORD_PATH, kept)
+    with open(admin_lock.PASSWORD_PATH, "w") as f:
+        json.dump({**GOOD, "hash": 123}, f)
+    try:
+        assert admin_lock.damaged() and admin_lock._verify("anything") is False
+        # A client without the suite's unlock cookie: a damaged file ends
+        # any session it is shown, and the shared one must outlive this.
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+        bare = TestClient(app, headers={"X-Requested-With": "OpenThePantry"})
+        status = bare.get("/api/admin/status")
+        assert status.status_code == 200 and status.json()["damaged"] is True
+        r = bare.post("/api/admin/unlock", headers=H, json={"password": "anything-long"})
+        assert r.status_code == 409 and "damaged" in r.json()["detail"]
+    finally:
+        os.replace(kept, admin_lock.PASSWORD_PATH)

@@ -7,6 +7,7 @@ The session shares one database with every other test, so the recipes here
 carry tags of their own (names with "Pk") and are deleted afterwards."""
 import asyncio
 import io
+import logging
 import os
 import random
 import socket
@@ -16,6 +17,7 @@ import urllib.request
 import uuid
 import zipfile
 from collections import defaultdict
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -391,7 +393,8 @@ def picker_port(client, monkeypatch):
 
 def test_off_by_default(client):
     from app import models, picker
-    from app.database import engine, Base
+    from app.database import Base, engine
+
     # A database from before this change has no table; create_all adds it, off.
     models.PickerSettings.__table__.drop(engine)
     Base.metadata.create_all(bind=engine)
@@ -629,3 +632,227 @@ def test_recipe_to_read_never_a_drink_or_unknown(client, picker_client, pk):
                                   headers={"X-Requested-With": "OpenThePantry"}, json={})
         assert r.status_code == 404, method
     assert client.get(f"/api/picker/recipes/{pk['ids']['r4']}", headers={"X-App-Lang": "fr"}).json()["detail"] == "Recette introuvable"
+
+
+H = {"X-Requested-With": "OpenThePantry"}
+
+
+FR = {"ingredients": [{"raw_line": "1 tasse de farine"}, {"raw_line": "2 cuillères de beurre"}],
+      "steps": ["Faire fondre le beurre dans une poêle.", "Ajouter la farine et cuire 10 minutes environ."]}
+
+
+EN = {"ingredients": [{"raw_line": "1 cup of flour"}, {"raw_line": "2 tablespoons butter"}],
+      "steps": ["Melt the butter in a pan.", "Add the flour and stir until smooth."]}
+
+
+def _make(client, title, body):
+    r = client.post("/api/recipes", headers=H, json={"title": title, "source_type": "manual", **body})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _db():
+    from app.database import SessionLocal
+    return SessionLocal()
+
+
+UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi")
+
+
+def _snapshot():
+    out = {}
+    for name in UVICORN_LOGGERS:
+        lg = logging.getLogger(name)
+        out[name] = (lg.level, list(lg.handlers), lg.propagate, lg.disabled)
+    return out
+
+
+@pytest.fixture
+def main_port_logging():
+    """uvicorn's loggers as the main server sets them up (`uvicorn app.main:app`
+    at the default info level), restored afterwards."""
+    import uvicorn
+    saved = {n: (logging.getLogger(n).level, list(logging.getLogger(n).handlers),
+                 logging.getLogger(n).propagate, logging.getLogger(n).disabled) for n in UVICORN_LOGGERS}
+    uvicorn.Config("app.main:app", log_level="info")      # what the main server's Config does
+    assert logging.getLogger("uvicorn.access").isEnabledFor(logging.INFO)
+    yield
+    for n, (level, handlers, propagate, disabled) in saved.items():
+        lg = logging.getLogger(n)
+        lg.setLevel(level)
+        lg.handlers = handlers
+        lg.propagate = propagate
+        lg.disabled = disabled
+
+
+BIG = "99999999999999999999"
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_languages_are_guessed_once_until_a_recipe_changes(client, monkeypatch):
+    from app import picker
+    calls = []
+    real = picker.recipe_language
+    monkeypatch.setattr(picker, "recipe_language", lambda *a: calls.append(a) or real(*a))
+    r = _make(client, f"Soup {uuid.uuid4().hex[:6]}", EN)
+    try:
+        client.get("/api/picker/options")
+        first = len(calls)
+        assert first >= 1
+        client.get("/api/picker/options")
+        client.get("/api/picker/random", params={"language": "fr"})
+        assert len(calls) == first                         # nothing guessed again
+        assert picker._recipe_languages(_db())[r["id"]] == "en"
+        # Edited into French: that recipe alone is guessed again.
+        body = {k: r[k] for k in ("title", "source_type")}
+        res = client.put(f"/api/recipes/{r['id']}", headers=H, json={**body, **FR})
+        assert res.status_code == 200, res.text
+        before = len(calls)
+        assert picker._recipe_languages(_db())[r["id"]] == "fr"
+        assert len(calls) == before + 1
+        # Accented text: SQLite's length and Python's agree, so a second
+        # call guesses nothing.
+        picker._recipe_languages(_db())
+        assert len(calls) == before + 1
+    finally:
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
+
+
+def test_a_recipe_added_outside_a_request_is_guessed_on_first_use(client):
+    """The scheduled email scan saves recipes outside any request."""
+    from app import models, picker
+    picker._recipe_languages(_db())                        # map filled
+    with _db() as db:
+        rec = models.Recipe(title="Crêpes", source_type="email",
+                            content_text=" ".join([i["raw_line"] for i in FR["ingredients"]] + FR["steps"]))
+        db.add(rec)
+        db.commit()
+        rid = rec.id
+    try:
+        assert picker._recipe_languages(_db())[rid] == "fr"
+    finally:
+        client.delete(f"/api/recipes/{rid}", headers=H)
+
+
+def test_a_hand_set_language_is_read_fresh(client):
+    from app import picker
+    r = _make(client, f"Pancakes {uuid.uuid4().hex[:6]}", EN)
+    try:
+        assert picker._recipe_languages(_db())[r["id"]] == "en"
+        from app import models
+        with _db() as db:                                   # set directly
+            db.get(models.Recipe, r["id"]).language = "fr"
+            db.commit()
+        assert picker._recipe_languages(_db())[r["id"]] == "fr"
+    finally:
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
+
+
+def test_switching_the_picker_on_and_off_keeps_the_request_log(client, main_port_logging, monkeypatch):
+    """The real switch, with a real listener."""
+    import socket
+    import urllib.request
+
+    from app import picker
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    monkeypatch.setattr(picker, "LISTEN_PORT", port)
+    monkeypatch.setattr(picker, "PICKER_PUBLIC_PORT", port)
+    before = _snapshot()
+    try:
+        assert client.put("/api/picker/settings", json={"enabled": True}).json()["enabled"] is True
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=5) as r:
+            assert r.status == 200
+        assert _snapshot() == before
+    finally:
+        client.put("/api/picker/settings", json={"enabled": False})
+    assert _snapshot() == before
+    assert logging.getLogger("uvicorn.access").isEnabledFor(logging.INFO)
+
+
+def test_the_picker_port_answers_422_not_500(client):
+    from app.main import picker_app
+    pc = TestClient(picker_app)
+    for path in (f"/api/picker/recipes/{BIG}",
+                 f"/api/picker/random?meal_type={BIG}",
+                 f"/api/picker/random?cooking_style={BIG}",
+                 f"/api/picker/random?main_ingredient={BIG}",
+                 f"/api/picker/random?exclude={BIG}"):
+        for c in (client, pc):
+            assert c.get(path).status_code == 422, path
+    assert pc.get("/api/picker/recipes/0").status_code == 404
+    assert pc.get("/api/picker/random?meal_type=999999999").status_code == 200   # unknown id: ignored, as before
+
+
+def test_no_traceback_is_logged(client):
+    from app import main
+    seen = []
+    orig = main.log.exception
+    main.log.exception = lambda *a, **k: seen.append(a)
+    try:
+        client.get(f"/api/recipes/{BIG}")
+        client.get(f"/api/picker/random?meal_type={BIG}")
+    finally:
+        main.log.exception = orig
+    assert seen == []
+
+
+def test_the_pages_use_the_same_rule():
+    import re
+    from pathlib import Path
+
+    from app.text_rules import INGREDIENT_TAIL
+    root = Path(__file__).resolve().parents[2]
+    # One copy since 0155: amounts.js, used by both pages.
+    m = re.search(r"const notAPart = /(.+)/i;", (root / "frontend" / "js" / "amounts.js").read_text(encoding="utf-8"))
+    assert m and m.group(1) == INGREDIENT_TAIL.pattern
+    for page in (root / "frontend" / "js" / "app.js", root / "frontend-picker" / "picker.js"):
+        assert "const notAPart" not in page.read_text(encoding="utf-8"), page.name
+
+
+def test_api_key_note_is_reported_on_the_main_port_only(client, monkeypatch):
+    from app import main
+    from app.main import picker_app
+    assert client.get("/api/picker/status").json()["api_key_set"] is False
+    monkeypatch.setattr(main, "API_KEY", "a-long-test-key")
+    st = client.get("/api/picker/status", headers={"X-API-Key": "a-long-test-key"}).json()
+    assert st["api_key_set"] is True
+    st = client.put("/api/picker/settings", json={"enabled": False},
+                    headers={"X-API-Key": "a-long-test-key"}).json()
+    assert st["api_key_set"] is True
+    # The open port never says whether the main app has a key.
+    assert "api_key_set" not in TestClient(picker_app).get("/api/picker/status").json()
+
+
+def test_api_key_note_in_settings():
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    js = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    assert 'id="picker-key-note" hidden>' in html
+    assert '$("#picker-key-note").hidden = !st.api_key_set;' in js
+
+
+def test_a_same_length_edit_is_guessed_again(client):
+    from app import picker
+    from app.database import SessionLocal
+    en = {"ingredients": [{"raw_line": "1 cup of milk"}], "steps": ["Add the milk and stir."]}
+    r = client.post("/api/recipes", headers=H, json={"title": f"Lait {uuid.uuid4().hex[:4]}",
+                                                     "source_type": "manual", **en}).json()
+    try:
+        with SessionLocal() as db:
+            assert picker._recipe_languages(db)[r["id"]] == "en"
+        # French text of exactly the same length.
+        old = " ".join(["1 cup of milk", "Add the milk and stir."])
+        fr_ing, fr_step = "1 tasse de lait", "Ajouter le lait et mélanger."
+        pad = len(old) - len(" ".join([fr_ing, fr_step]))
+        fr_step = fr_step[:len(fr_step) + pad] if pad < 0 else fr_step + "." * pad
+        assert len(" ".join([fr_ing, fr_step])) == len(old)
+        res = client.put(f"/api/recipes/{r['id']}", headers=H, json={
+            "title": r["title"], "source_type": "manual", "ingredients": [{"raw_line": fr_ing}], "steps": [fr_step]})
+        assert res.status_code == 200, res.text
+        with SessionLocal() as db:
+            assert picker._recipe_languages(db)[r["id"]] == "fr"
+    finally:
+        client.delete(f"/api/recipes/{r['id']}", headers=H)
