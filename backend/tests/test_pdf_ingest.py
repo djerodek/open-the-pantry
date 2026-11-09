@@ -569,6 +569,10 @@ def test_lowercase_items_stay_separate_and_wrapped_lines_join():
     assert _clean_ingredients(["Sautéed potatoes", "raclette cheese of choice", "mini pickles"]) == \
         ["Sautéed potatoes", "raclette cheese of choice", "mini pickles"]
     assert _clean_ingredients(["2 tbsp olive oil", "fresh mint leaves"]) == ["2 tbsp olive oil", "fresh mint leaves"]
+    # Ordinary wraps 0167 split (Claude review of 0167).
+    for a, b in (("1 large onion, finely", "chopped"), ("2 tbsp butter, at room", "temperature"),
+                 ("2 green onions, thinly", "sliced"), ("1/2 cup parsley", "chopped")):
+        assert _clean_ingredients([a, b]) == [f"{a} {b}"]
     assert _clean_ingredients(["2/3 of a tsp of Dijon mustard sauce", "salt and pepper"])[-1] == "salt and pepper"
     # Wrapped: left off mid-phrase, or a long measured line's last words.
     assert _clean_ingredients(["2 mangos almost ripe, but still firm,", "peeled and cut into batonnets"]) == \
@@ -636,3 +640,17 @@ def test_one_tesseract_run_gives_the_text_and_the_confidence(monkeypatch, tmp_pa
     img.save(tmp_path / "p.png")
     r = image_ingest.ingest_image(str(tmp_path / "p.png"))
     assert "flour" in r.raw_text and r.ocr_confidence and r.ocr_confidence > 50
+
+
+def test_a_capitalised_ingredient_isnt_a_numbered_step():
+    """Claude review of 0167: under an Ingredients heading with no Method
+    heading, "3 Eggs" was taken as step 3 and every line after it became
+    a step."""
+    r = segment_raw_text("Small Omelette\nIngredients\n3 Eggs\n2 Green onions, sliced\n2 Cloves of garlic\n"
+                         "1 tbsp butter\nWhisk the eggs with the onions and garlic.\nCook in the butter until set.\n")
+    assert r["ingredients"] == ["3 Eggs", "2 Green onions, sliced", "2 Cloves of garlic", "1 tbsp butter"]
+    assert r["steps"][0].startswith("Whisk")
+    # A real numbered step still is one, with or without its full stop.
+    r = segment_raw_text("Biscuits\nIngredients\n2 cups flour\n1 cup milk\n1 Preheat the oven to 220 degrees.\n"
+                         "2 Mix the flour and milk and bake for twelve minutes\n")
+    assert r["ingredients"] == ["2 cups flour", "1 cup milk"] and len(r["steps"]) == 2

@@ -117,6 +117,10 @@ def test_photos_keep_the_gray_mix_and_text_gets_the_darkest_channel():
     assert out[600, 700] > 150                 # gray of yellow, not its blue channel (30)
     teal = np.argwhere(np.all(np.asarray(img) == (150, 222, 214), axis=2))[0]
     assert out[tuple(teal)] == 150             # the title: its darkest channel
+    # Pale beige list dots (spread about 34) keep the gray mix: darkened,
+    # they became a column of their own (Claude review of 0167).
+    ImageDraw.Draw(img).ellipse((20, 300, 30, 310), fill=(214, 205, 180))
+    assert darkest_channel(img)[305, 25] > 195
     assert darkest_channel(np.zeros((5, 5), np.uint8)).shape == (5, 5)
 
 

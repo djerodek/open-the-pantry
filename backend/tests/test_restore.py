@@ -888,3 +888,16 @@ def test_kept_rows_round_trip_through_the_file(tmp_path, monkeypatch):
     assert routes_backup._read_kept() == (rows, [{"username": "cook@home.example"}])
     routes_backup._remove_kept()
     assert not os.listdir(tmp_path)
+
+
+def test_a_kept_settings_file_without_the_restore_marker_isnt_applied(monkeypatch, tmp_path):
+    """Claude review of 0167: a restore-kept.json that a finished restore
+    couldn't remove put old settings back over newer ones at every start.
+    Without the marker it's removed, not applied."""
+    from app.routes import backup as routes_backup
+    monkeypatch.setattr(routes_backup, "DATA_DIR", str(tmp_path))
+    applied = []
+    monkeypatch.setattr(routes_backup, "_put_back_kept", lambda rows, email: applied.append(rows))
+    routes_backup._write_kept({"backup_schedule": [{"id": 1, "enabled": 0}]}, None)
+    assert routes_backup.put_back_after_restart() is False
+    assert applied == [] and not os.listdir(tmp_path)

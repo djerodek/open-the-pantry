@@ -46,8 +46,9 @@ def darkest_channel(image) -> np.ndarray:
     also darkens a photo (a yellow mango's blue channel is near 0), and a
     dark photo broke Tesseract's layout of the whole page: columns and
     lines cut into pieces. Photos are the large dense areas that aren't
-    page background; text, even a big title, is thin and sparse. Black and
-    gray text read the same either way. Takes a BGR or RGB array, or a PIL
+    page background; text, even a big title, is thin and sparse. Nearly
+    gray pixels (black and gray text, pale beige bullets) keep the gray mix
+    too: only clearly coloured ones get their darkest channel. Takes a BGR or RGB array, or a PIL
     image."""
     arr = np.asarray(image.convert("RGB")) if hasattr(image, "convert") else np.asarray(image)
     if arr.ndim == 2:
@@ -55,8 +56,16 @@ def darkest_channel(image) -> np.ndarray:
     arr = arr[:, :, :3]
     darkest = arr.min(axis=2)
     gray = cv2.cvtColor(np.ascontiguousarray(arr), cv2.COLOR_RGB2GRAY)  # the channel order barely matters here
-    photos = _photo_mask(darkest)
-    return np.where(photos, gray, darkest).astype(np.uint8)
+    coloured = (arr.max(axis=2).astype(np.int16) - darkest) >= COLOUR_SPREAD
+    use = coloured & ~_photo_mask(darkest)
+    return np.where(use, darkest, gray).astype(np.uint8)
+
+
+# Channels this far apart are a colour (the teal titles: about 70); a
+# nearly gray pixel keeps the gray mix. The cookbook's pale beige list dots
+# (spread about 34) were darkened too, became a column of their own, and
+# cut the step paragraphs mid-word (Claude review of 0167).
+COLOUR_SPREAD = 50
 
 
 PHOTO_MIN_AREA = 0.02       # of the image

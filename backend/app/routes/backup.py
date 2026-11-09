@@ -653,11 +653,17 @@ def _put_back_kept(kept_rows: dict, email_kept) -> None:
 
 def put_back_after_restart() -> bool:
     """At start-up, before the interrupted restore's photos are finished:
-    this server's settings kept by a restore that stopped are put back.
-    The rows were read from this server just before the restore, so if it
-    stopped before the copy, writing them again changes nothing. Returns
-    whether there were any."""
+    this server's settings kept by a restore that stopped after the copy
+    are put back. Only while the restore's marker says the database was
+    replaced: a file left over from a finished restore (it couldn't be
+    removed) put old settings back over newer ones at every start (Claude
+    review of 0167). Returns whether there were any."""
     if not os.path.exists(_kept_path()):
+        return False
+    if not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER)):
+        log.warning("Start-up: %s was left from a restore that finished or never replaced the database; "
+                    "removed, not applied", KEPT_FILE)
+        _remove_kept()
         return False
     try:
         kept_rows, email_kept = _read_kept()
@@ -690,8 +696,8 @@ def _after_the_copy(new_uploads: str, kept_rows: dict, email_kept, aside_before:
         old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
     elif os.path.isdir(new_uploads):
         old_uploads = restore_mod.finish_swap(new_uploads, UPLOADS_DIR, aside_before)
+    _remove_kept()                    # before the marker: without it the file is never applied
     restore_mod.clear_marker(DATA_DIR)
-    _remove_kept()
     return old_uploads
 
 

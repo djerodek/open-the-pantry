@@ -443,6 +443,23 @@ _QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
 # Capital letters include accented ones: French steps start "Égoutter".
 _UPPER = "A-ZÀ-ÖØ-Þ"
 _STEP_START = re.compile(rf"^\s*(?:[Ss]tep\s*|[ÉéEe]tape\s*)?(\d{{1,2}})(?:[\.\):]\s*|\s+)(?=[{_UPPER}])")
+
+
+def _numbered_step(line: str) -> bool:
+    """A numbered step, not an ingredient that starts with a count and a
+    capital: "3 Eggs", "2 Green onions", OCR's "2 Cloves of garlic" were
+    taken as step 2 and everything after them became steps (Claude review
+    of 0167). With "." ")" ":" or "Step" before the text it's a step; after
+    a bare number, only when the rest reads as a sentence."""
+    m = _STEP_START.match(line)
+    if not m:
+        return False
+    if re.match(r"\s*(?:step|[ée]tape)", line, re.IGNORECASE) or line[m.end(1):m.end()].strip():
+        return True
+    rest = line[m.end():].strip()
+    return rest.endswith((".", "!")) or len(rest.split()) >= 5
+
+
 # A step number alone on its line: "3", or an app's "Step 3" / "Étape 3" label.
 _BARE_NUMBER = re.compile(r"^\s*(?:step\s*|[ée]tape\s*)?\d{1,2}\s*:?\s*$", re.IGNORECASE)
 
@@ -535,26 +552,27 @@ _LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*
 
 
 # A line ending this way goes on on the next line.
-_WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|et|ou|avec|de|du|des|d'|à|au|aux|en|"
-                       r"pour|le|la|les|un|une|dans))\s*$", re.IGNORECASE)
+_WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|at|room|et|ou|avec|de|du|des|d'|à|au|"
+                       r"aux|en|pour|le|la|les|un|une|dans|\w+ly|\w+ment))\s*$", re.IGNORECASE)
 _SALT_AND_PEPPER = re.compile(r"^\s*(?:salt\s+(?:and|&)\s+(?:black\s+)?pepper|sel\s+et\s+poivre)\b", re.IGNORECASE)
-
-
-WRAP_MIN_CHARS = 25
 
 
 def _wrapped(prev: str, line: str) -> bool:
     """A line starting in lowercase is the rest of the one before when that
     one left off mid-phrase ("…but still firm," + "peeled and cut into
-    batonnets"), or is a measured line whose last word or two went over
-    ("1 cup chopped flat-leaf" + "parsley"). Not otherwise: a cookbook that
+    batonnets", "1 large onion, finely" + "chopped", "2 tbsp butter, at
+    room" + "temperature"), or is a measured line's last word or two
+    ("1/2 cup parsley" + "chopped"). Not otherwise: a cookbook that
     writes its items in lowercase ("mini pickles", "pickled onions", no
     amounts) had them all joined into one (Claude review of 0165)."""
     if _WRAP_END.search(prev):
         return True
-    # Long enough to have run out of room: "2 tbsp olive oil" + "fresh mint
-    # leaves" are two items of a column.
-    return bool(_QTY_START.match(prev)) and len(prev) >= WRAP_MIN_CHARS and len(line.split()) <= 3 \
+    # A word or two after a measured line: "1/2 cup parsley" + "chopped".
+    # Three words are an item of their own ("2 tbsp olive oil" + "fresh mint
+    # leaves", one column after the other) unless the line before left off
+    # mid-phrase. 0167 asked for 25 characters first, which split ordinary
+    # wraps (Claude review of 0167).
+    return bool(_QTY_START.match(prev)) and len(line.split()) <= 2 \
         and not _SALT_AND_PEPPER.match(line) and not _INGREDIENT_TAIL.search(line)
 
 
@@ -1071,7 +1089,7 @@ def rule_segment_raw_text(raw_text: str) -> dict:
         chosen_ing = i
         rest = lines[i + 1:]
         first_step = next((k for k, l in enumerate(rest)
-                           if _STEP_START.match(l) and not _QTY_START.match(_STEP_START.sub("", l))), None)
+                           if _numbered_step(l) and not _QTY_START.match(_STEP_START.sub("", l))), None)
         if first_step is None:
             # No numbered step either: the steps are the first method text
             # after an ingredient, as where there are no headings ("HEAT the
