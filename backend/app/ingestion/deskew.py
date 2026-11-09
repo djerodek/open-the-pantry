@@ -140,6 +140,21 @@ def crop_to_page(gray: np.ndarray) -> np.ndarray:
     return turned[y0:y1, x0:x1]
 
 
+def _really_tilted(coords, rect, angle: float) -> bool:
+    """Content turned by `angle` needs an upright box larger than its
+    turned one by about sin(angle) x (w/h + h/w). When the upright box is
+    barely larger, the turned rectangle only hugs uneven edges (a photo's
+    corner, a row of bullets): a straight cookbook page measured -0.87
+    degrees, and turning it blurred the thin 1s away ("1 c cocoa" read as
+    "C cocoa"; owner's page after the Claude review of 0167)."""
+    _, _, bw, bh = cv2.boundingRect(coords)
+    rw, rh = rect[1]
+    if rw <= 0 or rh <= 0:
+        return False
+    expected = abs(np.sin(np.radians(angle))) * (rw / rh + rh / rw)
+    return (bw * bh) / (rw * rh) - 1 >= expected / 2
+
+
 def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     """
     Detect and correct small rotational skew (a tilted phone photo of a
@@ -160,10 +175,13 @@ def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     if coords is None or len(coords) < MIN_CONTENT_POINTS:
         return gray  # not enough content to estimate an angle reliably
 
-    angle = _skew_angle(cv2.minAreaRect(coords))
+    rect = cv2.minAreaRect(coords)
+    angle = _skew_angle(rect)
 
     if abs(angle) < 0.3 or abs(angle) > MAX_DESKEW_ANGLE:
         return gray  # negligible skew, or the estimate looks unreliable
+    if not _really_tilted(coords, rect, angle):
+        return gray
 
     h, w = gray.shape
     center = (w // 2, h // 2)

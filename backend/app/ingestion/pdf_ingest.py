@@ -329,8 +329,13 @@ def ocr_text_and_confidence(processed: Image.Image):
     two, one for the text and one for the confidence, and the second already
     held the text (Claude review of 0165). Two-column lists are read column
     by column (_lines_from_words)."""
+    # --psm 4, one column of lines of any size: Tesseract's own column
+    # finding (the default) cut an upright cookbook page into strips, a
+    # method paragraph across both halves included ("PLACE the rice and
+    # len" / "ils in separate bowls"). Lines are read whole and two-column
+    # lists are split here (_column_order).
     data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
-                                     timeout=OCR_TIMEOUT_SECONDS)
+                                     timeout=OCR_TIMEOUT_SECONDS, config="--psm 4")
     confidences = []
     for c in data["conf"]:
         try:
@@ -354,9 +359,9 @@ def _lines_from_words(data: dict, page_width: int) -> str:
     between paragraphs), except that a paragraph laid out in two columns --
     a two-column ingredient list -- is given left column first, then right.
     Tesseract read across the gap: "1 cup uncooked rice indian spices:"
-    (Claude review of 0165, 5 pages of 9). A paragraph is only taken as two
-    columns when at least two of its lines split at the same place and no
-    line crosses it."""
+    (Claude review of 0165, 5 pages of 9). Two columns need at least two
+    lines of a paragraph split at the same place; a line across the gutter,
+    or a heading between two column blocks, ends a block."""
     paragraphs = {}
     for i, word in enumerate(data["text"]):
         if int(data["level"][i]) != 5 or not str(word).strip():
@@ -388,27 +393,51 @@ def _column_order(lines, page_width: int) -> list[str]:
 
     parted = [split(words) for words in lines]
     two = [p for p in parted if len(p) == 2]
-    if len(two) < 2 or any(len(p) > 2 for p in parted):
+    if len(two) < 2:
         return [text(words) for words in lines]
     starts = sorted(p[1][0][0] for p in two)
     col = starts[len(starts) // 2]
     tol = COLUMN_GAP_PAGE * page_width
-    left, right = [], []
-    for p in parted:
+
+    def kind(p):
         if len(p) == 2:
-            if abs(p[1][0][0] - col) > tol or p[0][-1][0] + p[0][-1][1] > col:
-                return [text(words) for words in lines]
+            ok = abs(p[1][0][0] - col) <= tol and p[0][-1][0] + p[0][-1][1] <= col
+            return "two" if ok else "across"
+        if len(p) > 2:
+            return "across"
+        if p[0][0][0] >= col - tol:
+            return "right"
+        return "left" if p[0][-1][0] + p[0][-1][1] < col else "across"
+
+    kinds = [kind(p) for p in parted]
+    out, left, right = [], [], []
+
+    def flush():
+        out.extend(left + right)
+        left.clear()
+        right.clear()
+
+    for n, (p, k) in enumerate(zip(parted, kinds)):
+        nxt = kinds[n + 1] if n + 1 < len(kinds) else None
+        if k == "across":
+            # A line over the gutter (a heading row, a paragraph) ends the
+            # columns before it.
+            flush()
+            out.append(text(lines[n]))
+        elif k == "left" and nxt == "two":
+            # A heading between two column blocks ("WISH" after "SIFT"):
+            # the block above is given whole before it (owner's cookie page).
+            flush()
+            out.append(text(p[0]))
+        elif k == "two":
             left.append(text(p[0]))
             right.append(text(p[1]))
+        elif k == "left":
+            left.append(text(p[0]))
         else:
-            words = p[0]
-            if words[0][0] >= col - tol:
-                right.append(text(words))
-            elif words[-1][0] + words[-1][1] < col:
-                left.append(text(words))
-            else:
-                return [text(words) for words in lines]
-    return left + right
+            right.append(text(p[0]))
+    flush()
+    return out
 
 
 # "Ingredients" alone on a line, optionally followed by a recipe card's
@@ -443,6 +472,16 @@ _QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
 # Capital letters include accented ones: French steps start "Égoutter".
 _UPPER = "A-ZÀ-ÖØ-Þ"
 _STEP_START = re.compile(rf"^\s*(?:[Ss]tep\s*|[ÉéEe]tape\s*)?(\d{{1,2}})(?:[\.\):]\s*|\s+)(?=[{_UPPER}])")
+
+
+def _caps_label(line: str) -> str | None:
+    """"WISH" -> "Wish:": a short line in capitals, no digits, as a part
+    name in an ingredient list."""
+    words = line.strip().rstrip(":").split()
+    if 1 <= len(words) <= 3 and line.isupper() and not re.search(r"\d", line) \
+            and all(re.fullmatch(rf"[{_UPPER}][\w'’/&-]*", w) for w in words):
+        return " ".join(words).capitalize() + ":"
+    return None
 
 
 def _numbered_step(line: str) -> bool:
@@ -825,7 +864,7 @@ divide drain drizzle dust fill flip fold fry garnish grate grease grill heat kne
 mash melt mix pat peel place pour preheat prepare press put reduce refrigerate remove return rinse roast roll
 rub season serve set shake simmer skim slice soak spoon spread sprinkle squeeze stir strain stuff taste
 thread toast top toss transfer trim turn wash whisk wipe wrap in once when while meanwhile then using make
-using bake saute sear steam
+using bake saute sear steam scoop push plate poke grind pulse sift whip
 ajouter arroser assaisonner badigeonner battre beurrer chauffer couper couvrir cuire decouper deposer
 dorer egoutter emincer enfourner etaler faire farcir fouetter garnir griller hacher incorporer laisser
 laver mariner melanger mettre mijoter napper parsemer peler petrir placer poivrer porter prechauffer
@@ -1124,7 +1163,10 @@ def rule_segment_raw_text(raw_text: str) -> dict:
             first = next(k for k in prose if k > qty[-1])
             # Everything from the first measured line up to the method,
             # including unmeasured lines like "Salt and pepper to taste".
-            ingredients = body[qty[0]:first]
+            # A part name in capitals just above or among them ("SIFT",
+            # "WISH") is kept as a part name (owner's cookie page).
+            start = qty[0] - 1 if qty[0] > 0 and _caps_label(body[qty[0] - 1]) else qty[0]
+            ingredients = [_caps_label(l) or l for l in body[start:first]]
             steps = _prose_steps(body[first:])
         else:
             for line in body:

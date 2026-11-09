@@ -619,7 +619,14 @@ def test_two_columns_are_read_one_after_the_other():
                                                                           (250, "runs"), (310, "across"), (380, "it"),
                                                                           (410, "all"), (450, "the"), (490, "way"),
                                                                           (540, "and"), (580, "on")])
-    assert _lines_from_words(crossing, 1100).startswith("a b\nc d\n")
+    # A line across the gutter ends the block above it, which is given
+    # column by column.
+    assert _lines_from_words(crossing, 1100).startswith("a\nc\nb\nd\na line that")
+    # A heading between two blocks ("WISH" after "SIFT", owner's cookie
+    # page): each block whole, the heading between them.
+    blocks = _words([(100, "flour"), (600, "cinnamon")], [(100, "cocoa"), (600, "salt")], [(100, "WISH")],
+                    [(100, "oil"), (600, "eggs")], [(100, "sugar"), (600, "vanilla")])
+    assert _lines_from_words(blocks, 1100) == "flour\ncocoa\ncinnamon\nsalt\nWISH\noil\nsugar\neggs\nvanilla\n"
 
 
 def test_one_tesseract_run_gives_the_text_and_the_confidence(monkeypatch, tmp_path):
@@ -654,3 +661,14 @@ def test_a_capitalised_ingredient_isnt_a_numbered_step():
     r = segment_raw_text("Biscuits\nIngredients\n2 cups flour\n1 cup milk\n1 Preheat the oven to 220 degrees.\n"
                          "2 Mix the flour and milk and bake for twelve minutes\n")
     assert r["ingredients"] == ["2 cups flour", "1 cup milk"] and len(r["steps"]) == 2
+
+
+def test_part_names_in_capitals_without_an_ingredients_heading():
+    """Owner's cookie page: "SIFT" and "WISH" over measured lines, then the
+    method, which starts with "SCOOP" (now a cooking verb) on a line that
+    doesn't end a sentence."""
+    r = segment_raw_text("DIABOLO COOKIES\nSIFT\n1.5 c all purpose flour\n1 c cocoa\nWISH\n1/2 c canola oil\n2 eggs\n"
+                         "SCOOP 2 oz dough balls on to a greased cookie sheet, spaced out well -- they will\n"
+                         "spread! BAKE at 375 for 15 minutes. Let cool and serve!\n")
+    assert r["ingredients"] == ["Sift:", "1.5 c all purpose flour", "1 c cocoa", "Wish:", "1/2 c canola oil", "2 eggs"]
+    assert r["steps"][0].startswith("SCOOP")

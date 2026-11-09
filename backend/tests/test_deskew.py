@@ -160,3 +160,21 @@ def test_an_upright_bright_area_or_a_page_on_white_is_left_alone():
     assert crop_to_page(page) is page
     tilted_on_white = np.asarray(Image.fromarray(page).rotate(6, expand=True, fillcolor=255))
     assert crop_to_page(tilted_on_white) is tilted_on_white
+
+
+def test_a_straight_page_with_a_title_further_left_isnt_turned():
+    """Owner's cookie page: the title starts 24 px left of everything else,
+    so the ink's outline slants by about a degree; turning the straight page
+    by that blurred the thin 1s away ("1 c cocoa" read as "C cocoa"). A real
+    tilt makes the upright box clearly larger than the turned one."""
+    im = Image.new("L", (1100, 1700), 255)
+    d = ImageDraw.Draw(im)
+    d.rectangle((100, 100, 360, 150), fill=60)                 # the title
+    for y in range(250, 760, 40):
+        d.rectangle((124, y, 900, y + 12), fill=60)            # the text
+    d.rectangle((124, 800, 1000, 1600), fill=40)               # the photo
+    page = np.asarray(im)
+    assert deskew_grayscale(page) is page
+    # The same page really tilted is still straightened.
+    tilted = np.asarray(im.rotate(4, expand=True, fillcolor=255))
+    assert deskew_grayscale(tilted) is not tilted
