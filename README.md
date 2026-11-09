@@ -398,7 +398,8 @@ In Settings → Backup & export:
     backup schedule and email settings; a new install takes the backup's
     mail server names and ports.
   - If a restore fails partway, the app stays closed (503) until it's
-    restarted, and finishes the restore at start-up. If it can't tell
+    restarted, and finishes the restore at start-up, this server's own
+    settings included (kept in `restore-kept.json` meanwhile). If it can't tell
     whether the library was replaced, the log names the folders to check.
   - **Anything else adds its recipes**: schema.org `.json`, a `.zip` of
     them, or a Paprika export (`.paprikarecipes`). A recipe whose link is

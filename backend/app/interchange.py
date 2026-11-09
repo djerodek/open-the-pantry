@@ -153,7 +153,14 @@ def recipe_to_jsonld(recipe, image: str | None = None) -> dict:
     if recipe.notes:
         doc["description"] = recipe.notes
     if recipe.created_at:
-        doc["dateCreated"] = recipe.created_at.isoformat()
+        # Stored as UTC without an offset (SQLite's CURRENT_TIMESTAMP);
+        # written with one, so other programs don't read it as local time
+        # (Claude review of 0165).
+        when = recipe.created_at
+        if when.tzinfo is None:
+            from datetime import timezone
+            when = when.replace(tzinfo=timezone.utc)
+        doc["dateCreated"] = when.isoformat()
     doc[EXT_KEY] = {
         "version": EXT_VERSION,
         "source_type": recipe.source_type,
@@ -260,9 +267,11 @@ class ImportedRecipe:
 
 def _date(value):
     """An ISO date ("2024-03-01T12:00:00+00:00", Paprika's "2024-03-01
-    12:00:00") as an aware datetime, or None: not before 1990, not in the
-    future. Exported, so read back: an imported recipe used to get today's
-    date (review of 0158)."""
+    12:00:00") as an aware datetime in UTC, or None: not before 1990, not
+    in the future. Exported, so read back: an imported recipe used to get
+    today's date (review of 0158). In UTC because SQLite keeps the clock
+    time and drops the offset: 12:00-05:00 was stored as 12:00 UTC (Claude
+    review of 0165)."""
     from datetime import datetime, timezone
     if not isinstance(value, str) or not value.strip():
         return None
@@ -272,6 +281,7 @@ def _date(value):
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
+    when = when.astimezone(timezone.utc)
     return when if datetime(1990, 1, 1, tzinfo=timezone.utc) <= when <= datetime.now(timezone.utc) else None
 
 

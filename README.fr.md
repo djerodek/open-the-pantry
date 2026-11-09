@@ -463,7 +463,9 @@ Dans Paramètres → Sauvegarde et exportation :
     de la sauvegarde.
   - Si une restauration échoue en cours de route, l'application reste
     fermée (503) jusqu'à son redémarrage, et termine la restauration au
-    démarrage. Si elle ne peut pas savoir si la bibliothèque a été
+    démarrage, paramètres propres à ce serveur compris (gardés dans
+    `restore-kept.json` entre-temps). Si elle ne peut pas savoir si la
+    bibliothèque a été
     remplacée, le journal nomme les dossiers à vérifier.
   - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
     `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une

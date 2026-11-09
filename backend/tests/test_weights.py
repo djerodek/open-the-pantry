@@ -182,6 +182,9 @@ def _weigh(cases):
     ("1 cup heavy whipping cream", ("converted", "240 g heavy whipping cream")),   # "whipping" isn't "whipped"
     ("1 cup cooked chicken", ("converted", "140 g cooked chicken")),       # "cooked" is part of the name
     ("1 cup half and half", ("converted", "240 g half and half")),         # not cut at "and"
+    ("1 cup half & half", ("converted", "240 g half & half")),             # Claude review of 0165
+    ("1 tasse de riz non cuit", ("converted", "210 g de riz non cuit")),                      # uncooked: dry rice (review of 0165)
+    ("1 cup uncooked rice", ("converted", "200 g uncooked rice")),
     ("1 cup 00 flour", ("converted", "115 g 00 flour")),                   # "00" isn't a second amount
     ("500 ml d'eau", ("converted", "500 g d'eau")),                        # water 1 g per ml
     ("1 tasse d'eau", ("converted", "250 g d'eau")),

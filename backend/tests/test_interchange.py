@@ -249,7 +249,9 @@ def test_notes_and_dates_survive_a_json_round_trip(client):
 def test_dates_read_on_import():
     from app.interchange import _date
     assert _date("2024-03-01 12:00:00").year == 2024              # Paprika's form
-    assert _date("2024-03-01T12:00:00+02:00").utcoffset() == timedelta(hours=2)
+    # In UTC: SQLite keeps the clock time and drops the offset (Claude review of 0165).
+    assert _date("2024-03-01T12:00:00+02:00") == datetime(2024, 3, 1, 10, 0, tzinfo=timezone.utc)
+    assert _date("2024-03-01T12:00:00-05:00").utcoffset() == timedelta(0)
     for bad in (None, "", "yesterday", "1850-01-01", (datetime.now(timezone.utc) + timedelta(days=9)).isoformat(), 5):
         assert _date(bad) is None, bad
 
@@ -345,3 +347,30 @@ def test_one_bad_record_is_that_records_failure(tmp_path, monkeypatch):
     path.write_text(json.dumps([{"@type": "Recipe", "name": "bad"}, {"@type": "Recipe", "name": "good"}]))
     recipes, problems = interchange.read_file(str(path), "two.json")
     assert [r.title for r in recipes] == ["good"] and len(problems) == 1
+
+
+def test_an_offset_date_is_stored_as_the_same_moment_and_exported_with_one(client):
+    """Claude review of 0165: 12:00-05:00 was stored as 12:00 UTC (17:00
+    was meant), and the export wrote dateCreated without an offset."""
+    import json
+    import zipfile
+
+    from app import models
+    from app.database import SessionLocal
+    title = f"Offset date {uuid.uuid4().hex[:6]}"
+    doc = {"@context": "https://schema.org", "@type": "Recipe", "name": title, "recipeIngredient": ["1 egg"],
+           "recipeInstructions": ["Boil."], "dateCreated": "2024-03-01T12:00:00-05:00"}
+    r = client.post("/api/import/recipes", headers=H,
+                    files={"file": ("r.json", json.dumps(doc).encode(), "application/json")}).json()
+    rid = r["succeeded"][0]["recipe_id"]
+    try:
+        with SessionLocal() as db:
+            stored = db.get(models.Recipe, rid).created_at
+        assert (stored.hour, stored.minute) == (17, 0)
+        with zipfile.ZipFile(io.BytesIO(client.get("/api/backup/recipes-json.zip").content)) as z:
+            docs = [json.loads(z.read(n)) for n in z.namelist() if n.endswith(".json")]
+        mine = next(d for d in docs if d.get("name") == title)
+        assert mine["dateCreated"] == "2024-03-01T17:00:00+00:00"
+    finally:
+        client.delete(f"/api/recipes/{rid}", headers=H)
+        client.delete(f"/api/recently-deleted/{rid}", headers=H)

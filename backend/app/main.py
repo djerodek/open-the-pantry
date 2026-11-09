@@ -208,8 +208,10 @@ async def lifespan(app: FastAPI):
     # above is the actual CPU-thrashing guard; this is just pool headroom.
     anyio.to_thread.current_default_thread_limiter().total_tokens = 100
 
-    # A restore stopped part way: its photos are put in place, or its
+    # A restore stopped part way: this server's own settings it kept are put
+    # back (Claude review of 0165), and its photos are put in place, or its
     # unused staged copy removed, so photos and database agree.
+    backup_routes.put_back_after_restart()
     restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
     # A failed first sweep (the database still locked by the previous
     # container) mustn't stop the app starting; the loop sweeps again

@@ -265,8 +265,8 @@
   function ingredientWeightEntry(name) {
     // "45 ml (3 tablespoons) of olive oil": the same amount again, first.
     name = name.replace(/^\s*\([^)]*\)\s*(?:of\s+|de\s+|d['’]\s*)?/i, " ");
-    // One name, not cut at its "and".
-    name = name.replace(/\bhalf[\s-]+and[\s-]+half\b/gi, "half-and-half");
+    // One name, not cut at its "and" ("half & half" too: Claude review of 0165).
+    name = name.replace(/\bhalf[\s-]*(?:and|&)[\s-]*half\b/gi, "half-and-half");
     const end = NAME_END.exec(name);
     const folded = foldText(end ? name.slice(0, end.index) : name);
     let best = null;
@@ -279,6 +279,9 @@
     if (!best) return null;
     for (const w of folded.matchAll(DENSITY_WORDS)) {
       const word = w.index + w[0].search(/[a-z]/);
+      // "riz non cuit" is uncooked: dry rice, as "uncooked rice" already
+      // was (Claude review of 0165). No lookbehind: older Safari.
+      if (/(?:^|[^a-z0-9])(?:non|pas)[\s-]+$/.test(folded.slice(0, word))) continue;
       if (word < best.at || word >= best.at + best.length) return NOT_WEIGHED;
     }
     return best.entry;

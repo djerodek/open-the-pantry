@@ -1,5 +1,7 @@
 """Backup & export, import, scheduled backups, and restoring a full backup."""
 import asyncio
+import base64
+import json
 import re
 import os
 import shutil
@@ -597,6 +599,80 @@ def _clear_unusable_email_password() -> bool:
         db.close()
 
 
+# This server's own settings kept across a restore (_KEPT_TABLES), written
+# before the copy: a restore that stops after the copy and before they're
+# put back (a failure twice, the power cut) used to lose them at the restart
+# -- automatic backups off, no email login, the backup's HTTPS (Claude review
+# of 0165). Start-up puts them back (put_back_after_restart). 0600: the
+# email row holds the encrypted password.
+KEPT_FILE = "restore-kept.json"
+
+
+def _kept_path() -> str:
+    return os.path.join(DATA_DIR, KEPT_FILE)
+
+
+def _write_kept(kept_rows: dict, email_kept) -> None:
+    def default(v):
+        if isinstance(v, (bytes, bytearray)):
+            return {"$bytes": base64.b64encode(bytes(v)).decode("ascii")}
+        return str(v)
+    path = _kept_path()
+    fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"rows": kept_rows, "email": email_kept}, f, default=default)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(path + ".tmp", path)
+
+
+def _read_kept() -> tuple[dict, list | None]:
+    def hook(d):
+        return base64.b64decode(d["$bytes"]) if set(d) == {"$bytes"} else d
+    with open(_kept_path(), encoding="utf-8") as f:
+        data = json.load(f, object_hook=hook)
+    return data["rows"], data["email"]
+
+
+def _remove_kept() -> None:
+    for path in (_kept_path(), _kept_path() + ".tmp"):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.warning("Couldn't remove %s", path, exc_info=True)
+
+
+def _put_back_kept(kept_rows: dict, email_kept) -> None:
+    for table, rows in kept_rows.items():
+        _put_back_rows(table, rows)
+    if email_kept:
+        _put_back_blanked_email_fields(email_kept[0])
+
+
+def put_back_after_restart() -> bool:
+    """At start-up, before the interrupted restore's photos are finished:
+    this server's settings kept by a restore that stopped are put back.
+    The rows were read from this server just before the restore, so if it
+    stopped before the copy, writing them again changes nothing. Returns
+    whether there were any."""
+    if not os.path.exists(_kept_path()):
+        return False
+    try:
+        kept_rows, email_kept = _read_kept()
+        _put_back_kept(kept_rows, email_kept)
+    except Exception:
+        log.exception("Start-up: couldn't put back this server's settings (automatic backups, email login, "
+                      "HTTPS) from a restore that stopped; they're in %s and in the newest "
+                      "restore-safety backup", KEPT_FILE)
+        return False
+    log.warning("Start-up: put back this server's automatic-backup schedule, email login and HTTPS "
+                "settings, kept by a restore that stopped")
+    _remove_kept()
+    return True
+
+
 def _after_the_copy(new_uploads: str, kept_rows: dict, email_kept, aside_before: set, retry: bool = False):
     """Everything after the backup's database is copied into the live file,
     in order. Safe to run a second time after a failure part way (GPT review
@@ -608,16 +684,14 @@ def _after_the_copy(new_uploads: str, kept_rows: dict, email_kept, aside_before:
     restore_mod.mark_database_replaced(DATA_DIR)  # from here, a stop is finished at start-up
     engine.dispose()
     init_db()                                     # an older backup's schema brought up to date
-    for table, rows in kept_rows.items():
-        _put_back_rows(table, rows)
-    if email_kept:
-        _put_back_blanked_email_fields(email_kept[0])
+    _put_back_kept(kept_rows, email_kept)
     old_uploads = None
     if not retry:
         old_uploads = restore_mod.swap_dirs(new_uploads, UPLOADS_DIR)
     elif os.path.isdir(new_uploads):
         old_uploads = restore_mod.finish_swap(new_uploads, UPLOADS_DIR, aside_before)
     restore_mod.clear_marker(DATA_DIR)
+    _remove_kept()
     return old_uploads
 
 
@@ -659,6 +733,7 @@ def restore_backup(payload: schemas.RestoreRequest):
         kept_rows = {"https_settings": _keep_rows("https_settings"),
                      "backup_schedule": _keep_rows("backup_schedule")}
         email_kept = _keep_rows("email_ingest_settings") if settings_blanked(db_path) else None
+        _write_kept(kept_rows, email_kept)
 
         new_uploads = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
         shutil.rmtree(new_uploads, ignore_errors=True)
@@ -715,6 +790,8 @@ def restore_backup(payload: schemas.RestoreRequest):
             # photo sweep would stay off and start-up would ask for a check
             # by hand that isn't needed (review of 0158).
             shutil.rmtree(UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX, ignore_errors=True)
+        if not replaced:
+            _remove_kept()
         for lock in reversed(held):
             lock.release()
         if not _restore_incomplete.is_set():

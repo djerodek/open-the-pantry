@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from .conftest import TINY_PNG
+from .test_backup_settings import configured  # noqa: F401  (fixture)
 
 H = {"X-Requested-With": "OpenThePantry"}
 
@@ -815,3 +816,75 @@ def test_no_photo_sweep_while_staged_photos_wait(client):
         os.rmdir(staged)
     asyncio.run(main._run_sweeps())
     assert not os.path.exists(path)
+
+
+def test_an_unfinished_restore_keeps_this_servers_settings_after_a_restart(client, configured, monkeypatch, after_restart):
+    """Claude review of 0165: the settings a restore keeps (automatic-backup
+    schedule, email login, HTTPS) were only in memory, so a restore that
+    stopped after the copy lost them at the restart: backups off, no login,
+    the backup's HTTPS. They're written to restore-kept.json first and put
+    back at start-up."""
+    import stat
+
+    from sqlalchemy import text
+
+    from app import restore as restore_mod
+    from app.database import DATA_DIR, UPLOADS_DIR, engine
+    from app.init_db import init_db
+    from app.routes import backup as routes_backup
+    from app.routes import common
+    with engine.begin() as c:
+        schedule_before = [dict(r) for r in c.execute(text("SELECT * FROM backup_schedule")).mappings()]
+        c.execute(text("DELETE FROM backup_schedule"))
+    token = _check(client, client.get("/api/backup/database.zip").content).json()["token"]   # backups off, blanked
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO backup_schedule (id, enabled, hour, keep) VALUES (1, 1, 2, 14)"))
+    kept = os.path.join(DATA_DIR, routes_backup.KEPT_FILE)
+    try:
+        wrap, _ = _fail(None)
+        monkeypatch.setattr(routes_backup, "init_db", wrap(routes_backup.init_db))
+        r = client.post("/api/backup/restore", headers=H, json={"token": token})
+        assert r.status_code == 500 and "Restart the app" in r.json()["detail"], r.text
+        assert stat.S_IMODE(os.stat(kept).st_mode) == 0o600
+        # The restart: a new process (flags gone), init_db, then start-up.
+        monkeypatch.undo()
+        common._restore_incomplete.clear()
+        common._restoring.clear()
+        engine.dispose()
+        init_db()
+        assert routes_backup.put_back_after_restart() is True
+        restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+        assert not os.path.exists(kept)
+        with engine.connect() as c:
+            assert tuple(c.execute(text("SELECT enabled, hour, keep FROM backup_schedule")).one()) == (1, 2, 14)
+            assert c.execute(text("SELECT username FROM email_ingest_settings")).scalar() == "cook@home.example"
+            assert c.execute(text("SELECT domain FROM https_settings")).scalar() == "pantry.home.example"
+        assert routes_backup.put_back_after_restart() is False      # once only
+    finally:
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM backup_schedule"))
+            for row in schedule_before:
+                c.execute(text(f"INSERT INTO backup_schedule ({', '.join(row)}) VALUES "
+                               f"({', '.join(':' + k for k in row)})"), row)
+
+
+def test_the_kept_settings_file_goes_when_a_restore_finishes_or_never_starts(client):
+    from app.database import DATA_DIR
+    from app.routes import backup as routes_backup
+    kept = os.path.join(DATA_DIR, routes_backup.KEPT_FILE)
+    data = client.get("/api/backup/database.zip").content
+    r = client.post("/api/backup/restore", headers=H, json={"token": _check(client, data).json()["token"]})
+    assert r.status_code == 200 and not os.path.exists(kept)
+
+
+def test_kept_rows_round_trip_through_the_file(tmp_path, monkeypatch):
+    """Values SQLite hands back (text, numbers, None, bytes) come back the
+    same from restore-kept.json."""
+    from app.routes import backup as routes_backup
+    monkeypatch.setattr(routes_backup, "DATA_DIR", str(tmp_path))
+    rows = {"backup_schedule": [{"id": 1, "enabled": 1, "hour": 2, "keep": 14, "last": None}],
+            "https_settings": [{"id": 1, "domain": "pantry.home.example", "blob": b"\x00\xffkey", "ratio": 0.5}]}
+    routes_backup._write_kept(rows, [{"username": "cook@home.example"}])
+    assert routes_backup._read_kept() == (rows, [{"username": "cook@home.example"}])
+    routes_backup._remove_kept()
+    assert not os.listdir(tmp_path)
