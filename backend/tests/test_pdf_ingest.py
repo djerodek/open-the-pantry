@@ -672,3 +672,56 @@ def test_part_names_in_capitals_without_an_ingredients_heading():
                          "spread! BAKE at 375 for 15 minutes. Let cool and serve!\n")
     assert r["ingredients"] == ["Sift:", "1.5 c all purpose flour", "1 c cocoa", "Wish:", "1/2 c canola oil", "2 eggs"]
     assert r["steps"][0].startswith("SCOOP")
+
+
+def test_ingredients_beside_the_method_are_read_apart(tmp_path):
+    """Review of 0169: --psm 4 on every page read the two sides of such a
+    page into each other (4-6 of 9 ingredients, 3-5 of 6 steps): the two
+    sides have different line spacing, so there are no rows to split.
+    Tesseract's own layout comes first."""
+    from PIL import ImageDraw
+
+    from app.ingestion import image_ingest
+
+    from .conftest import text_font
+    items = ["2 cups flour", "1 cup sugar", "3 eggs", "1 tsp vanilla", "1/2 cup butter", "1 tsp salt",
+             "1 cup milk", "2 tsp baking powder", "1 lemon, zested"]
+    method = ["Heat the oven to 180 degrees and butter a round", "cake tin well before you start mixing anything.",
+              "Beat the eggs and sugar together until pale", "and thick, then add the vanilla and the zest.",
+              "Fold in the flour, baking powder and salt,", "then the milk and the melted butter.",
+              "Pour into the tin and level the top with", "the back of a spoon so it bakes evenly.",
+              "Bake for thirty minutes, until a skewer", "comes out clean from the middle.",
+              "Cool in the tin for ten minutes, then", "turn out onto a rack to cool completely."]
+    img = Image.new("RGB", (1500, 1300), "white")
+    d = ImageDraw.Draw(img)
+    d.text((60, 40), "Plain Sponge Cake", font=text_font(52), fill="black")
+    d.text((60, 150), "Ingredients", font=text_font(34), fill="black")
+    for i, item in enumerate(items):
+        d.text((60, 210 + 56 * i), item, font=text_font(30), fill="black")
+    x = 60 + max(d.textlength(it, font=text_font(30)) for it in items) + 60
+    d.text((x, 150), "Method", font=text_font(34), fill="black")
+    for k in range(0, 12, 2):
+        y = 210 + 37 * k + 14 * (k // 2)
+        d.text((x, y), f"{k // 2 + 1}. " + method[k], font=text_font(26), fill="black")
+        d.text((x, y + 37), method[k + 1], font=text_font(26), fill="black")
+    img.save(tmp_path / "p.png")
+    r = image_ingest.ingest_and_segment(str(tmp_path / "p.png"))
+    assert sum(i in r["ingredients"] for i in items) >= 8, r["ingredients"]
+    assert len(r["steps"]) == 6, r["steps"]
+
+
+def test_a_page_is_read_again_as_whole_lines_only_when_incomplete(monkeypatch):
+    from app.ingestion import pdf_ingest
+    complete = "Cake\nIngredients\n2 cups flour\n1 cup sugar\nMethod\n1. Mix the flour and sugar.\n"
+    calls = []
+
+    def fake(processed, config):
+        calls.append(config)
+        return (complete if config else readings[0]), 90.0
+    monkeypatch.setattr(pdf_ingest, "_ocr_once", fake)
+    readings = [complete]
+    assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == complete and calls == [None]
+    calls.clear()
+    readings = ["Cake\nIngredients\n2 cups flour\n1 cup sugar\n"]            # no steps
+    assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == complete
+    assert calls == [None, "--psm 4"]

@@ -140,19 +140,39 @@ def crop_to_page(gray: np.ndarray) -> np.ndarray:
     return turned[y0:y1, x0:x1]
 
 
-def _really_tilted(coords, rect, angle: float) -> bool:
-    """Content turned by `angle` needs an upright box larger than its
-    turned one by about sin(angle) x (w/h + h/w). When the upright box is
-    barely larger, the turned rectangle only hugs uneven edges (a photo's
-    corner, a row of bullets): a straight cookbook page measured -0.87
-    degrees, and turning it blurred the thin 1s away ("1 c cocoa" read as
-    "C cocoa"; owner's page after the Claude review of 0167)."""
-    _, _, bw, bh = cv2.boundingRect(coords)
-    rw, rh = rect[1]
-    if rw <= 0 or rh <= 0:
-        return False
-    expected = abs(np.sin(np.radians(angle))) * (rw / rh + rh / rw)
-    return (bw * bh) / (rw * rh) - 1 >= expected / 2
+# The tilt is read from the text lines: turned to the right angle, a page
+# of text gives rows of ink and rows of paper, so the row sums change most
+# sharply. 0169 and earlier took the angle of the smallest rectangle around
+# all the ink, which was about a degree off on full pages, said 12.4
+# degrees for a straight page with the ingredients beside the method, and
+# 0169's check on it (_really_tilted) then left short tilted pages crooked
+# (review of 0169). This gave 0.0 on nine straight cookbook pages and was
+# within 0.1 degree on 25 tilted ones, in about 0.2 s.
+SKEW_SAMPLE_WIDTH = 700
+MIN_DESKEW_ANGLE = 0.3
+
+
+def _line_sharpness(ink: np.ndarray, angle: float) -> float:
+    h, w = ink.shape
+    matrix = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+    turned = cv2.warpAffine(ink, matrix, (w, h), flags=cv2.INTER_NEAREST, borderValue=0)
+    rows = turned.sum(axis=1, dtype=np.float64)
+    return float(np.square(np.diff(rows)).sum())
+
+
+def estimate_skew(gray: np.ndarray) -> float | None:
+    """Degrees to turn the page by (getRotationMatrix2D's sign), or None
+    when there's too little text to tell."""
+    h, w = gray.shape
+    scale = min(1.0, SKEW_SAMPLE_WIDTH / w)
+    small = cv2.resize(gray, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA) \
+        if scale < 1.0 else gray
+    _, ink = cv2.threshold(small, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    if int(ink.sum()) < MIN_CONTENT_POINTS:
+        return None
+    coarse = max(np.arange(-MAX_DESKEW_ANGLE, MAX_DESKEW_ANGLE + 0.5, 1.0), key=lambda a: _line_sharpness(ink, a))
+    fine = max(np.arange(coarse - 1.0, coarse + 1.05, 0.1), key=lambda a: _line_sharpness(ink, a))
+    return round(float(fine), 1)
 
 
 def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
@@ -163,24 +183,14 @@ def deskew_grayscale(gray: np.ndarray) -> np.ndarray:
     screenshot/photo pipeline (already cv2-based) or the PDF-page OCR
     pipeline (PIL-based; converted to/from an array at the call site).
 
-    Uses the minimum-area bounding rectangle of thresholded "ink" pixels to
-    estimate the skew angle. That thresholding is purely for angle
-    detection -- the rotation is applied to the original grayscale input,
-    not the binarized copy, so tonal information is preserved for whatever
-    thresholding step the caller does next.
+    The angle comes from the text lines (estimate_skew); the rotation is
+    applied to the original grayscale input, so tonal information is
+    preserved for whatever thresholding step the caller does next. A
+    straight page is returned as it is: turning it blurs thin strokes
+    (the cookie page's 1s, 0169).
     """
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    coords = cv2.findNonZero(thresh)
-    if coords is None or len(coords) < MIN_CONTENT_POINTS:
-        return gray  # not enough content to estimate an angle reliably
-
-    rect = cv2.minAreaRect(coords)
-    angle = _skew_angle(rect)
-
-    if abs(angle) < 0.3 or abs(angle) > MAX_DESKEW_ANGLE:
-        return gray  # negligible skew, or the estimate looks unreliable
-    if not _really_tilted(coords, rect, angle):
+    angle = estimate_skew(gray)
+    if angle is None or abs(angle) < MIN_DESKEW_ANGLE or abs(angle) > MAX_DESKEW_ANGLE:
         return gray
 
     h, w = gray.shape

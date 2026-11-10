@@ -178,3 +178,39 @@ def test_a_straight_page_with_a_title_further_left_isnt_turned():
     # The same page really tilted is still straightened.
     tilted = np.asarray(im.rotate(4, expand=True, fillcolor=255))
     assert deskew_grayscale(tilted) is not tilted
+
+
+# ---- Review of 0169: the tilt read from the text lines
+
+def _lines_page(n_lines=12, width=1100):
+    im = Image.new("L", (width, 160 + 50 * n_lines), 255)
+    d = ImageDraw.Draw(im)
+    for i in range(n_lines):
+        d.text((80, 80 + 50 * i), f"Line {i + 1}: whisk the eggs with the sugar until pale and thick",
+               font=text_font(28), fill=30)
+    return im
+
+
+@pytest.mark.parametrize("angle", [0.5, 1.5, -2, 3, 10])
+def test_the_tilt_comes_from_the_text_lines(angle):
+    """0169 left a short page (Maple sauce, Pina colada) crooked at 0.5-3
+    degrees, and the rectangle around the ink was about a degree off on
+    full pages."""
+    for page in (_lines_page(3), _lines_page(14)):
+        turned = np.asarray(page.rotate(angle, expand=True, fillcolor=255, resample=Image.BICUBIC))
+        assert deskew_grayscale(turned) is not turned
+        from app.ingestion.deskew import estimate_skew
+        assert abs(estimate_skew(turned) + angle) <= 0.15, (angle, estimate_skew(turned))
+
+
+def test_a_straight_page_with_the_ingredients_beside_the_method_isnt_turned():
+    """The rectangle said 12.4 degrees for such a page; 0168 turned it by
+    that (2-11% of the words read)."""
+    im = Image.new("L", (1400, 1100), 255)
+    d = ImageDraw.Draw(im)
+    for i in range(8):
+        d.text((60, 120 + 44 * i), f"{i + 1} cup item", font=text_font(26), fill=30)
+    for i in range(16):
+        d.text((560, 60 + 38 * i), "Stir the sauce slowly until it thickens and coats a spoon.", font=text_font(24), fill=30)
+    page = np.asarray(im)
+    assert deskew_grayscale(page) is page

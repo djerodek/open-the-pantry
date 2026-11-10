@@ -325,17 +325,41 @@ def _ocr_image(pil_image: Image.Image):
 
 def ocr_text_and_confidence(processed: Image.Image):
     """The text Tesseract reads and its average word confidence (0-100, or
-    None; it drives the "OCR quality: low" badge), from one run. There were
-    two, one for the text and one for the confidence, and the second already
-    held the text (Claude review of 0165). Two-column lists are read column
-    by column (_lines_from_words)."""
-    # --psm 4, one column of lines of any size: Tesseract's own column
-    # finding (the default) cut an upright cookbook page into strips, a
-    # method paragraph across both halves included ("PLACE the rice and
-    # len" / "ils in separate bowls"). Lines are read whole and two-column
-    # lists are split here (_column_order).
+    None; it drives the "OCR quality: low" badge). One run for both (there
+    were two, review of 0165). Two-column lists are read column by column
+    (_lines_from_words).
+
+    Tesseract's own layout first: it keeps an ingredient list beside the
+    method apart, and two columns of running text in order, which reading
+    whole lines (--psm 4, 0169 for every page) mixed (review of 0169: 4-6
+    of 9 ingredients). When that gives no ingredients or no steps, the
+    page is read again as whole lines, which an upright cookbook page with
+    a paragraph across both columns needs (the cookie page's method), and
+    the more complete reading is kept."""
+    first = _ocr_once(processed, None)
+    done = _completeness(first[0])
+    if done[0] == 2:
+        return first
+    second = _ocr_once(processed, "--psm 4")
+    return second if _completeness(second[0]) > done else first
+
+
+def _completeness(text: str) -> tuple[int, int]:
+    """(whether there are ingredients + whether there are steps, how many
+    of them): which of two readings of a page to keep."""
+    try:
+        seg = rule_segment_raw_text(text)
+    except Exception:
+        log.warning("Couldn't segment an OCR reading to compare it", exc_info=True)
+        return (0, 0)
+    ing, steps = seg.get("ingredients") or [], seg.get("steps") or []
+    return (bool(ing) + bool(steps), len(ing) + len(steps))
+
+
+def _ocr_once(processed: Image.Image, config: str | None):
+    kwargs = {"config": config} if config else {}
     data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
-                                     timeout=OCR_TIMEOUT_SECONDS, config="--psm 4")
+                                     timeout=OCR_TIMEOUT_SECONDS, **kwargs)
     confidences = []
     for c in data["conf"]:
         try:
