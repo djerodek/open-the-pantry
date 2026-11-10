@@ -16,6 +16,7 @@ from ..logging_setup import get_logger
 log = get_logger("email")
 
 URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+MAX_URL_CHARS = 2_000
 
 # Footers that mail apps add to every message. Outlook's carries a link
 # ("Get Outlook for iOS<https://aka.ms/o0ukef>"), so an email that is just
@@ -207,7 +208,8 @@ def extract_email_parts(msg) -> dict:
     body_text = strip_client_boilerplate(body_text).strip()
     # Deduplicated: the same link often appears twice (as text and as the
     # link target).
-    urls = list(dict.fromkeys(u.rstrip(".,;:!?") for u in URL_RE.findall(body_text)))
+    # At most 2,000 characters, as a batch of links takes (review of 0169).
+    urls = list(dict.fromkeys(u.rstrip(".,;:!?") for u in URL_RE.findall(body_text) if len(u) <= MAX_URL_CHARS))
 
     return {
         "pdf_bytes": pdf_bytes, "pdf_name": pdf_name,

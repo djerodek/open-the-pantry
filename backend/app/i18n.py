@@ -82,6 +82,10 @@ _FR_PATTERNS = [
        r"Trop de mots de passe erronés. Réessayez dans \1 secondes."),
     _p(r"^Wrong password\.$", "Mot de passe erroné."),
     # Settings -> HTTPS: the cPanel login saved in the app
+    _p(r"^CPANEL_TOKEN is set in \.env, so CPANEL_BASE_URL must be too: the token isn't sent to a cPanel "
+       r"address entered in Settings\.$",
+       "CPANEL_TOKEN est dans .env, donc CPANEL_BASE_URL doit y être aussi : le jeton n'est pas envoyé à "
+       "une adresse cPanel saisie dans Paramètres."),
     _p(r"^The saved cPanel token can't be read \(the encryption key changed or is missing\)\. "
        r"Enter it again in Settings → HTTPS\.$",
        "Le jeton cPanel enregistré ne peut pas être lu (la clé de chiffrement a changé ou manque). "
@@ -545,10 +549,18 @@ _FR_PATTERNS = [
 ]
 
 
+TRANSLATE_MAX_CHARS = 2_000
+
+
 def translate(text, lang: str | None = None):
     """A message in the request's (or the given) language. Non-strings and
     English pass through unchanged."""
     if not isinstance(text, str) or (lang or current_lang.get()) != "fr":
+        return text
+    # A message this long quotes outside text (an email's subject, its
+    # links); the patterns starting with (\S+) took 0.8 s on a 4,000-character
+    # word, on the event loop (review of 0169). Left in English.
+    if len(text) > TRANSLATE_MAX_CHARS:
         return text
     for pattern, french in _FR_PATTERNS:
         text = pattern.sub(french, text)

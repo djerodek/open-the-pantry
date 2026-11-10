@@ -901,3 +901,19 @@ def test_a_kept_settings_file_without_the_restore_marker_isnt_applied(monkeypatc
     routes_backup._write_kept({"backup_schedule": [{"id": 1, "enabled": 0}]}, None)
     assert routes_backup.put_back_after_restart() is False
     assert applied == [] and not os.listdir(tmp_path)
+
+
+def test_a_failed_put_back_keeps_its_file_under_another_name(monkeypatch, tmp_path):
+    """Review of 0169: the file a failed put-back left was removed at the
+    next start as left over. It's renamed, and the log names it."""
+    from app import restore as restore_mod
+    from app.routes import backup as routes_backup
+    monkeypatch.setattr(routes_backup, "DATA_DIR", str(tmp_path))
+    (tmp_path / restore_mod.MARKER).write_text("x")
+
+    def boom(rows, email):
+        raise OSError("disk full")
+    monkeypatch.setattr(routes_backup, "_put_back_kept", boom)
+    routes_backup._write_kept({"backup_schedule": []}, None)
+    assert routes_backup.put_back_after_restart() is False
+    assert sorted(os.listdir(tmp_path)) == sorted([restore_mod.MARKER, "restore-kept.failed.json"])

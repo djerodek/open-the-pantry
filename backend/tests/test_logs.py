@@ -228,7 +228,7 @@ def test_a_line_break_in_a_logged_name_stays_on_one_line(tmp_path):
     lines = handler_file.read_text(encoding="utf-8").split("\n")
     assert "Settings password created" in lines[0] and "\\n2026-10-31" in lines[0] and "\\rx" in lines[0]
     assert not lines[1].startswith("2026-10-31 12:00:00")
-    assert any(line.startswith("Traceback") for line in lines)          # still on its own lines
+    assert any(line.startswith("    Traceback") for line in lines)      # on its own lines, indented (review of 0169)
 
 
 def test_the_app_logs_with_the_one_line_formatter():

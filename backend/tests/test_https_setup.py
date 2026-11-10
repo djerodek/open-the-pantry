@@ -595,3 +595,16 @@ def test_progress_cleared_when_setup_fails_early(monkeypatch, via):
             break
         threading.Event().wait(0.01)
     assert not https_setup._job_lock.locked() and https_setup._progress["running"] is False
+
+
+def test_a_token_from_env_isnt_sent_to_an_address_from_settings(monkeypatch, fresh_settings):
+    """Review of 0169: with only CPANEL_TOKEN in .env, an address saved in
+    Settings got that token in its Authorization header."""
+    from app import https_setup
+    monkeypatch.setenv("CPANEL_TOKEN", "tok")
+    monkeypatch.delenv("CPANEL_BASE_URL", raising=False)
+    https_setup._write_login({"username": "marc", "base_url": "https://elsewhere.example.test:2083"})
+    with pytest.raises(https_setup.HttpsError, match="CPANEL_BASE_URL"):
+        https_setup._token()
+    monkeypatch.setenv("CPANEL_BASE_URL", "https://cp.example.test:2083")
+    assert https_setup._token() == ("tok", True)

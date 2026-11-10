@@ -158,7 +158,8 @@ nothing else uses 443). `http://…:8090` keeps working.
 
 `CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` and `PANTRY_DOMAIN` in a
 `.env` file still work, and take priority over what's saved in the app. A
-token in `.env` is stored as plain text, so keep the file private.
+token in `.env` is stored as plain text, so keep the file private; it's only
+used with `CPANEL_BASE_URL` from `.env` too.
 
 **Other DNS hosts** (Cloudflare, OVH, Gandi…): `docker-compose.https.yml`
 does the same job with Traefik. Don't use it alongside the cPanel route.

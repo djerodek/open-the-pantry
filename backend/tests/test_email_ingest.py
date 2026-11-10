@@ -1338,3 +1338,55 @@ def test_huge_notification_cooldown_is_rejected(client):
 
 def test_email_settings_report_server_timezone(client):
     assert "server_timezone" in client.get("/api/email-settings").json()
+
+
+def test_a_scheduled_scan_that_cant_reach_the_inbox_is_tried_again_in_an_hour(monkeypatch):
+    """Review of 0169: the day was marked done before the scan, so one that
+    couldn't reach the inbox (a NAS rebooting) waited until tomorrow."""
+    import asyncio
+    from datetime import datetime as real_dt
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from app.routes import email as email_routes
+    clock = [real_dt(2026, 11, 10, 6, 0)]
+    state = SimpleNamespace(enabled=True, daily_scan_hour=6, last_scan_at=None)
+    scans = []
+
+    class Clock(real_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0]
+
+    def scan():
+        scans.append(clock[0])
+        if len(scans) >= 3:                                   # the inbox is back
+            state.last_scan_at = clock[0]
+
+    ticks = [0]
+
+    async def sleep(_):
+        ticks[0] += 1
+        if ticks[0] > 1:
+            clock[0] += timedelta(minutes=15)
+        if ticks[0] > 30:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(email_routes, "datetime", Clock)
+    monkeypatch.setattr(email_routes, "_get_email_settings", lambda db: state)
+    monkeypatch.setattr(email_routes, "run_email_scan", scan)
+    monkeypatch.setattr(email_routes.asyncio, "sleep", sleep)
+    monkeypatch.setattr(email_routes.learning, "schedule_retrain", lambda: None)
+    try:
+        asyncio.run(email_routes._daily_email_scan_loop())
+    except asyncio.CancelledError:
+        pass
+    assert [t.strftime("%H:%M") for t in scans] == ["06:00", "07:00", "08:00"]
+
+
+def test_links_over_2000_characters_arent_taken_from_an_email():
+    from app.ingestion.email_processing import extract_email_parts
+    long_link = "https://example.com/r?" + "a" * 2500
+    raw = ("From: a@example.com\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
+           f"{long_link}\r\nhttps://example.com/soup\r\n").encode()
+    assert extract_email_parts(email.message_from_bytes(raw))["urls"] == ["https://example.com/soup"]

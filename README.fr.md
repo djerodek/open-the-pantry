@@ -185,7 +185,7 @@ fonctionner.
 `CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL` et `PANTRY_DOMAIN` dans
 un fichier `.env` fonctionnent toujours, et ont priorité sur ce qui est
 enregistré dans l'application. Un jeton dans `.env` est en clair : gardez ce
-fichier privé.
+fichier privé. Il ne sert qu'avec `CPANEL_BASE_URL` dans `.env` aussi.
 
 **Autres hébergeurs DNS** (Cloudflare, OVH, Gandi…) : `docker-compose.https.yml`
 fait la même chose avec Traefik. Ne l'utilisez pas en même temps que la voie

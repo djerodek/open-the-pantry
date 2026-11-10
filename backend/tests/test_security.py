@@ -899,3 +899,30 @@ def test_a_recipe_cannot_claim_another_recipes_photo(client):
         assert os.path.exists(path)
     finally:
         client.delete(f"/api/recipes/{aid}")
+
+
+def test_a_jpeg_with_a_second_picture_is_stored_at_quality_90(tmp_path):
+    """Review of 0169: Pillow names a JPEG carrying a gain map or depth map
+    "MPO", so the quality wasn't set and its default of 75 applied."""
+    import io
+
+    from PIL import Image
+
+    from app.file_validation import reencode_image
+    rng = __import__("numpy").random.default_rng(0)
+    photo = Image.fromarray(rng.integers(0, 255, (600, 800, 3), dtype="uint8"))
+    paths = {}
+    for kind in ("plain", "mpo"):
+        p = tmp_path / f"{kind}.jpg"
+        if kind == "mpo":
+            photo.save(p, format="MPO", save_all=True, append_images=[photo.resize((200, 150))], quality=95)
+            with Image.open(p) as im:
+                assert im.format == "MPO"
+        else:
+            photo.save(p, format="JPEG", quality=95)
+        reencode_image(str(p))
+        paths[kind] = p
+    with Image.open(paths["mpo"]) as im:
+        assert im.format == "JPEG"
+    sizes = {k: p.stat().st_size for k, p in paths.items()}
+    assert abs(sizes["mpo"] - sizes["plain"]) < 0.05 * sizes["plain"], sizes

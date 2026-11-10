@@ -669,9 +669,17 @@ def put_back_after_restart() -> bool:
         kept_rows, email_kept = _read_kept()
         _put_back_kept(kept_rows, email_kept)
     except Exception:
+        # Renamed, so the next start (the marker cleared by then) doesn't
+        # remove it as left over (review of 0169).
+        failed = _kept_path().replace(".json", ".failed.json")
+        try:
+            os.replace(_kept_path(), failed)
+        except OSError:
+            log.warning("Couldn't rename %s", KEPT_FILE, exc_info=True)
+            failed = _kept_path()
         log.exception("Start-up: couldn't put back this server's settings (automatic backups, email login, "
                       "HTTPS) from a restore that stopped; they're in %s and in the newest "
-                      "restore-safety backup", KEPT_FILE)
+                      "restore-safety backup", os.path.basename(failed))
         return False
     log.warning("Start-up: put back this server's automatic-backup schedule, email login and HTTPS "
                 "settings, kept by a restore that stopped")

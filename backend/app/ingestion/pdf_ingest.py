@@ -677,7 +677,8 @@ def _clean_ingredients(lines):
             out.append(f"{label[0].upper()}{label[1:]}:")
             continue
         prev = out[-1] if out else None
-        continues = prev is not None and not prev.endswith(":") and not _QTY_START.match(line) and (
+        continues = prev is not None and len(prev) < SEGMENT_MAX_LINE and not prev.endswith(":") \
+            and not _QTY_START.match(line) and (
             prev.count("(") > prev.count(")") or line[:1] in ")],;" or (line[:1].islower() and _wrapped(prev, line))
         )
         if continues:
@@ -974,10 +975,27 @@ def set_learned_segmenter(fn):
     _learned_segmenter = fn
 
 
+# What the segmenter reads of a text. Parts of it take time growing with
+# the square of the size: an email body of 62 KB whose lines each go on
+# from the last took 17 s, 1 MB would be about 75 minutes, and the email
+# was met again at the next scan (review of 0169). A recipe is far smaller.
+SEGMENT_MAX_CHARS = 400_000
+SEGMENT_MAX_LINES = 4_000
+SEGMENT_MAX_LINE = 2_000
+
+
+def bounded_text(raw_text: str) -> str:
+    if not raw_text:
+        return raw_text or ""
+    lines = raw_text[:SEGMENT_MAX_CHARS].split("\n")[:SEGMENT_MAX_LINES]
+    return "\n".join(l[:SEGMENT_MAX_LINE] for l in lines)
+
+
 def segment_raw_text(raw_text: str) -> dict:
     """Title, ingredients and steps from extracted or OCR'd text: the rules
     below, or the learned model when one is in use and it beat the rules
     on the user's own recipes. No LLM either way."""
+    raw_text = bounded_text(raw_text)
     result = rule_segment_raw_text(raw_text)
     learned = _learned_segmenter
     if learned is not None:
@@ -1115,7 +1133,7 @@ def rule_segment_raw_text(raw_text: str) -> dict:
     ingredients before its recipe card), the heading followed by the most
     quantity lines is the one used.
     """
-    lines = prepare_lines(raw_text)
+    lines = prepare_lines(bounded_text(raw_text))
 
     ing_idx = [i for i, l in enumerate(lines) if HEADING_INGREDIENTS.match(l)]
     step_idx = [i for i, l in enumerate(lines) if HEADING_STEPS.match(l)]

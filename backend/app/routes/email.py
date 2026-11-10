@@ -424,6 +424,7 @@ async def _daily_email_scan_loop():
     ensures at most one scan per calendar day even though the check
     itself runs frequently."""
     last_scan_day = None
+    retry_at = None
     while True:
         await asyncio.sleep(15 * 60)
         try:
@@ -442,11 +443,27 @@ async def _daily_email_scan_loop():
                 continue
             now = datetime.now()
             today = now.date()
-            if last_scan_day == today or not _scan_due(now, scan_hour, last_scan_at):
+            if last_scan_day == today:
                 continue
-            last_scan_day = today
+            if retry_at is not None:
+                if now < retry_at:
+                    continue
+                if retry_at.date() < today:
+                    retry_at = None          # a new day: the hour decides again
+            if retry_at is None and not _scan_due(now, scan_hour, last_scan_at):
+                continue
             await anyio.to_thread.run_sync(run_email_scan)
-            learning.schedule_retrain()
+            # The day counts as done only once the scan reached the inbox
+            # (last_scan_at moved): one that couldn't (the NAS rebooting, the
+            # network down) is tried again in an hour, as automatic backups
+            # are, not tomorrow (review of 0169).
+            _, _, after = await anyio.to_thread.run_sync(_due_check)
+            if after is not None and after != last_scan_at:
+                last_scan_day, retry_at = today, None
+                learning.schedule_retrain()
+            else:
+                retry_at = now + timedelta(hours=1)
+                log.warning("Scheduled email scan didn't reach the inbox; trying again in an hour")
         except Exception:
             # A scheduled scan failing must never kill the loop -- the
             # next day's attempt should still happen. Logged in full, so it

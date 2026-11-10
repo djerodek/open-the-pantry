@@ -725,3 +725,15 @@ def test_a_page_is_read_again_as_whole_lines_only_when_incomplete(monkeypatch):
     readings = ["Cake\nIngredients\n2 cups flour\n1 cup sugar\n"]            # no steps
     assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == complete
     assert calls == [None, "--psm 4"]
+
+
+def test_a_huge_text_is_segmented_quickly():
+    """Review of 0169: an email body of 62 KB whose lines each go on from
+    the last took 17 s (1 MB about 75 minutes). The segmenter reads at
+    most 400,000 characters, 4,000 lines, 2,000 a line."""
+    import time
+    body = "Pancakes\nIngredients\n1 cup (flour\n" + "and more (things\n" * 300_000 + "x" * 100_000
+    start = time.monotonic()
+    r = segment_raw_text(body)
+    assert time.monotonic() - start < 5
+    assert all(len(i) <= 2_000 + 100 for i in r["ingredients"])

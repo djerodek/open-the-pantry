@@ -156,6 +156,12 @@ def allowed_domain() -> str:
 def _token() -> tuple[str, bool]:
     env = os.environ.get("CPANEL_TOKEN", "").strip()
     if env:
+        # Only with the cPanel address from .env too: an address changed in
+        # Settings got the .env token in its Authorization header (review
+        # of 0169).
+        if not _value("base_url")[1]:
+            raise HttpsError("CPANEL_TOKEN is set in .env, so CPANEL_BASE_URL must be too: the token "
+                             "isn't sent to a cPanel address entered in Settings.")
         return env, True
     enc = _stored_login().get("token_encrypted")
     if not enc:

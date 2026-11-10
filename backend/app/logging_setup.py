@@ -36,6 +36,12 @@ class OneLineFormatter(logging.Formatter):
         record.message = record.message.replace("\r", "\\r").replace("\n", "\\n")
         return super().formatMessage(record)
 
+    def formatException(self, ei):
+        # Indented, so no traceback line (an exception's own text can hold
+        # a line break and a timestamp) reads as an entry of its own in
+        # Settings -> Logs (review of 0169).
+        return "\n".join("    " + line for line in super().formatException(ei).splitlines())
+
 
 def setup_logging(data_dir: str) -> logging.Logger:
     log = logging.getLogger(LOGGER_NAME)

@@ -160,6 +160,11 @@ def reencode_image(path: str):
         if transparency is not None:
             clean.info["transparency"] = transparency
         save_kwargs = {}
+        if fmt == "MPO":
+            # A JPEG carrying a second picture (an HDR gain map, a depth
+            # map): stored as a plain JPEG at the same quality. Pillow's 75
+            # applied (review of 0169).
+            fmt = "JPEG"
         if fmt == "JPEG":
             save_kwargs["quality"] = JPEG_QUALITY  # Pillow's default is 75
         if fmt in ("PNG", "GIF") and "transparency" in clean.info:

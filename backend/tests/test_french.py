@@ -225,3 +225,22 @@ def test_the_count_message_reads_in_french():
     from app.i18n import translate
     assert translate("This archive has more than 20000 files; the limit is 20000.", "fr") == \
         "Cette archive contient plus de 20000 fichiers; la limite est 20000."
+
+
+def test_a_very_long_message_is_left_in_english():
+    """Review of 0169: patterns starting with (\\S+) took 0.8 s on a
+    4,000-character word, on the event loop."""
+    import time
+
+    from app.i18n import translate
+    text = "Couldn't read the email: " + "x" * 5000
+    start = time.monotonic()
+    assert translate(text, "fr") == text
+    assert time.monotonic() - start < 0.05
+
+
+def test_the_env_token_message_reads_in_french():
+    from app.i18n import translate
+    msg = ("CPANEL_TOKEN is set in .env, so CPANEL_BASE_URL must be too: the token "
+           "isn't sent to a cPanel address entered in Settings.")
+    assert translate(msg, "fr").startswith("CPANEL_TOKEN est dans .env")
