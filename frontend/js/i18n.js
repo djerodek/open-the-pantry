@@ -559,6 +559,7 @@
     "Text recognition was unsure ({1}%): look for misread words and numbers.":
       "La reconnaissance du texte était incertaine ({1} %) : cherchez les mots et les nombres mal lus.",
     "No ingredients were found.": "Aucun ingrédient n'a été trouvé.",
+    "Above the ingredients, left out: {1}. Ingredients read without their amount?": "Au-dessus des ingrédients, laissé de côté : {1}. Des ingrédients lus sans leur quantité?",
     "No steps were found.": "Aucune étape n'a été trouvée.",
     "Ingredients, line {1}: {2} has no amount.": "Ingrédients, ligne {1} : {2} n'a pas de quantité.",
     "Ingredients, line {1}: {2} \u2014 the learned model wasn't sure this is an ingredient.":

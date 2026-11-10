@@ -3322,6 +3322,11 @@
     }
     if (hints.ocr_confidence != null) items.push(tx("Text recognition was unsure ({1}%): look for misread words and numbers.", { 1: hints.ocr_confidence }));
     if (hints.no_ingredients) items.push(tx("No ingredients were found."));
+    if (hints.left_out && hints.left_out.length) {
+      items.push(tx("Above the ingredients, left out: {1}. Ingredients read without their amount?",
+        { 1: hints.left_out.map(quote).join(", ") }));
+      fields.ingredients.classList.add("needs-check");
+    }
     if (hints.no_steps) items.push(tx("No steps were found."));
     for (const i of hints.ingredients) {
       const n = i.index + 1;

@@ -573,6 +573,14 @@ def test_lowercase_items_stay_separate_and_wrapped_lines_join():
     for a, b in (("1 large onion, finely", "chopped"), ("2 tbsp butter, at room", "temperature"),
                  ("2 green onions, thinly", "sliced"), ("1/2 cup parsley", "chopped")):
         assert _clean_ingredients([a, b]) == [f"{a} {b}"]
+    # Separate items 0168 joined (review of 0169): "-ly"/"-ment" only from a
+    # list of adverbs, and a short tail only when it reads as one.
+    for a, b in (("1 lb pork belly", "salt and pepper"), ("2 tbsp red currant jelly", "fresh mint"),
+                 ("1 sheet parchment", "cooking spray"), ("500 g de piment", "huile d'olive"),
+                 ("1 tsp chili", "olive oil")):
+        assert _clean_ingredients([a, b]) == [a, b]
+    assert _clean_ingredients(["3 Tablespoons plus 1 teaspoon cracked", "black pepper"]) == \
+        ["3 Tablespoons plus 1 teaspoon cracked black pepper"]
     assert _clean_ingredients(["2/3 of a tsp of Dijon mustard sauce", "salt and pepper"])[-1] == "salt and pepper"
     # Wrapped: left off mid-phrase, or a long measured line's last words.
     assert _clean_ingredients(["2 mangos almost ripe, but still firm,", "peeled and cut into batonnets"]) == \
@@ -737,3 +745,14 @@ def test_a_huge_text_is_segmented_quickly():
     r = segment_raw_text(body)
     assert time.monotonic() - start < 5
     assert all(len(i) <= 2_000 + 100 for i in r["ingredients"])
+
+
+def test_an_ingredient_in_capitals_isnt_a_part_name():
+    """Review of 0169: "SALT", "BUTTER" and "OLIVE OIL" became "Salt:",
+    "Butter:", "Olive oil:", shown as headings."""
+    r = segment_raw_text("BISCUITS\n2 CUPS FLOUR\n1 TBSP BAKING POWDER\nSALT\nBUTTER\n1 CUP MILK\n"
+                         "Mix everything and bake for twelve minutes.\n")
+    assert "SALT" in r["ingredients"] and "BUTTER" in r["ingredients"]
+    r = segment_raw_text("Tomato Salad\n4 tomatoes\n1 red onion\nOLIVE OIL\n2 tbsp vinegar\n"
+                         "Slice the tomatoes and onion and dress them.\n")
+    assert "OLIVE OIL" in r["ingredients"] and not any(i.endswith(":") for i in r["ingredients"])

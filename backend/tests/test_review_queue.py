@@ -191,3 +191,38 @@ def test_json_export_keeps_the_flag(client):
         assert _flagged(client, new)
     finally:
         client.delete(f"/api/recipes/{new}", headers=H)
+
+
+PULLED_PORK = ("PULLED PORK\nYe of a pork shoulder\nonion powder\n2 tbsp paprika\n1 tbsp brown sugar\n"
+               "1 tsp salt\nRUB the shoulder with the spices and roast it slowly for six hours.\n")
+
+
+def test_lines_left_out_above_the_ingredients_are_named(client):
+    """Review of 0169: OCR read "1/2 of a pork shoulder" as "Ye of...", so
+    the list started at the first measured line and the lines above it
+    were dropped, the recipe reported whole. The review's "Check these"
+    names them."""
+    from app import models, review
+    from app.database import SessionLocal
+    from app.ingestion.pdf_ingest import segment_raw_text
+    seg = segment_raw_text(PULLED_PORK)
+    assert seg["left_out"] == ["Ye of a pork shoulder", "onion powder"]
+    db = SessionLocal()
+    try:
+        r = models.Recipe(title="Pulled Pork", source_type="image", raw_text=PULLED_PORK, needs_review=True)
+        db.add(r)
+        db.flush()
+        for k, line in enumerate(seg["ingredients"]):
+            db.add(models.Ingredient(recipe_id=r.id, position=k, raw_line=line, name=line))
+        db.commit()
+        db.refresh(r)
+        assert review.hints(r)["left_out"] == ["Ye of a pork shoulder", "onion powder"]
+        # Put back by hand: not named any more.
+        db.add(models.Ingredient(recipe_id=r.id, position=9, raw_line="onion powder", name="onion powder"))
+        db.commit()
+        db.refresh(r)
+        assert review.hints(r)["left_out"] == ["Ye of a pork shoulder"]
+    finally:
+        db.delete(r)
+        db.commit()
+        db.close()

@@ -508,6 +508,25 @@ def _caps_label(line: str) -> str | None:
     return None
 
 
+def _part_label_at(block: list[str], k: int) -> bool:
+    """block[k] is a part name in capitals ("SIFT", "WISH") only when the
+    lines beside it aren't in capitals too and at least two measured lines
+    follow before the next one: "SALT" and "BUTTER" in a list written in
+    capitals, or "OLIVE OIL" between two items, were made headings (review
+    of 0169)."""
+    if not _caps_label(block[k]):
+        return False
+    for j in (k - 1, k + 1):
+        if 0 <= j < len(block) and block[j].isupper():
+            return False
+    measured = 0
+    for line in block[k + 1:]:
+        if _caps_label(line):
+            break
+        measured += bool(_QTY_START.match(line))
+    return measured >= 2
+
+
 def _numbered_step(line: str) -> bool:
     """A numbered step, not an ingredient that starts with a count and a
     capital: "3 Eggs", "2 Green onions", OCR's "2 Cloves of garlic" were
@@ -616,7 +635,15 @@ _LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*
 
 # A line ending this way goes on on the next line.
 _WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|at|room|et|ou|avec|de|du|des|d'|à|au|"
-                       r"aux|en|pour|le|la|les|un|une|dans|\w+ly|\w+ment))\s*$", re.IGNORECASE)
+                       r"aux|en|pour|le|la|les|un|une|dans|finely|thinly|roughly|coarsely|freshly|lightly|loosely|"
+                       r"firmly|evenly|finement|grossièrement|\w+-\w+|"
+                       # a word before its noun: "cracked" + "black pepper", "1 large" + "onion"
+                       r"\w+ed|fresh|ground|large|small|medium|extra|virgin|frais|fraîche))\s*$", re.IGNORECASE)
+# What a word or two after a measured line must read as to be its end:
+# a participle or a note ("chopped", "softened", "divided", "haché").
+# "1 tsp chili" + "olive oil" are two items (review of 0169).
+_WRAP_TAIL = re.compile(r"^(?:\w+ed|optional|divided|melted|softened|minced|diced|sliced|chopped|beaten|"
+                        r"temperature|\w+(?:é|és|ée|ées))(?:\s+\w+)?[.,]?$", re.IGNORECASE)
 _SALT_AND_PEPPER = re.compile(r"^\s*(?:salt\s+(?:and|&)\s+(?:black\s+)?pepper|sel\s+et\s+poivre)\b", re.IGNORECASE)
 
 
@@ -635,7 +662,7 @@ def _wrapped(prev: str, line: str) -> bool:
     # leaves", one column after the other) unless the line before left off
     # mid-phrase. 0167 asked for 25 characters first, which split ordinary
     # wraps (Claude review of 0167).
-    return bool(_QTY_START.match(prev)) and len(line.split()) <= 2 \
+    return bool(_QTY_START.match(prev)) and len(line.split()) <= 2 and bool(_WRAP_TAIL.match(line.strip())) \
         and not _SALT_AND_PEPPER.match(line) and not _INGREDIENT_TAIL.search(line)
 
 
@@ -1139,6 +1166,7 @@ def rule_segment_raw_text(raw_text: str) -> dict:
     step_idx = [i for i, l in enumerate(lines) if HEADING_STEPS.match(l)]
 
     ingredients, steps = [], []
+    left_out = []
     chosen_ing = None
     servings = next((y for y in (_yield_of(l) for l in lines[:12]) if y), None)
 
@@ -1207,9 +1235,17 @@ def rule_segment_raw_text(raw_text: str) -> dict:
             # including unmeasured lines like "Salt and pepper to taste".
             # A part name in capitals just above or among them ("SIFT",
             # "WISH") is kept as a part name (owner's cookie page).
-            start = qty[0] - 1 if qty[0] > 0 and _caps_label(body[qty[0] - 1]) else qty[0]
-            ingredients = [_caps_label(l) or l for l in body[start:first]]
+            block = body[:first]
+            labels = {k for k in range(len(block)) if _part_label_at(block, k)}
+            start = qty[0] - 1 if qty[0] - 1 in labels else qty[0]
+            ingredients = [_caps_label(l) if k in labels else l for k, l in enumerate(block) if k >= start]
             steps = _prose_steps(body[first:])
+            # Short lines above the first measured one are left out (a
+            # byline, a yield, but also ingredients OCR read without their
+            # amount: "Ye of a pork shoulder" for "1/2"). Named for the
+            # review's "Check these" (review of 0169).
+            left_out = [l for l in body[:start] if len(l.split()) <= 8 and not _is_prose(l)
+                        and not _yield_of(l) and not _caps_label(l)]
         else:
             for line in body:
                 if NUMBERED_STEP.match(line):
@@ -1228,4 +1264,5 @@ def rule_segment_raw_text(raw_text: str) -> dict:
         "ingredients": ingredients,
         "steps": steps,
         "servings": servings,
+        "left_out": left_out,
     }
