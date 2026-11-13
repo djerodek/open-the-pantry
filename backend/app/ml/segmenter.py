@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..ingestion import pdf_ingest as P
+from ..text_rules import is_part_name
 from . import linear
 from .features import line_features, words
 
@@ -30,7 +31,11 @@ LABELS = ["other", "title", "ingredient", "step"]
 OTHER, TITLE, ING, STEP = range(4)
 
 MIN_IMPORTED = 8          # imported recipes (with their original text) needed before it's tried
-MIN_GAIN = 0.02           # must beat the rules by this much (content-line accuracy) to be used
+# Must beat the rules by this much (content-line accuracy) to be used. Was
+# 0.02: on 24 recipes that's about one recipe, and the owner's server
+# switched to the model at 81% against 79%, which then dropped a Pop Tart
+# page's pastry section and every part heading (2026-11-13).
+MIN_GAIN = 0.05
 PSEUDO_WEIGHT = 0.3       # weight of lines from recipes without an original text
 # An OCR'd empty checkbox in front of an ingredient: "LJ 2 eggs", "L Salt".
 _CHECKBOX = re.compile(r"^\s*(?:[LJIl|\[\]_]{1,3}|[☐□○])\s+(?=[\d¼½¾⅓⅔⅛⅜⅝⅞A-ZÀ-ÖØ-Þ])")
@@ -157,6 +162,10 @@ _SYMBOL_MARK = re.compile(rf"^\s*(?:[^\w\s]{{1,2}}|[a-z]{{1,3}}\))\s+(?=[{P._UPP
 _DIGITS = re.compile(r"\d{1,2}")
 
 
+def _norm(line: str) -> str:
+    return " ".join(line.lower().split())
+
+
 def _real_step_numbers(lines: list[str]) -> bool:
     """Printed step numbers that can be split on: at least two, counting up
     by one, and no circle-marker leftovers among them. A screenshot's "9"
@@ -200,6 +209,18 @@ class SegmenterModel:
         # Never worse than nothing: if the model finds no ingredients or no
         # steps where the rules did, keep the rules' result.
         if (not ingredients and rule_result.get("ingredients")) or (not steps and rule_result.get("steps")):
+            return None
+        # The model has no part headings: where the rules found parts
+        # ("Pastry base:", "Caramelized onions:"), it would flatten them, and
+        # it read unmeasured items under them ("puff pastry") as other text.
+        rule_ing = rule_result.get("ingredients") or []
+        if any(is_part_name(i) for i in rule_ing):
+            return None
+        # Nor does it drop measured lines the rules took as ingredients
+        # ("2 large onions"); dropping their unmeasured junk is where it helps.
+        kept = {_norm(i) for i in ingredients}
+        lost = [i for i in rule_ing if _norm(i) not in kept and P._QTY_START.match(i)]
+        if len(lost) >= 2:
             return None
         titles = [i for i, y in enumerate(path) if y == TITLE]
         title = lines[max(titles, key=lambda i: probs[i, TITLE])] if titles else rule_result.get("title_guess")

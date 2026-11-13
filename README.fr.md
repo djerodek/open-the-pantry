@@ -336,7 +336,8 @@ son heure (conteneur arrêté) se fait plus tard le même jour.
   entraîne deux petits modèles sur vos recettes corrigées, l'un pour lire
   les importations et l'autre pour les étiquettes, chacun utilisé seulement
   là où il fait mieux que les règles intégrées (les paramètres affichent
-  les scores). Les recettes encore *À vérifier* n'y servent pas. Les
+  les scores; celui des importations doit avoir 5 points d'avance et ne
+  fusionne jamais les parties d'une recette). Les recettes encore *À vérifier* n'y servent pas. Les
   modèles (`data/ml/`) sont reconstruits automatiquement et ne sont pas
   dans les sauvegardes.
 - **La recherche** couvre les titres, les ingrédients, les étapes, les

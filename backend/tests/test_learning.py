@@ -607,3 +607,39 @@ def test_status_doesnt_claim_a_model_it_couldnt_read(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "enabled", lambda: True)
     service.load()
     assert service._report == {}
+
+
+POP_TART = ("POP TART\nLES BRIGANDS\nPASTRY BASE\npuff pastry\nparchment paper\n"
+            "PREHEAT the oven to 420F. ROLL the puff pastry and BAKE it for about 20 minutes.\n"
+            "CARAMELIZED ONIONS\n2 large onions\n200ml of white wine\nsalt and pepper\n"
+            "CHOP the onions finely and cook them slowly in the wine.\n")
+
+
+def test_a_two_point_lead_isnt_enough(monkeypatch):
+    """Owner's server, 2026-11-13: 81% against 79% on 24 recipes put the
+    model in charge, and it dropped a page's pastry section. It must now
+    lead by 5 points."""
+    from app.ml import segmenter as S
+    scores = iter([(81, 100), (79, 100)] * 1000)
+    monkeypatch.setattr(S, "content_accuracy", lambda true, pred: next(scores))
+    model, report = S.train(_examples(corpus(24, seed=5)))
+    assert model is None and report["status"] == "rules_better", report
+
+
+def test_the_model_doesnt_flatten_parts_or_drop_measured_lines(monkeypatch):
+    from app.ingestion import pdf_ingest as P
+    from app.ml import segmenter as S
+    model, _ = S.train(_examples(corpus(30, seed=11)))
+    rules = P.rule_segment_raw_text(POP_TART)
+    assert "Pastry base:" in rules["ingredients"] and "puff pastry" in rules["ingredients"]
+    assert model.segment(POP_TART, rules) is None                    # the rules' parts are kept
+    # A plain list: the model may drop unmeasured lines, not measured ones.
+    raw = "Soup\nIngredients\n2 large onions\n1 l stock\n1 tsp salt\nfresh parsley\nMethod\n1. Simmer it all.\n2. Serve.\n"
+    rules = P.rule_segment_raw_text(raw)
+    lines = P.prepare_lines(raw)
+
+    def label(ls, rule_labels):
+        path = [S.OTHER if P._QTY_START.match(l) else lab for l, lab in zip(ls, rule_labels)]
+        return path, __import__("numpy").ones((len(ls), 4))
+    monkeypatch.setattr(model, "label", label)
+    assert len(lines) > 2 and model.segment(raw, rules) is None

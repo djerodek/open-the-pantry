@@ -290,7 +290,8 @@ container was down) runs later the same day.
     Tags manages groups, tags and keywords, and can tag every recipe.
 - **Learning** (Settings → Learning, on by default) trains two small models
   on your corrected recipes, one for reading imports and one for tags, each
-  used only where it beats the built-in rules (Settings shows the scores).
+  used only where it beats the built-in rules (Settings shows the scores;
+  the import model needs a 5-point lead, and never flattens a recipe's parts).
   Recipes still *To review* aren't learned from. The models (`data/ml/`)
   are rebuilt automatically and aren't in backups.
 - **Search** covers titles, ingredients, steps, notes, original text and
