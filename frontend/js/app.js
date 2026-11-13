@@ -1708,6 +1708,7 @@
     selectedIds: new Set(),
     currentDraftFiles: new Set(),  // temp file(s) awaiting save/discard for the open add-recipe session
     showThumbnails: storageGet("recipe-app-show-thumbnails") !== "false",  // default on
+    showTicks: storageGet("recipe-app-checkboxes") === "true",             // default off
     // Which sidebar category groups are open. Default is ALL CLOSED: fully
     // expanded, the tree runs well past a phone screen. This has to live in
     // state rather than the DOM because renderSidebar() tears the tree down
@@ -2775,6 +2776,15 @@
     renderRecipeList(currentRecipes);
   });
 
+  // Settings -> Recipe view: checkboxes beside ingredients and steps.
+  const checkboxesSetting = $("#checkboxes-setting");
+  checkboxesSetting.checked = state.showTicks;
+  checkboxesSetting.addEventListener("change", () => {
+    state.showTicks = checkboxesSetting.checked;
+    storageSet("recipe-app-checkboxes", String(state.showTicks));
+    if (!detailOverlay.hidden && detailRecipe && detailRecipeId === detailRecipe.id) renderRecipeDetail(detailRecipe);
+  });
+
   $("#batch-cancel-btn").addEventListener("click", () => {
     state.selectMode = false;
     state.selectedIds.clear();
@@ -3836,6 +3846,7 @@
     // indefinitely after you've walked away from the recipe.
     releaseWakeLock();
     detailRecipeId = null;
+    detailRecipe = null;
     closeModal(detailOverlay);
     if (listStale) { listStale = false; renderRecipeList(currentRecipes); }
   }
@@ -3851,6 +3862,27 @@
   let detailTicket = 0;
   // The recipe the dialog shows, for Print (null while loading or closed).
   let detailRecipeId = null;
+  // Its data, to draw it again when the checkboxes setting changes.
+  let detailRecipe = null;
+
+  // What's ticked in a recipe, on this device: the place and text of each
+  // line (an edited recipe drops the ticks of lines that changed). Kept
+  // until cleared, so a tick outlasts the app being closed mid-recipe.
+  function recipeTicks(id) {
+    const key = `recipe-app-ticks-${id}`;
+    let saved = {};
+    try { saved = JSON.parse(storageGet(key) || "{}") || {}; } catch { saved = {}; }
+    const sets = { i: new Set(saved.i || []), s: new Set(saved.s || []) };
+    const save = () => {
+      if (!sets.i.size && !sets.s.size) { try { localStorage.removeItem(key); } catch { /* private mode */ } return; }
+      storageSet(key, JSON.stringify({ i: [...sets.i], s: [...sets.s] }));
+    };
+    const of = (kind) => ({
+      isTicked: (index, text) => sets[kind].has(`${index}\u0000${text}`),
+      toggle: (index, text, on) => { sets[kind][on ? "add" : "delete"](`${index}\u0000${text}`); save(); },
+    });
+    return { ingredients: of("i"), steps: of("s"), clear: () => { sets.i.clear(); sets.s.clear(); save(); } };
+  }
   async function openRecipeDetail(id) {
     const ticket = ++detailTicket;
     detailRecipeId = null;
@@ -4301,6 +4333,8 @@
     const body = $("#recipe-detail-body");
     body.innerHTML = "";
     detailRecipeId = recipe.id;
+    detailRecipe = recipe;
+    const ticks = state.showTicks ? recipeTicks(recipe.id) : null;
     // The previous detail view's toggle is about to be destroyed; drop
     // its listener so callbacks don't accumulate one per recipe opened.
     wakeLockListeners.clear();
@@ -4388,6 +4422,7 @@
     const amounts = window.OTP_AMOUNTS.ingredientControls({
       lines: recipe.ingredients.map(ingredientText), servings: recipe.servings,
       language: recipe.language || recipe.detected_language,
+      ticks: ticks && ticks.ingredients,
     });
 
     body.appendChild(el("div", { class: "recipe-detail" }, [
@@ -4421,12 +4456,29 @@
             // Part names ("Sauce tartare:") aren't numbered; the steps
             // after them carry on from the last number.
             let n = 0;
-            return recipe.steps.map((s) => isPartName(s.text)
-              ? el("li", { class: "list-part", text: s.text })
-              : el("li", { value: String(++n), text: s.text }));
+            return recipe.steps.map((s, index) => {
+              if (isPartName(s.text)) return el("li", { class: "list-part", text: s.text });
+              if (!ticks) return el("li", { value: String(++n), text: s.text });
+              const on = ticks.steps.isTicked(index, s.text);
+              return el("li", { value: String(++n), class: on ? "is-ticked" : null }, [
+                window.OTP_AMOUNTS.tickRow([document.createTextNode(s.text)], on,
+                  (checked) => ticks.steps.toggle(index, s.text, checked)),
+              ]);
+            });
           })()),
         ]),
       ]),
+      ticks ? el("div", { class: "clear-ticks-row" }, [
+        el("button", {
+          class: "btn-secondary", type: "button", text: tx("Clear checkboxes"),
+          onclick: () => {
+            ticks.clear();
+            body.querySelectorAll(".tick-box").forEach((b) => { b.checked = false; });
+            body.querySelectorAll("li.is-ticked").forEach((li) => li.classList.remove("is-ticked"));
+            announce(tx("Checkboxes cleared."));
+          },
+        }),
+      ]) : null,
       // Edit and Delete are grouped at the foot of the recipe: both are
       // operations on the record rather than part of reading it, and Edit
       // was previously orphaned between the ratings row and the cook-time

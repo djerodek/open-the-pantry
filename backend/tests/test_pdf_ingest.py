@@ -756,3 +756,67 @@ def test_an_ingredient_in_capitals_isnt_a_part_name():
     r = segment_raw_text("Tomato Salad\n4 tomatoes\n1 red onion\nOLIVE OIL\n2 tbsp vinegar\n"
                          "Slice the tomatoes and onion and dress them.\n")
     assert "OLIVE OIL" in r["ingredients"] and not any(i.endswith(":") for i in r["ingredients"])
+
+
+def test_a_method_cut_into_strips_is_read_again_as_whole_lines(monkeypatch):
+    """Review of 0176: on the Dosa page, Tesseract's layout cut the method
+    running across both columns into strips that interleave (6 steps, 4
+    starting mid-word). The page had ingredients and steps, so it wasn't
+    read again. A step whose first two words are lowercase now asks for the
+    whole-line reading, kept when it has fewer such steps. A stray letter
+    for a step number ("w Beat") is followed by a capital and doesn't."""
+    from app.ingestion import pdf_ingest
+    head = "Rice Pancakes\nIngredients\n2 cups rice\n1 cup lentils\n1 tsp salt\nMethod\n"
+    strips = head + ("SOAK the rice and the lentils in separate bowls overnight.\n\n"
+                     "re to its bowl and blend the lentils the same way.\n\n"
+                     "nce golden spots appear underneath, turn the pancake over.\n")
+    whole = head + ("SOAK the rice and the lentils in separate bowls overnight, then drain them.\n\n"
+                    "BLEND the rice and return it to its bowl, then blend the lentils the same way.\n\n"
+                    "COOK a ladle of batter until golden spots appear underneath, then turn it over.\n")
+    numbered = head + "w Beat the rice and the lentils together until smooth and light.\n\n" \
+        "a Cook a ladle of batter in a hot pan until golden on both sides.\n"
+    calls = []
+
+    def fake(processed, config):
+        calls.append(config)
+        return (whole if config else readings[0]), 90.0
+    monkeypatch.setattr(pdf_ingest, "_ocr_once", fake)
+    readings = [strips]
+    assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == whole
+    assert calls == [None, "--psm 4"]
+    calls.clear()
+    readings = [numbered]
+    assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == numbered and calls == [None]
+    # The second reading is kept only if it's better on that count.
+    calls.clear()
+    readings = [strips]
+    monkeypatch.setattr(pdf_ingest, "_ocr_once", lambda p, c: (calls.append(c) or (strips if c else readings[0]), 90.0))
+    assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == strips
+
+
+def test_an_item_ending_in_a_participle_keeps_the_next_one_apart():
+    """Review of 0176: 0172's "-ed" and hyphen endings joined items that
+    0169 kept apart. After a comma, a participle ends the item; "red",
+    "dried" and "seed" aren't participles; "half-and-half" isn't a word
+    before a noun. The joins they were added for still happen."""
+    from app.ingestion.pdf_ingest import _clean_ingredients
+    for a, b in (("1/2 cup butter, melted", "salt to taste"), ("1/2 cup butter, softened", "pinch of nutmeg"),
+                 ("1 cup rice, cooked", "scallions, sliced"), ("1 tsp chili", "red onion"),
+                 ("1 tsp salt", "dried oregano"), ("1 tsp fennel seed", "salt"),
+                 ("1 cup half-and-half", "vanilla extract")):
+        assert _clean_ingredients([a, b]) == [a, b], (a, b)
+    for a, b in (("1 tsp cracked", "black pepper"), ("1 large", "onion"), ("1/2 cup parsley", "chopped"),
+                 ("2 tbsp minced", "garlic"), ("1 tbsp extra", "virgin olive oil"), ("2 cups all-purpose", "flour"),
+                 ("1/2 cup melted", "butter")):
+        assert _clean_ingredients([a, b]) == [f"{a} {b}"], (a, b)
+
+
+def test_a_part_name_under_a_yield_line_in_capitals():
+    """Review of 0176: on the cookie page, the yield line above "SIFT" is in
+    capitals, so it counted as a capitals neighbour and "SIFT" was dropped.
+    Directly above the first measured line, only the line below counts."""
+    r = segment_raw_text("DIABOLO COOKIES\n@ MAKES:12 COOKIES PREP TIME: 28 MIN COOK TIME: 15 MIN\nSIFT\n"
+                         "1.5 c all purpose flour\n1 c cocoa\nWISH\n1/2 c canola oil\n2 eggs\n"
+                         "SCOOP 2 oz dough balls on to a greased cookie sheet and BAKE at 375 for 15 minutes.\n")
+    assert r["ingredients"][:3] == ["Sift:", "1.5 c all purpose flour", "1 c cocoa"]
+    assert "Wish:" in r["ingredients"]

@@ -89,7 +89,8 @@ several user accounts.
   ratings, pace, cook time.
 - **On a recipe**: ½ / 1× / 2× scaling, and As written / Weights / Volumes
   (volumes as grams, or weights as cups and spoons); notes; keep the screen
-  awake (needs HTTPS).
+  awake (needs HTTPS); checkboxes to tick off ingredients and steps
+  (Settings, off by default).
 - **Manage**: edit, duplicate, merge two recipes, tag or delete several at
   once, Recently deleted (30 days), and a library check.
 - **Share**: print, PDF, self-contained HTML, JSON, a JPG image, or email

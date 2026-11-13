@@ -671,7 +671,9 @@ def put_back_after_restart() -> bool:
     except Exception:
         # Renamed, so the next start (the marker cleared by then) doesn't
         # remove it as left over (review of 0169).
-        failed = _kept_path().replace(".json", ".failed.json")
+        # Timestamped: a second failed put-back kept over the first
+        # (review of 0176).
+        failed = _kept_path().replace(".json", time.strftime(".failed-%Y%m%d-%H%M%S.json"))
         try:
             os.replace(_kept_path(), failed)
         except OSError:

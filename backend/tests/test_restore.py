@@ -916,4 +916,29 @@ def test_a_failed_put_back_keeps_its_file_under_another_name(monkeypatch, tmp_pa
     monkeypatch.setattr(routes_backup, "_put_back_kept", boom)
     routes_backup._write_kept({"backup_schedule": []}, None)
     assert routes_backup.put_back_after_restart() is False
-    assert sorted(os.listdir(tmp_path)) == sorted([restore_mod.MARKER, "restore-kept.failed.json"])
+    names = sorted(os.listdir(tmp_path))
+    assert len(names) == 2 and restore_mod.MARKER in names
+    assert any(n.startswith("restore-kept.failed-") and n.endswith(".json") for n in names)
+
+
+def test_a_second_failed_put_back_doesnt_replace_the_first(monkeypatch, tmp_path):
+    """Review of 0176: both were renamed restore-kept.failed.json, so the
+    first server's settings were lost to the second."""
+    from app import restore as restore_mod
+    from app.routes import backup as routes_backup
+    monkeypatch.setattr(routes_backup, "DATA_DIR", str(tmp_path))
+    stamps = iter(["20261113-100000", "20261113-110000"])
+    real = routes_backup.time.strftime
+    # Only the file name's call: logging formats its times with strftime too.
+    monkeypatch.setattr(routes_backup.time, "strftime",
+                        lambda fmt, *a: fmt.replace("%Y%m%d-%H%M%S", next(stamps)) if ".failed-" in fmt else real(fmt, *a))
+
+    def boom(rows, email):
+        raise OSError("disk full")
+    monkeypatch.setattr(routes_backup, "_put_back_kept", boom)
+    for rows in ([{"id": 1}], [{"id": 2}]):
+        (tmp_path / restore_mod.MARKER).write_text("x")
+        routes_backup._write_kept({"backup_schedule": rows}, None)
+        assert routes_backup.put_back_after_restart() is False
+    failed = sorted(n for n in os.listdir(tmp_path) if ".failed-" in n)
+    assert failed == ["restore-kept.failed-20261113-100000.json", "restore-kept.failed-20261113-110000.json"]

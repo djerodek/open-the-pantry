@@ -627,3 +627,56 @@ def test_file_inputs_match_the_buttons_and_hints(server, page):
     }""")
     assert got["name"] <= got["hint"], got
     assert got["button"] == got["cont"] and got["radius"] and got["padding"], got
+
+
+def test_checkboxes_to_tick_off_a_recipe(server, api, page):
+    """Owner's request (0177): Settings -> Recipe view turns checkboxes on
+    beside ingredients and steps, to keep track while cooking. Off by
+    default. A tick crosses the line out, survives scaling and reopening,
+    and "Clear checkboxes" at the bottom of the recipe clears them all."""
+    r = add_recipe(api, f"Browser ticks {uuid.uuid4().hex[:6]}",
+                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "Sauce:"}, {"raw_line": "2 eggs"}])
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.evaluate("localStorage.clear(); null")
+    pg.reload()
+
+    def open_recipe():
+        pg.wait_for_selector(f"text={r['title']}")
+        pg.click(f"text={r['title']}")
+        pg.wait_for_selector("#recipe-detail-heading")
+
+    open_recipe()
+    assert pg.locator("#recipe-detail-body .tick-box").count() == 0
+    assert pg.locator("#recipe-detail-body .clear-ticks-row").count() == 0
+    pg.click("#recipe-detail-close")
+    _open_settings(p, server["url"])
+    assert not pg.is_checked("#checkboxes-setting")
+    pg.click("label[for=checkboxes-setting]")
+    pg.click("#settings-close")
+    open_recipe()
+    boxes = "#recipe-detail-body .tick-box"
+    # Two ingredients (not the part name) and two steps.
+    assert pg.locator(f".recipe-ingredients {boxes.split()[-1]}").count() == 2
+    assert pg.locator(f".recipe-steps {boxes.split()[-1]}").count() == 2
+    pg.click(".recipe-ingredients li:has-text('1 cup flour') .tick-row")
+    pg.click(".recipe-steps li:has-text('Mix.') .tick-row")
+    assert pg.locator("li.is-ticked").count() == 2
+    pg.click(".scale-button[aria-label='Double the quantities']")
+    assert pg.is_checked(".recipe-ingredients li:has-text('2 cups flour') .tick-box")
+    assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    pg.reload()
+    open_recipe()
+    assert pg.locator("li.is-ticked").count() == 2
+    pg.click(".clear-ticks-row button")
+    assert pg.locator("li.is-ticked").count() == 0
+    assert pg.locator(f"{boxes}:checked").count() == 0
+    assert pg.evaluate(f"localStorage.getItem('recipe-app-ticks-{r['id']}')") is None
+    # Turned off: no boxes, no button.
+    pg.click("#recipe-detail-close")
+    _open_settings(p, server["url"])
+    pg.click("label[for=checkboxes-setting]")
+    pg.click("#settings-close")
+    open_recipe()
+    assert pg.locator(boxes).count() == 0 and pg.locator(".clear-ticks-row").count() == 0

@@ -468,7 +468,10 @@ async def _daily_email_scan_loop():
             # A scheduled scan failing must never kill the loop -- the
             # next day's attempt should still happen. Logged in full, so it
             # shows in Settings -> Logs (it was at DEBUG; Claude review 13).
-            log.exception("Scheduled email scan failed; trying again tomorrow")
+            # Not left to the 15-minute check either: _scan_due stays true
+            # all day until a scan completes (review of 0176).
+            retry_at = datetime.now() + timedelta(hours=1)   # `now` isn't set if the check itself failed
+            log.exception("Scheduled email scan failed; trying again in an hour")
 
 
 # ---------------------------------------------------------------------------

@@ -331,6 +331,9 @@ container was down) runs later the same day.
   meat, cooked or whipped forms). Amounts in the steps aren't changed.
 - **Keep screen awake** while a recipe is open, on every recipe (Settings)
   or on one. This needs HTTPS.
+- **Checkboxes** beside the ingredients and steps, to tick them off while
+  cooking (Settings → Recipe view, off by default, on this device). Ticks
+  stay until "Clear checkboxes" at the bottom of the recipe.
 
 ### Managing the library
 

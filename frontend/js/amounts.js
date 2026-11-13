@@ -423,6 +423,18 @@
   }
 
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
+  // A checkbox and its line, in one label so the whole line can be tapped.
+  // The <li> around it is marked while ticked (crossed out).
+  function tickRow(content, on, onChange) {
+    const box = el("input", { type: "checkbox", class: "tick-box" });
+    box.checked = on;
+    box.addEventListener("change", () => {
+      box.closest("li")?.classList.toggle("is-ticked", box.checked);
+      onChange(box.checked);
+    });
+    return el("label", { class: "tick-row" }, [box, el("span", { class: "tick-text" }, content)]);
+  }
+
   function scaleButtons(onChange) {
     const choices = [[0.5, "½", tx("Half the quantities")], [1, "1×", tx("Quantities as written")], [2, "2×", tx("Double the quantities")]];
     const note = el("p", { class: "scale-note", role: "status", hidden: "" });
@@ -444,7 +456,10 @@
   // (the recipe's, for Volumes). Returns { scale, units, note, list }: the
   // two button rows, the status line under them and the <ul>. Scaling is
   // back to 1× each time; the units choice is kept on this device.
-  function ingredientControls({ lines, servings, language, listClass = "ingredients-list" }) {
+  // ticks (optional, the recipe view's checkboxes): { isTicked(i, line),
+  // toggle(i, line, on) }, by the line's place and text as written, so a
+  // tick survives scaling and a change of units.
+  function ingredientControls({ lines, servings, language, listClass = "ingredients-list", ticks = null }) {
     const ingredientsList = el("ul", { class: listClass });
     let currentFactor = 1;
     const savedUnits = storageGet("recipe-app-units");
@@ -471,7 +486,7 @@
     const renderIngredients = (factor) => {
       currentFactor = factor;
       let kept = 0, unconverted = 0, converted = 0;
-      ingredientsList.replaceChildren(...lines.map((text) => {
+      ingredientsList.replaceChildren(...lines.map((text, index) => {
         const info = scaleLineInfo(text, factor);
         let shown = info.text, mark = info.kept;
         if (info.kept) kept += 1;
@@ -481,10 +496,15 @@
           if (w.kept) { unconverted += 1; mark = true; }
           if (w.converted) converted += 1;
         }
-        return el("li", { class: isPartName(text) ? "list-part" : (mark ? "unscaled" : null) }, [
+        const content = [
           document.createTextNode(shown),
           mark ? el("span", { class: "unscaled-mark", text: ` (${tx("as written")})` }) : null,
-        ]);
+        ];
+        if (isPartName(text)) return el("li", { class: "list-part" }, content);
+        const li = el("li", { class: mark ? "unscaled" : null },
+          ticks ? [tickRow(content, ticks.isTicked(index, text), (on) => ticks.toggle(index, text, on))] : content);
+        if (ticks && ticks.isTicked(index, text)) li.classList.add("is-ticked");
+        return li;
       }));
       const parts = [];
       if (unitsMode === "weights" && unconverted) parts.push(txn(unconverted, "{n} volume with no known weight, left as written.", "{n} volumes with no known weight, left as written."));
@@ -504,5 +524,5 @@
     return { scale: scaleControl.element, units: unitsControl, note: scaleControl.note, list: ingredientsList };
   }
 
-  self.OTP_AMOUNTS = { isPartName, scaleLine, scaleLineInfo, scaleServings, weightLineInfo, volumeLineInfo, ingredientControls };
+  self.OTP_AMOUNTS = { isPartName, scaleLine, scaleLineInfo, scaleServings, weightLineInfo, volumeLineInfo, ingredientControls, tickRow };
 })();

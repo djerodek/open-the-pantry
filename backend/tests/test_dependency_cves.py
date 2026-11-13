@@ -211,13 +211,15 @@ def test_josepy_is_pinned():
 def test_dnspython_has_the_name_decompression_fix():
     """CVE-2026-114605 (fixed in 2.9.0): a crafted DNS reply could take
     excessive CPU. https_setup resolves the domain's DNS records with it.
-    The CI dependency audit failed on 2.8.0 (2026-10-30)."""
+    The CI dependency audit failed on 2.8.0 (2026-10-30). 2.9.2 fixes
+    CVE-2026-128089 (WKS records in zone files, a parser the app doesn't
+    use; the audit failed on it, review of 0176)."""
     from pathlib import Path
 
     import dns.version
-    assert (dns.version.MAJOR, dns.version.MINOR) >= (2, 9)
+    assert (dns.version.MAJOR, dns.version.MINOR, dns.version.MICRO) >= (2, 9, 2)
     req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
-    assert "\ndnspython==2.9.1\n" in req
+    assert "\ndnspython==2.9.2\n" in req
 
 
 def test_opencv_is_the_patched_release():

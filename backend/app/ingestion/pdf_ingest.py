@@ -335,25 +335,42 @@ def ocr_text_and_confidence(processed: Image.Image):
     of 9 ingredients). When that gives no ingredients or no steps, the
     page is read again as whole lines, which an upright cookbook page with
     a paragraph across both columns needs (the cookie page's method), and
-    the more complete reading is kept."""
+    the more complete reading is kept.
+
+    Also read again when a step starts mid-word: its first two words in
+    lowercase ("re to its bowl", "nce golden brown"). Tesseract's layout
+    cut a method running across both columns into strips that interleave
+    (the Dosa page: 6 steps, 4 cut, where whole lines gave 5 whole ones;
+    review of 0176). A stray letter for a printed step number ("w Beat the
+    butter") is followed by a capital, so it doesn't count. The reading
+    with fewer such steps is kept, if it still has ingredients and steps."""
     first = _ocr_once(processed, None)
-    done = _completeness(first[0])
-    if done[0] == 2:
+    done, cut = _reading_score(first[0])
+    if done[0] == 2 and not cut:
         return first
     second = _ocr_once(processed, "--psm 4")
-    return second if _completeness(second[0]) > done else first
+    done2, cut2 = _reading_score(second[0])
+    if done[0] < 2:
+        return second if done2 > done else first
+    return second if done2[0] == 2 and cut2 < cut else first
 
 
-def _completeness(text: str) -> tuple[int, int]:
-    """(whether there are ingredients + whether there are steps, how many
-    of them): which of two readings of a page to keep."""
+def _cut_step(step: str) -> bool:
+    words = step.split()[:2]
+    return len(words) == 2 and all(w[:1].islower() for w in words)
+
+
+def _reading_score(text: str) -> tuple[tuple[int, int], int]:
+    """((whether there are ingredients + whether there are steps, how many
+    of them), how many steps start mid-word): which of two readings of a
+    page to keep."""
     try:
         seg = rule_segment_raw_text(text)
     except Exception:
         log.warning("Couldn't segment an OCR reading to compare it", exc_info=True)
-        return (0, 0)
+        return (0, 0), 0
     ing, steps = seg.get("ingredients") or [], seg.get("steps") or []
-    return (bool(ing) + bool(steps), len(ing) + len(steps))
+    return (bool(ing) + bool(steps), len(ing) + len(steps)), sum(_cut_step(s) for s in steps)
 
 
 def _ocr_once(processed: Image.Image, config: str | None):
@@ -516,7 +533,11 @@ def _part_label_at(block: list[str], k: int) -> bool:
     of 0169)."""
     if not _caps_label(block[k]):
         return False
-    for j in (k - 1, k + 1):
+    # Directly above the first measured line, only the line below counts:
+    # the one above isn't an item (the cookie page's yield line, in
+    # capitals, took "SIFT" for an item; review of 0176).
+    first = next((i for i, l in enumerate(block) if _QTY_START.match(l)), None)
+    for j in ((k + 1,) if first == k + 1 else (k - 1, k + 1)):
         if 0 <= j < len(block) and block[j].isupper():
             return False
     measured = 0
@@ -634,15 +655,28 @@ _LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*
 
 
 # A line ending this way goes on on the next line.
+# A word before its noun ends a line mid-item: "cracked" + "black pepper",
+# "1 large" + "onion", "1 cup all-purpose" + "flour". Listed rather than
+# any word in -ed, which joined "1 tsp fennel seed" + "salt"; the cream
+# "half-and-half" isn't one ("+ vanilla extract"); and not after a
+# comma: "1/2 cup butter, melted" ends its item, and took "salt to taste"
+# in (review of 0176).
+_BEFORE_NOUN = (r"(?<!,)(?<!, )\b(?:cracked|shredded|minced|grated|chopped|crushed|dried|smoked|toasted|roasted|"
+                r"packed|sifted|unsalted|salted|diced|sliced|peeled|pitted|cooked|canned|whipped|softened|melted|"
+                r"beaten|fresh|ground|large|small|medium|extra|virgin|frais|fraîche)"
+                # A hyphenated word ("flat-leaf", "all-purpose"), but not the
+                # cream "half-and-half".
+                r"|(?<![\w-])(?!half-and-half\b)\w+(?:-\w+)+")
 _WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|at|room|et|ou|avec|de|du|des|d'|à|au|"
                        r"aux|en|pour|le|la|les|un|une|dans|finely|thinly|roughly|coarsely|freshly|lightly|loosely|"
-                       r"firmly|evenly|finement|grossièrement|\w+-\w+|"
-                       # a word before its noun: "cracked" + "black pepper", "1 large" + "onion"
-                       r"\w+ed|fresh|ground|large|small|medium|extra|virgin|frais|fraîche))\s*$", re.IGNORECASE)
-# What a word or two after a measured line must read as to be its end:
-# a participle or a note ("chopped", "softened", "divided", "haché").
-# "1 tsp chili" + "olive oil" are two items (review of 0169).
-_WRAP_TAIL = re.compile(r"^(?:\w+ed|optional|divided|melted|softened|minced|diced|sliced|chopped|beaten|"
+                       r"firmly|evenly|finement|grossièrement)|" + _BEFORE_NOUN + r")\s*$", re.IGNORECASE)
+# What a word or two after a measured line must read as to be its end: a
+# note that comes after the noun ("chopped", "softened", "divided",
+# "haché"). "1 tsp chili" + "olive oil" are two items (review of 0169);
+# listed, as "red onion" and "dried oregano" passed as -ed words (review
+# of 0176).
+_WRAP_TAIL = re.compile(r"^(?:optional|divided|melted|softened|minced|diced|sliced|chopped|beaten|crushed|peeled|"
+                        r"drained|rinsed|halved|quartered|cubed|trimmed|thawed|separated|zested|juiced|sifted|packed|"
                         r"temperature|\w+(?:é|és|ée|ées))(?:\s+\w+)?[.,]?$", re.IGNORECASE)
 _SALT_AND_PEPPER = re.compile(r"^\s*(?:salt\s+(?:and|&)\s+(?:black\s+)?pepper|sel\s+et\s+poivre)\b", re.IGNORECASE)
 

@@ -180,8 +180,12 @@ def credentials_status() -> dict:
     domain_env = _value("domain")[1]
     token_env = bool(os.environ.get("CPANEL_TOKEN", "").strip())
     token_set = token_env or bool(_stored_login().get("token_encrypted"))
+    # A .env token is only sent to a .env address (_token): with the
+    # address in Settings the page said nothing was missing, and each
+    # renewal then failed (review of 0176).
+    base_ok = bool(base) and (base_env or not token_env)
     missing = [var for var, ok in (("CPANEL_USERNAME", username), ("CPANEL_TOKEN", token_set),
-                                   ("CPANEL_BASE_URL", base), (DOMAIN_VAR, allowed_domain())) if not ok]
+                                   ("CPANEL_BASE_URL", base_ok), (DOMAIN_VAR, allowed_domain())) if not ok]
     host = re.sub(r"^https?://", "", base).split("/")[0] if base else ""
     from_env = [f for f, on in (("username", user_env), ("base_url", base_env), ("token", token_env),
                                 ("domain", domain_env)) if on]

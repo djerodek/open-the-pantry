@@ -1594,6 +1594,28 @@ input[type="file"]::file-selector-button:hover { border-color: var(--color-accen
 }
 .ingredients-list li.list-part { margin-left: 0; }
 
+/* Settings -> Recipe view: checkboxes to tick off lines while cooking. The
+   whole line is the label, so the tap target is the line, not the box. */
+.tick-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 1;
+  cursor: pointer;
+}
+.tick-box {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--color-accent);
+}
+li.is-ticked .tick-text {
+  text-decoration: line-through;
+  color: var(--color-ink-muted);
+}
+.clear-ticks-row { margin-top: 1.5rem; }
+
 .status-region {
   position: fixed;
   left: -9999px;
@@ -1663,9 +1685,11 @@ input[type="file"]::file-selector-button:hover { border-color: var(--color-accen
   .notes-section, .wakelock-row, .recipe-facts-editor, .meta-edit,
   #add-recipe-overlay, .modal-close,
   /* Controls, not the recipe (Claude review of 0138). */
-  .photo-controls, .card-quick-controls, .recipe-record-actions, .review-banner {
+  .photo-controls, .card-quick-controls, .recipe-record-actions, .review-banner,
+  .tick-box, .clear-ticks-row {
     display: none !important;
   }
+  li.is-ticked .tick-text { text-decoration: none; color: inherit; }
   /* A recipe open: only it, not the list behind it (it printed first). */
   body:has(#recipe-detail-overlay:not([hidden])) main { display: none !important; }
   .app-shell { display: block; }

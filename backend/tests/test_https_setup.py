@@ -608,3 +608,19 @@ def test_a_token_from_env_isnt_sent_to_an_address_from_settings(monkeypatch, fre
         https_setup._token()
     monkeypatch.setenv("CPANEL_BASE_URL", "https://cp.example.test:2083")
     assert https_setup._token() == ("tok", True)
+
+
+def test_a_token_from_env_with_the_address_in_settings_shows_the_address_missing(monkeypatch, fresh_settings):
+    """Review of 0176: since 0171 that token isn't sent to an address from
+    Settings, but the page said nothing was missing, and each renewal then
+    failed. It names CPANEL_BASE_URL."""
+    from app import https_setup
+    monkeypatch.setenv("CPANEL_TOKEN", "tok")
+    monkeypatch.setenv("CPANEL_USERNAME", "marc")
+    monkeypatch.setenv("PANTRY_DOMAIN", "pantry.example.test")
+    monkeypatch.delenv("CPANEL_BASE_URL", raising=False)
+    https_setup._write_login({"username": "marc", "base_url": "https://cp.example.test:2083"})
+    st = https_setup.credentials_status()
+    assert st["found"] is False and st["missing"] == ["CPANEL_BASE_URL"]
+    monkeypatch.setenv("CPANEL_BASE_URL", "https://cp.example.test:2083")
+    assert https_setup.credentials_status()["found"] is True

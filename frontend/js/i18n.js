@@ -523,6 +523,12 @@
     "Increase text size": "Augmenter la taille du texte",
     "Recipe list": "Liste des recettes",
     "Show photos on recipe cards": "Afficher les photos sur les fiches de recettes",
+    "Recipe view": "Affichage des recettes",
+    "Checkboxes to tick off ingredients and steps": "Cases à cocher pour les ingrédients et les étapes",
+    "To keep track while you cook. What you tick stays until you clear it, at the bottom of the recipe. On this device.":
+      "Pour suivre où vous en êtes en cuisinant. Ce qui est coché le reste jusqu'à ce que vous l'effaciez, au bas de la recette. Sur cet appareil.",
+    "Clear checkboxes": "Décocher tout",
+    "Checkboxes cleared.": "Cases décochées.",
     "Off: titles only. On this device.":
       "Désactivé : titres seulement. Sur cet appareil.",
     "Tags": "Étiquettes",

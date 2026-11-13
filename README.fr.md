@@ -384,6 +384,10 @@ son heure (conteneur arrêté) se fait plus tard le même jour.
   Les quantités dans les étapes ne changent pas.
 - **Garder l'écran allumé** pendant qu'une recette est ouverte, sur toutes
   les recettes (Paramètres) ou sur une seule. Il faut HTTPS.
+- **Cases à cocher** à côté des ingrédients et des étapes, pour suivre où
+  vous en êtes en cuisinant (Paramètres → Affichage des recettes, désactivé
+  par défaut, sur cet appareil). Elles restent cochées jusqu'à « Décocher
+  tout », au bas de la recette.
 
 ### Gérer la bibliothèque
 
