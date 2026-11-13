@@ -146,34 +146,50 @@ def _shut(sock):
         sock.shutdown(socket.SHUT_RDWR)
     except OSError:
         log.debug("Deadline: the connection was already closed", exc_info=True)  # which is what was wanted
+    finally:
+        sock.close()
 
 
 def _pool_classes(deadline: float) -> dict:
     """urllib3 pool classes whose connections are shut down at `deadline`
-    (a time.monotonic() value), once connected. A timeout is per read: a
-    server sending its headers, or the page, a byte every few seconds
-    never trips it, and url_ingest's own deadline check only runs between
-    reads (a server trickling headers held a 1.5-second budget for over 25
-    seconds; GPT review of 0174). Shutting the socket down makes a blocked
-    read return, whatever it was reading. The wait to connect and the TLS
-    handshake keep the per-read timeout (the caller passes what is left of
-    the budget)."""
+    (a time.monotonic() value), from the moment the TCP connection exists.
+    A timeout is per read: a server sending its headers or the page a byte
+    every few seconds never trips it, and url_ingest's own deadline check
+    only runs between reads (a server trickling headers held a 1.5-second
+    budget for over 25 seconds; GPT review of 0174). Shutting the socket
+    down makes a blocked read return, whatever it was reading.
+
+    The timer was first started once connect() returned. Python times the
+    whole TLS handshake against the socket timeout, so it was bounded, but
+    by a full timeout after the connection, past the deadline (GPT review
+    of 0175: 4 s for a 1-second deadline). It now starts when the socket is
+    made, on a duplicate of it: the TLS wrap detaches the socket object
+    urllib3 made, but shutdown acts on the connection under every copy of
+    its descriptor. The wait to connect keeps the per-read timeout (the
+    caller passes what is left of the budget)."""
     def watched(base):
         class Watched(base):
             _deadline_timer = None
+            _deadline_sock = None
 
-            def connect(self):
-                super().connect()
+            def _new_conn(self):
+                sock = super()._new_conn()
                 self._stop_deadline_timer()
-                timer = threading.Timer(max(0.0, deadline - time.monotonic()), _shut, (self.sock,))
+                dup = sock.dup()
+                timer = threading.Timer(max(0.0, deadline - time.monotonic()), _shut, (dup,))
                 timer.daemon = True
+                self._deadline_timer, self._deadline_sock = timer, dup
                 timer.start()
-                self._deadline_timer = timer
+                return sock
 
             def _stop_deadline_timer(self):
                 if self._deadline_timer is not None:
                     self._deadline_timer.cancel()
                     self._deadline_timer = None
+                if self._deadline_sock is not None:
+                    # The copy keeps the connection open until it's closed too.
+                    self._deadline_sock.close()
+                    self._deadline_sock = None
 
             def close(self):
                 self._stop_deadline_timer()

@@ -643,3 +643,23 @@ def test_the_model_doesnt_flatten_parts_or_drop_measured_lines(monkeypatch):
         return path, __import__("numpy").ones((len(ls), 4))
     monkeypatch.setattr(model, "label", label)
     assert len(lines) > 2 and model.segment(raw, rules) is None
+
+
+def test_the_review_scores_read_the_same_bounded_text(monkeypatch):
+    """GPT review of 0175: uncertain_lines (the review view's "the learned
+    model wasn't sure") prepared the stored text as it was, up to a million
+    characters, past the 4,000 lines the segmenter reads since 0171."""
+    import numpy as np
+
+    from app.ingestion.pdf_ingest import SEGMENT_MAX_LINES
+    from app.ml import segmenter, service
+    seen = []
+
+    class Model:
+        def label(self, lines, rules):
+            seen.append(len(lines))
+            return [segmenter.OTHER] * len(lines), np.ones((len(lines), 4))
+
+    monkeypatch.setattr(service, "_seg_model", Model())
+    service.uncertain_lines("\n".join(f"line {i}" for i in range(SEGMENT_MAX_LINES + 2000)))
+    assert seen and seen[0] <= SEGMENT_MAX_LINES

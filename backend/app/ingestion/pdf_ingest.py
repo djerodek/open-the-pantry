@@ -985,8 +985,11 @@ def _prose_steps(lines):
 def prepare_lines(raw_text: str) -> list[str]:
     """The text as the segmenter reads it: one cleaned line per printed
     line, blank lines dropped. Shared with the learned segmenter (app/ml),
-    which labels exactly these lines."""
-    lines = [_normalize_line(l) for l in (raw_text or "").split("\n")]
+    which labels exactly these lines. Within bounded_text's limits, for
+    every caller: the learned model's scores for the review view and its
+    training read the stored text as it was, up to a million characters
+    (GPT review of 0175)."""
+    lines = [_normalize_line(l) for l in bounded_text(raw_text or "").split("\n")]
     return [l for l in lines if l]
 
 

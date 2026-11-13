@@ -364,8 +364,16 @@ def _slow_server(mode: str, header_delay: float) -> int:
     def run():
         conn, _ = srv.accept()
         try:
-            conn.recv(65536)
-            if mode == "headers":
+            if mode != "handshake":
+                conn.recv(65536)
+            if mode == "handshake":
+                # A TLS record header announcing 16 KB, then a byte at a
+                # time: the client waits for the rest of the record.
+                conn.send(b"\x16\x03\x03\x40\x00")
+                for _ in range(60):
+                    conn.send(b"\x00")
+                    time.sleep(0.2)
+            elif mode == "headers":
                 for b in b"HTTP/1.1 200 OK\r\nX-Pad: " + b"a" * 60:
                     conn.send(bytes([b]))
                     time.sleep(0.2)
@@ -425,6 +433,34 @@ def test_a_page_that_stalls_after_its_headers_ends_at_the_deadline():
     err, seconds = _fetch_slow("body", budget=1.0)
     assert isinstance(err, url_ingest.SiteUnreachableError), err
     assert seconds < 1.6
+
+
+def test_the_deadline_covers_the_tls_handshake():
+    """GPT review of 0175: the connection was watched only once connect()
+    returned, after the TLS handshake. Python times the whole handshake
+    against the socket timeout, so a trickle can't hold it forever, but it
+    got the full per-read timeout past the deadline: 4 s here for a
+    1-second deadline. Now it ends at the deadline."""
+    import requests
+
+    from app import tls
+    port = _slow_server("handshake", 0)
+    out = {}
+
+    def run():
+        try:
+            tls.get(f"https://slow.example:{port}/", pin="127.0.0.1", timeout=4, stream=True,
+                    deadline=time.monotonic() + 1.0)
+            out["error"] = None
+        except Exception as e:      # noqa: BLE001 -- the type is what is asserted
+            out["error"] = e
+
+    t0 = time.monotonic()
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    th.join(8)
+    assert isinstance(out.get("error"), requests.RequestException), out
+    assert time.monotonic() - t0 < 2.5
 
 
 def test_a_page_that_stalls_longer_than_the_read_timeout_is_a_plain_error():

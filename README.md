@@ -478,16 +478,17 @@ How it works:
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused. A photo read for text is first reduced to 35
-    megapixels; one 50-megapixel photo then peaks at about 400 MiB of memory
-    while it is prepared, up to 3 at once.
+    megapixels. Preparing one took about 400 MiB at its peak in a test with
+    a 50-megapixel photo (a measurement, not a limit), before Tesseract,
+    which runs separately; up to 3 photos are prepared at once.
   - **PDFs**: at most 60 pages, and at most 3 OCR jobs at once. From a PDF's
     photos, only the largest is decoded.
   - **Archives** (backups, imports): at most 20,000 files, checked before
     the file list is read, and size-limited when unpacked.
   - **Downloaded pages**: at most 10 MB and 30 seconds in all (the
-    connection is shut at 30 seconds, even from a server that sends its
-    headers a byte at a time), from public addresses only; every redirect is
-    checked again.
+    connection, TLS handshake included, is shut at 30 seconds, even from a
+    server that sends its headers or page a byte at a time), from public
+    addresses only; every redirect is checked again.
   - **Outgoing connections** (mail, links, cPanel, Let's Encrypt) check the
     certificate against the image's current roots, and refuse chains
     through known-compromised CA keys (eMudhra, October 2026).

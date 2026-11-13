@@ -32,9 +32,11 @@ _AMOUNT = re.compile(r"[\d¼½¾⅓⅔⅛⅜⅝⅞]|\b(a|an|one|two|three|four|f
 
 
 
-def title_guessed(recipe: models.Recipe) -> bool:
-    """Read from the text (a PDF, a photo, an email body), not from a web
-    page's recipe data."""
+def read_from_text(recipe: models.Recipe) -> bool:
+    """Its recipe was read from the text (a PDF, a photo, an email body),
+    not from a web page's recipe data. A link import's stored text is its
+    steps, which the segmenter never read: the hints that re-read the text
+    (lines left out, text cut) apply only here (Claude review of 0175)."""
     return recipe.source_type in ("pdf", "screenshot", "email") and not recipe.source_url and bool(recipe.raw_text)
 
 
@@ -43,7 +45,7 @@ def _left_out(recipe: models.Recipe) -> list[str]:
     the import left out, and that aren't in the recipe now: ingredients OCR
     read without their amount ("Ye of a pork shoulder"), which the import
     otherwise reported as a whole recipe (review of 0169)."""
-    if not recipe.raw_text:
+    if not read_from_text(recipe):
         return []
     from .ingestion.pdf_ingest import rule_segment_raw_text
     try:
@@ -90,9 +92,9 @@ def hints(recipe: models.Recipe, uncertain: set[str] | None = None) -> dict:
     conf = recipe.ocr_confidence
     return {
         "left_out": _left_out(recipe),
-        "text_cut": text_was_cut(recipe.raw_text or ""),
+        "text_cut": read_from_text(recipe) and text_was_cut(recipe.raw_text),
         "needs_review": bool(recipe.needs_review),
-        "title_guessed": title_guessed(recipe),
+        "title_guessed": read_from_text(recipe),
         "servings_missing": not (recipe.servings or "").strip(),
         "ocr_confidence": round(conf) if conf is not None and conf < OCR_CHECK_BELOW else None,
         "ingredients": ingredients,

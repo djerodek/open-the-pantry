@@ -209,7 +209,7 @@ def test_lines_left_out_above_the_ingredients_are_named(client):
     assert seg["left_out"] == ["Ye of a pork shoulder", "onion powder"]
     db = SessionLocal()
     try:
-        r = models.Recipe(title="Pulled Pork", source_type="image", raw_text=PULLED_PORK, needs_review=True)
+        r = models.Recipe(title="Pulled Pork", source_type="screenshot", raw_text=PULLED_PORK, needs_review=True)
         db.add(r)
         db.flush()
         for k, line in enumerate(seg["ingredients"]):
@@ -251,5 +251,32 @@ def test_a_text_too_long_to_be_read_whole_is_said_in_check_these(client):
     finally:
         for x in (r, short):
             db.delete(x)
+        db.commit()
+        db.close()
+
+
+def test_hints_that_reread_the_text_skip_link_imports(client):
+    """Claude review of 0175: a link import's stored text is its steps, which
+    the segmenter never read, yet "text cut" and "left out" re-read it: one
+    step over 2,000 characters said the text was cut, and short steps above
+    a measured one were listed as left-out ingredients."""
+    from app import models, review
+    from app.database import SessionLocal
+    steps = "Prep the onions\nWarm the pan\n2 tbsp oil go in first\n" + "Stir and season well. " * 120
+    db = SessionLocal()
+    try:
+        link = models.Recipe(title="From a page", source_type="url", source_url="https://example.com/r",
+                             raw_text=steps, needs_review=True)
+        mail = models.Recipe(title="From a mail link", source_type="email", source_url="https://example.com/m",
+                             raw_text=steps, needs_review=True)
+        db.add_all([link, mail])
+        db.commit()
+        for r in (link, mail):
+            db.refresh(r)
+            h = review.hints(r)
+            assert h["text_cut"] is False and h["left_out"] == [] and h["title_guessed"] is False
+    finally:
+        for r in (link, mail):
+            db.delete(r)
         db.commit()
         db.close()
