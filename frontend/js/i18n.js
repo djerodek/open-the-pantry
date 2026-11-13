@@ -569,6 +569,8 @@
     "Steps, line {1} is very long. Several steps run together?": "Étapes, ligne {1} : très longue. Plusieurs étapes collées ensemble?",
     "Steps, line {1}: {2} \u2014 the learned model wasn't sure this is a step.":
       "Étapes, ligne {1} : {2} \u2014 le modèle appris n'était pas sûr que ce soit une étape.",
+    "Only the start of the text was read, because it is very long. What comes after is not in this recipe.":
+      "Seul le début du texte a été lu, car il est très long. Ce qui suit n'est pas dans cette recette.",
     "Check these": "À vérifier",
     "Nothing in particular stood out. Compare it with the original text, then save or mark it as right.":
       "Rien de particulier n'est ressorti. Comparez-la avec le texte original, puis enregistrez ou indiquez qu'elle est correcte.",

@@ -23,10 +23,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import socket
 import ssl
 import threading
+import time
 
 import requests
+import urllib3.connection
+import urllib3.connectionpool
 from requests.adapters import HTTPAdapter
 
 from .logging_setup import get_logger
@@ -137,10 +141,64 @@ def _context_for_requests(verify) -> GuardedContext:
     return ctx
 
 
+def _shut(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        log.debug("Deadline: the connection was already closed", exc_info=True)  # which is what was wanted
+
+
+def _pool_classes(deadline: float) -> dict:
+    """urllib3 pool classes whose connections are shut down at `deadline`
+    (a time.monotonic() value), once connected. A timeout is per read: a
+    server sending its headers, or the page, a byte every few seconds
+    never trips it, and url_ingest's own deadline check only runs between
+    reads (a server trickling headers held a 1.5-second budget for over 25
+    seconds; GPT review of 0174). Shutting the socket down makes a blocked
+    read return, whatever it was reading. The wait to connect and the TLS
+    handshake keep the per-read timeout (the caller passes what is left of
+    the budget)."""
+    def watched(base):
+        class Watched(base):
+            _deadline_timer = None
+
+            def connect(self):
+                super().connect()
+                self._stop_deadline_timer()
+                timer = threading.Timer(max(0.0, deadline - time.monotonic()), _shut, (self.sock,))
+                timer.daemon = True
+                timer.start()
+                self._deadline_timer = timer
+
+            def _stop_deadline_timer(self):
+                if self._deadline_timer is not None:
+                    self._deadline_timer.cancel()
+                    self._deadline_timer = None
+
+            def close(self):
+                self._stop_deadline_timer()
+                super().close()
+        return Watched
+
+    class Pool(urllib3.connectionpool.HTTPConnectionPool):
+        ConnectionCls = watched(urllib3.connection.HTTPConnection)
+
+    class SecurePool(urllib3.connectionpool.HTTPSConnectionPool):
+        ConnectionCls = watched(urllib3.connection.HTTPSConnection)
+
+    return {"http": Pool, "https": SecurePool}
+
+
 class GuardedAdapter(HTTPAdapter):
     """requests' adapter with a guarded context whenever certificates are
     verified (the hook requests documents for this,
-    build_connection_pool_key_attributes)."""
+    build_connection_pool_key_attributes). deadline: a time.monotonic()
+    value after which its connections are shut down (_pool_classes)."""
+
+    def __init__(self, *args, deadline: float | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if deadline is not None:
+            self.poolmanager.pool_classes_by_scheme = _pool_classes(deadline)
 
     def build_connection_pool_key_attributes(self, request, verify, cert=None):
         host_params, pool_kwargs = super().build_connection_pool_key_attributes(request, verify, cert)
@@ -193,18 +251,23 @@ def session() -> requests.Session:
     return guard_session(requests.Session())
 
 
-def get(url, pin: str | None = None, **kwargs) -> requests.Response:
+def get(url, pin: str | None = None, deadline: float | None = None, **kwargs) -> requests.Response:
     """requests.get through a guarded session (as requests.get does, one
     session per call). pin: connect to this address for the URL's host
     (PinnedAdapter), for both http and https; the session then ignores
     proxy settings from the environment, which would look the name up
-    again on the proxy's side."""
+    again on the proxy's side. deadline: a time.monotonic() value; the
+    connection is shut down then, reading the headers or the body
+    (without a proxy, which is how the pinned fetch goes)."""
     if pin is None:
         with session() as s:
+            if deadline is not None:
+                s.mount("https://", GuardedAdapter(deadline=deadline))
+                s.mount("http://", GuardedAdapter(deadline=deadline))
             return s.get(url, **kwargs)
     with requests.Session() as s:
         s.trust_env = False
         host = requests.compat.urlparse(url).hostname or ""
-        s.mount("http://", PinnedAdapter(host, pin))
-        s.mount("https://", PinnedAdapter(host, pin))
+        s.mount("http://", PinnedAdapter(host, pin, deadline=deadline))
+        s.mount("https://", PinnedAdapter(host, pin, deadline=deadline))
         return s.get(url, **kwargs)

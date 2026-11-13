@@ -16,6 +16,20 @@ class ImageIngestResult:
         self.ocr_confidence = ocr_confidence  # 0-100, or None
 
 
+def _within_budget(img):
+    """The image at the OCR pixel budget before anything works on it. The
+    upload limit is 50 MP (file_validation) and the budget 35 MP, but the
+    budget was applied last: the channel, photo-mask, page and tilt steps
+    each made full-size copies first, 641 MiB at the peak for one 50 MP
+    photo, with three imports allowed at once (GPT review of 0174). An
+    image inside the budget is returned as it is."""
+    h, w = img.shape[:2]
+    if h * w <= MAX_OCR_PIXELS:
+        return img
+    scale = (MAX_OCR_PIXELS / (h * w)) ** 0.5
+    return cv2.resize(img, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+
+
 def _preprocess(image_path: str):
     """Darkest channel + the page cropped from a table + orientation +
     deskew + threshold + upscale via OpenCV, improves Tesseract accuracy on
@@ -26,7 +40,9 @@ def _preprocess(image_path: str):
     if img is None:
         return Image.fromarray(darkest_channel(Image.open(image_path, formats=IMAGE_FORMATS))), 0
 
+    img = _within_budget(img)
     gray = crop_to_page(darkest_channel(img))
+    del img  # 3 bytes a pixel, not needed again; the rest works on `gray`
     oriented, rotated = auto_orient(Image.fromarray(gray))
     gray = deskew_grayscale(np.array(oriented))
 

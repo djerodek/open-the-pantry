@@ -226,3 +226,30 @@ def test_lines_left_out_above_the_ingredients_are_named(client):
         db.delete(r)
         db.commit()
         db.close()
+
+
+def test_a_text_too_long_to_be_read_whole_is_said_in_check_these(client):
+    """GPT review of 0174: the segmenter reads at most 4,000 lines (0171),
+    and a recipe taken from the start of a longer text (a whole cookbook as
+    one PDF) looked as complete as any other."""
+    from app import models, review
+    from app.database import SessionLocal
+    from app.ingestion.pdf_ingest import SEGMENT_MAX_LINE, SEGMENT_MAX_LINES, text_was_cut
+    long_text = PULLED_PORK + "Another recipe line\n" * (SEGMENT_MAX_LINES + 1)
+    assert text_was_cut(long_text) and text_was_cut("x" * (SEGMENT_MAX_LINE + 1))
+    assert not text_was_cut(PULLED_PORK) and not text_was_cut("") and not text_was_cut(None)
+    db = SessionLocal()
+    try:
+        r = models.Recipe(title="Cookbook", source_type="pdf", raw_text=long_text, needs_review=True)
+        short = models.Recipe(title="Pulled Pork", source_type="pdf", raw_text=PULLED_PORK, needs_review=True)
+        db.add_all([r, short])
+        db.commit()
+        db.refresh(r)
+        db.refresh(short)
+        assert review.hints(r)["text_cut"] is True and review.hints(short)["text_cut"] is False
+        assert client.get(f"/api/recipes/{r.id}/review-hints").json()["text_cut"] is True
+    finally:
+        for x in (r, short):
+            db.delete(x)
+        db.commit()
+        db.close()

@@ -214,3 +214,50 @@ def test_a_straight_page_with_the_ingredients_beside_the_method_isnt_turned():
         d.text((560, 60 + 38 * i), "Stir the sauce slowly until it thickens and coats a spoon.", font=text_font(24), fill=30)
     page = np.asarray(im)
     assert deskew_grayscale(page) is page
+
+
+def test_a_photo_over_the_budget_is_reduced_before_anything_works_on_it(tmp_path, monkeypatch):
+    """GPT review of 0174: the 35 MP OCR budget was applied last, after the
+    channel, photo-mask, page and tilt steps had each made full-size copies
+    (641 MiB at the peak for one 50 MP photo, three imports at once). The
+    page step now gets an image already inside the budget; a smaller one is
+    left as it is."""
+    from app.ingestion import image_ingest
+    seen = []
+    real = image_ingest.crop_to_page
+    monkeypatch.setattr(image_ingest, "crop_to_page", lambda gray: (seen.append(gray.size), real(gray))[1])
+    monkeypatch.setattr(image_ingest, "MAX_OCR_PIXELS", 1_000_000)
+    big, small = tmp_path / "big.jpg", tmp_path / "small.jpg"
+    Image.new("RGB", (2000, 1500), (235, 228, 214)).save(big)
+    Image.new("RGB", (1200, 800), (235, 228, 214)).save(small)
+    image_ingest._preprocess(str(big))
+    image_ingest._preprocess(str(small))
+    assert 950_000 < seen[0] <= 1_000_000        # 3 MP brought down to the 1 MP budget
+    assert seen[1] == 1200 * 800                 # inside the budget: untouched
+
+
+def test_the_colour_channel_step_gives_the_same_pixels_in_less_memory():
+    """Same output as the int16 version it replaced, with the photo mask
+    (whose labels array is the biggest temporary) run before the other
+    full-size arrays are made: 9 bytes a pixel at the peak, now 7."""
+    import tracemalloc
+
+    from app.ingestion.deskew import COLOUR_SPREAD, _photo_mask, darkest_channel
+    import cv2
+    rng = np.random.default_rng(1)
+    img = np.full((1500, 1500, 3), 235, np.uint8)
+    img[150:700, 200:1000] = rng.integers(0, 255, (550, 800, 3))      # a photo
+    img[900:908, 150:1300] = (20, 60, 200)                            # coloured text
+    img[1000:1008, 150:1300] = (90, 90, 90)                           # gray text
+    darkest = img.min(axis=2)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    coloured = (img.max(axis=2).astype(np.int16) - darkest) >= COLOUR_SPREAD
+    expected = np.where(coloured & ~_photo_mask(darkest), darkest, gray).astype(np.uint8)
+    tracemalloc.start()
+    tracemalloc.reset_peak()
+    base = tracemalloc.get_traced_memory()[0]
+    got = darkest_channel(img)
+    peak = tracemalloc.get_traced_memory()[1] - base
+    tracemalloc.stop()
+    assert got.dtype == np.uint8 and np.array_equal(got, expected)
+    assert peak <= 8 * img.shape[0] * img.shape[1], f"{peak / (img.shape[0] * img.shape[1]):.1f} bytes a pixel"

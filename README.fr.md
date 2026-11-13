@@ -556,15 +556,19 @@ Son fonctionnement :
     lui-même) : rien de plus n'atteint le disque.
   - **Images** : elles sont réencodées, ce qui retire les métadonnées et
     tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
-    sont utilisés, et toute image de plus de 50 mégapixels est refusée.
+    sont utilisés, et toute image de plus de 50 mégapixels est refusée. Une
+    photo lue pour son texte est d'abord réduite à 35 mégapixels; une photo
+    de 50 mégapixels utilise alors environ 400 Mio de mémoire pendant sa
+    préparation, 3 à la fois au plus.
   - **PDF** : au plus 60 pages, et au plus 3 tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
   - **Archives** (sauvegardes, importations) : au plus 20 000 fichiers,
     vérifié avant de lire la liste des fichiers, et taille limitée à la
     décompression.
-  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout, depuis
-    des adresses publiques seulement; chaque redirection est vérifiée de
-    nouveau.
+  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout (la
+    connexion est coupée à 30 secondes, même avec un serveur qui envoie ses
+    en-têtes un octet à la fois), depuis des adresses publiques seulement;
+    chaque redirection est vérifiée de nouveau.
   - **Connexions sortantes** (courriel, liens, cPanel, Let's Encrypt) : le
     certificat est vérifié d'après les racines à jour de l'image, et les
     chaînes passant par une clé d'autorité compromise connue sont refusées

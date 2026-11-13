@@ -123,10 +123,11 @@ def _valid(d) -> bool:
         if not isinstance(v, str) or len(v) != 2 * n_bytes:
             return False
         try:
-            bytes.fromhex(v)
+            # fromhex skips whitespace, so 32 characters with spaces in them
+            # decoded to 15 bytes and passed (GPT review of 0174).
+            return len(bytes.fromhex(v)) == n_bytes
         except ValueError:
             return False
-        return True
     return (isinstance(d, dict) and hex_of(d.get("salt"), 16) and hex_of(d.get("hash"), 32)
             and whole(d.get("n"), 2, 2 ** 20) and d["n"] & (d["n"] - 1) == 0
             and whole(d.get("r"), 1, 32) and whole(d.get("p"), 1, 16)

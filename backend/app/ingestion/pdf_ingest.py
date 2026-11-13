@@ -1018,6 +1018,14 @@ def bounded_text(raw_text: str) -> str:
     return "\n".join(l[:SEGMENT_MAX_LINE] for l in lines)
 
 
+def text_was_cut(raw_text: str) -> bool:
+    """Whether bounded_text leaves part of this text unread. The review's
+    "Check these" says so: a recipe taken from the start of a very long
+    text (a whole cookbook as one PDF, a long newsletter) otherwise looks
+    as complete as any other (GPT review of 0174)."""
+    return bool(raw_text) and bounded_text(raw_text) != raw_text
+
+
 def segment_raw_text(raw_text: str) -> dict:
     """Title, ingredients and steps from extracted or OCR'd text: the rules
     below, or the learned model when one is in use and it beat the rules

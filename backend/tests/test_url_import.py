@@ -352,6 +352,91 @@ def test_time_limit_stops_a_byte_at_a_time_download(monkeypatch):
             url_ingest.safe_get("https://slow.example/")
 
 
+def _slow_server(mode: str, header_delay: float) -> int:
+    """A real local server for one connection. "headers": the header bytes
+    come one every 0.2 s for ten seconds; "body": headers after
+    `header_delay` seconds, a few bytes of page, then silence. Returns its
+    port."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def run():
+        conn, _ = srv.accept()
+        try:
+            conn.recv(65536)
+            if mode == "headers":
+                for b in b"HTTP/1.1 200 OK\r\nX-Pad: " + b"a" * 60:
+                    conn.send(bytes([b]))
+                    time.sleep(0.2)
+            else:
+                time.sleep(header_delay)
+                conn.send(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 5000\r\n\r\n<html>")
+                time.sleep(10)
+        except OSError:
+            pass            # the client shut the connection: what is being tested
+        finally:
+            conn.close()
+            srv.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return srv.getsockname()[1]
+
+
+def _fetch_slow(mode: str, budget: float, header_delay: float = 0.8, **kwargs):
+    """safe_get against _slow_server in a thread, so a fetch that outlasts
+    its budget fails the test rather than hanging it. (outcome, seconds)"""
+    from app.ingestion import url_ingest
+    port = _slow_server(mode, header_delay)
+    out = {}
+
+    def run():
+        try:
+            url_ingest.safe_get(f"http://slow.example:{port}/", **kwargs)
+            out["error"] = None
+        except BaseException as e:      # noqa: BLE001 -- the type is what is asserted
+            out["error"] = e
+
+    with patch.object(url_ingest, "TOTAL_FETCH_SECONDS", budget), \
+         patch.object(url_ingest, "validate_public_url", lambda url, deadline=None: "127.0.0.1"):
+        t0 = time.monotonic()
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+        th.join(6)
+        return out.get("error", "still running after 6 s"), time.monotonic() - t0
+
+
+def test_a_server_trickling_its_headers_is_given_up_at_the_deadline():
+    """GPT review of 0174: the budget was checked between reads, and a
+    timeout is per read, so headers sent a byte at a time held a 1.5-second
+    budget for over 25 seconds (and would have for minutes)."""
+    from app.ingestion import url_ingest
+    err, seconds = _fetch_slow("headers", budget=1.0)
+    assert isinstance(err, url_ingest.SiteUnreachableError), err
+    assert "didn't answer within 1.0 seconds" in str(err)
+    assert seconds < 3
+
+
+def test_a_page_that_stalls_after_its_headers_ends_at_the_deadline():
+    """The headers came at 0.8 s of a 1-second budget; the wait for the page
+    then ran a full read timeout (1 s here, 15 in production) past it, and
+    ended in urllib3's own error, not caught anywhere."""
+    from app.ingestion import url_ingest
+    err, seconds = _fetch_slow("body", budget=1.0)
+    assert isinstance(err, url_ingest.SiteUnreachableError), err
+    assert seconds < 1.6
+
+
+def test_a_page_that_stalls_longer_than_the_read_timeout_is_a_plain_error():
+    """Inside the budget but past the per-read timeout: urllib3's
+    ReadTimeoutError came out of the body read as it was, a server error on
+    the page. Now the same sentence as any other site that didn't answer."""
+    from app.ingestion import url_ingest
+    err, _ = _fetch_slow("body", budget=10, header_delay=0, timeout=0.3)
+    assert isinstance(err, url_ingest.SiteUnreachableError), err
+    assert "didn't answer within 0.3 seconds" in str(err)
+
+
 def test_normal_page_still_downloads_via_read1():
     """The switch away from iter_content must not break the ordinary path."""
     from unittest.mock import patch

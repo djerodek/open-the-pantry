@@ -643,6 +643,24 @@ def test_wrong_kinds_of_values_are_damaged(change):
     assert not admin_lock._valid({**GOOD, **change}), change
 
 
+@pytest.mark.parametrize("change", [
+    {"salt": " " + "11" * 15 + " "},                      # 32 characters, 15 bytes
+    {"salt": "11" * 7 + " " + "11" * 8 + " "},
+    {"hash": "11" * 31 + "\n\n"},
+    {"hash": "11" * 15 + "\t\t" + "11" * 16},
+    {"hash": "\n" + "11" * 31 + " "},
+])
+def test_whitespace_inside_a_hex_value_is_damaged(change):
+    """GPT review of 0174: bytes.fromhex skips whitespace, so a salt of 32
+    characters with spaces in it decoded to 15 bytes and passed the length
+    check; the file then counted as a password that could never match,
+    without the damaged-file message that says how to recover."""
+    from app import admin_lock
+    value = next(iter(change.values()))
+    assert len(value) == (32 if "salt" in change else 64)         # the length alone passes
+    assert not admin_lock._valid({**GOOD, **change}), change
+
+
 def test_a_wrongly_typed_file_reads_as_damaged_not_a_crash(client):
     """End to end: the recovery message instead of a 500."""
     from app import admin_lock

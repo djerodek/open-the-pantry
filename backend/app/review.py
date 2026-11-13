@@ -59,6 +59,7 @@ def _left_out(recipe: models.Recipe) -> list[str]:
 def hints(recipe: models.Recipe, uncertain: set[str] | None = None) -> dict:
     """What to check. `uncertain`: lines of the original text the learned
     segmenter wasn't sure about (None when no learned model is in use)."""
+    from .ingestion.pdf_ingest import text_was_cut
     from .ml.segmenter import MATCH, _tokens
     unsure_tokens = [t for t in (_tokens(l) for l in (uncertain or ())) if t]
 
@@ -89,6 +90,7 @@ def hints(recipe: models.Recipe, uncertain: set[str] | None = None) -> dict:
     conf = recipe.ocr_confidence
     return {
         "left_out": _left_out(recipe),
+        "text_cut": text_was_cut(recipe.raw_text or ""),
         "needs_review": bool(recipe.needs_review),
         "title_guessed": title_guessed(recipe),
         "servings_missing": not (recipe.servings or "").strip(),

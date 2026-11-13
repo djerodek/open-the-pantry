@@ -477,13 +477,17 @@ How it works:
     more than that reaches the disk.
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
-    50 megapixels is refused.
+    50 megapixels is refused. A photo read for text is first reduced to 35
+    megapixels; one 50-megapixel photo then peaks at about 400 MiB of memory
+    while it is prepared, up to 3 at once.
   - **PDFs**: at most 60 pages, and at most 3 OCR jobs at once. From a PDF's
     photos, only the largest is decoded.
   - **Archives** (backups, imports): at most 20,000 files, checked before
     the file list is read, and size-limited when unpacked.
-  - **Downloaded pages**: at most 10 MB and 30 seconds in all, from public
-    addresses only; every redirect is checked again.
+  - **Downloaded pages**: at most 10 MB and 30 seconds in all (the
+    connection is shut at 30 seconds, even from a server that sends its
+    headers a byte at a time), from public addresses only; every redirect is
+    checked again.
   - **Outgoing connections** (mail, links, cPanel, Let's Encrypt) check the
     certificate against the image's current roots, and refuse chains
     through known-compromised CA keys (eMudhra, October 2026).

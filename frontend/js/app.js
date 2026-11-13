@@ -3321,6 +3321,7 @@
       fields.servings.classList.add("needs-check");
     }
     if (hints.ocr_confidence != null) items.push(tx("Text recognition was unsure ({1}%): look for misread words and numbers.", { 1: hints.ocr_confidence }));
+    if (hints.text_cut) items.push(tx("Only the start of the text was read, because it is very long. What comes after is not in this recipe."));
     if (hints.no_ingredients) items.push(tx("No ingredients were found."));
     if (hints.left_out && hints.left_out.length) {
       items.push(tx("Above the ingredients, left out: {1}. Ingredients read without their amount?",

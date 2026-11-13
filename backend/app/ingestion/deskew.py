@@ -55,10 +55,14 @@ def darkest_channel(image) -> np.ndarray:
         return arr
     arr = arr[:, :, :3]
     darkest = arr.min(axis=2)
+    # The photo mask first: its labels array (4 bytes a pixel) is the
+    # largest temporary here, and ran while the gray and spread arrays
+    # were also held. The spread is uint8 (never negative: max >= min)
+    # rather than int16, 2 bytes a pixel for each of three copies.
+    photo = _photo_mask(darkest)
     gray = cv2.cvtColor(np.ascontiguousarray(arr), cv2.COLOR_RGB2GRAY)  # the channel order barely matters here
-    coloured = (arr.max(axis=2).astype(np.int16) - darkest) >= COLOUR_SPREAD
-    use = coloured & ~_photo_mask(darkest)
-    return np.where(use, darkest, gray).astype(np.uint8)
+    coloured = cv2.subtract(arr.max(axis=2), darkest) >= COLOUR_SPREAD
+    return np.where(coloured & ~photo, darkest, gray)
 
 
 # Channels this far apart are a colour (the teal titles: about 70); a

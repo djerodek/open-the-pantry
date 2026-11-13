@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
 from urllib.parse import urlparse
 import requests
+import urllib3.exceptions
 from bs4 import BeautifulSoup
 
 from ..logging_setup import get_logger
@@ -238,8 +239,10 @@ class SiteUnreachableError(UrlValidationError):
     requests' own text ("HTTPSConnectionPool(host=...): Read timed out.")."""
 
 
-def _unreachable(host: str, e: requests.RequestException, timeout) -> SiteUnreachableError:
-    if isinstance(e, requests.Timeout):            # ConnectTimeout and ReadTimeout
+def _unreachable(host: str, e: Exception, timeout) -> SiteUnreachableError:
+    # ConnectTimeout and ReadTimeout; urllib3's own when the body was being
+    # read (those were not caught at all: the page showed a server error).
+    if isinstance(e, (requests.Timeout, urllib3.exceptions.TimeoutError)):
         return SiteUnreachableError(
             f"{host} didn't answer within {timeout} seconds; some sites only answer web browsers. "
             "Save the page as a PDF or take a screenshot, and add that instead.")
@@ -276,6 +279,11 @@ def _read_limited(resp, url: str, max_bytes: int, deadline: float) -> bytes:
             raise UrlValidationError(f"{log_url(url)} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
         chunk = _read_chunk()
         if not chunk:
+            # The connection is shut down at the deadline (tls.py), which a
+            # read sees as the end of the page: not a complete one.
+            if _time.monotonic() >= deadline:
+                resp.close()
+                raise UrlValidationError(f"{log_url(url)} took longer than {TOTAL_FETCH_SECONDS} seconds to download.")
             break
         total += len(chunk)
         if total > max_bytes:
@@ -323,7 +331,7 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES,
             # max_bytes and at the overall deadline, instead of requests
             # loading the whole response into memory first.
             resp = http_get(current_url, headers={"User-Agent": USER_AGENT}, timeout=hop_timeout,
-                            allow_redirects=False, stream=True, pin=address)
+                            allow_redirects=False, stream=True, pin=address, deadline=deadline)
             # The body read so far becomes the response's content (requests
             # keeps it in _content; .text and .content read it from there).
             # Then the connection is closed here rather than left to garbage
@@ -332,9 +340,13 @@ def safe_get(url: str, timeout: int = 15, max_bytes: int = MAX_PAGE_BYTES,
                 resp._content = _read_limited(resp, current_url, max_bytes, deadline)
             finally:
                 resp.close()
-        except requests.RequestException as e:
+        except (requests.RequestException, urllib3.exceptions.HTTPError) as e:
             log.warning("GET %s failed: %s: %s", log_url(current_url), type(e).__name__, redact_urls(e))
-            raise _unreachable(host, e, timeout if hop_timeout == timeout else TOTAL_FETCH_SECONDS) from e
+            # Whatever the error says, a connection shut down at the deadline
+            # (tls.py) ended because the budget did.
+            ran_out = time.monotonic() >= deadline
+            raise _unreachable(host, requests.Timeout() if ran_out else e,
+                               timeout if hop_timeout == timeout and not ran_out else TOTAL_FETCH_SECONDS) from e
         except UrlValidationError as e:
             log.warning("GET %s stopped: %s", log_url(current_url), e)
             raise
