@@ -68,11 +68,15 @@ def test_the_entrypoint_fixes_root_owned_files_inside(tmp_path):
     assert m, "the ownership check looks inside the folder"
     (tmp_path / "uploads").mkdir()
     (tmp_path / "recipes.db").write_bytes(b"x")
-    os.chown(tmp_path / "recipes.db", 4321, 4321)       # as an unzip run with sudo leaves it, for another uid
-    cmd = f'PUID={os.getuid()} PGID={os.getgid()}; find {tmp_path} {m.group(1)} -print -quit'
-    assert subprocess.run(["bash", "-c", cmd], capture_output=True, text=True).stdout.strip().endswith("recipes.db")
-    os.chown(tmp_path / "recipes.db", os.getuid(), os.getgid())
-    assert subprocess.run(["bash", "-c", cmd], capture_output=True, text=True).stdout.strip() == ""
+    # A file owned by someone other than PUID:PGID, as an unzip run with sudo
+    # leaves it. Done by naming another owner rather than chown, which needs
+    # root, and CI doesn't run as root.
+    def found(uid, gid):
+        cmd = f'PUID={uid} PGID={gid}; find {tmp_path} {m.group(1)} -print -quit'
+        return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True).stdout.strip()
+    assert "maxdepth" not in m.group(1)                  # every file inside, not only the folder
+    assert found(os.getuid() + 4321, os.getgid()) and found(os.getuid(), os.getgid() + 4321)
+    assert found(os.getuid(), os.getgid()) == ""
 
 
 def test_ci_starts_the_image():
