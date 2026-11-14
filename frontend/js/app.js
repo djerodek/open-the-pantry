@@ -3019,7 +3019,6 @@
 
     btn.disabled = false;
     btn.textContent = label;
-    if (result.ok) ids.forEach(forgetTicks);
 
     if (!result.ok) {
       // Keep the selection on failure. It used to be cleared unconditionally
@@ -3037,6 +3036,9 @@
     let summary;
     try {
       const body = await result.res.json();
+      // Only the deleted and missing ones lose their ticks, not one the
+      // server failed to delete (review of 0179).
+      [...(body.deleted || []), ...(body.missing || [])].forEach(forgetTicks);
       const parts = [txn(body.deleted.length, "{n} recipe moved to Recently deleted (in the side menu) for 30 days",
         "{n} recipes moved to Recently deleted (in the side menu) for 30 days")];
       if (body.missing.length) parts.push(tx("{1} already gone", { 1: body.missing.length }));
@@ -4462,7 +4464,9 @@
           // With checkboxes, the numbers are drawn here, after the box: Safari
           // drew the list's own numbers over the box until the page was laid
           // out again (0179).
-          el("ol", { class: ticks ? "steps-list has-ticks" : "steps-list" }, (() => {
+          // role="list": Safari's VoiceOver stops calling a list a list
+          // once its numbering is turned off (review of 0179).
+          el("ol", ticks ? { class: "steps-list has-ticks", role: "list" } : { class: "steps-list" }, (() => {
             // Part names ("Sauce tartare:") aren't numbered; the steps
             // after them carry on from the last number.
             let n = 0;

@@ -1,6 +1,7 @@
 """What the pages do, in headless Chromium (see conftest.py). Each test
 names the patch whose bug it would have caught."""
 import io
+import json
 import re
 import uuid
 import zipfile
@@ -635,7 +636,8 @@ def test_checkboxes_to_tick_off_a_recipe(server, api, page):
     default. A tick crosses the line out, survives scaling and reopening,
     and "Clear checkboxes" at the bottom of the recipe clears them all."""
     r = add_recipe(api, f"Browser ticks {uuid.uuid4().hex[:6]}",
-                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "Sauce:"}, {"raw_line": "2 eggs"}])
+                   ingredients=[{"raw_line": "1 cup flour"}, {"raw_line": "Sauce:"}, {"raw_line": "2 eggs"}],
+                   steps=["Dough:", "Mix.", "Bake 20 minutes."])
     p = page()
     pg = p.page
     pg.goto(server["url"])
@@ -672,6 +674,12 @@ def test_checkboxes_to_tick_off_a_recipe(server, api, page):
               r('.recipe-steps .tick-box').left, r('.recipe-ingredients .tick-box').left];
     })()""")
     assert edges[0] <= edges[1] and edges[2] <= edges[3] and abs(edges[4] - edges[5]) < 1, edges
+    # Review of 0179: the steps' part names kept the negative margin that
+    # pulled them over the list's indent, and stuck out 19 px; and the list
+    # keeps its list role for VoiceOver once its numbering is off.
+    part_left = pg.evaluate("document.querySelector('.recipe-steps li.list-part').getBoundingClientRect().left")
+    assert abs(part_left - edges[4]) < 1, (part_left, edges[4])
+    assert pg.get_attribute(".recipe-steps ol", "role") == "list"
     pg.click(".recipe-ingredients li:has-text('1 cup flour') .tick-row")
     pg.click(".recipe-steps li:has-text('Mix.') .tick-row")
     assert pg.locator("li.is-ticked").count() == 2
@@ -717,3 +725,46 @@ def test_a_deleted_recipe_takes_its_ticks_with_it(server, api, page):
     pg.click("#recipe-detail-body button.btn-danger:has-text('Delete recipe')")
     pg.wait_for_selector("#recipe-detail-overlay", state="hidden")
     assert pg.evaluate(f"localStorage.getItem('{key}')") is None
+
+
+def test_a_failed_batch_delete_keeps_that_recipes_ticks(server, api, page):
+    """Review of 0179: a batch delete forgot the ticks of every selected
+    recipe, even one the server reported as failed."""
+    sfx = uuid.uuid4().hex[:6]
+    a, b = add_recipe(api, f"Tick batch A {sfx}"), add_recipe(api, f"Tick batch B {sfx}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.evaluate(f"""localStorage.setItem('recipe-app-ticks-{a["id"]}', '{{"i":[],"s":["0\\u0000Mix."]}}');
+                    localStorage.setItem('recipe-app-ticks-{b["id"]}', '{{"i":[],"s":["0\\u0000Mix."]}}'); null""")
+    pg.route("**/api/recipes/batch-delete", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"deleted": [a["id"]], "missing": [], "failed": [{"id": b["id"], "error": "x"}], "days": 30})))
+    pg.wait_for_selector(f"text={b['title']}")
+    pg.click("#select-mode-toggle")
+    pg.click(f".recipe-card:has-text('{a['title']}')")
+    pg.click(f".recipe-card:has-text('{b['title']}')")
+    pg.click("#batch-delete-btn")
+    pg.wait_for_function(f"localStorage.getItem('recipe-app-ticks-{a['id']}') === null")
+    assert pg.evaluate(f"localStorage.getItem('recipe-app-ticks-{b['id']}')") is not None
+
+
+def test_replace_my_library_is_readable_in_dark_mode(server, page):
+    """Review of 0179: the restore button had only btn-danger, never the
+    app's button style; with 0178's dark color-scheme its background went
+    mid-grey, red on grey at 1.7:1."""
+    p = page()
+    pg = p.page
+    pg.emulate_media(color_scheme="dark")
+    pg.goto(server["url"])
+    ratio = pg.evaluate("""(() => {
+      const b = document.querySelector('#restore-go'), cs = getComputedStyle(b);
+      const rgb = (c) => c.match(/[\\d.]+/g).slice(0, 3).map(Number);
+      const lum = ([r, g, bl]) => [r, g, bl].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+        .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+      let bg = rgb(cs.backgroundColor);
+      if (cs.backgroundColor === 'rgba(0, 0, 0, 0)') bg = rgb(getComputedStyle(document.body).backgroundColor);
+      const [l1, l2] = [lum(rgb(cs.color)), lum(bg)].sort((x, y) => y - x);
+      return (l1 + 0.05) / (l2 + 0.05);
+    })()""")
+    assert ratio >= 3, ratio
