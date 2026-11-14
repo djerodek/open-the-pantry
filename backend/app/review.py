@@ -47,7 +47,7 @@ def _left_out(recipe: models.Recipe) -> list[str]:
     otherwise reported as a whole recipe (review of 0169)."""
     if not read_from_text(recipe):
         return []
-    from .ingestion.pdf_ingest import rule_segment_raw_text
+    from .ingestion.segment import rule_segment_raw_text
     try:
         left = rule_segment_raw_text(recipe.raw_text).get("left_out") or []
     except Exception:
@@ -61,7 +61,7 @@ def _left_out(recipe: models.Recipe) -> list[str]:
 def hints(recipe: models.Recipe, uncertain: set[str] | None = None) -> dict:
     """What to check. `uncertain`: lines of the original text the learned
     segmenter wasn't sure about (None when no learned model is in use)."""
-    from .ingestion.pdf_ingest import text_was_cut
+    from .ingestion.segment import text_was_cut
     from .ml.segmenter import MATCH, _tokens
     unsure_tokens = [t for t in (_tokens(l) for l in (uncertain or ())) if t]
 

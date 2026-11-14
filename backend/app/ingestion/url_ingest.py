@@ -638,7 +638,7 @@ def _try_heuristic_html(html: str):
 
 
 # Section headings on a page without structured data, English and French
-# (the same words the PDF/photo rules know, pdf_ingest.HEADING_STEPS).
+# (the same words the PDF/photo rules know, segment.HEADING_STEPS).
 # "Ingrédients" and "Préparation" weren't recognised: a French page with
 # no recipe markup gave nothing at all (import corpus case p002, 0123).
 HTML_INGREDIENTS_HEADING = r"\bingr[eé]dients?\b"

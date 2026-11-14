@@ -87,6 +87,17 @@ that route module. `conftest.app_routes(app)` lists every route, including
 those of the included routers (`app.routes` shows each router as one
 entry).
 
+## Patching after the import split (0186)
+
+`app/ingestion/pdf_ingest.py` was split by job: `pdf_read` (a PDF's text
+and embedded image), `ocr` (Tesseract, layout, columns) and `segment`
+(title, ingredients, steps, the learned model's hook, the size limits).
+`pdf_ingest` still answers for every name, looked up each time, so
+`from app.ingestion.pdf_ingest import _clean_ingredients` and reading
+`pdf_ingest._learned_segmenter` work. To replace a function, patch the
+module that holds it: `monkeypatch.setattr(ocr, "_ocr_once", fake)`.
+Patching it on `pdf_ingest` changes nothing the code calls.
+
 ## Tests that read the source
 
 A test should check what the code does. Reading a file's text is kept for

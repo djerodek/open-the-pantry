@@ -221,7 +221,7 @@ def auto_orient(pil_img):
     from ..logging_setup import get_logger
     log = get_logger("ocr")
     try:
-        from .pdf_ingest import OCR_TIMEOUT_SECONDS
+        from .ocr import OCR_TIMEOUT_SECONDS
         osd = pytesseract.image_to_osd(pil_img, output_type=pytesseract.Output.DICT, timeout=OCR_TIMEOUT_SECONDS)
     except Exception as e:  # "Too few characters", no osd model, etc.
         log.info("Orientation detection skipped: %s", str(e).strip().splitlines()[0] if str(e).strip() else e)

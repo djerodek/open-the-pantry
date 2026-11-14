@@ -18,7 +18,7 @@ import math
 import re
 import unicodedata
 
-from ..ingestion import pdf_ingest as P
+from ..ingestion import segment as P
 from ..ingestion.ingredient_parser import UNIT_PATTERN
 from ..ingestion.tagger import _fold
 

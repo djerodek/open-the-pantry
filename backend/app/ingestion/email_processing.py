@@ -4,7 +4,8 @@ import re
 import uuid
 
 from .completeness import missing_parts as missing_sections
-from .pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
+from .pdf_read import PdfTooLargeError, extract_pdf_text
+from .segment import segment_raw_text
 from .image_ingest import ingest_image
 from .url_ingest import ingest_url, log_url, redact_urls, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
     SiteUnreachableError

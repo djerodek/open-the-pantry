@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR
 from ..ingestion.url_ingest import safe_get
-from ..ingestion.pdf_ingest import extract_largest_embedded_image
+from ..ingestion.pdf_read import extract_largest_embedded_image
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import set_user_keywords
 from ..backup import remove_upload_file

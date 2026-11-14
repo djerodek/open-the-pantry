@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..ingestion import pdf_ingest as P
+from ..ingestion import segment as P
 from ..text_rules import is_part_name
 from . import linear
 from .features import line_features, words

@@ -1,0 +1,843 @@
+"""Sorting a text's lines into a recipe: title, ingredients (with their
+parts) and steps, by the built-in rules or the learned model (Settings ->
+Learning), within the size limits. Split out of pdf_ingest.py (0186)."""
+import re
+
+from ..logging_setup import get_logger
+
+log = get_logger("pdf")
+
+# "Ingredients" alone on a line, optionally followed by a recipe card's
+# serving-size buttons ("Ingredients 1X 2X 3X") or a count, as grocery and
+# recipe apps show it ("Ingredients 13 total", "Method 2 steps"). Without
+# the count, a screenshot's steps were never found.
+# French too: "Ingrédients", "Préparation", "Étapes", "Méthode",
+# "Mode de préparation", "Marche à suivre" (accents optional: OCR drops them).
+_HEADING_COUNT = r"(?:\(?\d+\)?\s*(?:total|items?|steps?|ingredients?|[ée]tapes?|ingr[ée]dients?)?)?"
+HEADING_INGREDIENTS = re.compile(
+    r"^\s*ingr[eé]dients?\s*:?\s*(?:\d+(?:\.\d+)?\s*[x×]\s*)*" + _HEADING_COUNT + r"\s*$",
+    re.IGNORECASE | re.MULTILINE
+)
+HEADING_STEPS = re.compile(
+    # (?!step N): "Step 1" / "Étape 1" is a step's label, not the section heading.
+    r"^(?!\s*(?:step|[ée]tape)\s*\d)\s*(instructions?|directions?|method|steps?|preparation|"
+    r"pr[ée]paration|[ée]tapes?|m[ée]thode|mode\s+de\s+pr[ée]paration|marche\s+[àa]\s+suivre|directives?|"
+    # "Procedure": Chef Michael Smith's pages (import corpus, 2026-10-25).
+    r"proc[ée]dure)"
+    r"\s*:?\s*" + _HEADING_COUNT + r"\s*$",
+    re.IGNORECASE | re.MULTILINE
+)
+NUMBERED_STEP = re.compile(r"^\s*\d+[\.\)]\s+")
+QUANTITY_LEAD = re.compile(
+    r"^\s*\d+[\d/\.\s]*\s*(cups?|tbsp|tsp|g|kg|oz|lb|ml|l|pinch|clove)?\b", re.IGNORECASE
+)
+# Anything starting with a number or a vulgar fraction: "1 ¼ teaspoons",
+# "½ cup". Used to tell a new ingredient from a wrapped continuation line.
+_QTY_START = re.compile(r"^\s*(\d|[¼½¾⅓⅔⅛⅜⅝⅞])")
+# A step marker: "1." / "1)" / "1 " followed by a capital, or a bare number
+# on its own line (some recipe cards put the number in a separate column).
+# Capital letters include accented ones: French steps start "Égoutter".
+_UPPER = "A-ZÀ-ÖØ-Þ"
+_STEP_START = re.compile(rf"^\s*(?:[Ss]tep\s*|[ÉéEe]tape\s*)?(\d{{1,2}})(?:[\.\):]\s*|\s+)(?=[{_UPPER}])")
+
+
+def _caps_label(line: str) -> str | None:
+    """"WISH" -> "Wish:": a short line in capitals, no digits, as a part
+    name in an ingredient list."""
+    words = line.strip().rstrip(":").split()
+    if 1 <= len(words) <= 3 and line.isupper() and not re.search(r"\d", line) \
+            and all(re.fullmatch(rf"[{_UPPER}][\w'’/&-]*", w) for w in words):
+        return " ".join(words).capitalize() + ":"
+    return None
+
+
+def _part_label_at(block: list[str], k: int) -> bool:
+    """block[k] is a part name in capitals ("SIFT", "WISH") only when the
+    lines beside it aren't in capitals too and at least two measured lines
+    follow before the next one: "SALT" and "BUTTER" in a list written in
+    capitals, or "OLIVE OIL" between two items, were made headings (review
+    of 0169)."""
+    if not _caps_label(block[k]):
+        return False
+    # Directly above the first measured line, only the line below counts:
+    # the one above isn't an item (the cookie page's yield line, in
+    # capitals, took "SIFT" for an item; review of 0176).
+    first = next((i for i, l in enumerate(block) if _QTY_START.match(l)), None)
+    for j in ((k + 1,) if first == k + 1 else (k - 1, k + 1)):
+        if 0 <= j < len(block) and block[j].isupper():
+            return False
+    measured = 0
+    for line in block[k + 1:]:
+        if _caps_label(line):
+            break
+        measured += bool(_QTY_START.match(line))
+    return measured >= 2
+
+
+def _numbered_step(line: str) -> bool:
+    """A numbered step, not an ingredient that starts with a count and a
+    capital: "3 Eggs", "2 Green onions", OCR's "2 Cloves of garlic" were
+    taken as step 2 and everything after them became steps (Claude review
+    of 0167). With "." ")" ":" or "Step" before the text it's a step; after
+    a bare number, only when the rest reads as a sentence."""
+    m = _STEP_START.match(line)
+    if not m:
+        return False
+    if re.match(r"\s*(?:step|[ée]tape)", line, re.IGNORECASE) or line[m.end(1):m.end()].strip():
+        return True
+    rest = line[m.end():].strip()
+    return rest.endswith((".", "!")) or len(rest.split()) >= 5
+
+
+# A step number alone on its line: "3", or an app's "Step 3" / "Étape 3" label.
+_BARE_NUMBER = re.compile(r"^\s*(?:step\s*|[ée]tape\s*)?\d{1,2}\s*:?\s*$", re.IGNORECASE)
+
+# Lines that are page furniture, not recipe content. Printed web pages carry
+# the browser's date/time and "Page 1 of 3"; recipe cards carry serving-size
+# and unit toggles.
+_JUNK_LINE = re.compile(
+    r"^\s*("
+    r"\d{4}-\d{2}-\d{2},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"         # 2026-09-25, 1:44 PM
+    r"|\d{1,2}/\d{1,2}/\d{2,4},?\s+\d{1,2}:\d{2}(\s*[AP]M)?"  # 9/25/26, 1:44 PM
+    r"|page \d+ of \d+"
+    r"|[LJIl|\[\]_]{1,3}"                                     # an OCR'd empty checkbox: "LJ", "L"
+    r"|(?:\S+\s+){0,4}[\w-]+\.(?:com|ca|net|org|co\.uk|io)"      # a site footer: "AA & a recipetineats.com"
+    r"|\d{1,2}:\d{2}(\s+\S{1,3}){0,5}"                           # phone status bar: "7:38 a 7 @®"
+    r"|https?://\S+"
+    r"|(\d+(\.\d+)?\s*[x×]\s*)+"                               # 1X 2X 3X
+    r"|us customary(\s+metric)?|metric"
+    r"|(save|pin|print|rate|share|jump to recipe)(\s+(save|pin|print|rate|recipe|share|this))*\s*↓?"
+    r"|subscribe|sign\s+(in|up)|log\s*in"
+    r")\s*$",
+    re.IGNORECASE,
+)
+# Where the steps end on a recipe card or printed page.
+_STEPS_END = re.compile(
+    r"^\s*(notes?|recipe notes|nutrition(\s+information|\s+facts)?|video|equipment|"
+    r"did you make this.*|course|cuisine|keyword|author|"
+    r"(ratings?|reviews?|comments?)(\s*\(\d+\))?|\d+\s+(ratings?|reviews?|comments?)|"
+    # French: "Notes" is the same word; "Valeur nutritive", "Commentaires (12)", "Avis".
+    r"valeurs?\s+nutritives?|informations?\s+nutritionnelles?|astuces?|conseils?|"
+    r"(commentaires?|avis|[ée]valuations?)(\s*\(\d+\))?|"
+    # Chef Michael Smith's pages (import corpus, 2026-10-25): "Kitchen Tips>",
+    # "Variation", then the copyright line and the site's category list.
+    r"(kitchen\s+)?tips?\s*>?|variations?|recipe\s+types)\s*:?\s*$",
+    re.IGNORECASE,
+)
+# "© Chef Michael Smith", "© COPYRIGHT 2026": the page's footer. But OCR
+# reads a circled step number as "©" too ("© Return the beef…"), so a line
+# whose next word is a cooking verb is a step.
+_COPYRIGHT = re.compile(r"^\s*(?:©|copyright\b)\s*(.*)$", re.IGNORECASE)
+
+
+# A letter's sign-off after the last step: "Bonne cuisine!", "Enjoy!",
+# "Cheers,". The whole line is the sign-off, so "Enjoy warm." and "Best
+# served cold." stay steps (import corpus case p003: "Bonne cuisine! Julie"
+# was joined to the last step).
+_SIGN_OFF = re.compile(
+    r"^\s*(?:bonne\s+(?:cuisine|d[ée]gustation|journ[ée]e|soir[ée]e)|bon\s+app[ée]tit|[àa]\s+bient[ôo]t|"
+    r"[àa]\s+la\s+prochaine|bises|bisous|gros\s+bisous|xoxo|amiti[ée]s|cordialement|merci|"
+    r"enjoy|happy\s+cooking|happy\s+baking|cheers|thanks|thank\s+you|love|best|(?:best|kind|warm)\s+regards|"
+    r"talk\s+soon|see\s+you)\s*[!.,]*\s*$",
+    re.IGNORECASE)
+# A letter's greeting before the recipe: "Salut!", "Bonjour à tous,", "Hi
+# Marc,". A greeting word, at most three more words, then ! or , (or the
+# word alone), so "Hello Fresh Chicken Bowl" is still a name.
+_GREETING = re.compile(
+    r"^\s*(?:salut|bonjour|bonsoir|coucou|all[ôo]|cher|ch[èe]re|chers|ch[èe]res|hi|hello|hey|dear|greetings)"
+    r"(?:(?:\s+[\w'’-]+){0,3}\s*[!,:]+|\s*[!,:]*)\s*$",
+    re.IGNORECASE)
+
+
+def _ends_steps(line: str) -> bool:
+    if _SIGN_OFF.match(line):
+        return True
+    if _STEPS_END.match(line) or re.match(r"\s*((kitchen\s+)?tips?\s*>|recipe\s+types\b)", line, re.IGNORECASE):
+        return True
+    m = _COPYRIGHT.match(line)
+    return bool(m) and _first_word(m.group(1)) not in _STEP_VERBS
+_BYLINE = re.compile(r"^\s*by[:\s]", re.IGNORECASE)
+_BREADCRUMB = re.compile(r"\S\s+/\s+\S.*\s+/\s+\S")
+
+
+def _is_junk(line: str) -> bool:
+    return bool(_JUNK_LINE.match(line))
+
+
+_SECTION_STARTS = ("for the ", "pour la ", "pour le ", "pour les ", "pour l'", "pour l\u2019")
+
+
+def _looks_like_section_label(line: str) -> bool:
+    """"PEPPERED BACON CURE", "For the sauce:", "Topping" -- a sub-heading
+    inside an ingredient list, not an ingredient."""
+    if _QTY_START.match(line) or len(line.split()) > 6:
+        return False
+    low = line.lower()
+    return line.isupper() or line.rstrip().endswith(":") or low.startswith(_SECTION_STARTS)
+
+
+_OCR_BULLET = re.compile(r"^\s*[«»¢•·*+~]+\s+")
+_LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*$")
+
+
+# A line ending this way goes on on the next line.
+# A word before its noun ends a line mid-item: "cracked" + "black pepper",
+# "1 large" + "onion", "1 cup all-purpose" + "flour". Listed rather than
+# any word in -ed, which joined "1 tsp fennel seed" + "salt"; the cream
+# "half-and-half" isn't one ("+ vanilla extract"); and not after a
+# comma: "1/2 cup butter, melted" ends its item, and took "salt to taste"
+# in (review of 0176).
+_BEFORE_NOUN = (r"(?<!,)(?<!, )\b(?:cracked|shredded|minced|grated|chopped|crushed|dried|smoked|toasted|roasted|"
+                r"packed|sifted|unsalted|salted|diced|sliced|peeled|pitted|cooked|canned|whipped|softened|melted|"
+                r"beaten|fresh|ground|large|small|medium|extra|virgin)"
+                # A hyphenated word ("flat-leaf", "all-purpose"), but not the
+                # cream "half-and-half", and not after a comma either
+                # (", low-sodium" + "salt to taste"; review of 0177).
+                r"|(?<!,)(?<!, )(?<![\w-])(?!half-and-half\b)\w+(?:-\w+)+")
+# "frais" and "fraîche" follow their noun in French ("persil frais",
+# "crème fraîche"): they end an item, and joined "sel" and "ciboulette"
+# (since 0168; review of 0177).
+_WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|at|room|et|ou|avec|de|du|des|d'|à|au|"
+                       r"aux|en|pour|le|la|les|un|une|dans|finely|thinly|roughly|coarsely|freshly|lightly|loosely|"
+                       r"firmly|evenly|finement|grossièrement)|" + _BEFORE_NOUN + r")\s*$", re.IGNORECASE)
+# What a word or two after a measured line must read as to be its end: a
+# note that comes after the noun ("chopped", "softened", "divided",
+# "haché"). "1 tsp chili" + "olive oil" are two items (review of 0169);
+# listed, as "red onion" and "dried oregano" passed as -ed words (review
+# of 0176).
+_WRAP_TAIL = re.compile(r"^(?:optional|divided|melted|softened|minced|diced|sliced|chopped|beaten|crushed|peeled|"
+                        r"drained|rinsed|halved|quartered|cubed|trimmed|thawed|separated|zested|juiced|sifted|packed|"
+                        r"temperature|\w+(?:é|és|ée|ées))(?:\s+\w+)?[.,]?$", re.IGNORECASE)
+_SALT_AND_PEPPER = re.compile(r"^\s*(?:salt\s+(?:and|&)\s+(?:black\s+)?pepper|sel\s+et\s+poivre)\b", re.IGNORECASE)
+
+
+def _wrapped(prev: str, line: str) -> bool:
+    """A line starting in lowercase is the rest of the one before when that
+    one left off mid-phrase ("…but still firm," + "peeled and cut into
+    batonnets", "1 large onion, finely" + "chopped", "2 tbsp butter, at
+    room" + "temperature"), or is a measured line's last word or two
+    ("1/2 cup parsley" + "chopped"). Not otherwise: a cookbook that
+    writes its items in lowercase ("mini pickles", "pickled onions", no
+    amounts) had them all joined into one (Claude review of 0165)."""
+    if _WRAP_END.search(prev):
+        return True
+    # A word or two after a measured line: "1/2 cup parsley" + "chopped".
+    # Three words are an item of their own ("2 tbsp olive oil" + "fresh mint
+    # leaves", one column after the other) unless the line before left off
+    # mid-phrase. 0167 asked for 25 characters first, which split ordinary
+    # wraps (Claude review of 0167).
+    return bool(_QTY_START.match(prev)) and len(line.split()) <= 2 and bool(_WRAP_TAIL.match(line.strip())) \
+        and not _SALT_AND_PEPPER.match(line) and not _INGREDIENT_TAIL.search(line)
+
+
+def _clean_ingredients(lines):
+    """Drop page furniture, join wrapped lines, and label sub-headings.
+
+    A line that doesn't start with a quantity is a continuation of the one
+    before if that one left a bracket open, or this one starts in lowercase
+    and that one left off mid-phrase (_wrapped):
+    "1 ¼ teaspoons Prague powder #1 (curing" + "salt)". Sub-headings are
+    kept -- dropping them loses which ingredients belong to which part --
+    but reworded so they read as a heading, not as an ingredient.
+    """
+    out = []
+    for line in lines:
+        # Phone screenshots of a recipe card (import corpus, 2026-10-25):
+        # bullet dots read as « » ¢ + * •, and a cost after each line
+        # ("$0.02", "$1.85", "SO.94").
+        line = _OCR_BULLET.sub("", line)
+        line = _LINE_PRICE.sub("", line).strip()
+        if not line or _is_junk(line):
+            continue
+        m = _LABELLED_QTY.match(line)
+        if m:
+            # "Noodles: 8 oz wheat noodles": the label repeats the
+            # ingredient and goes. "For the dough: 2 cups flour": the label
+            # is a section, kept on its own line (DeepSeek review of 0073:
+            # it was dropped with the other kind).
+            if m.group(1).lower().startswith(_SECTION_STARTS):
+                out.append(f"{m.group(1).strip()}:")
+            line = line[m.end():]
+        if _looks_like_section_label(line):
+            label = line.rstrip(":").strip()
+            if label.isupper() or label.istitle():
+                label = label.lower()
+            if not label.lower().startswith("for "):
+                label = f"For the {label[0].lower() + label[1:]}"
+            # "FOR THE BASE" came out as "for the base:".
+            out.append(f"{label[0].upper()}{label[1:]}:")
+            continue
+        prev = out[-1] if out else None
+        continues = prev is not None and len(prev) < SEGMENT_MAX_LINE and not prev.endswith(":") \
+            and not _QTY_START.match(line) and (
+            prev.count("(") > prev.count(")") or line[:1] in ")],;" or (line[:1].islower() and _wrapped(prev, line))
+        )
+        if continues:
+            out[-1] = f"{prev} {line}"
+        else:
+            out.append(line)
+    return out
+
+
+def _clean_steps(lines):
+    """Rebuild whole steps from printed lines.
+
+    Printed and OCR'd text has one line per line of the page, not one per
+    step, so taking each line as a step split every instruction into
+    fragments. If the block has step numbers, each number starts a step and
+    everything up to the next number belongs to it. Without numbers, a line
+    that ends a sentence ends the step. Leading numbers are removed -- the
+    app numbers steps itself.
+    """
+    kept = []
+    for line in lines:
+        if _ends_steps(line):
+            break
+        if not _is_junk(line):
+            kept.append(line)
+
+    numbered = sum(1 for l in kept if _STEP_START.match(l) or _BARE_NUMBER.match(l))
+    steps = []
+    if numbered >= 2 or (numbered == 1 and len(kept) > 1 and (_STEP_START.match(kept[0]) or _BARE_NUMBER.match(kept[0]))):
+        for line in kept:
+            if _BARE_NUMBER.match(line):
+                steps.append("")
+                continue
+            m = _STEP_START.match(line)
+            if m:
+                steps.append(line[m.end():].strip())
+            elif steps:
+                steps[-1] = f"{steps[-1]} {line}".strip()
+            else:
+                steps.append(line)
+    else:
+        for line in kept:
+            line = NUMBERED_STEP.sub("", line)
+            if steps and not re.search(r"[.!?:)]\s*$", steps[-1]):
+                steps[-1] = f"{steps[-1]} {line}"
+            else:
+                steps.append(line)
+    return [s for s in steps if s]
+
+
+def _title_like(l: str) -> bool:
+    """Could be a recipe name at all: enough letters (OCR specks such as
+    "e ° j" aren't), no address, not a parenthetical ("(thawed if
+    frozen)"), not a breadcrumb trail ("Recipes » Meat » Seafood")."""
+    letters = sum(c.isalpha() for c in l)
+    return (letters >= 3 and letters >= 0.5 * len(l.replace(" ", ""))
+            and not re.match(r"\s*(step|[ée]tape)\s*\d+\s*:?\s*$", l, re.IGNORECASE)
+            and "http" not in l.lower() and "www." not in l.lower()
+            and not l.lstrip().startswith("(") and not re.search(r"\S\s*[»›]\s*\S", l))
+
+
+_DISH_WORD = re.compile(
+    r"\b(?:cakes?|brownies?|cookies?|bars?|pies?|tarts?|breads?|buns?|rolls?|muffins?|scones?|pancakes?|waffles?|"
+    r"chocolate|caramel|vanilla|cheesecakes?|pudding|soups?|stews?|salads?|sauces?|chicken|beef|pork|fish|"
+    r"shrimp|pasta|noodles|rice|beans|potato(?:es)?|eggs?|cheese|butter|cream|sundaes?|cocktails?|punch|"
+    r"pizza|tacos?|burgers?|sandwich(?:es)?|wings|ribs|chili|curry|gâteau|tarte|biscuits?|fudge|dip)\b",
+    re.IGNORECASE)
+
+
+def _tidy_title(title: str) -> str:
+    """"Pulled Pork Sandwich by Samuel Fortier, …" -> "Pulled Pork Sandwich";
+    "Cowboy Butter Recipe" -> "Cowboy Butter"; ALL CAPS -> Each Word
+    Capitalised (printed pages set the name in capitals)."""
+    m = re.search(r"\s+by\s+([A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*)?\b.*)$", title)
+    # Not when what follows "by" is food ("Death by Chocolate Cake", "Stand
+    # by Me Brownies"): a byline names a person (Claude review of 0148).
+    t = title if not m or _DISH_WORD.search(m.group(1)) else (title[:m.start()].strip() or title)
+    shorter = re.sub(r"(?<=\w)\s+recipe$", "", t, flags=re.IGNORECASE).strip()
+    if len(shorter.split()) >= 2:          # "Attached Recipe" stays as it is
+        t = shorter
+    if any(c.isalpha() for c in t) and t == t.upper():
+        t = " ".join(w[:1].upper() + w[1:].lower() for w in t.split())
+    return t
+
+
+def _whole_title(lines, i) -> str:
+    """The name at lines[i], with the line it was broken from: "Sheet-Pan
+    Shawarma-" + "Spiced Chicken", "Pork Chops with Apples" + "and Bacon",
+    "WARM MULLED" + "CIDER" (import corpus, 2026-10-25)."""
+    t = lines[i]
+    nxt = lines[i + 1] if i + 1 < len(lines) else ""
+    prev = lines[i - 1] if i > 0 else ""
+    if t.endswith("-") and nxt and _title_like(nxt) and len(nxt.split()) <= 6:
+        return t + nxt
+    if nxt and re.match(r"(and|with|&|et|avec)\b", nxt) and _title_like(nxt) and len(nxt.split()) <= 5:
+        return f"{t} {nxt}"
+    if re.match(r"(and|with|&|et|avec)\b", t) and prev and _title_like(prev) and len(prev.split()) <= 6:
+        return f"{prev} {t}"
+    caps = lambda l: l == l.upper() and any(c.isalpha() for c in l)   # noqa: E731
+    if (prev and caps(t) and caps(prev) and len(t.split()) <= 2 and len(prev.split()) <= 3
+            and _title_like(prev) and not _is_junk(prev)):
+        return f"{prev} {t}"
+    return t
+
+
+def _guess_title(lines, ing_line_index, first_ing_index=None):
+    """The recipe's name, not whatever happens to be the first line.
+
+    Printed web pages start with the date and "Page 1 of 1"; blog pages start
+    with shipping banners and breadcrumbs. In order of preference:
+      1. the line just above the author byline closest before the
+         ingredients -- recipe cards put "Title" then "By: Name";
+      2. a short line that appears more than once (the name is repeated in
+         the article heading, the card, and often the print header), first
+         seen above the ingredients: "salt and pepper" under two parts of a
+         recipe was taken as its name (Claude review of 0165);
+      3. the first line that isn't page furniture.
+    A name broken over two lines is joined (_whole_title), and tidied
+    (_tidy_title).
+    """
+    def ok(l):
+        return (not _is_junk(l) and not _BYLINE.match(l) and not _BREADCRUMB.search(l)
+                and 2 <= len(l) <= 80 and not HEADING_INGREDIENTS.match(l) and not HEADING_STEPS.match(l)
+                and not re.search(r"\$\d", l) and _title_like(l) and not l.rstrip().endswith(",")
+                # "Sel et poivre au goût" under two sub-recipes is repeated,
+                # but it's an ingredient, not the name.
+                and not _QTY_START.match(l) and not _INGREDIENT_TAIL.search(l) and not _YIELD.match(l)
+                and not _GREETING.match(l) and not _SIGN_OFF.match(l))
+
+    # A printed web page carries its address, and the address its name:
+    # ".../garlic-butter-baked-cod/" points at "EASY GARLIC BUTTER BAKED COD"
+    # (import corpus, 2026-10-25: the other rules took "Share This" or a
+    # newsletter box there).
+    slug_words = set()
+    for l in lines:
+        for m in re.finditer(r"https?://[^/\s]+/(?:[^\s]*/)?([a-z0-9]+(?:-[a-z0-9]+)+)/?(?:\s|$)", l, re.IGNORECASE):
+            slug_words |= {w for w in m.group(1).lower().split("-") if len(w) >= 3 and not w.isdigit()}
+    slug_words -= {"recipe", "recipes", "easy", "best", "the", "and", "with"}
+    if len(slug_words) >= 2:
+        best, best_n = None, 0
+        for n, l in enumerate(lines):
+            if ok(l) and len(l.split()) <= 12:
+                words = {w.lower() for w in re.findall(r"[^\W\d_]+", l)}
+                hit = len(words & slug_words)
+                if hit > best_n:
+                    best, best_n = n, hit
+        if best is not None and best_n >= max(2, (len(slug_words) + 1) // 2):
+            return _tidy_title(_whole_title(lines, best))
+
+    limit = ing_line_index if ing_line_index is not None else len(lines)
+    for i in range(limit - 1, 0, -1):
+        # The line above "By Anna …" can be the end of a description
+        # ("…brightened with mustard and herbs."), not the name.
+        prev = lines[i - 1]
+        if (_BYLINE.match(lines[i]) and ok(prev) and not prev.rstrip().endswith(".")
+                and not prev[:1].islower()):
+            return _tidy_title(_whole_title(lines, i - 1))
+
+    counts = {}
+    for l in lines:
+        # A word of four letters or more: OCR repeats specks too ("Gga Aaa").
+        if (ok(l) and 1 <= len(l.split()) <= 8 and not l.endswith(".")
+                and any(sum(c.isalpha() for c in w) >= 4 for w in l.split())):
+            counts[l.lower()] = counts.get(l.lower(), 0) + 1
+    above = first_ing_index if first_ing_index is not None else len(lines)
+    repeated = [n for n, l in enumerate(lines[:above]) if counts.get(l.lower(), 0) >= 2]
+    if repeated:
+        return _tidy_title(_whole_title(lines, repeated[0]))
+
+    # The first line that could be a name, preferring one that isn't a
+    # sentence: an email's "Voici la recette promise." comes before it
+    # (import corpus case p003).
+    for sentence_ok in (False, True):
+        for n, l in enumerate(lines[:limit] if not sentence_ok else lines):
+            if ok(l) and (sentence_ok or not re.search(r"[.!?]\s*$", l)):
+                return _tidy_title(_whole_title(lines, n))
+    return "Untitled Recipe"
+
+
+_BULLET = re.compile(r"^\s*(?:[-•*·▪◦‣]\s+)+")
+_EMPHASIS_TIGHT = re.compile(r"\*{1,2}([^*\n]+?)\*{1,2}(?=\S)")
+_EMPHASIS = re.compile(r"\*{1,2}([^*\n]+?)\*{1,2}")
+# "Noodles: 8 oz wheat noodles" -- a label in front of the quantity.
+_LABELLED_QTY = re.compile(r"^([A-Z][\w &/'()-]{0,30}):\s+(?=[\d¼½¾⅓⅔⅛⅜⅝⅞])")
+
+
+def _normalize_line(line: str) -> str:
+    """Plain text written by mail apps: Gmail sends bold as *text* and list
+    items as "   - item". Without this, "- 1 tsp soy sauce" doesn't start
+    with a quantity and "*1.Cook the noodles:*" doesn't start with a step
+    number, and neither is recognized."""
+    line = _BULLET.sub("", line)
+    line = _EMPHASIS_TIGHT.sub(r"\1 ", line)   # "*1.Cook:*Stops" -> "1.Cook: Stops"
+    line = _EMPHASIS.sub(r"\1", line)
+    # Tesseract's usual misread of "tbsp" (seen on a real screenshot).
+    line = re.sub(r"\bt[o0]sp\b", "tbsp", line, flags=re.IGNORECASE)
+    return line.strip()
+
+
+# Leftovers of a step number drawn in a circle, as OCR reads it: "@ Add",
+# "9 Cover", "© Skim", "faa) Serve", "3) Return".
+_MARKER_GARBAGE = re.compile(rf"^\s*(?:[^\w\s]{{1,2}}|\w{{1,3}}\)|\d{{1,2}}[\.\)]?)\s+(?=[{_UPPER}])")
+
+# How a method line usually starts (English and French, accents folded).
+_STEP_VERBS = set("""
+add adjust arrange bake beat blend boil bring brown brush chill chop coat combine cook cool cover crush cut
+divide drain drizzle dust fill flip fold fry garnish grate grease grill heat knead lay let line lower marinate
+mash melt mix pat peel place pour preheat prepare press put reduce refrigerate remove return rinse roast roll
+rub season serve set shake simmer skim slice soak spoon spread sprinkle squeeze stir strain stuff taste
+thread toast top toss transfer trim turn wash whisk wipe wrap in once when while meanwhile then using make
+using bake saute sear steam scoop push plate poke grind pulse sift whip
+ajouter arroser assaisonner badigeonner battre beurrer chauffer couper couvrir cuire decouper deposer
+dorer egoutter emincer enfourner etaler faire farcir fouetter garnir griller hacher incorporer laisser
+laver mariner melanger mettre mijoter napper parsemer peler petrir placer poivrer porter prechauffer
+preparer recouvrir reduire refroidir remettre remuer repartir reserver retirer rincer rouler saler
+saupoudrer servir tailler trancher transferer verser dans pendant entre-temps ensuite puis lorsque quand
+""".split())
+
+# Ingredient lines with no quantity that read like a sentence: "Salt and
+# pepper to taste", "Fresh herbs, for serving". They usually come straight
+# after the last measured ingredient, where one would become step 1.
+from ..text_rules import INGREDIENT_TAIL as _INGREDIENT_TAIL  # noqa: E402 (one copy, shared)
+
+
+def _is_prose(line: str) -> bool:
+    """A line of method text rather than an ingredient: several words that
+    end a sentence, or start with a cooking verb. "2 large celery stalks"
+    isn't; "Cut the beef into 5cm/2" chunks. Pat dry" is. A capital first
+    letter alone isn't enough: "Salt and pepper to taste" would count."""
+    words = line.split()
+    if len(words) < 4 or _INGREDIENT_TAIL.search(line):
+        return False
+    stripped = _MARKER_GARBAGE.sub("", line).strip()
+    if not stripped or _QTY_START.match(stripped):
+        return False
+    return bool(re.search(r"[.!?]\s*$", line)) or _first_word(stripped) in _STEP_VERBS
+
+
+def _first_word(text: str) -> str:
+    import unicodedata
+    words = text.split()
+    if not words:                    # a bare "©" line (GPT review of 0132)
+        return ""
+    first = unicodedata.normalize("NFKD", words[0].lower())
+    return "".join(c for c in first if not unicodedata.combining(c)).strip(",.;:!")
+
+
+def _short_step(line: str) -> bool:
+    """A step too short for _is_prose ("Mix everything.", "Bake 20 min."):
+    under four words, starting with a cooking verb, no amount in front.
+    Only used where there are no headings, after the ingredients; the
+    four-word floor stays for _is_prose itself, which also decides where
+    ingredients end ("Top sirloin" mustn't become a step there). DeepSeek
+    review of 0096: such a step was dropped and the recipe failed as
+    having none."""
+    stripped = _MARKER_GARBAGE.sub("", line).strip()
+    if not stripped or len(stripped.split()) >= 4 or _QTY_START.match(stripped) or _INGREDIENT_TAIL.search(line):
+        return False
+    return _first_word(stripped) in _STEP_VERBS
+
+
+def _prose_steps(lines):
+    steps = []
+    for line in lines:
+        if _ends_steps(line):
+            break
+        line = _MARKER_GARBAGE.sub("", line).strip()
+        if not line:
+            continue
+        if steps and not re.search(r"[.!?]\s*$", steps[-1]):
+            steps[-1] = f"{steps[-1]} {line}"
+        else:
+            steps.append(line)
+    return steps
+
+
+def prepare_lines(raw_text: str) -> list[str]:
+    """The text as the segmenter reads it: one cleaned line per printed
+    line, blank lines dropped. Shared with the learned segmenter (app/ml),
+    which labels exactly these lines. Within bounded_text's limits, for
+    every caller: the learned model's scores for the review view and its
+    training read the stored text as it was, up to a million characters
+    (GPT review of 0175)."""
+    lines = [_normalize_line(l) for l in bounded_text(raw_text or "").split("\n")]
+    return [l for l in lines if l]
+
+
+# Settings -> Learning: a model trained on the user's own corrected imports
+# (app/ml/segmenter.py). Set by app/ml/service.py when one is in use; it
+# gets the text and this module's own result, and returns its result or
+# None to keep the rules' one.
+_learned_segmenter = None
+
+
+def set_learned_segmenter(fn):
+    global _learned_segmenter
+    _learned_segmenter = fn
+
+
+# What the segmenter reads of a text. Parts of it take time growing with
+# the square of the size: an email body of 62 KB whose lines each go on
+# from the last took 17 s, 1 MB would be about 75 minutes, and the email
+# was met again at the next scan (review of 0169). A recipe is far smaller.
+SEGMENT_MAX_CHARS = 400_000
+SEGMENT_MAX_LINES = 4_000
+SEGMENT_MAX_LINE = 2_000
+
+
+def bounded_text(raw_text: str) -> str:
+    if not raw_text:
+        return raw_text or ""
+    lines = raw_text[:SEGMENT_MAX_CHARS].split("\n")[:SEGMENT_MAX_LINES]
+    return "\n".join(l[:SEGMENT_MAX_LINE] for l in lines)
+
+
+def text_was_cut(raw_text: str) -> bool:
+    """Whether bounded_text leaves part of this text unread. The review's
+    "Check these" says so: a recipe taken from the start of a very long
+    text (a whole cookbook as one PDF, a long newsletter) otherwise looks
+    as complete as any other (GPT review of 0174)."""
+    return bool(raw_text) and bounded_text(raw_text) != raw_text
+
+
+def segment_raw_text(raw_text: str) -> dict:
+    """Title, ingredients and steps from extracted or OCR'd text: the rules
+    below, or the learned model when one is in use and it beat the rules
+    on the user's own recipes. No LLM either way."""
+    raw_text = bounded_text(raw_text)
+    result = rule_segment_raw_text(raw_text)
+    learned = _learned_segmenter
+    if learned is not None:
+        try:
+            out = learned(raw_text, result)
+            if out is not None:
+                return out
+        except Exception:
+            log.exception("Learned segmenter failed; using the rules' result")
+    return result
+
+
+# "(Donne environ 10 croquettes)", "Makes 12 cookies", "Serves 4",
+# "Portions : 6", "Rendement : 2 litres". The servings, not an ingredient.
+_YIELD = re.compile(
+    r"^\s*\(?\s*(?:donne|makes|serves|yield(?:s)?|rendement|portions?|servings?|pour(?=\s+\d+\s*(?:personnes?|portions?)))\s*:?\s+(.{1,60}?)\s*\)?\s*$",
+    re.IGNORECASE)
+
+
+def _yield_of(line: str) -> str | None:
+    m = _YIELD.match(line)
+    if not m or not re.search(r"\d", m.group(1)):
+        return None
+    return m.group(1).strip(" .")
+
+
+def _is_paragraph_line(line: str) -> bool:
+    """Method text in a paragraph, as a word processor wraps it: a long line
+    with a sentence break inside, or many words, or the usual prose test."""
+    words = line.split()
+    if _QTY_START.match(line) and len(words) < 12:
+        return False
+    return ((len(line) >= 60 and (re.search(r"[.!?]\s+\S", line) is not None or len(words) >= 10))
+            or _is_prose(line))
+
+
+def _join_paragraph(lines):
+    """Lines of one paragraph, joined; a word split at the line end
+    ("Mille-" + "Îles") is put back together."""
+    text = ""
+    for line in lines:
+        line = line.strip()
+        if text.endswith("-") and len(text) > 1 and text[-2].isalpha() and line[:1].isalpha():
+            text += line
+        else:
+            text = f"{text} {line}".strip()
+    return text
+
+
+def _component_recipe(body: list[str]):
+    """A recipe in parts with no Ingredients/Method headings, as written in
+    a word processor: [part name] ingredient lines, a method paragraph,
+    then the next part ("Sauce tartare", its ingredients, "Mix
+    everything."). Returns (ingredients, steps, servings), or None when the
+    text isn't laid out that way (at least two parts, each a run of
+    ingredients followed by method text)."""
+    kinds = []
+    servings = None
+    for line in body:
+        prev_kind, prev_line = (kinds[-1], body[len(kinds) - 1]) if kinds else (None, "")
+        if _yield_of(line) and servings is None:
+            servings = _yield_of(line)
+            kinds.append("yield")
+        elif (prev_kind == "prose" and not re.search(r"[.!?:]\s*$", prev_line)
+              and not (line.isupper() and len(line.split()) <= 4 and not re.search(r"[.!?]\s*$", line))):
+            # The paragraph goes on, unless this is a part name in capitals
+            # ("SALAD") after a paragraph whose full stop OCR read as a comma.
+            kinds.append("prose")
+        elif _is_prose(line):                         # "9 Cook the garlic." is a circled step number
+            kinds.append("prose")
+        elif _QTY_START.match(line) or (_INGREDIENT_TAIL.search(line) and len(line.split()) <= 12):
+            kinds.append("ing")
+        elif _is_paragraph_line(line):
+            kinds.append("prose")
+        elif len(line.split()) <= 5 and not re.search(r"[.!?]\s*$", line) and (
+                line.rstrip().endswith(":") or line.isupper() or prev_kind == "prose"
+                or all(w[:1].isupper() for w in line.split() if len(w) > 2)):
+            # "Panure :", "SAUCE", "Sauce Tartare", or any short line
+            # right after a method paragraph; not "Jus et zeste d'un citron".
+            kinds.append("label")
+        else:
+            kinds.append("ing")
+    # Runs of the same kind, in order.
+    runs = []
+    for kind, line in zip(kinds, body):
+        if kind == "yield":
+            continue
+        if runs and runs[-1][0] == kind and kind != "label":
+            runs[-1][1].append(line)
+        else:
+            runs.append((kind, [line]))
+    # A part: two or more ingredient lines, then method text.
+    parts = sum(1 for i, (k, _) in enumerate(runs)
+                if k == "prose" and i > 0 and runs[i - 1][0] == "ing" and len(runs[i - 1][1]) >= 2)
+    if parts < 2:
+        return None
+
+    def label_text(line):
+        label = line.strip().rstrip(":").strip()
+        if label.isupper():
+            label = label.capitalize()
+        return f"{label}:"
+
+    ingredients, steps = [], []
+    after_method = False      # a part name follows a method paragraph
+    part_label = None
+    for n, (kind, lines) in enumerate(runs):
+        if kind == "label":
+            if n + 1 < len(runs) and runs[n + 1][0] == "label":
+                continue          # nothing under it: a byline ("LES BRIGANDS"), not a part
+            label = label_text(lines[0])
+            ingredients.append(label)
+            if after_method:
+                part_label = label
+            after_method = False
+        elif kind == "ing":
+            ingredients += _clean_ingredients(lines)
+            after_method = False
+        else:
+            if part_label:
+                steps.append(part_label)
+                part_label = None
+            steps.append(_join_paragraph(lines))
+            after_method = True
+    return ingredients, steps, servings
+
+
+def rule_segment_raw_text(raw_text: str) -> dict:
+    """
+    Heuristic segmentation of raw extracted/OCR'd text into title/ingredients/steps.
+    No LLM. Used as a starting point for the manual-review screen -- expected to
+    need correction on inconsistent layouts, especially OCR output.
+
+    When "Ingredients" appears more than once (a blog post that talks about
+    ingredients before its recipe card), the heading followed by the most
+    quantity lines is the one used.
+    """
+    lines = prepare_lines(bounded_text(raw_text))
+
+    ing_idx = [i for i, l in enumerate(lines) if HEADING_INGREDIENTS.match(l)]
+    step_idx = [i for i, l in enumerate(lines) if HEADING_STEPS.match(l)]
+
+    ingredients, steps = [], []
+    left_out = []
+    chosen_ing = None
+    servings = next((y for y in (_yield_of(l) for l in lines[:12]) if y), None)
+
+    if ing_idx and step_idx:
+        best = None
+        for i in ing_idx:
+            after = [s for s in step_idx if s > i]
+            before = [s for s in step_idx if s < i]
+            if after:
+                s = after[0]
+                ing_block, step_block = lines[i + 1:s], lines[s + 1:]
+                nxt = [j for j in ing_idx if j > s]
+                if nxt:
+                    step_block = lines[s + 1:nxt[0]]
+            else:
+                s = before[-1]
+                step_block, ing_block = lines[s + 1:i], lines[i + 1:]
+            score = sum(1 for l in ing_block if _QTY_START.match(l))
+            if best is None or score > best[0]:
+                best = (score, i, ing_block, step_block)
+        _, chosen_ing, ing_block, step_block = best
+        ingredients = _clean_ingredients(ing_block)
+        steps = _clean_steps(step_block)
+    elif ing_idx:
+        # "Ingredients" but no "Instructions" heading -- common in emails
+        # and notes, where the steps are just a numbered list. The
+        # ingredients end where the first numbered step begins.
+        i = max(ing_idx, key=lambda j: sum(1 for l in lines[j + 1:j + 40] if _QTY_START.match(l)))
+        chosen_ing = i
+        rest = lines[i + 1:]
+        first_step = next((k for k, l in enumerate(rest)
+                           if _numbered_step(l) and not _QTY_START.match(_STEP_START.sub("", l))), None)
+        if first_step is None:
+            # No numbered step either: the steps are the first method text
+            # after an ingredient, as where there are no headings ("HEAT the
+            # ingredients and PUT…", "BLEND and SERVE."). Everything had
+            # become ingredients (Claude review of 0165, 4 pages of 9).
+            # The lines before it must read as items, short and not
+            # sentences: an article's "Ingredients" section of paragraphs
+            # ("Butter. Use your favourite brand…") isn't a recipe.
+            prose = next((k for k, l in enumerate(rest) if _is_prose(l) or (k > 0 and _short_step(l))), None)
+            if prose and all(len(_OCR_BULLET.sub("", l).split()) <= 10 for l in rest[:prose]):
+                ingredients = _clean_ingredients(rest[:prose])
+                steps = _prose_steps(rest[prose:])
+            else:
+                ingredients = _clean_ingredients(rest)
+        else:
+            ingredients = _clean_ingredients(rest[:first_step])
+            steps = _clean_steps(rest[first_step:])
+    else:
+        # No headings at all: an app screenshot with a checklist of
+        # ingredients, then the method. Ingredients are the quantity lines;
+        # the steps are the prose after the last of them. Apps draw step
+        # numbers in circles, which OCR reads as "@", "9", "©" or "faa)",
+        # so steps are split at sentence ends rather than by number.
+        body = [l for l in lines[1:] if not _is_junk(l)]
+        parts = _component_recipe(body)
+        qty = [k for k, l in enumerate(body) if QUANTITY_LEAD.match(l) and not _is_prose(l)]
+        prose = [k for k, l in enumerate(body)
+                 if _is_prose(l) or (qty and k > qty[-1] and _short_step(l))]
+        if parts:
+            ingredients, steps, servings = parts
+        elif qty and prose and prose[-1] > qty[-1] and len(qty) >= 2:
+            first = next(k for k in prose if k > qty[-1])
+            # Everything from the first measured line up to the method,
+            # including unmeasured lines like "Salt and pepper to taste".
+            # A part name in capitals just above or among them ("SIFT",
+            # "WISH") is kept as a part name (owner's cookie page).
+            block = body[:first]
+            labels = {k for k in range(len(block)) if _part_label_at(block, k)}
+            start = qty[0] - 1 if qty[0] - 1 in labels else qty[0]
+            ingredients = [_caps_label(l) if k in labels else l for k, l in enumerate(block) if k >= start]
+            steps = _prose_steps(body[first:])
+            # Short lines above the first measured one are left out (a
+            # byline, a yield, but also ingredients OCR read without their
+            # amount: "Ye of a pork shoulder" for "1/2"). Named for the
+            # review's "Check these" (review of 0169).
+            left_out = [l for l in body[:start] if len(l.split()) <= 8 and not _is_prose(l)
+                        and not _yield_of(l) and not _caps_label(l)]
+        else:
+            for line in body:
+                if NUMBERED_STEP.match(line):
+                    steps.append(NUMBERED_STEP.sub("", line))
+                elif QUANTITY_LEAD.match(line):
+                    ingredients.append(line)
+
+    # A yield line read as an ingredient ("Makes 12 cookies") is the servings.
+    ingredients = [l for l in ingredients if not _yield_of(l)]
+    # Without an Ingredients heading, the first measured line marks where
+    # the ingredients start, for the title's "repeated line" rule.
+    first_ing = chosen_ing if chosen_ing is not None else next(
+        (k for k, l in enumerate(lines) if _QTY_START.match(l)), None)
+    return {
+        "title_guess": _guess_title(lines, chosen_ing, first_ing),
+        "ingredients": ingredients,
+        "steps": steps,
+        "servings": servings,
+        "left_out": left_out,
+    }

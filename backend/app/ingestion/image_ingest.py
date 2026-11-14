@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from .pdf_ingest import segment_raw_text, MAX_OCR_PIXELS, ocr_text_and_confidence  # reuse the same heuristic segmentation and pixel budget
+from .ocr import MAX_OCR_PIXELS, ocr_text_and_confidence  # the same pixel budget and reading as a PDF page
+from .segment import segment_raw_text
 from .deskew import deskew_grayscale, auto_orient, darkest_channel, crop_to_page
 from ..file_validation import IMAGE_FORMATS, JPEG_QUALITY
 from ..logging_setup import get_logger
@@ -47,7 +48,7 @@ def _preprocess(image_path: str):
     gray = deskew_grayscale(np.array(oriented))
 
     h, w = gray.shape
-    # As in pdf_ingest._preprocess_for_ocr: cap the upscale (and any
+    # As in ocr._preprocess_for_ocr: cap the upscale (and any
     # already-oversized upload) at the same pixel budget, so an extreme
     # aspect ratio -- a 20 x 40000 px upload -- can't multiply out to
     # gigapixels before Tesseract ever sees it.

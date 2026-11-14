@@ -8,7 +8,8 @@ from .. import schemas
 from ..database import get_db, UPLOADS_DIR, TMP_DIR
 from ..ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
 from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
-from ..ingestion.pdf_ingest import extract_pdf_text, segment_raw_text, PdfTooLargeError
+from ..ingestion.pdf_read import PdfTooLargeError, extract_pdf_text
+from ..ingestion.segment import segment_raw_text
 from ..ingestion.image_ingest import ingest_and_segment, ingest_image
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import suggest_tags, explain_tags

@@ -31,7 +31,7 @@ import numpy as np
 
 from ..database import DATA_DIR
 from ..logging_setup import get_logger
-from ..ingestion import pdf_ingest, tagger
+from ..ingestion import segment, tagger
 from . import segmenter, tags as tag_ml
 from .linear import DIM
 
@@ -167,7 +167,7 @@ def _apply(seg_model, tag_model):
     """Hands the models to the importers (or takes them away)."""
     global _seg_model
     _seg_model = seg_model
-    pdf_ingest.set_learned_segmenter(seg_model.segment if seg_model else None)
+    segment.set_learned_segmenter(seg_model.segment if seg_model else None)
     tagger.set_learned_tagger(_learned_tagger(tag_model) if tag_model else None)
 
 
@@ -220,10 +220,10 @@ def uncertain_lines(raw_text: str) -> set[str] | None:
     if model is None or not raw_text:
         return None
     try:
-        lines = pdf_ingest.prepare_lines(raw_text)
+        lines = segment.prepare_lines(raw_text)
         if len(lines) < 2:
             return set()
-        rules = segmenter.rule_labels(lines, pdf_ingest.rule_segment_raw_text(raw_text))
+        rules = segmenter.rule_labels(lines, segment.rule_segment_raw_text(raw_text))
         path, probs = model.label(lines, rules)
         return {l for i, (l, y) in enumerate(zip(lines, path))
                 if y in (segmenter.ING, segmenter.STEP) and probs[i, y] < UNSURE_BELOW}

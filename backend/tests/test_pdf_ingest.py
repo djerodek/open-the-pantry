@@ -719,14 +719,14 @@ def test_ingredients_beside_the_method_are_read_apart(tmp_path):
 
 
 def test_a_page_is_read_again_as_whole_lines_only_when_incomplete(monkeypatch):
-    from app.ingestion import pdf_ingest
+    from app.ingestion import ocr, pdf_ingest
     complete = "Cake\nIngredients\n2 cups flour\n1 cup sugar\nMethod\n1. Mix the flour and sugar.\n"
     calls = []
 
     def fake(processed, config):
         calls.append(config)
         return (complete if config else readings[0]), 90.0
-    monkeypatch.setattr(pdf_ingest, "_ocr_once", fake)
+    monkeypatch.setattr(ocr, "_ocr_once", fake)
     readings = [complete]
     assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == complete and calls == [None]
     calls.clear()
@@ -765,7 +765,7 @@ def test_a_method_cut_into_strips_is_read_again_as_whole_lines(monkeypatch):
     read again. A step whose first two words are lowercase now asks for the
     whole-line reading, kept when it has fewer such steps. A stray letter
     for a step number ("w Beat") is followed by a capital and doesn't."""
-    from app.ingestion import pdf_ingest
+    from app.ingestion import ocr, pdf_ingest
     head = "Rice Pancakes\nIngredients\n2 cups rice\n1 cup lentils\n1 tsp salt\nMethod\n"
     strips = head + ("SOAK the rice and the lentils in separate bowls overnight.\n\n"
                      "re to its bowl and blend the lentils the same way.\n\n"
@@ -780,7 +780,7 @@ def test_a_method_cut_into_strips_is_read_again_as_whole_lines(monkeypatch):
     def fake(processed, config):
         calls.append(config)
         return (whole if config else readings[0]), 90.0
-    monkeypatch.setattr(pdf_ingest, "_ocr_once", fake)
+    monkeypatch.setattr(ocr, "_ocr_once", fake)
     readings = [strips]
     assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == whole
     assert calls == [None, "--psm 4"]
@@ -790,7 +790,7 @@ def test_a_method_cut_into_strips_is_read_again_as_whole_lines(monkeypatch):
     # The second reading is kept only if it's better on that count.
     calls.clear()
     readings = [strips]
-    monkeypatch.setattr(pdf_ingest, "_ocr_once", lambda p, c: (calls.append(c) or (strips if c else readings[0]), 90.0))
+    monkeypatch.setattr(ocr, "_ocr_once", lambda p, c: (calls.append(c) or (strips if c else readings[0]), 90.0))
     assert pdf_ingest.ocr_text_and_confidence(Image.new("L", (10, 10)))[0] == strips
 
 

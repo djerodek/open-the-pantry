@@ -99,7 +99,7 @@ def needs_ocr(case: Path, meta: dict) -> bool:
 
 
 def _segmented(raw_text: str) -> dict:
-    from .ingestion.pdf_ingest import rule_segment_raw_text
+    from .ingestion.segment import rule_segment_raw_text
     seg = rule_segment_raw_text(raw_text)
     return {"title": seg.get("title_guess") or "", "ingredients": list(seg.get("ingredients") or []),
             "steps": list(seg.get("steps") or []), "servings": seg.get("servings")}
@@ -121,7 +121,7 @@ def run_case(case: Path, meta: dict | None = None) -> dict:
         if t == "text":
             return _segmented((case / "input.txt").read_text(encoding="utf-8"))
         if t == "pdf":
-            from .ingestion.pdf_ingest import extract_pdf_text
+            from .ingestion.pdf_read import extract_pdf_text
             return _segmented(extract_pdf_text(str(case / "input.pdf")).raw_text)
         if t == "image":
             # As Add from photos does: each upload re-encoded, read in
