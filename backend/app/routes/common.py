@@ -288,6 +288,28 @@ def _apply_tags(db: Session, recipe: models.Recipe, tag_ins: list[schemas.TagIn]
     recipe.tags_text = " ".join(t.name for t in recipe.tags)
 
 
+def _add_recipe(db: Session, fields: dict, ingredients: list[dict], steps: list[str],
+                tag_ins: list[schemas.TagIn], **extra) -> models.Recipe:
+    """Adds a recipe saved without a review screen (a batch import, an
+    emailed recipe) with its ingredients, steps and tags; flushed, not
+    committed. fields, ingredients, steps: from schemas.fit_recipe."""
+    recipe = models.Recipe(**fields, **extra)
+    db.add(recipe)
+    db.flush()
+    _add_lines(db, recipe, ingredients, steps)
+    _apply_tags(db, recipe, tag_ins)
+    return recipe
+
+
+def _add_lines(db: Session, recipe: models.Recipe, ingredients: list[dict], steps: list[str]):
+    """A recipe's ingredients (Ingredient fields) and steps, in order. The
+    recipe needs its id: flushed first."""
+    for pos, ing in enumerate(ingredients):
+        db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
+    for pos, step in enumerate(steps):
+        db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
+
+
 def _promote_temp_file(temp_filename: str | None, current: str | None = None) -> str | None:
     """Move a draft file from TMP_DIR into UPLOADS_DIR at save time.
 

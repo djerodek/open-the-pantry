@@ -4,7 +4,7 @@ import os
 import uuid
 from fastapi import Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from .. import models, schemas
+from .. import schemas
 from ..database import get_db, UPLOADS_DIR, TMP_DIR
 from ..ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
 from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
@@ -15,7 +15,7 @@ from ..ingestion.tagger import suggest_tags, explain_tags
 from ..backup import remove_upload_file
 from .. import duplicates
 from ..file_validation import is_safe_stored_filename, safe_join
-from .common import _apply_tags, _download_and_save_showcase_image, _extract_pdf_showcase_image, _run_heavy, _save_upload_streaming
+from .common import _add_recipe, _download_and_save_showcase_image, _extract_pdf_showcase_image, _run_heavy, _save_upload_streaming
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -134,15 +134,9 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
                 {"title": result.title, "source_url": url, "servings": result.servings, "prep_time": result.prep_time,
                  "cook_time": result.cook_time, "total_time": result.total_time, "raw_text": result.raw_text},
                 parsed_ingredients, result.steps)
-            recipe = models.Recipe(**fields, source_type="url", image_path=image_path, needs_review=True)
-            db.add(recipe)
-            db.flush()
-            for pos, ing in enumerate(parsed_ingredients):
-                db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-            for pos, step in enumerate(steps):
-                db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
-            tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
-            _apply_tags(db, recipe, tag_ins)
+            recipe = _add_recipe(db, fields, parsed_ingredients, steps,
+                                 [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions],
+                                 source_type="url", image_path=image_path, needs_review=True)
             db.commit()
             succeeded.append({"url": url, "recipe_id": recipe.id, "title": result.title,
                               "duplicate_of": same_title[0] if same_title else None})
@@ -259,16 +253,9 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
             fields, parsed_ingredients, steps = schemas.fit_recipe(
                 {"title": segmented["title_guess"], "servings": segmented.get("servings"),
                  "raw_text": pdf_result.raw_text}, parsed_ingredients, segmented["steps"])
-            recipe = models.Recipe(**fields, source_type="pdf", ocr_confidence=pdf_result.avg_ocr_confidence,
-                                   needs_review=True)
-            db.add(recipe)
-            db.flush()
-            for pos, ing in enumerate(parsed_ingredients):
-                db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-            for pos, step in enumerate(steps):
-                db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
-            tag_ins = [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions]
-            _apply_tags(db, recipe, tag_ins)
+            recipe = _add_recipe(db, fields, parsed_ingredients, steps,
+                                 [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions],
+                                 source_type="pdf", ocr_confidence=pdf_result.avg_ocr_confidence, needs_review=True)
             db.commit()
             succeeded.append({"filename": file.filename, "recipe_id": recipe.id, "title": recipe.title,
                               "duplicate_of": same_title[0] if same_title else None})

@@ -21,7 +21,7 @@ from .. import i18n
 from .. import duplicates
 from ..ml import service as learning
 from ..file_validation import safe_join
-from .common import _apply_tags, _attachment_disposition, _demote_to_tmp, _discard_temp_file, _iso_utc, _promote_temp_file, _restoring, _run_heavy, _utc_now
+from .common import _add_recipe, _attachment_disposition, _demote_to_tmp, _discard_temp_file, _iso_utc, _promote_temp_file, _restoring, _run_heavy, _utc_now
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -55,6 +55,31 @@ def _pending_notification_count(settings: models.EmailIngestSettings) -> int:
     from sqlalchemy.orm import object_session
     s = object_session(settings)
     return s.query(models.EmailNotificationQueueItem).count() if s is not None else 0
+
+
+def _send_with_settings(settings: models.EmailIngestSettings, send) -> None:
+    """Logs in to the outgoing server with the saved settings, calls
+    send(smtp), and logs out. Raises what the login or the send raised."""
+    password = crypto.decrypt_secret(settings.password_encrypted)
+    smtp = email_client.connect_smtp(
+        settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
+    )
+    try:
+        send(smtp)
+    finally:
+        try:
+            smtp.quit()
+        except Exception:
+            log.debug("SMTP logout failed; the message was already handed over or not", exc_info=True)
+
+
+def _mark_seen(imap, msg_id) -> None:
+    """Marks a message read. A failure only means the next scan looks at it
+    again."""
+    try:
+        email_client.mark_seen(imap, msg_id)
+    except Exception:
+        scan_log.debug("mark_seen failed for message %s", msg_id.decode(errors="replace"), exc_info=True)
 
 
 def _record_scan_problem(db: Session, settings: models.EmailIngestSettings, text: str):
@@ -116,20 +141,8 @@ def _flush_notifications(db: Session, settings: models.EmailIngestSettings, forc
         body_lines.extend(f"  - {i18n.translate(q.message, lang)}" for q in failures)
 
     try:
-        password = crypto.decrypt_secret(settings.password_encrypted)
-        smtp = email_client.connect_smtp(
-            settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
-        )
-        try:
-            email_client.send_email(
-                smtp, settings.username, settings.notify_email, subject, "\n".join(body_lines)
-            )
-        finally:
-            try:
-                smtp.quit()
-            except Exception:
-                log.debug("_flush_notifications: caught error, continuing", exc_info=True)
-                pass
+        _send_with_settings(settings, lambda smtp: email_client.send_email(
+            smtp, settings.username, settings.notify_email, subject, "\n".join(body_lines)))
     except Exception as e:
         scan_log.warning("Result email not sent; %d item(s) stay queued", len(queued), exc_info=True)
         _record_scan_problem(db, settings, f"The result email couldn't be sent: {e}")
@@ -155,14 +168,6 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
         {k: result.get(k) for k in ("title", "source_url", "servings", "prep_time", "cook_time", "total_time",
                                      "raw_text")}, result["ingredients"], result["steps"])
     try:
-        recipe = models.Recipe(**fields, source_type="email", ocr_confidence=result.get("ocr_confidence"),
-                               image_path=image_path, needs_review=True)
-        db.add(recipe)
-        db.flush()
-        for pos, ing in enumerate(ingredients):
-            db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **ing))
-        for pos, step in enumerate(steps):
-            db.add(models.Step(recipe_id=recipe.id, position=pos, text=step))
         # A suggested tag that doesn't fit TagIn (a name over 100 characters
         # from a restored library) is left off, not the whole recipe
         # (DeepSeek review of 0132).
@@ -174,7 +179,8 @@ def _save_email_recipe(db: Session, result: dict, subject: str) -> int:
                 # Expected for such a tag: the name is enough, no traceback
                 # (GPT review of 0134).
                 log.warning("Email: suggested tag %r left off: not a valid tag", str(t.get("name"))[:60])
-        _apply_tags(db, recipe, tag_ins)
+        recipe = _add_recipe(db, fields, ingredients, steps, tag_ins, source_type="email",
+                             ocr_confidence=result.get("ocr_confidence"), image_path=image_path, needs_review=True)
         db.commit()
     except Exception:
         log.debug("_save_email_recipe: caught error, continuing", exc_info=True)
@@ -295,10 +301,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                         scan_log.warning("Scan: ignored message %s from %s: sender not in the allowed list",
                                          msg_id.decode(errors="replace"), sender)
                         messages.append(f"IGNORED: an email from {sender}: sender isn't on the allowed list.")
-                        try:
-                            email_client.mark_seen(imap, msg_id)
-                        except Exception:
-                            scan_log.debug("mark_seen failed for ignored message", exc_info=True)
+                        _mark_seen(imap, msg_id)
                         continue
                     msg = email_client.fetch_full_message(imap, msg_id, size_checked=True)
                 except email_client.MessageTooLargeError as e:
@@ -308,21 +311,14 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     line = f"(message {msg_id.decode(errors='replace')}): {e}"
                     messages.append(f"FAILED: {line}")
                     _queue_notification(db, False, line)
-                    try:
-                        email_client.mark_seen(imap, msg_id)
-                    except Exception:
-                        log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
-                        pass
+                    _mark_seen(imap, msg_id)
                     continue
                 subject = email_client.decode_subject(msg.get("Subject", "")) or subject
                 if not _sender_allowed(msg.get("From", ""), _parse_allowed_senders(settings.allowed_senders)):
                     shown = str(msg.get("From", "?"))[:email_client.SENDER_SHOWN]
                     scan_log.warning("Scan: ignored %r from %s: sender not in the allowed list", subject, shown)
                     messages.append(f"IGNORED: \"{subject}\" from {shown}: sender isn't on the allowed list.")
-                    try:
-                        email_client.mark_seen(imap, msg_id)
-                    except Exception:
-                        scan_log.debug("mark_seen failed for ignored message", exc_info=True)
+                    _mark_seen(imap, msg_id)
                     continue
                 scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
                 result = _run_heavy(process_tagged_email, msg, TMP_DIR)
@@ -368,11 +364,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             # Reached for success and for "no recipe in this email". Marked
             # read in both cases -- otherwise an email that can never be
             # parsed would be retried on every future scan.
-            try:
-                email_client.mark_seen(imap, msg_id)
-            except Exception:
-                log.debug("_run_email_scan_inner: caught error, continuing", exc_info=True)
-                pass
+            _mark_seen(imap, msg_id)
     finally:
         try:
             imap.logout()
@@ -845,19 +837,8 @@ def email_recipe_pdf(recipe_id: schemas.DbId, payload: schemas.RecipeEmailReques
     filename = unquote(filename)
 
     try:
-        password = crypto.decrypt_secret(settings.password_encrypted)
-        smtp = email_client.connect_smtp(
-            settings.smtp_host, settings.smtp_port, settings.username, password, settings.smtp_use_tls
-        )
-        try:
-            email_client.send_email_with_attachment(
-                smtp, settings.username, to, subject, body, pdf_bytes, filename,
-            )
-        finally:
-            try:
-                smtp.quit()
-            except Exception:
-                log.debug("email_recipe_pdf: quit failed", exc_info=True)
+        _send_with_settings(settings, lambda smtp: email_client.send_email_with_attachment(
+            smtp, settings.username, to, subject, body, pdf_bytes, filename))
     except Exception as e:
         log.warning("email_recipe_pdf: send failed for recipe %s", recipe_id, exc_info=True)
         _uncount()

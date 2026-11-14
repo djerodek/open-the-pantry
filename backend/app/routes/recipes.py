@@ -24,7 +24,7 @@ from .. import duplicates
 from .. import interchange
 from ..ml import service as learning
 from ..file_validation import safe_join
-from .common import _apply_tags, _attachment_disposition, _copy_upload, _delete_recipe_files, _demote_to_tmp, _get_or_create_tags, _ingredient_fields, _iso_utc, _logged_minutes, _promote_temp_file, _split_keywords, _utc_now, refresh_user_keywords
+from .common import _add_lines, _apply_tags, _attachment_disposition, _copy_upload, _delete_recipe_files, _demote_to_tmp, _get_or_create_tags, _ingredient_fields, _iso_utc, _logged_minutes, _promote_temp_file, _split_keywords, _utc_now, refresh_user_keywords
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -64,13 +64,7 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
         )
         db.add(recipe)
         db.flush()
-
-        for pos, ing in enumerate(payload.ingredients):
-            db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **_ingredient_fields(ing)))
-
-        for pos, step_text in enumerate(payload.steps):
-            db.add(models.Step(recipe_id=recipe.id, position=pos, text=step_text))
-
+        _add_lines(db, recipe, [_ingredient_fields(i) for i in payload.ingredients], payload.steps)
         _apply_tags(db, recipe, payload.tags)
 
         db.commit()
@@ -633,10 +627,7 @@ def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Se
 
         db.query(models.Ingredient).filter_by(recipe_id=recipe.id).delete()
         db.query(models.Step).filter_by(recipe_id=recipe.id).delete()
-        for pos, ing in enumerate(payload.ingredients):
-            db.add(models.Ingredient(recipe_id=recipe.id, position=pos, **_ingredient_fields(ing)))
-        for pos, step_text in enumerate(payload.steps):
-            db.add(models.Step(recipe_id=recipe.id, position=pos, text=step_text))
+        _add_lines(db, recipe, [_ingredient_fields(i) for i in payload.ingredients], payload.steps)
 
         _apply_tags(db, recipe, payload.tags)
 

@@ -239,20 +239,28 @@ def run(db: Session, q: str) -> dict:
     out = {"matched": None, "excluded": set(), "rank": {}, "snippets": {}, "corrected": built["corrected"]}
     if built["include"]:
         matched: dict[int, set[str]] = {}
-        rows = db.execute(text(
-            f"SELECT rowid, bm25(recipes_fts, {BM25_WEIGHTS}), "
-            f"highlight(recipes_fts, 0, :a, :b), "
-            f"snippet(recipes_fts, 3, :a, :b, '…', 10), snippet(recipes_fts, 4, :a, :b, '…', 10), "
-            f"snippet(recipes_fts, 1, :a, :b, '…', 10) "
-            f"FROM recipes_fts WHERE recipes_fts MATCH :m"),
-            {"m": f"{TEXT_COLUMNS} : ({built['include']})", "a": MARK_START, "b": MARK_END}).fetchall()
-        for rowid, score, title, *excerpts in rows:
-            matched.setdefault(rowid, set()).add("text")
-            out["rank"][rowid] = score
+
+        def with_excerpts(columns):
+            # Score, the title highlighted, and excerpts around the words
+            # found: ingredients and steps, notes, then the original text.
+            return db.execute(text(
+                f"SELECT rowid, bm25(recipes_fts, {BM25_WEIGHTS}), highlight(recipes_fts, 0, :a, :b), "
+                f"snippet(recipes_fts, 3, :a, :b, '…', 10), snippet(recipes_fts, 4, :a, :b, '…', 10), "
+                f"snippet(recipes_fts, 1, :a, :b, '…', 10) "
+                f"FROM recipes_fts WHERE recipes_fts MATCH :m"),
+                {"m": f"{columns} : ({built['include']})", "a": MARK_START, "b": MARK_END}).fetchall()
+
+        def keep_excerpt(rowid, title, excerpts):
+            # Shown under the title only when the title itself has no match.
             if MARK_START not in (title or ""):
                 found = next((e for e in excerpts if e and MARK_START in e), None)
                 if found:
                     out["snippets"][rowid] = found
+
+        for rowid, score, title, *excerpts in with_excerpts(TEXT_COLUMNS):
+            matched.setdefault(rowid, set()).add("text")
+            out["rank"][rowid] = score
+            keep_excerpt(rowid, title, excerpts)
         for rowid, score in db.execute(text(
                 f"SELECT rowid, bm25(recipes_fts, {BM25_WEIGHTS}) FROM recipes_fts WHERE recipes_fts MATCH :m"),
                 {"m": f"{TAG_COLUMNS} : ({built['include']})"}).fetchall():
@@ -261,20 +269,12 @@ def run(db: Session, q: str) -> dict:
         # Words found partly in the text, partly in the tags ("chicken
         # dinner" for Roast chicken tagged Dinner) match neither query
         # above; one MATCH over every column decides (review of 0158).
-        for rowid, score, title, *excerpts in db.execute(text(
-                f"SELECT rowid, bm25(recipes_fts, {BM25_WEIGHTS}), highlight(recipes_fts, 0, :a, :b), "
-                f"snippet(recipes_fts, 3, :a, :b, '…', 10), snippet(recipes_fts, 4, :a, :b, '…', 10), "
-                f"snippet(recipes_fts, 1, :a, :b, '…', 10) "
-                f"FROM recipes_fts WHERE recipes_fts MATCH :m"),
-                {"m": f"{ALL_COLUMNS} : ({built['include']})", "a": MARK_START, "b": MARK_END}).fetchall():
+        for rowid, score, title, *excerpts in with_excerpts(ALL_COLUMNS):
             if rowid in matched:
                 continue
             matched[rowid] = {"text", "tag"}
             out["rank"][rowid] = score
-            if MARK_START not in (title or ""):
-                found = next((e for e in excerpts if e and MARK_START in e), None)
-                if found:
-                    out["snippets"][rowid] = found
+            keep_excerpt(rowid, title, excerpts)
         out["matched"] = matched
     if built["exclude"]:
         out["excluded"] = {r[0] for r in db.execute(

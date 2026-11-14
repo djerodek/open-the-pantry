@@ -260,6 +260,43 @@
       || null;
   }
 
+  // The tags typed in a form's box (commas or semicolons between them):
+  // the stored tag each matches, else a new custom one. suggested: the
+  // Suggest button's picks, by lower-case name, which win.
+  function tagsFromInput(value, suggested = null) {
+    return value.split(/[,;]/).map((s) => s.trim()).filter(Boolean).map((name) => {
+      const sug = suggested && suggested.get(name.toLowerCase());
+      if (sug) return { name: sug.name, category: sug.category, subgroup: sug.subgroup || null };
+      const known = findTagByLabel(name);
+      return known
+        ? { name: known.name, category: known.category, subgroup: known.subgroup }
+        : { name, category: "custom", subgroup: null };
+    });
+  }
+
+  // A form's ingredients or steps box, one per non-blank line.
+  function linesOf(area) {
+    return area.value.split("\n").filter((l) => l.trim());
+  }
+  const ingredientsOf = (area) => linesOf(area).map((line) => ({ raw_line: line, name: line }));
+
+  // A JSON request's init: fetch(url, jsonBody("POST", payload)).
+  function jsonBody(method, body) {
+    return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  }
+
+  // A file uploaded for a draft, removed from the server once it isn't
+  // wanted. Best effort: one left behind is swept with the drafts folder.
+  function discardDraftFile(name) {
+    return fetch(`${API}/ingest/draft/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  // After recipes were added or changed in bulk: the tag list, the time
+  // filters and the list itself.
+  async function refreshLibrary() {
+    await loadTags(); await loadTimeBuckets(); loadRecipes();
+  }
+
   // -------------------------------------------------------------------
   // Settings modal
   // -------------------------------------------------------------------
@@ -425,10 +462,7 @@
       go.disabled = true;
       status.textContent = tx("Restoring… The app pauses until it's done.");
       try {
-        const res = await adminFetch(`${API}/backup/restore`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: pendingRestore.token }),
-        });
+        const res = await adminFetch(`${API}/backup/restore`, jsonBody("POST", { token: pendingRestore.token }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { status.textContent = apiErrorText(data, res.status); return; }
         restoreConfirm.hidden = true;
@@ -438,7 +472,7 @@
         if (data.email_password_cleared) msg += " " + tx("Enter the email password again in Settings → Email ingest: the one in the backup can't be read on this server.");
         status.textContent = msg;
         announce(msg);
-        await loadTags(); await loadTimeBuckets(); loadRecipes(); refreshBackupStats(); refreshPickerLink();
+        await refreshLibrary(); refreshBackupStats(); refreshPickerLink();
       } catch {
         status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
       } finally {
@@ -511,7 +545,7 @@
           { 1: data.succeeded.length, 2: data.skipped.length, 3: data.failed.length });
         renderBatchResults(results, data);
         announce(status.textContent);
-        if (data.succeeded.length) { await loadTags(); await loadTimeBuckets(); loadRecipes(); refreshBackupStats(); }
+        if (data.succeeded.length) { await refreshLibrary(); refreshBackupStats(); }
       } catch {
         status.textContent = tx("Couldn't reach Open the Pantry. Check your connection and try again.");
       } finally {
@@ -562,10 +596,7 @@
     if (res && res.ok) renderAutoBackup(await res.json());
   }
   async function saveAutoBackup() {
-    const res = await adminFetch(`${API}/backups/schedule`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: autoBackup.enabled.checked, hour: Number(autoBackup.hour.value), keep: Number(autoBackup.keep.value) }),
-    }).catch(() => null);
+    const res = await adminFetch(`${API}/backups/schedule`, jsonBody("PUT", { enabled: autoBackup.enabled.checked, hour: Number(autoBackup.hour.value), keep: Number(autoBackup.keep.value) })).catch(() => null);
     if (res && res.ok) {
       const st = await res.json();
       renderAutoBackup(st);
@@ -706,7 +737,7 @@
         submit.disabled = true;
         status.textContent = "";
         try {
-          const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          const res = await fetch(url, jsonBody("POST", payload));
           if (res.ok) {
             adminOverlay._onClose = null;
             closeModal(adminOverlay);
@@ -936,15 +967,13 @@
     const save = el("button", { class: "btn-primary", type: "button", text: tx("Save login"), onclick: async () => {
       save.disabled = true;
       status.textContent = "";
-      const res = await adminFetch(`${API}/https/credentials`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: userIn.value.trim(), base_url: baseIn.value.trim(),
-          domain: domainIn.value.trim(), token: tokenIn.value.trim() || null }),
-      }).catch(() => null);
+      const res = await adminFetch(`${API}/https/credentials`, jsonBody("PUT", {
+        username: userIn.value.trim(), base_url: baseIn.value.trim(),
+        domain: domainIn.value.trim(), token: tokenIn.value.trim() || null,
+      })).catch(() => null);
       save.disabled = false;
       if (!res || !res.ok) {
-        const body = res ? await res.json().catch(() => ({})) : {};
-        status.textContent = apiErrorText(body, res ? res.status : 0);
+        status.textContent = await responseErrorText(res);
         return;
       }
       announce(tx("cPanel login saved."));
@@ -1042,14 +1071,11 @@
       text: st.enabled ? tx("Apply and renew") : tx("Set up HTTPS"),
       onclick: async () => {
         go.disabled = true;
-        const res = await adminFetch(`${API}/https/setup`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lan_address: lanIn.value.trim(),
-            email: emailIn.value.trim(), port: parseInt(portIn.value, 10) || 8443 }),
-        }).catch(() => null);
+        const res = await adminFetch(`${API}/https/setup`, jsonBody("POST", {
+          lan_address: lanIn.value.trim(), email: emailIn.value.trim(), port: parseInt(portIn.value, 10) || 8443,
+        })).catch(() => null);
         if (!res || !res.ok) {
-          const body = res ? await res.json().catch(() => ({})) : {};
-          announceError(apiErrorText(body, res ? res.status : 0));
+          announceError(await responseErrorText(res));
           go.disabled = false;
           return;
         }
@@ -1180,7 +1206,7 @@
           const list = el("ul", { class: "batch-results-list scan-saved" }, body.saved.map((r) => savedResultRow(r.recipe_id, r.title)));
           statusEl.after(list);
         }
-        if (body.succeeded) { await loadTags(); await loadTimeBuckets(); loadRecipes(); }
+        if (body.succeeded) await refreshLibrary();
       }
       announce(statusEl.textContent.split("\n")[0]);
     } catch {
@@ -1367,10 +1393,7 @@
           cooldown_minutes: parseInt(cooldown.value, 10) || 0,
         };
         if (password.value) payload.password = password.value;
-        const res = await adminFetch(`${API}/email-settings`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const res = await adminFetch(`${API}/email-settings`, jsonBody("PUT", payload));
         if (res.ok) {
           const body = await res.json().catch(() => ({}));
           // Changing the host/username without retyping the password
@@ -1465,13 +1488,9 @@
   }
 
   async function saveRecentRecipients(list) {
-    const res = await adminFetch(`${API}/email-settings/recipients`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipients: list }),
-    });
+    const res = await adminFetch(`${API}/email-settings/recipients`, jsonBody("PUT", { recipients: list }));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(typeof err.detail === "string" ? err.detail : tx("Could not save."));
+      throw new Error(await errorDetail(res, tx("Could not save.")));
     }
     state.mail.recent = (await res.json()).recipients;
   }
@@ -1605,10 +1624,7 @@
         sendBtn.disabled = true;
         status.textContent = tx("Sending…");
         try {
-          const res = await adminFetch(`${API}/recipes/${recipe.id}/email`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ to, message: messageInput.value, include_notes: Boolean(notesBox && notesBox.checked) }),
-          });
+          const res = await adminFetch(`${API}/recipes/${recipe.id}/email`, jsonBody("POST", { to, message: messageInput.value, include_notes: Boolean(notesBox && notesBox.checked) }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             // The full reason (often a long SMTP diagnosis) goes in the
@@ -2358,10 +2374,7 @@
         "aria-label": tx("Leave {1} out of future tag scans", { 1: c.title }),
         onclick: async () => {
           skipBtn.disabled = true;
-          const res = await fetch(`${API}/recipes/${c.id}/autotag-ignore`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ignored: true }),
-          }).catch(() => null);
+          const res = await fetch(`${API}/recipes/${c.id}/autotag-ignore`, jsonBody("PATCH", { ignored: true })).catch(() => null);
           if (!res || !res.ok) { skipBtn.disabled = false; announceError(tx("Couldn't skip that recipe.")); return; }
           boxes.forEach((b) => { const i = tagBoxes.indexOf(b); if (i >= 0) tagBoxes.splice(i, 1); });
           skipBtn.closest("li").remove();
@@ -2396,10 +2409,9 @@
       try {
         const selections = {};
         for (const b of tagBoxes) if (b.checked) (selections[b.dataset.recipe] ||= []).push(b.dataset.tag);
-        const res = await fetch(`${API}/tags/auto-apply`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selections: Object.entries(selections).map(([id, tags]) => ({ id: Number(id), tags })) }),
-        });
+        const res = await fetch(`${API}/tags/auto-apply`, jsonBody("POST", {
+          selections: Object.entries(selections).map(([id, tags]) => ({ id: Number(id), tags })),
+        }));
         if (!res.ok) throw new Error(`error ${res.status}`);
         const done = await res.json();
         autotagResult.innerHTML = "";
@@ -2439,8 +2451,8 @@
       body: body ? JSON.stringify(body) : undefined,
     }).catch(() => null);
     if (!res || !res.ok) {
-      const err = res ? await res.json().catch(() => ({})) : {};
-      announceError(typeof err.detail === "string" ? err.detail : tx("Couldn't save that change."));
+      const fallback = tx("Couldn't save that change.");
+      announceError(res ? await errorDetail(res, fallback) : fallback);
       return null;
     }
     return res.json();
@@ -2615,14 +2627,10 @@
   }
 
   learningEnabled.addEventListener("change", async () => {
-    const res = await fetch(`${API}/learning`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: learningEnabled.checked }),
-    }).catch(() => null);
+    const res = await fetch(`${API}/learning`, jsonBody("PUT", { enabled: learningEnabled.checked })).catch(() => null);
     if (res && res.ok) { renderLearning(await res.json()); return; }
     learningEnabled.checked = !learningEnabled.checked;
-    const body = res ? await res.json().catch(() => ({})) : {};
-    announceError(apiErrorText(body, res ? res.status : 0));
+    announceError(await responseErrorText(res));
   });
 
   learningTrainBtn.addEventListener("click", async () => {
@@ -2636,8 +2644,7 @@
       return;
     }
     learningTrainBtn.disabled = false;
-    const body = res ? await res.json().catch(() => ({})) : {};
-    announceError(apiErrorText(body, res ? res.status : 0));
+    announceError(await responseErrorText(res));
     refreshLearning();
   });
 
@@ -2754,10 +2761,7 @@
     pickerWarning.hidden = true;
     pickerStatusLine.hidden = !want;
     pickerStatusLine.textContent = want ? tx("Starting…") : "";
-    const res = await fetch(`${API}/picker/settings`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: want }),
-    }).catch(() => null);
+    const res = await fetch(`${API}/picker/settings`, jsonBody("PUT", { enabled: want })).catch(() => null);
     if (ticket !== pickerSwitchTicket) return;     // flipped again since; that answer decides
     if (res && res.ok) {
       const st = await res.json();
@@ -2765,8 +2769,7 @@
       renderPickerLink(st);
       return;
     }
-    const body = res ? await res.json().catch(() => ({})) : {};
-    announceError(apiErrorText(body, res ? res.status : 0));
+    announceError(await responseErrorText(res));
     refreshPicker();
   });
 
@@ -2828,10 +2831,7 @@
     buttons.forEach((b) => { b.disabled = true; });
     const status = $("#batch-tags-status");
     status.textContent = tx("Working...");
-    const result = await fetchWithTimeout(`${API}/recipes/batch-tags`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [...state.selectedIds], tag_id: tag.id, action }),
-    });
+    const result = await fetchWithTimeout(`${API}/recipes/batch-tags`, jsonBody("POST", { ids: [...state.selectedIds], tag_id: tag.id, action }));
     buttons.forEach((b) => { b.disabled = false; });
     if (!result.ok) {
       status.textContent = result.status === 404 ? tx("That tag no longer exists.") : writeFailureMessage(result, tx("The selected recipes"));
@@ -2978,10 +2978,7 @@
     const btn = $("#merge-submit");
     btn.disabled = true;
     $("#merge-status").textContent = tx("Working...");
-    const result = await fetchWithTimeout(`${API}/recipes/merge`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keep_id: keep.id, other_id: other.id, take }),
-    });
+    const result = await fetchWithTimeout(`${API}/recipes/merge`, jsonBody("POST", { keep_id: keep.id, other_id: other.id, take }));
     btn.disabled = false;
     if (!result.ok) {
       // A 400 says why (notes or tags over a recipe's limits); show it.
@@ -3014,10 +3011,7 @@
     const label = btn.textContent;
     btn.textContent = tx("Deleting…");
 
-    const result = await fetchWithTimeout(`${API}/recipes/batch-delete`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
+    const result = await fetchWithTimeout(`${API}/recipes/batch-delete`, jsonBody("POST", { ids }));
 
     btn.disabled = false;
     btn.textContent = label;
@@ -3266,8 +3260,7 @@
       res = await fetch(`${API}/recipes/${recipe.id}/reviewed`, { method: "POST" });
     } catch { res = null; }
     if (!res || !res.ok) {
-      const body = res ? await res.json().catch(() => ({})) : {};
-      announceError(res ? apiErrorText(body, res.status) : tx("Couldn't reach Open the Pantry. Check your connection and try again."));
+      announceError(await responseErrorText(res));
       return;
     }
     announce(tx("Marked as checked."));
@@ -3448,6 +3441,12 @@
     return tx("That didn't work (status {1}).", { 1: status });
   }
 
+  // apiErrorText for a failed response, or for none (a request that never
+  // reached the server: res is null).
+  async function responseErrorText(res) {
+    return apiErrorText(res ? await res.json().catch(() => ({})) : {}, res ? res.status : 0);
+  }
+
   // False when offline too (a rejected fetch used to escape as an
   // unhandled error, with nothing on screen). A change made on the recipe
   // page is copied to the list's entry, shown when the page closes: the
@@ -3461,10 +3460,7 @@
 
   async function patchRating(id, payload) {
     try {
-      const res = await fetch(`${API}/recipes/${id}/rating`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(`${API}/recipes/${id}/rating`, jsonBody("PATCH", payload));
       if (res.ok) syncListEntry(id, payload);
       return res.ok;
     } catch {
@@ -3474,10 +3470,7 @@
 
   async function patchNotes(id, notes) {
     try {
-      const res = await fetch(`${API}/recipes/${id}/notes`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes }),
-      });
+      const res = await fetch(`${API}/recipes/${id}/notes`, jsonBody("PATCH", { notes }));
       // The list draws the notes icon from has_notes (DeepSeek review of 0180).
       if (res.ok) syncListEntry(id, { notes: notes || null, has_notes: !!notes });
       return res.ok;
@@ -4084,17 +4077,14 @@
         const upRes = await fetch(`${API}/upload-image`, { method: "POST", body: fd });
         if (!upRes.ok) { announceError(tx("Could not upload photo.")); return; }
         const { stored_file } = await upRes.json();
-        const patchRes = await fetch(`${API}/recipes/${recipe.id}/image`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_path: stored_file }),
-        });
+        const patchRes = await fetch(`${API}/recipes/${recipe.id}/image`, jsonBody("PATCH", { image_path: stored_file }));
         if (patchRes.ok) {
           recipe.image_path = (await patchRes.json()).image_path;
           announce(tx("Photo updated."));
           render();
           loadRecipes();  // keep the list thumbnail in sync
         } else {
-          fetch(`${API}/ingest/draft/${encodeURIComponent(stored_file)}`, { method: "DELETE" }).catch(() => {});
+          discardDraftFile(stored_file);
           announceError(tx("Could not save photo."));
         }
       });
@@ -4111,10 +4101,7 @@
           class: "btn-secondary", type: "button", text: tx("Remove photo"),
           onclick: async () => {
             if (!confirm(tx("Remove this recipe's photo?"))) return;
-            const res = await fetch(`${API}/recipes/${recipe.id}/image`, {
-              method: "PATCH", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ image_path: null }),
-            });
+            const res = await fetch(`${API}/recipes/${recipe.id}/image`, jsonBody("PATCH", { image_path: null }));
             if (res.ok) {
               recipe.image_path = null;
               announce(tx("Photo removed."));
@@ -4184,14 +4171,10 @@
       onclick: async () => {
         suggestBtn.disabled = true;
         try {
-          const res = await fetch(`${API}/tags/suggest`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: titleInput.value, current_tags: currentStoredTagNames(),
-              ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim()),
-              steps: stepsArea.value.split("\n").filter((l) => l.trim()),
-            }),
-          });
+          const res = await fetch(`${API}/tags/suggest`, jsonBody("POST", {
+            title: titleInput.value, current_tags: currentStoredTagNames(),
+            ingredients: linesOf(ingredientsArea), steps: linesOf(stepsArea),
+          }));
           if (!res.ok) throw new Error(`error ${res.status}`);
           const found = await res.json();
           found.forEach((t) => suggestedCats.set(tagLabel(t).toLowerCase(), t));
@@ -4227,15 +4210,7 @@
       class: "btn-primary", type: "button", text: tx("Save changes"),
       onclick: async () => {
         statusLine.textContent = tx("Saving...");
-        const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-        const tagObjs = tagNames.map((name) => {
-          const sug = suggestedCats.get(name.toLowerCase());
-          if (sug) return { name: sug.name, category: sug.category, subgroup: sug.subgroup || null };
-          const known = findTagByLabel(name);
-          return known
-            ? { name: known.name, category: known.category, subgroup: known.subgroup }
-            : { name, category: "custom", subgroup: null };
-        });
+        const tagObjs = tagsFromInput(tagsInput.value, suggestedCats);
 
         const payload = {
           title: titleInput.value.trim() || tx("Untitled Recipe"),
@@ -4255,24 +4230,17 @@
           difficulty_rating: recipe.difficulty_rating || null,
           language: languageSelect.value || null,
           actual_cook_time: recipe.actual_cook_time || null,
-          ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim())
-            .map((line) => ({ raw_line: line, name: line })),
-          steps: stepsArea.value.split("\n").filter((l) => l.trim()),
+          ingredients: ingredientsOf(ingredientsArea),
+          steps: linesOf(stepsArea),
           tags: tagObjs,
         };
 
         try {
-          const res = await fetch(`${API}/recipes/${recipe.id}`, {
-            method: "PUT", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+          const res = await fetch(`${API}/recipes/${recipe.id}`, jsonBody("PUT", payload));
           if (!res.ok) throw new Error(tx("Could not save changes."));
           let updated = await res.json();
           if (includeScan.checked === !!recipe.autotag_ignored) {
-            const r2 = await fetch(`${API}/recipes/${recipe.id}/autotag-ignore`, {
-              method: "PATCH", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ignored: !includeScan.checked }),
-            });
+            const r2 = await fetch(`${API}/recipes/${recipe.id}/autotag-ignore`, jsonBody("PATCH", { ignored: !includeScan.checked }));
             if (r2.ok) updated = await r2.json();
             else announceError(tx("Saved, but the tag-scan setting couldn't be changed."));
           }
@@ -4410,10 +4378,7 @@
       });
       const duration = makeDurationInput(`detail-time-${recipe.id}`, recipe.actual_cook_time);
       const save = async () => {
-        const res = await fetch(`${API}/recipes/${recipe.id}/rating`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ servings: servingsInput.value.trim(), actual_cook_time: duration.getValue() || "" }),
-        }).catch(() => null);
+        const res = await fetch(`${API}/recipes/${recipe.id}/rating`, jsonBody("PATCH", { servings: servingsInput.value.trim(), actual_cook_time: duration.getValue() || "" })).catch(() => null);
         if (res && res.ok) {
           const saved = await res.json();
           recipe.servings = saved.servings;
@@ -4425,8 +4390,7 @@
         }
         // The server's message (a 422's validation list, translated
         // server-side) says what's wrong.
-        const body = res ? await res.json().catch(() => ({})) : {};
-        announceError(apiErrorText(body, res ? res.status : 0));
+        announceError(await responseErrorText(res));
       };
       servingsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
       factsEditor.replaceChildren(
@@ -4560,18 +4524,7 @@
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Revoke late: Safari can still be reading the blob as the click is
-      // handled, and revoking immediately produces an empty file.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      saveBlob(await res.blob(), filename);
       announce(tx("Download started."));
     } catch (err) {
       announceError(tx("Could not prepare the download; opening it instead."));
@@ -4599,7 +4552,8 @@
     document.body.appendChild(a);
     a.click();
     a.remove();
-    // Revoke late: Safari can still be reading the blob as the click is handled.
+    // Revoke late: Safari can still be reading the blob as the click is
+    // handled, and revoking immediately produces an empty file.
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   }
 
@@ -5070,9 +5024,7 @@
   async function discardCurrentDraftFiles() {
     const files = [...state.currentDraftFiles];
     state.currentDraftFiles.clear();
-    await Promise.all(files.map((f) =>
-      fetch(`${API}/ingest/draft/${encodeURIComponent(f)}`, { method: "DELETE" }).catch(() => {})
-    ));
+    await Promise.all(files.map(discardDraftFile));
   }
 
   function trackDraftFile(filename) {
@@ -5134,6 +5086,16 @@
     });
     li.append(text, del);
     return li;
+  }
+
+  // A batch import's answer: what was added and what failed, then the
+  // library refreshed; or the error.
+  async function showBatchResult(res, resultsEl) {
+    const result = await res.json();
+    if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
+    renderBatchResults(resultsEl, result);
+    announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
+    await refreshLibrary();
   }
 
   function renderBatchResults(container, result) {
@@ -5341,13 +5303,9 @@
           e.preventDefault();
           setBusy(true, tx("Fetching recipe..."));
           try {
-            const res = await fetch(`${API}/ingest/url`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: input.value.trim() }),
-            });
+            const res = await fetch(`${API}/ingest/url`, jsonBody("POST", { url: input.value.trim() }));
             if (!res.ok) {
-              const err = await res.json().catch(() => ({}));
-              showPdfFallback(typeof err.detail === "string" ? err.detail : tx("Extraction failed."), null);
+              showPdfFallback(await errorDetail(res, tx("Extraction failed.")), null);
               return;
             }
             const draft = await res.json();
@@ -5379,15 +5337,8 @@
           }
           setBusy(true, tx("Fetching {1} recipe(s)...", { 1: urls.length }));
           try {
-            const res = await fetch(`${API}/ingest/url/batch`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ urls }),
-            });
-            const result = await res.json();
-            if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
-            renderBatchResults(resultsEl, result);
-            announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
-            await loadTags(); await loadTimeBuckets(); loadRecipes();
+            const res = await fetch(`${API}/ingest/url/batch`, jsonBody("POST", { urls }));
+            await showBatchResult(res, resultsEl);
           } catch {
             alert(tx("Batch import failed."));
           } finally { setBusy(false); }
@@ -5509,11 +5460,7 @@
             const fd = new FormData();
             for (const f of input.files) fd.append("files", f);
             const res = await fetch(`${API}/ingest/pdf/batch`, { method: "POST", body: fd });
-            const result = await res.json();
-            if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
-            renderBatchResults(resultsEl, result);
-            announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
-            await loadTags(); await loadTimeBuckets(); loadRecipes();
+            await showBatchResult(res, resultsEl);
           } catch {
             alert(tx("Batch import failed."));
           } finally { setBusy(false); }
@@ -5722,13 +5669,7 @@
         if (!(await dupGuard.allowSave())) return;
         setBusy(true, tx("Saving recipe..."));
         try {
-          const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-          const tagObjs = tagNames.map((name) => {
-            const known = findTagByLabel(name);
-            return known
-              ? { name: known.name, category: known.category, subgroup: known.subgroup }
-              : { name, category: "custom", subgroup: null };
-          });
+          const tagObjs = tagsFromInput(tagsInput.value);
 
           // draft.image_path is the recipe's actual showcase image when
           // present, regardless of source type: for screenshots it's the
@@ -5752,16 +5693,12 @@
             raw_text: draft.raw_text || null,
             ocr_confidence: draft.ocr_confidence != null ? draft.ocr_confidence : null,
             actual_cook_time: duration.getValue(),
-            ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim())
-              .map((line) => ({ raw_line: line, name: line })),
-            steps: stepsArea.value.split("\n").filter((l) => l.trim()),
+            ingredients: ingredientsOf(ingredientsArea),
+            steps: linesOf(stepsArea),
             tags: tagObjs,
           };
 
-          const res = await fetch(`${API}/recipes`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+          const res = await fetch(`${API}/recipes`, jsonBody("POST", payload));
           if (!res.ok) throw new Error(tx("Could not save recipe."));
 
           // Every tracked draft file for this session gets cleaned up
@@ -5770,14 +5707,11 @@
           // file is never kept even when its extracted thumbnail is.
           const filesToDiscard = [...state.currentDraftFiles].filter((f) => f !== imageRef);
           state.currentDraftFiles.clear();
-          filesToDiscard.forEach((f) => {
-            fetch(`${API}/ingest/draft/${encodeURIComponent(f)}`, { method: "DELETE" }).catch(() => {});
-          });
+          filesToDiscard.forEach(discardDraftFile);
 
           closeModal(addOverlay);
           announce(tx("Recipe saved."));
-          await loadTags(); await loadTimeBuckets();
-          loadRecipes();
+          await refreshLibrary();
         } catch (err) {
           alert(err.message);
         } finally { setBusy(false); }
@@ -5817,21 +5751,14 @@
             const upRes = await fetch(`${API}/upload-image`, { method: "POST", body: fd });
             if (!upRes.ok) {
               // Used to save the recipe without the photo and say nothing.
-              const err = await upRes.json().catch(() => ({}));
-              const why = typeof err.detail === "string" ? err.detail : `error ${upRes.status}`;
+              const why = await errorDetail(upRes, `error ${upRes.status}`);
               announceError(tx("The photo couldn't be uploaded ({1}). Nothing was saved; remove the photo or try another.", { 1: why }));
               return;
             }
             storedFile = (await upRes.json()).stored_file;
           }
 
-          const tagNames = tagsInput.value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
-          const tagObjs = tagNames.map((name) => {
-            const known = findTagByLabel(name);
-            return known
-              ? { name: known.name, category: known.category, subgroup: known.subgroup }
-              : { name, category: "custom", subgroup: null };
-          });
+          const tagObjs = tagsFromInput(tagsInput.value);
 
           const payload = {
             title: titleInput.value.trim() || tx("Untitled Recipe"),
@@ -5839,22 +5766,18 @@
             servings: servingsInput.value.trim() || null,
             image_path: storedFile,
             actual_cook_time: duration.getValue(),
-            ingredients: ingredientsArea.value.split("\n").filter((l) => l.trim()).map((line) => ({ raw_line: line, name: line })),
-            steps: stepsArea.value.split("\n").filter((l) => l.trim()),
+            ingredients: ingredientsOf(ingredientsArea),
+            steps: linesOf(stepsArea),
             tags: tagObjs,
           };
 
-          const res = await fetch(`${API}/recipes`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+          const res = await fetch(`${API}/recipes`, jsonBody("POST", payload));
           if (!res.ok) throw new Error(tx("Could not save recipe."));
           closeModal(addOverlay);
           announce(tx("Recipe saved."));
-          await loadTags(); await loadTimeBuckets();
-          loadRecipes();
+          await refreshLibrary();
         } catch (err) {
-          if (storedFile) fetch(`${API}/ingest/draft/${encodeURIComponent(storedFile)}`, { method: "DELETE" }).catch(() => {});
+          if (storedFile) discardDraftFile(storedFile);
           alert(err.message);
         } finally { setBusy(false); }
       },

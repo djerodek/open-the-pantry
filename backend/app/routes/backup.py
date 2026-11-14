@@ -115,26 +115,8 @@ def backup_pdfs(include_notes: bool = True, db: Session = Depends(get_db)):
     This bundle is for you, not for handing to someone else, and notes are
     part of what you'd want to keep.
     """
-    # Relationships preloaded in two queries instead of lazily, one query per
-    # recipe per relationship, while the PDFs are built.
-    recipes = (
-        db.query(models.Recipe)
-        .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
-                 selectinload(models.Recipe.tags))
-        .order_by(models.Recipe.id).all()
-    )
-    if not recipes:
-        raise HTTPException(status_code=404, detail="There are no recipes to export.")
-
-    path = os.path.join(BACKUP_TMP_DIR, f"pdfs-{uuid.uuid4().hex}.zip")
-    try:
-        _run_heavy(build_pdf_bundle, recipes, path, include_notes)
-    except Exception:
-        log.warning("backup_pdfs: request failed", exc_info=True)
-        if os.path.isfile(path):
-            os.remove(path)
-        raise HTTPException(status_code=500, detail="Could not build the PDF archive.")
-    return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-pdfs"))
+    return _export_all(db, "pdfs", "PDF", "open-the-pantry-pdfs",
+                       lambda recipes, path: build_pdf_bundle(recipes, path, include_notes))
 
 
 @router.get("/api/backup/recipes-json.zip")
@@ -142,6 +124,14 @@ def backup_recipes_json(db: Session = Depends(get_db)):
     """Every recipe as a schema.org Recipe .json, photos alongside
     (interchange.py): readable by other recipe apps, and importable here
     (adds; the full backup is what restores)."""
+    return _export_all(db, "json", "JSON", "open-the-pantry-recipes-json",
+                       lambda recipes, path: interchange.build_jsonld_zip(recipes, UPLOADS_DIR, path, UPLOADS_LOCK))
+
+
+def _export_all(db: Session, prefix: str, what: str, name: str, build):
+    """Every recipe through build(recipes, path) into a zip, streamed and
+    then removed. Relationships are preloaded in two queries instead of
+    lazily, one query per recipe per relationship, while it is built."""
     recipes = (
         db.query(models.Recipe)
         .options(selectinload(models.Recipe.ingredients), selectinload(models.Recipe.steps),
@@ -150,15 +140,15 @@ def backup_recipes_json(db: Session = Depends(get_db)):
     )
     if not recipes:
         raise HTTPException(status_code=404, detail="There are no recipes to export.")
-    path = os.path.join(BACKUP_TMP_DIR, f"json-{uuid.uuid4().hex}.zip")
+    path = os.path.join(BACKUP_TMP_DIR, f"{prefix}-{uuid.uuid4().hex}.zip")
     try:
-        _run_heavy(interchange.build_jsonld_zip, recipes, UPLOADS_DIR, path, UPLOADS_LOCK)
+        _run_heavy(build, recipes, path)
     except Exception:
-        log.warning("backup_recipes_json: request failed", exc_info=True)
+        log.warning("Export of every recipe as %s failed", what, exc_info=True)
         if os.path.isfile(path):
             os.remove(path)
-        raise HTTPException(status_code=500, detail="Could not build the JSON archive.")
-    return _stream_zip_and_cleanup(path, _timestamped("open-the-pantry-recipes-json"))
+        raise HTTPException(status_code=500, detail=f"Could not build the {what} archive.")
+    return _stream_zip_and_cleanup(path, _timestamped(name))
 
 
 # ---------------------------------------------------------------------------
