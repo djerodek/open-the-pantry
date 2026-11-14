@@ -832,3 +832,20 @@ def test_the_rating_popover_marks_the_new_rating_as_pressed(server, api, page):
       .filter((b) => b.closest('.rating-control').querySelector("button[aria-label='Set difficulty']"))
       .map((b) => [b.dataset.option, b.getAttribute('aria-pressed')])""")
     assert dict(pressed) == {"easy": "true", "medium": "false", "hard": "false"}, pressed
+
+
+def test_check_email_inbox_from_the_add_dialog(server, page):
+    """Review of 0185-0189: the + menu's "Check email inbox" called
+    runInboxScan, which 0189 left unimported in add_recipe.js, so the click
+    threw a ReferenceError. Email import is faked on here, and the scan."""
+    p = page()
+    pg = p.page
+    pg.route("**/api/email-status", lambda route: route.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"enabled": True})))
+    pg.route("**/api/email-settings/scan", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"scanned": 1, "succeeded": 0, "failed": 1, "messages": ["FAILED: test"], "saved": []})))
+    pg.goto(server["url"])
+    pg.click("#add-recipe-fab")
+    pg.click("#add-recipe-body button:has-text('Check email inbox')")
+    pg.wait_for_selector("#add-recipe-body .scan-status:has-text('Scanned 1: 0 ingested, 1 failed.')")

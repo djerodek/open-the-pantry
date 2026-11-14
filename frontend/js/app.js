@@ -2,7 +2,7 @@
 // own scope and strict mode, as the function wrapped around it gave it.
 import {
   initBackupPanel, initLockedPanels, initPreferencePanels,
-  ensureUnlocked, adminFetch, refreshHttpsSummary, runInboxScan, refreshPickerLink,
+  ensureUnlocked, adminFetch, refreshHttpsSummary, refreshPickerLink,
 } from "./settings.js";
 import { initAddRecipe, addOverlay, discardCurrentDraftFiles, errorDetail, openSharedLink } from "./add_recipe.js";
 const API = "/api";

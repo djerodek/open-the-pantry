@@ -116,3 +116,8 @@ The main page's script is split into modules (`app.js`, `settings.js` from
 `conftest.app_source()`, and a rule applied file by file loops over
 `conftest.APP_MODULES`; a new module goes in that list, so the French
 catalogue and the rules cover it.
+
+CI also runs ESLint's undefined-name check over every page script
+(`eslint.config.mjs` at the top of the repository; a new script goes in
+its file lists too). Locally: `npm install --no-save eslint@9.14.0
+globals@15.12.0 && npx eslint` from the repository's top folder.

@@ -7,6 +7,14 @@
 // function that app.js calls where the code used to be, so they run at the
 // same point as before. Elements are looked up as this module loads, once
 // the page is parsed; app.js's helpers used here are imported from it.
+//
+// Keep it that way. app.js imports this module and this module imports
+// app.js, so this one runs first, before app.js's own code: at the top
+// level here, only function declarations, element lookups ($ and $$ are
+// function declarations in app.js, ready that early) and constants. A top
+// level line that calls or reads anything else from app.js (state, tx,
+// el, ...) throws "can't access before initialization"; put it in the
+// init function instead.
 import {
   API, tx, txn, fmtDateTime, tagLabel, $, $$, announce, announceError, el, openModal, closeModal, storageSet,
   jsonBody, refreshLibrary, settingsOverlay, setMailState, loadMailState, recentRecipientsEditor, state,

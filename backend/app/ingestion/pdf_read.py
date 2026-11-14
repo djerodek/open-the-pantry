@@ -3,6 +3,8 @@ OCR) and its largest embedded image. Split out of pdf_ingest.py (0186)."""
 import pdfplumber
 
 from ..logging_setup import get_logger
+# Private to ocr, but this module's to use: rendering a scanned page at the
+# OCR budget and reading it are one job split across the two (0186).
 from .ocr import _ocr_image, _ocr_resolution
 
 log = get_logger("pdf")

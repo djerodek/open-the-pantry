@@ -179,3 +179,19 @@ def test_entrypoint_takes_only_the_apps_backup_names(tmp_path):
     assert r.returncode == 0, r.stderr
     assert {n: os.stat(folder / n).st_uid for n in ours} == {n: 4321 for n in ours}
     assert {n: os.stat(folder / n).st_uid for n in alike} == {n: 0 for n in alike}
+
+
+def test_ci_fails_on_an_undefined_name_in_the_page_scripts():
+    """Review of 0185-0189: 0189 moved the Add dialog to add_recipe.js
+    without importing runInboxScan, and "Check email inbox" threw; no test
+    clicked it. CI runs ESLint's no-undef over every page script."""
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "npx eslint" in ci and "eslint@9.14.0 globals@15.12.0" in ci
+    config = (ROOT / "eslint.config.mjs").read_text(encoding="utf-8")
+    assert '"no-undef": "error"' in config
+    covered = set()
+    for block in config.split("files: [")[1:]:
+        covered |= set(re.findall(r'"([^"]+)"', block.split("]", 1)[0]))
+    scripts = {f"frontend/js/{p.name}" for p in (ROOT / "frontend" / "js").glob("*.js")}
+    assert scripts <= covered, f"not checked: {sorted(scripts - covered)}"
+    assert "frontend/service-worker.js" in covered and "frontend-picker/*.js" in covered

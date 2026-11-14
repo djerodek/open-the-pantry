@@ -5,11 +5,22 @@
 // As in settings.js: functions, element lookups and constants at the top
 // level; the setup steps in initAddRecipe(), which app.js calls where the
 // code used to be. app.js's helpers used here are imported from it.
+//
+// Keep it that way. app.js imports this module and this module imports
+// app.js, so this one runs first, before app.js's own code: at the top
+// level here, only function declarations, element lookups ($ and $$ are
+// function declarations in app.js, ready that early) and constants. A top
+// level line that calls or reads anything else from app.js (state, tx,
+// el, ...) throws "can't access before initialization"; put it in the
+// init function instead.
 import {
   API, tx, tagLabel, $, $$, announce, announceError, el, topOverlay, openModal, closeModal, tagsFromInput, linesOf,
   ingredientsOf, jsonBody, discardDraftFile, refreshLibrary, state, loadTimeBuckets, loadRecipes, tagSourcesNote,
   ingredientText, makeDurationInput, openRecipeDetail, partHint, fetchWithTimeout, writeFailureMessage,
 } from "./app.js";
+// The + menu's "Check email inbox" (missing until 0190: the button threw
+// a ReferenceError; review of 0185-0189).
+import { runInboxScan } from "./settings.js";
 
 // -------------------------------------------------------------------
 // Add-recipe modal: source picker -> ingestion form -> review -> save

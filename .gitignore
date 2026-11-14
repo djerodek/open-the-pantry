@@ -21,3 +21,6 @@ backend/static
 .env
 traefik.env
 letsencrypt/
+
+# ESLint for CI's undefined-name check (eslint.config.mjs)
+node_modules/
