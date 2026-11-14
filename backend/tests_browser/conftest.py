@@ -38,7 +38,12 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="session")
+# Package scope, not session: both end when the browser tests do. The sync
+# Playwright session leaves an event loop marked running in the main
+# thread, so every backend test calling asyncio.run after it failed ("cannot
+# be called from a running event loop") when the browser tests ran first
+# (seven tests; DeepSeek review of 0183).
+@pytest.fixture(scope="package")
 def server():
     """A real app server (main and What to eat? ports) on a fresh data folder."""
     static = BACKEND / "static"
@@ -75,7 +80,7 @@ def server():
         shutil.rmtree(data, ignore_errors=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def browser():
     with sync_playwright() as p:
         path = os.environ.get("CHROMIUM_PATH")
