@@ -111,8 +111,8 @@ When a browser test covers the same thing, the source check goes. When a
 refactor breaks a source check, change it to the new structure; don't
 delete it.
 
-The main page's script is split into modules (`app.js`, then `settings.js`
-from 0188). A check over the app's code reads them all through
+The main page's script is split into modules (`app.js`, `settings.js` from
+0188, `add_recipe.js` from 0189). A check over the app's code reads them all through
 `conftest.app_source()`, and a rule applied file by file loops over
 `conftest.APP_MODULES`; a new module goes in that list, so the French
 catalogue and the rules cover it.

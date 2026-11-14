@@ -112,7 +112,7 @@ def app_routes(app):
 # The main page's own scripts, in the order they are listed here: app.js
 # and the modules split out of it (0188 on). A source check over "the app's
 # code" reads them all, so a rule still covers code that moved.
-APP_MODULES = ("app.js", "settings.js")
+APP_MODULES = ("app.js", "settings.js", "add_recipe.js")
 
 
 def app_source() -> str:

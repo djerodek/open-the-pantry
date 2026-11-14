@@ -12,8 +12,9 @@ import {
   jsonBody, refreshLibrary, settingsOverlay, setMailState, loadMailState, recentRecipientsEditor, state,
   currentRecipes, apiErrorText, responseErrorText, renderRecipeList, detailOverlay, detailRecipeId, detailRecipe,
   renderRecipeDetail, saveBlob, filenameFromResponse, formatBytes, refreshBackupStats, fetchWithTimeout,
-  writeFailureMessage, savedResultRow, renderBatchResults, modeSwitchControl,
+  writeFailureMessage,
 } from "./app.js";
+import { savedResultRow, renderBatchResults, modeSwitchControl } from "./add_recipe.js";
 
 // One chooser, one Download button. There used to be two separate buttons
 // with the explanation in small print underneath, which read as "a backup

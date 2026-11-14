@@ -692,7 +692,8 @@ backend/app/        application FastAPI (main.py : démarrage, middleware), mod�
   templates/        le gabarit d'impression/PDF/HTML
 backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation; tests_browser/ : tests des pages
 frontend/           l'application : index.html, js/app.js (un module JavaScript, sans compilation),
-                    js/settings.js (les panneaux des Paramètres), js/i18n.js, css/;
+                    js/settings.js (les panneaux des Paramètres), js/add_recipe.js (la fenêtre Ajouter),
+                    js/i18n.js, css/;
                     js/amounts.js + js/weights.js : ajustement, Poids, Volumes (aussi pour On mange quoi?)
 frontend-picker/    la page On mange quoi? (port 8091)
 docker-compose*.yml image publiée, construction depuis les sources, HTTPS par Traefik
