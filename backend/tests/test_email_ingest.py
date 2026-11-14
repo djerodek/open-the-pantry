@@ -3,6 +3,7 @@ import email
 import io
 import os
 import ssl
+import threading
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -27,9 +28,10 @@ def test_encryption_round_trip(monkeypatch):
     assert crypto.decrypt_secret(encrypted) == "hunter2"
 
 
-def test_encryption_fails_closed_without_key(monkeypatch):
+def test_encryption_fails_closed_without_key(monkeypatch, no_key):
     """Without a configured key, storing a credential must raise rather
-    than silently falling back to plaintext."""
+    than silently falling back to plaintext. (no_key: a key file left by
+    the HTTPS tests made it fail when they ran first.)"""
     from app import crypto
 
     monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
@@ -137,7 +139,7 @@ def test_omitted_password_preserves_stored_credential(client, monkeypatch):
     client.delete("/api/email-settings/password")
 
 
-def test_saving_password_without_encryption_key_is_rejected(client, monkeypatch):
+def test_saving_password_without_encryption_key_is_rejected(client, monkeypatch, no_key):
     from sqlalchemy import text
 
     from app import crypto
@@ -1340,6 +1342,25 @@ def test_email_settings_report_server_timezone(client):
     assert "server_timezone" in client.get("/api/email-settings").json()
 
 
+def _run_scan_loop(email_routes, me):
+    """Runs the scheduled scan loop until its fake sleep stops it, in a
+    thread of its own: after the browser tests, Playwright leaves an event
+    loop marked running in the main thread, and asyncio.run refuses to
+    start there. me["thread"] names that thread for the fake sleep."""
+    import asyncio
+
+    def run():
+        me["thread"] = threading.get_ident()
+        try:
+            asyncio.run(email_routes._daily_email_scan_loop())
+        except asyncio.CancelledError:
+            pass
+    t = threading.Thread(target=run)
+    t.start()
+    t.join(30)
+    assert not t.is_alive()
+
+
 def test_a_scheduled_scan_that_cant_reach_the_inbox_is_tried_again_in_an_hour(monkeypatch):
     """Review of 0169: the day was marked done before the scan, so one that
     couldn't reach the inbox (a NAS rebooting) waited until tomorrow."""
@@ -1364,8 +1385,14 @@ def test_a_scheduled_scan_that_cant_reach_the_inbox_is_tried_again_in_an_hour(mo
             state.last_scan_at = clock[0]
 
     ticks = [0]
+    real_sleep, me = asyncio.sleep, {}
 
-    async def sleep(_):
+    async def sleep(seconds):
+        # asyncio.sleep is patched on the module, for every thread: a test
+        # server left running by the browser tests has loops of its own,
+        # which took this test's ticks and moved its clock.
+        if threading.get_ident() != me.get("thread"):
+            return await real_sleep(seconds)
         ticks[0] += 1
         if ticks[0] > 1:
             clock[0] += timedelta(minutes=15)
@@ -1377,10 +1404,7 @@ def test_a_scheduled_scan_that_cant_reach_the_inbox_is_tried_again_in_an_hour(mo
     monkeypatch.setattr(email_routes, "run_email_scan", scan)
     monkeypatch.setattr(email_routes.asyncio, "sleep", sleep)
     monkeypatch.setattr(email_routes.learning, "schedule_retrain", lambda: None)
-    try:
-        asyncio.run(email_routes._daily_email_scan_loop())
-    except asyncio.CancelledError:
-        pass
+    _run_scan_loop(email_routes, me)
     assert [t.strftime("%H:%M") for t in scans] == ["06:00", "07:00", "08:00"]
 
 
@@ -1410,8 +1434,14 @@ def test_a_scheduled_scan_that_raises_is_tried_again_in_an_hour(monkeypatch):
         state.last_scan_at = clock[0]
 
     ticks = [0]
+    real_sleep, me = asyncio.sleep, {}
 
-    async def sleep(_):
+    async def sleep(seconds):
+        # asyncio.sleep is patched on the module, for every thread: a test
+        # server left running by the browser tests has loops of its own,
+        # which took this test's ticks and moved its clock.
+        if threading.get_ident() != me.get("thread"):
+            return await real_sleep(seconds)
         ticks[0] += 1
         if ticks[0] > 1:
             clock[0] += timedelta(minutes=15)
@@ -1423,10 +1453,7 @@ def test_a_scheduled_scan_that_raises_is_tried_again_in_an_hour(monkeypatch):
     monkeypatch.setattr(email_routes, "run_email_scan", scan)
     monkeypatch.setattr(email_routes.asyncio, "sleep", sleep)
     monkeypatch.setattr(email_routes.learning, "schedule_retrain", lambda: None)
-    try:
-        asyncio.run(email_routes._daily_email_scan_loop())
-    except asyncio.CancelledError:
-        pass
+    _run_scan_loop(email_routes, me)
     assert [t.strftime("%H:%M") for t in scans] == ["06:00", "07:00", "08:00"]
 
 

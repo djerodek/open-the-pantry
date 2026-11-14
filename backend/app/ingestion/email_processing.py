@@ -31,8 +31,8 @@ CLIENT_FOOTER_RE = re.compile(
 # dozens of fetches. With more, none is tried (the body is still read as a
 # recipe): such an email is usually a newsletter, whose first links are
 # "view in browser" and tracking links. Fetching those tells the sender the
-# email was opened, and uses up the tries on pages without a recipe
-# (DeepSeek review of 0180, kept by the owner's call).
+# email was opened, and uses up the tries on pages without a recipe. (A
+# review of 0180 proposed trying the first 3; kept as it is.)
 MAX_LINKS_TRIED = 3
 
 

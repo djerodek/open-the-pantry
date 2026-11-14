@@ -3643,7 +3643,7 @@
         const ok = await patchRating(recipe.id, { [field]: null });
         if (ok) {
           applyRating(recipe, field, null, btn, icon, shortLabel);
-          popover.querySelectorAll("button[aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+          popover.querySelectorAll("button[data-option]").forEach((b) => b.setAttribute("aria-pressed", "false"));
           clear.hidden = true;
         } else announceError(tx("Could not clear rating."));
       },
