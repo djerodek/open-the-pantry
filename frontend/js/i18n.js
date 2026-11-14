@@ -1048,7 +1048,7 @@
 
   // Quebec typography: a non-breaking space before ":" and inside « ».
   for (const k of Object.keys(FR)) {
-    FR[k] = FR[k].replace(/ :/g, " :").replace(/« /g, "« ").replace(/ »/g, " »");
+    FR[k] = FR[k].replace(/ :/g, "\u00a0:").replace(/« /g, "«\u00a0").replace(/ »/g, "\u00a0»");  // no-break spaces
   }
 
   const catalog = lang === "fr" ? FR : null;

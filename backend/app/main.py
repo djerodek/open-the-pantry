@@ -249,10 +249,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("Couldn't check whether the settings password is set")
     yield
-    sweep_task.cancel()
-    email_scan_task.cancel()
-    backup_task.cancel()
-    https_renew_task.cancel()
+    tasks = (sweep_task, email_scan_task, backup_task, https_renew_task)
+    for task in tasks:
+        task.cancel()
+    # Waited for, briefly, so none is mid-query when the engine is disposed
+    # (DeepSeek review of 0180).
+    try:
+        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)
+    except asyncio.TimeoutError:
+        log.warning("A background task didn't stop within 5 seconds of shutdown")
     await https_setup.stop_server()
     await picker.stop_server()
     engine.dispose()
@@ -771,9 +776,11 @@ def _frontend_version() -> str:
     import hashlib
     h = hashlib.sha256()
     static = os.path.join(os.path.dirname(__file__), "..", "static")
+    seen = 0
     for root, _, files in sorted(os.walk(static)):
         for f in sorted(files):
             if f.endswith((".js", ".css", ".html", ".json")):
+                seen += 1
                 try:
                     with open(os.path.join(root, f), "rb") as fh:
                         h.update(f.encode()); h.update(fh.read())
@@ -783,6 +790,12 @@ def _frontend_version() -> str:
                     # The name and the reason are enough to fix it; no
                     # traceback per file (DeepSeek review of 0096).
                     log.warning("_frontend_version: unreadable %s: %s", os.path.join(root, f), e.strerror or e)
+    if not seen:
+        # Running from source without the static folder: the hash of nothing
+        # never changes, so pull to refresh would never see an update
+        # (DeepSeek review of 0180).
+        log.warning("_frontend_version: no app files under %s; updates won't be detected", os.path.abspath(static))
+        return "unbuilt"
     return h.hexdigest()[:16]
 
 

@@ -22,6 +22,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from sqlalchemy.orm import Session
 
 from . import models
+from .logging_setup import get_logger
+
+log = get_logger("duplicates")
 
 _TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|_ga|igshid|ref|ref_src|cmpid)$", re.I)
 
@@ -40,6 +43,15 @@ def normalize_url(url: str | None) -> str | None:
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
         return None
     host = parts.hostname.lower()
+    if not host.isascii():
+        # As a link import stores it (requests gives the IDNA form): a
+        # Unicode host saved by hand or through the API didn't match the
+        # same page from a link (DeepSeek review of 0180).
+        try:
+            import idna
+            host = idna.encode(host, uts46=True).decode("ascii")
+        except (idna.IDNAError, UnicodeError):
+            log.debug("normalize_url: no IDNA form for %r", host)   # compared as written
     if host.startswith("www."):
         host = host[4:]
     # Only the scheme's own default port is dropped: http://x:443 and

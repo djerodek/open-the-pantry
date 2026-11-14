@@ -511,7 +511,7 @@ def _manifest(recipe_count, upload_names, uploads_bytes, tmp_db, missing, unrefe
         "recipe_count": recipe_count,
         "upload_count": len(upload_names),
         "uploads_bytes": uploads_bytes,
-        "database_bytes": os.path.getsize(tmp_db),
+        "database_bytes": os.path.getsize(tmp_db),   # still on disk: build_database_backup's finally removes it
         "missing_uploads": missing,
         "unreferenced_uploads_left_out": unreferenced,
         "restores_with": "voir RESTAURER.txt" if i18n.current_lang.get() == "fr" else "see RESTORE.txt",

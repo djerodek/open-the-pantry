@@ -768,3 +768,44 @@ def test_replace_my_library_is_readable_in_dark_mode(server, page):
       return (l1 + 0.05) / (l2 + 0.05);
     })()""")
     assert ratio >= 3, ratio
+
+
+def test_saved_notes_show_on_the_card_without_a_reload(server, api, page):
+    """DeepSeek review of 0180: the list draws the notes icon from has_notes,
+    and saving notes only updated `notes`, so the icon showed after a
+    reload."""
+    r = add_recipe(api, f"Browser notes icon {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    card = f".recipe-card:has-text('{r['title']}')"
+    pg.wait_for_selector(card)
+    assert pg.locator(f"{card} .card-notes-icon").count() == 0
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click(".notes-toggle-btn")
+    pg.fill(f"#notes-textarea-{r['id']}", "More garlic.")
+    with pg.expect_response(lambda resp: resp.url.endswith(f"/api/recipes/{r['id']}/notes")):
+        pg.click("button:has-text('Save notes')")
+    pg.click("#recipe-detail-close")
+    pg.wait_for_selector(f"{card} .card-notes-icon")
+
+
+def test_a_rating_can_be_cleared_from_the_recipe_view(server, api, page):
+    """DeepSeek review of 0180: the recipe view's rating popover could change
+    a rating but not take it off; only a card's sheet had "Clear rating"."""
+    r = add_recipe(api, f"Browser clear rating {uuid.uuid4().hex[:6]}")
+    api.patch(f"/api/recipes/{r['id']}/rating", json={"difficulty_rating": "hard"})
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector(f"text={r['title']}")
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click("#recipe-detail-body button[aria-label='Set difficulty']")
+    pg.click("#recipe-detail-body .rating-popover:not([hidden]) .rating-clear")
+    pg.wait_for_function(f"""fetch('/api/recipes/{r['id']}').then(r => r.json()).then(j => j.difficulty_rating === null)""")
+    assert api.get(f"/api/recipes/{r['id']}").json()["difficulty_rating"] is None
+    # Shown only while there is a rating.
+    pg.click("#recipe-detail-body button[aria-label='Set difficulty']")
+    assert pg.is_hidden("#recipe-detail-body .rating-popover:not([hidden]) .rating-clear")

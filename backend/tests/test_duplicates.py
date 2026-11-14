@@ -253,3 +253,12 @@ def test_only_the_schemes_own_port_is_dropped():
     assert normalize_url("https://example.test:443/r") == "example.test/r"
     assert normalize_url("http://example.test:443/r") == "example.test:443/r"
     assert normalize_url("https://example.test:80/r") == "example.test:80/r"
+
+
+def test_a_unicode_host_matches_its_idna_form():
+    """DeepSeek review of 0180: a link import stores the IDNA host
+    (requests gives it), while a link saved by hand or through the API can
+    keep the Unicode one; the same page didn't match."""
+    from app.duplicates import normalize_url
+    assert normalize_url("https://www.café.example/tarte") == normalize_url("https://xn--caf-dma.example/tarte")
+    assert normalize_url("https://CAFÉ.example/tarte") == "xn--caf-dma.example/tarte"

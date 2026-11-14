@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v103";
+const CACHE_NAME = "open-the-pantry-shell-v104";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -75,6 +75,9 @@ self.addEventListener("fetch", (event) => {
   // reads as an answer.
   if (new URL(event.request.url).origin !== self.location.origin) return;
   if (event.request.method !== "GET") {
+    // Passed through untouched: offline, a save fails as it would without
+    // the worker. No cache fallback here, ever: a cached answer to a POST
+    // would read as saved.
     event.respondWith(fetch(event.request));
     return;
   }

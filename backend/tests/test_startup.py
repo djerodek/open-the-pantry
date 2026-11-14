@@ -143,3 +143,40 @@ def test_version_endpoint_reports_a_fingerprint(client):
     r = client.get("/api/version")
     assert r.status_code == 200
     assert isinstance(r.json()["frontend"], str) and r.json()["frontend"]
+
+
+def test_shutdown_waits_for_the_background_tasks(client, monkeypatch):
+    """DeepSeek review of 0180: the tasks were cancelled but not waited for,
+    so one could still be mid-query when the engine was disposed, and its
+    cleanup never ran."""
+    import asyncio
+
+    from fastapi.testclient import TestClient
+
+    from app import main
+    order = []
+
+    async def loop():
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)       # cleanup that needs the loop again
+            order.append("task cleaned up")
+    real_dispose = main.engine.dispose
+    monkeypatch.setattr(main, "_scheduled_backup_loop", loop)
+    monkeypatch.setattr(main.engine, "dispose", lambda *a, **k: (order.append("engine disposed"), real_dispose(*a, **k)))
+    with TestClient(main.app) as c:
+        assert c.get("/healthz").status_code == 200
+    assert order[:2] == ["task cleaned up", "engine disposed"]
+
+
+def test_no_app_files_is_said_not_hashed(monkeypatch):
+    """DeepSeek review of 0180: with no static folder (running from source),
+    the fingerprint was the hash of nothing, which never changes, so pull to
+    refresh never saw an update and nothing said why."""
+    from app import main
+    logged = []
+    monkeypatch.setattr(main.os, "walk", lambda path: iter([]))
+    monkeypatch.setattr(main.log, "warning", lambda msg, *a, **k: logged.append(msg))
+    assert main._frontend_version() == "unbuilt"
+    assert any("updates won't be detected" in m for m in logged)

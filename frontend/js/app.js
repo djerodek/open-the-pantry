@@ -117,7 +117,9 @@
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
-      if (v === null || v === undefined) continue;
+      // false is left out like null: setAttribute would write "false",
+      // which for hidden or disabled still means on (DeepSeek review of 0180).
+      if (v === null || v === undefined || v === false) continue;
       if (k === "text") node.textContent = v;
       // Only for fixed markup written in this file (the share icon). Named
       // so it can't be mistaken for a general option: recipe data must go
@@ -3476,7 +3478,8 @@
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
-      if (res.ok) syncListEntry(id, { notes: notes || null });
+      // The list draws the notes icon from has_notes (DeepSeek review of 0180).
+      if (res.ok) syncListEntry(id, { notes: notes || null, has_notes: !!notes });
       return res.ok;
     } catch {
       return false;
@@ -3558,8 +3561,8 @@
       }));
     }
 
-    // Setting a rating by mistake needs a way out, and on a card there is no
-    // other affordance for it.
+    // Setting a rating by mistake needs a way out (the recipe view's popover
+    // has the same button).
     if (recipe[field] != null) {
       actions.appendChild(el("button", {
         type: "button", class: "rating-clear",
@@ -3615,11 +3618,28 @@
           popover.hidden = true;
           btn.setAttribute("aria-expanded", "false");
           const ok = await patchRating(recipe.id, { [field]: opt });
-          if (ok) applyRating(recipe, field, opt, btn, icon, shortLabel);
+          if (ok) { applyRating(recipe, field, opt, btn, icon, shortLabel); clear.hidden = false; }
           else announceError(tx("Could not save rating."));
         },
       }));
     }
+    // The recipe view had no way to take a rating off, only to change it
+    // (DeepSeek review of 0180). Shown while there is one.
+    const clear = el("button", {
+      type: "button", class: "rating-clear", text: tx("Clear rating"),
+      hidden: recipe[field] == null ? "" : null,
+      onclick: async () => {
+        popover.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+        const ok = await patchRating(recipe.id, { [field]: null });
+        if (ok) {
+          applyRating(recipe, field, null, btn, icon, shortLabel);
+          popover.querySelectorAll("button[aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+          clear.hidden = true;
+        } else announceError(tx("Could not clear rating."));
+      },
+    });
+    popover.appendChild(clear);
 
     return el("div", { class: "rating-control" }, [btn, popover]);
   }
