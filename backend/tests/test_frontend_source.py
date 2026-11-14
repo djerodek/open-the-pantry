@@ -20,7 +20,7 @@ FRONTEND = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 
 def test_the_list_shows_only_the_newest_answer():
     js = (ROOT / "frontend/js/app.js").read_text(encoding="utf-8")
-    body = js[js.index("  async function loadRecipes()"):js.index("// Recently deleted (0109)")]
+    body = js[js.index("async function loadRecipes()"):js.index("// Recently deleted (0109)")]
     assert "const generation = ++recipesGeneration;" in body
     assert body.index("if (stale()) return;") < body.index("currentRecipes = recipes;")
 

@@ -116,7 +116,7 @@ def test_card_controls_do_not_follow_the_card_link():
     the recipe like the rest of the card (it used to do nothing)."""
     js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
     body = js[js.index("function cardQuickControls("):js.index("function recipeCard(")]
-    assert 'if (!e.target.closest("button, .rating-popover")) return;\n        e.stopPropagation(); e.preventDefault();' in body
+    assert 'if (!e.target.closest("button, .rating-popover")) return;\n      e.stopPropagation(); e.preventDefault();' in body
     row = body[:body.index("return wrap;")]
     assert 'el("a"' not in row and 'el("input"' not in row, "a real link or field in the row would be cancelled too"
 
@@ -432,7 +432,7 @@ def test_shared_link_opens_add_from_url():
     manifest = __import__("json").loads((CSS.parents[1] / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["share_target"] == {"action": "/", "method": "GET",
                                         "params": {"title": "share_title", "text": "share_text", "url": "share_url"}}
-    shared = js[js.index("  function sharedLinkFromAddress("):js.index("  function showPdfForm(")]
+    shared = js[js.index("function sharedLinkFromAddress("):js.index("function showPdfForm(")]
     assert "history.replaceState(" in shared          # a reload doesn't import it again
     assert 'u.protocol === "http:" || u.protocol === "https:"' in shared
     assert "openSharedLink();" in js[js.index("(async function init() {"):]
