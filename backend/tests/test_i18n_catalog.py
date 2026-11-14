@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from .conftest import app_source
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 # The What to eat? page uses the same catalog (it loads js/i18n.js).
@@ -31,7 +32,7 @@ def _catalog():
 
 
 def _js_keys():
-    src = (FRONTEND / "js" / "app.js").read_text(encoding="utf-8")
+    src = app_source()
     src += (PICKER / "picker.js").read_text(encoding="utf-8")
     keys = [_unescape(m) for m in re.findall(r"\btx\(" + _STR, src)]
     for one, many in re.findall(r"\btxn\([^,]+,\s*" + _STR + r",\s*" + _STR, src):

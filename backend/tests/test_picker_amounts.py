@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from .conftest import app_source
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,7 +49,7 @@ def test_the_reader_gets_the_recipes_language(client, picker_client, language, t
 
 
 def test_both_pages_use_the_one_copy():
-    app = (ROOT / "frontend/js/app.js").read_text(encoding="utf-8")
+    app = app_source()
     picker = (ROOT / "frontend-picker/picker.js").read_text(encoding="utf-8")
     for js in (app, picker):
         assert "ingredientControls(" in js

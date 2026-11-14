@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
+from .conftest import app_source
 
 CSS = Path(__file__).resolve().parents[2] / "frontend" / "css" / "styles.css"
 
@@ -80,7 +81,7 @@ def test_https_setup_is_off_by_default_and_names_no_real_domain():
 def test_source_link_only_for_web_addresses():
     """The "View original" link is built from stored data, which a restored
     backup can fill with anything; only http(s) may become a link."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     body = js[js.index("function sourceLink("):js.index("function confidenceBadge(")]
     assert 'url.protocol !== "http:" && url.protocol !== "https:"' in body
     assert 'rel: "noopener noreferrer"' in body and 'target: "_blank"' in body
@@ -97,7 +98,7 @@ def test_search_clear_button_is_wired_up():
     input event), and the browser's own clear control hidden so there is one."""
     root = CSS.parents[1]
     html = (root / "index.html").read_text(encoding="utf-8")
-    js = (root / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     css = CSS.read_text(encoding="utf-8")
     assert 'id="search-clear"' in html and 'aria-label="Clear search"' in html
     assert '$("#search-input").addEventListener("input", syncSearchClear)' in js
@@ -114,7 +115,7 @@ def test_card_controls_do_not_follow_the_card_link():
     link, or a tap on the heart navigates (on iOS: list redrawn at the top).
     Only taps on a control are held back: the empty part of the row opens
     the recipe like the rest of the card (it used to do nothing)."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     body = js[js.index("function cardQuickControls("):js.index("function recipeCard(")]
     assert 'if (!e.target.closest("button, .rating-popover")) return;\n      e.stopPropagation(); e.preventDefault();' in body
     row = body[:body.index("return wrap;")]
@@ -124,7 +125,7 @@ def test_card_controls_do_not_follow_the_card_link():
 def test_card_share_sheet_skips_the_missing_email_button():
     """Without email sending, Email PDF is null in the share actions; the
     card's share sheet appended it anyway, threw, and lost the buttons after it."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     body = js[js.index("function openShareSheet("):js.index("function openShareSheet(") + 600]
     assert ".filter(Boolean).forEach((b) => actions.appendChild(b))" in body
 
@@ -133,7 +134,7 @@ def test_recipe_dialog_opens_on_the_tap():
     """The recipe dialog opens before the recipe has downloaded, so a slow
     response doesn't read as a missed tap; only the latest tap is shown,
     and a dialog closed while loading stays closed."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     body = js[js.index("async function openRecipeDetail("):js.index("function wakeLockToggle(")]
     assert body.index("openModal(detailOverlay)") < body.index("await fetch(")
     assert "if (ticket !== detailTicket || detailOverlay.hidden) return;" in body
@@ -245,7 +246,7 @@ def test_picker_reader_is_read_only_and_closes_every_way():
 def test_main_app_opens_a_linked_recipe_and_clears_the_link():
     """/#recipe-<id> opens that recipe, at start-up and on hashchange; every
     way of closing it clears the hash, so a reload doesn't reopen it."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     assert 'window.addEventListener("hashchange", openRecipeFromHash)' in js
     init = js[js.index("(async function init() {"):]
     assert init.index("await loadTags()") < init.index("openRecipeFromHash()") < init.index("await loadRecipes()")
@@ -260,7 +261,7 @@ def test_main_app_link_to_the_picker_follows_the_server():
     (switched on and running); otherwise it is removed, not greyed out, and a
     failed fetch removes it too. Settings checks from the browser whether the
     port answers, except from an https:// page, where that can't work."""
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     link = js[js.index("function renderPickerLink("):js.index("async function refreshPickerLink(")]
     assert "st && st.enabled ? pickerAddress(st) : null" in link and "link.remove()" in link
     assert '$("#settings-toggle").before(link)' in link and '"aria-label": tx("What to eat?")' in link
@@ -297,7 +298,7 @@ def test_ingredient_and_step_boxes_are_tall():
     """Ingredients and Steps on Add manually, the review screen and Edit
     recipe: one class, twice the height of the other text boxes."""
     css = CSS.read_text(encoding="utf-8")
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     assert ".field textarea.recipe-lines { min-height: 12rem; }" in css
     for box in ("edit", "review", "manual"):
         for part in ("ingredients", "steps"):
@@ -428,7 +429,7 @@ def test_scaling_makes_the_unit_agree():
 
 
 def test_shared_link_opens_add_from_url():
-    js = (CSS.parents[1] / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     manifest = __import__("json").loads((CSS.parents[1] / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["share_target"] == {"action": "/", "method": "GET",
                                         "params": {"title": "share_title", "text": "share_text", "url": "share_url"}}

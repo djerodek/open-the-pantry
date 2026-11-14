@@ -4,6 +4,7 @@ with its own ingredients and method, and so on. They used to come out as
 one long ingredient list with the method paragraphs inside it, and the
 title was whichever ingredient line appeared twice."""
 from app.ingestion.pdf_ingest import rule_segment_raw_text, segment_raw_text
+from .conftest import app_source
 
 FRENCH = "\n".join([
     "Galettes de saumon",
@@ -117,7 +118,7 @@ def test_part_names_are_headings_in_the_export(client, sample_recipe_payload):
 
 def test_the_page_shows_part_names_as_headings():
     import pathlib
-    js = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     amounts = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "amounts.js").read_text(encoding="utf-8")
     assert "function isPartName(text)" in amounts and "const { isPartName } = window.OTP_AMOUNTS;" in js
     assert 'el("li", { value: String(++n), text: s.text })' in js
@@ -125,5 +126,5 @@ def test_the_page_shows_part_names_as_headings():
 
 def test_the_boxes_explain_how_to_start_a_section():
     import pathlib
-    js = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     assert js.count("partHint(ingredientsArea)") == 3 and js.count("partHint(stepsArea)") == 3

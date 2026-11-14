@@ -595,7 +595,8 @@ backend/app/        FastAPI app (main.py: start-up, middleware), models, backup,
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template
 backend/tests/      server tests; corpus/: import corpus cases; tests_browser/: page tests
-frontend/           the app: index.html, js/app.js, js/i18n.js, css/;
+frontend/           the app: index.html, js/app.js (a JavaScript module, no build step),
+                    js/settings.js (the Settings panels), js/i18n.js, css/;
                     js/amounts.js + js/weights.js: scaling, Weights, Volumes (also used by What to eat?)
 frontend-picker/    the What to eat? page (port 8091)
 docker-compose*.yml published image, build from source, HTTPS via Traefik

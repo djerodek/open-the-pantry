@@ -5,11 +5,12 @@ import re
 from pathlib import Path
 
 import pytest
+from .conftest import APP_MODULES, app_source
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-JS = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+JS = app_source()
 
 
 PICKER_JS = ROOT / "frontend-picker" / "picker.js"
@@ -47,7 +48,7 @@ def test_rating_and_notes_saves_never_reject_and_update_the_list():
 
 def test_busy_state_covers_text_boxes_and_lists():
     from pathlib import Path
-    js = (Path(__file__).parents[2] / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     assert '".modal button, .modal input, .modal textarea, .modal select"' in js
 
 
@@ -58,7 +59,7 @@ def test_no_page_sets_html_from_data():
     import re
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
-    for f in [root / "frontend/js/app.js", *sorted((root / "frontend-picker").glob("*.js"))]:
+    for f in [*(root / "frontend/js" / name for name in APP_MODULES), *sorted((root / "frontend-picker").glob("*.js"))]:
         js = f.read_text(encoding="utf-8")
         assert "insertAdjacentHTML" not in js and "outerHTML" not in js and "document.write" not in js, f.name
         for m in re.finditer(r"\.innerHTML\s*=\s*([^;\n]+)", js):
@@ -102,7 +103,7 @@ def test_service_worker_never_caches_logs_or_https_status():
 def test_app_reads_storage_only_through_guarded_calls():
     """localStorage throws when storage is blocked; one unguarded read at
     startup stops the whole app."""
-    js = open(os.path.join(FRONTEND, "js", "app.js"), encoding="utf-8").read()
+    js = app_source()
     for m in re.finditer(r"localStorage\.(?:get|set)Item", js):
         line_start = js.rfind("\n", 0, m.start()) + 1
         context = js[max(0, line_start - 200):js.find("\n", m.end())]

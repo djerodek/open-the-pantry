@@ -23,6 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from .conftest import TINY_PNG
+from .conftest import APP_MODULES, app_source
 
 
 def _tag(name, category):
@@ -809,7 +810,7 @@ def test_the_pages_use_the_same_rule():
     # One copy since 0155: amounts.js, used by both pages.
     m = re.search(r"const notAPart = /(.+)/i;", (root / "frontend" / "js" / "amounts.js").read_text(encoding="utf-8"))
     assert m and m.group(1) == INGREDIENT_TAIL.pattern
-    for page in (root / "frontend" / "js" / "app.js", root / "frontend-picker" / "picker.js"):
+    for page in (*(root / "frontend" / "js" / name for name in APP_MODULES), root / "frontend-picker" / "picker.js"):
         assert "const notAPart" not in page.read_text(encoding="utf-8"), page.name
 
 
@@ -829,7 +830,7 @@ def test_api_key_note_is_reported_on_the_main_port_only(client, monkeypatch):
 
 def test_api_key_note_in_settings():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    js = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    js = app_source()
     assert 'id="picker-key-note" hidden>' in html
     assert '$("#picker-key-note").hidden = !st.api_key_set;' in js
 

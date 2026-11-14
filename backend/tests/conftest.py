@@ -107,3 +107,15 @@ def app_routes(app):
             yield from app_routes(inner)
         else:
             yield route
+
+
+# The main page's own scripts, in the order they are listed here: app.js
+# and the modules split out of it (0188 on). A source check over "the app's
+# code" reads them all, so a rule still covers code that moved.
+APP_MODULES = ("app.js", "settings.js")
+
+
+def app_source() -> str:
+    from pathlib import Path
+    js = Path(__file__).resolve().parents[2] / "frontend" / "js"
+    return "\n".join((js / name).read_text(encoding="utf-8") for name in APP_MODULES)
