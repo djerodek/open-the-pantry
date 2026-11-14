@@ -425,14 +425,16 @@
   // The three buttons; onChange(factor) runs now (at 1x) and on each press.
   // A checkbox and its line, in one label so the whole line can be tapped.
   // The <li> around it is marked while ticked (crossed out).
-  function tickRow(content, on, onChange) {
+  // lead (optional): drawn between the box and the text, not crossed out
+  // (a step's number).
+  function tickRow(content, on, onChange, lead = null) {
     const box = el("input", { type: "checkbox", class: "tick-box" });
     box.checked = on;
     box.addEventListener("change", () => {
       box.closest("li")?.classList.toggle("is-ticked", box.checked);
       onChange(box.checked);
     });
-    return el("label", { class: "tick-row" }, [box, el("span", { class: "tick-text" }, content)]);
+    return el("label", { class: "tick-row" }, [box, lead, el("span", { class: "tick-text" }, content)]);
   }
 
   function scaleButtons(onChange) {

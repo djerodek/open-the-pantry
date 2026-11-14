@@ -4459,7 +4459,10 @@
         ]),
         el("section", { class: "recipe-steps" }, [
           el("h2", { text: tx("Instructions") }),
-          el("ol", { class: "steps-list" }, (() => {
+          // With checkboxes, the numbers are drawn here, after the box: Safari
+          // drew the list's own numbers over the box until the page was laid
+          // out again (0179).
+          el("ol", { class: ticks ? "steps-list has-ticks" : "steps-list" }, (() => {
             // Part names ("Sauce tartare:") aren't numbered; the steps
             // after them carry on from the last number.
             let n = 0;
@@ -4467,9 +4470,11 @@
               if (isPartName(s.text)) return el("li", { class: "list-part", text: s.text });
               if (!ticks) return el("li", { value: String(++n), text: s.text });
               const on = ticks.steps.isTicked(index, s.text);
-              return el("li", { value: String(++n), class: on ? "is-ticked" : null }, [
+              const number = ++n;
+              return el("li", { value: String(number), class: on ? "is-ticked" : null }, [
                 window.OTP_AMOUNTS.tickRow([document.createTextNode(s.text)], on,
-                  (checked) => ticks.steps.toggle(index, s.text, checked)),
+                  (checked) => ticks.steps.toggle(index, s.text, checked),
+                  el("span", { class: "step-number", text: `${number}.` })),
               ]);
             });
           })()),

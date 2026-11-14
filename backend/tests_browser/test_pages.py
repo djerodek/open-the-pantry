@@ -660,6 +660,18 @@ def test_checkboxes_to_tick_off_a_recipe(server, api, page):
     # Two ingredients (not the part name) and two steps.
     assert pg.locator(f".recipe-ingredients {boxes.split()[-1]}").count() == 2
     assert pg.locator(f".recipe-steps {boxes.split()[-1]}").count() == 2
+    # 0179: Safari drew the list's own numbers over the boxes until the page
+    # was laid out again. The numbers are drawn after the box instead, the
+    # box at the same left edge as the ingredients'.
+    assert pg.evaluate("getComputedStyle(document.querySelector('.recipe-steps ol')).listStyleType") == "none"
+    assert pg.locator(".recipe-steps .step-number").all_inner_texts() == ["1.", "2."]
+    edges = pg.evaluate("""(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      return [r('.recipe-steps .tick-box').right, r('.recipe-steps .step-number').left,
+              r('.recipe-steps .step-number').right, r('.recipe-steps .tick-text').left,
+              r('.recipe-steps .tick-box').left, r('.recipe-ingredients .tick-box').left];
+    })()""")
+    assert edges[0] <= edges[1] and edges[2] <= edges[3] and abs(edges[4] - edges[5]) < 1, edges
     pg.click(".recipe-ingredients li:has-text('1 cup flour') .tick-row")
     pg.click(".recipe-steps li:has-text('Mix.') .tick-row")
     assert pg.locator("li.is-ticked").count() == 2

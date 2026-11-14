@@ -1620,6 +1620,13 @@ li.is-ticked .tick-text {
   color: var(--color-ink-muted);
 }
 .clear-ticks-row { margin-top: 1.5rem; }
+.steps-list.has-ticks { list-style: none; padding-left: 0; }
+.step-number {
+  flex: none;
+  min-width: 1.6em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 .status-region {
   position: fixed;
