@@ -663,10 +663,14 @@ _LINE_PRICE = re.compile(r"\s+(?:\$|S(?=[O0]\.))[O0-9]{1,3}[.,][O0-9]{0,2}\.?\s*
 # in (review of 0176).
 _BEFORE_NOUN = (r"(?<!,)(?<!, )\b(?:cracked|shredded|minced|grated|chopped|crushed|dried|smoked|toasted|roasted|"
                 r"packed|sifted|unsalted|salted|diced|sliced|peeled|pitted|cooked|canned|whipped|softened|melted|"
-                r"beaten|fresh|ground|large|small|medium|extra|virgin|frais|fraîche)"
+                r"beaten|fresh|ground|large|small|medium|extra|virgin)"
                 # A hyphenated word ("flat-leaf", "all-purpose"), but not the
-                # cream "half-and-half".
-                r"|(?<![\w-])(?!half-and-half\b)\w+(?:-\w+)+")
+                # cream "half-and-half", and not after a comma either
+                # (", low-sodium" + "salt to taste"; review of 0177).
+                r"|(?<!,)(?<!, )(?<![\w-])(?!half-and-half\b)\w+(?:-\w+)+")
+# "frais" and "fraîche" follow their noun in French ("persil frais",
+# "crème fraîche"): they end an item, and joined "sel" and "ciboulette"
+# (since 0168; review of 0177).
 _WRAP_END = re.compile(r"(?:[,\-–]|\b(?:and|or|with|of|in|into|for|the|a|an|at|room|et|ou|avec|de|du|des|d'|à|au|"
                        r"aux|en|pour|le|la|les|un|une|dans|finely|thinly|roughly|coarsely|freshly|lightly|loosely|"
                        r"firmly|evenly|finement|grossièrement)|" + _BEFORE_NOUN + r")\s*$", re.IGNORECASE)

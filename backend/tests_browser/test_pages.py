@@ -673,6 +673,11 @@ def test_checkboxes_to_tick_off_a_recipe(server, api, page):
     assert pg.locator("li.is-ticked").count() == 0
     assert pg.locator(f"{boxes}:checked").count() == 0
     assert pg.evaluate(f"localStorage.getItem('recipe-app-ticks-{r['id']}')") is None
+    # Review of 0177: in dark mode the unticked boxes were white squares
+    # (no dark color-scheme declared).
+    pg.emulate_media(color_scheme="dark")
+    assert pg.evaluate(f"getComputedStyle(document.querySelector('{boxes}')).colorScheme") == "dark"
+    pg.emulate_media(color_scheme="light")
     # Turned off: no boxes, no button.
     pg.click("#recipe-detail-close")
     _open_settings(p, server["url"])
@@ -680,3 +685,23 @@ def test_checkboxes_to_tick_off_a_recipe(server, api, page):
     pg.click("#settings-close")
     open_recipe()
     assert pg.locator(boxes).count() == 0 and pg.locator(".clear-ticks-row").count() == 0
+
+
+def test_a_deleted_recipe_takes_its_ticks_with_it(server, api, page):
+    """Review of 0177: a deleted recipe's ticks stayed in the browser's
+    storage for good."""
+    r = add_recipe(api, f"Browser tick bin {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.evaluate("localStorage.setItem('recipe-app-checkboxes', 'true'); null")
+    pg.reload()
+    pg.wait_for_selector(f"text={r['title']}")
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click(".recipe-steps li:has-text('Mix.') .tick-row")
+    key = f"recipe-app-ticks-{r['id']}"
+    assert pg.evaluate(f"localStorage.getItem('{key}')") is not None
+    pg.click("#recipe-detail-body button.btn-danger:has-text('Delete recipe')")
+    pg.wait_for_selector("#recipe-detail-overlay", state="hidden")
+    assert pg.evaluate(f"localStorage.getItem('{key}')") is None

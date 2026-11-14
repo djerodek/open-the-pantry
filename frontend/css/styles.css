@@ -6,6 +6,9 @@
    low-confidence/alert states.
 --------------------------------------------------------------------- */
 :root {
+  /* Native controls (unticked checkboxes, date fields) follow the theme;
+     they were white squares in dark mode (review of 0177). */
+  color-scheme: light;
   --color-bg: #FBF9F4;
   --color-bg-raised: #FFFFFF;
   --color-ink: #22201B;
@@ -70,6 +73,7 @@
 --------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --color-bg: #000000;
     --color-bg-raised: #000000;
     --color-ink: #F2F0EA;
@@ -98,6 +102,7 @@
 }
 
 html[data-theme="dark"] {
+  color-scheme: dark;
   --color-bg: #000000;
   --color-bg-raised: #000000;
   --color-ink: #F2F0EA;

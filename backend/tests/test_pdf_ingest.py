@@ -820,3 +820,15 @@ def test_a_part_name_under_a_yield_line_in_capitals():
                          "SCOOP 2 oz dough balls on to a greased cookie sheet and BAKE at 375 for 15 minutes.\n")
     assert r["ingredients"][:3] == ["Sift:", "1.5 c all purpose flour", "1 c cocoa"]
     assert "Wish:" in r["ingredients"]
+
+
+def test_french_words_after_the_noun_and_a_hyphen_after_a_comma_end_an_item():
+    """Review of 0177: "frais" and "fraîche" come after their noun, so they
+    end an item ("persil frais" + "sel" joined since 0168), and a hyphenated
+    word after a comma ends one too (", low-sodium" + "salt to taste")."""
+    from app.ingestion.pdf_ingest import _clean_ingredients
+    for a, b in (("1 bouquet de persil frais", "sel"), ("200 ml de crème fraîche", "ciboulette"),
+                 ("1 cup broth, low-sodium", "salt to taste"), ("1 cup yogurt, full-fat", "honey")):
+        assert _clean_ingredients([a, b]) == [a, b], (a, b)
+    for a, b in (("1 cup flat-leaf", "parsley"), ("1 cup grated", "parmesan"), ("2 cups all-purpose", "flour")):
+        assert _clean_ingredients([a, b]) == [f"{a} {b}"], (a, b)

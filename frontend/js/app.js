@@ -3019,6 +3019,7 @@
 
     btn.disabled = false;
     btn.textContent = label;
+    if (result.ok) ids.forEach(forgetTicks);
 
     if (!result.ok) {
       // Keep the selection on failure. It used to be cleared unconditionally
@@ -3868,6 +3869,12 @@
   // What's ticked in a recipe, on this device: the place and text of each
   // line (an edited recipe drops the ticks of lines that changed). Kept
   // until cleared, so a tick outlasts the app being closed mid-recipe.
+  // A deleted recipe's ticks go with it (review of 0177); put back from
+  // Recently deleted, it starts unticked.
+  function forgetTicks(id) {
+    try { localStorage.removeItem(`recipe-app-ticks-${id}`); } catch { /* private mode */ }
+  }
+
   function recipeTicks(id) {
     const key = `recipe-app-ticks-${id}`;
     let saved = {};
@@ -4985,6 +4992,7 @@
     const restore = () => { if (btn) { btn.disabled = false; btn.textContent = label || tx("Delete recipe"); } };
 
     const result = await fetchWithTimeout(`${API}/recipes/${id}`, { method: "DELETE" });
+    if (result.ok || result.status === 404) forgetTicks(id);
 
     if (result.ok) {
       closeModal(detailOverlay);
