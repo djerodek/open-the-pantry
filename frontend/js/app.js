@@ -3613,12 +3613,21 @@
       popover.appendChild(el("button", {
         type: "button",
         "aria-pressed": String(recipe[field] === opt),
+        "data-option": String(opt),
         text: ratingOptionLabel(field, opt),
         onclick: async () => {
           popover.hidden = true;
           btn.setAttribute("aria-expanded", "false");
           const ok = await patchRating(recipe.id, { [field]: opt });
-          if (ok) { applyRating(recipe, field, opt, btn, icon, shortLabel); clear.hidden = false; }
+          if (ok) {
+            applyRating(recipe, field, opt, btn, icon, shortLabel);
+            clear.hidden = false;
+            // The pressed state is what a screen reader announces: it was
+            // set once, so after a pick the list still named the old rating
+            // (DeepSeek review of 0181).
+            popover.querySelectorAll("button[data-option]").forEach((b) =>
+              b.setAttribute("aria-pressed", String(b.dataset.option === String(opt))));
+          }
           else announceError(tx("Could not save rating."));
         },
       }));

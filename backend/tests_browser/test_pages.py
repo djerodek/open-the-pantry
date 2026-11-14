@@ -745,7 +745,7 @@ def test_a_failed_batch_delete_keeps_that_recipes_ticks(server, api, page):
     pg.click(f".recipe-card:has-text('{a['title']}')")
     pg.click(f".recipe-card:has-text('{b['title']}')")
     pg.click("#batch-delete-btn")
-    pg.wait_for_function(f"localStorage.getItem('recipe-app-ticks-{a['id']}') === null")
+    wait_until(pg, f"localStorage.getItem('recipe-app-ticks-{a['id']}') === null")
     assert pg.evaluate(f"localStorage.getItem('recipe-app-ticks-{b['id']}')") is not None
 
 
@@ -804,8 +804,31 @@ def test_a_rating_can_be_cleared_from_the_recipe_view(server, api, page):
     pg.wait_for_selector("#recipe-detail-heading")
     pg.click("#recipe-detail-body button[aria-label='Set difficulty']")
     pg.click("#recipe-detail-body .rating-popover:not([hidden]) .rating-clear")
-    pg.wait_for_function(f"""fetch('/api/recipes/{r['id']}').then(r => r.json()).then(j => j.difficulty_rating === null)""")
+    rating_btn = "#recipe-detail-body button[aria-label='Set difficulty']"
+    wait_until(pg, f"document.querySelector(\"{rating_btn}\").dataset.hasValue === 'false'")
     assert api.get(f"/api/recipes/{r['id']}").json()["difficulty_rating"] is None
     # Shown only while there is a rating.
     pg.click("#recipe-detail-body button[aria-label='Set difficulty']")
     assert pg.is_hidden("#recipe-detail-body .rating-popover:not([hidden]) .rating-clear")
+
+
+def test_the_rating_popover_marks_the_new_rating_as_pressed(server, api, page):
+    """DeepSeek review of 0181: the options' aria-pressed (what a screen
+    reader announces) was set once when the popover was built, so after a
+    pick it still named the old rating."""
+    r = add_recipe(api, f"Browser pressed rating {uuid.uuid4().hex[:6]}")
+    api.patch(f"/api/recipes/{r['id']}/rating", json={"difficulty_rating": "hard"})
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector(f"text={r['title']}")
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    rating_btn = "#recipe-detail-body button[aria-label='Set difficulty']"
+    pg.click(rating_btn)
+    pg.click("#recipe-detail-body .rating-popover:not([hidden]) button[data-option='easy']")
+    wait_until(pg, f"document.querySelector(\"{rating_btn}\").textContent.includes('Easy')")
+    pressed = pg.evaluate("""[...document.querySelectorAll('#recipe-detail-body .rating-popover button[data-option]')]
+      .filter((b) => b.closest('.rating-control').querySelector("button[aria-label='Set difficulty']"))
+      .map((b) => [b.dataset.option, b.getAttribute('aria-pressed')])""")
+    assert dict(pressed) == {"easy": "true", "medium": "false", "hard": "false"}, pressed

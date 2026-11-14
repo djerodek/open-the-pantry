@@ -28,7 +28,11 @@ CLIENT_FOOTER_RE = re.compile(
 
 # At most this many links are tried, in order, stopping at the first that
 # yields a recipe. A newsletter with dozens of links shouldn't trigger
-# dozens of fetches.
+# dozens of fetches. With more, none is tried (the body is still read as a
+# recipe): such an email is usually a newsletter, whose first links are
+# "view in browser" and tracking links. Fetching those tells the sender the
+# email was opened, and uses up the tries on pages without a recipe
+# (DeepSeek review of 0180, kept by the owner's call).
 MAX_LINKS_TRIED = 3
 
 
