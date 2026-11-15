@@ -389,6 +389,8 @@ In Settings → Backup & export:
   - They go to `data/backups/`. For a real second copy, mount a folder on
     another disk and set `RECIPE_APP_BACKUP_DIR`; the compose file has the
     lines, commented out.
+  - Backups aren't encrypted: they hold every recipe, note and photo, so
+    keep them on storage only you can read.
   - Only the app's own backup files are ever deleted there.
   - Changing the schedule needs the settings password.
 - **What a backup leaves out**: the email login and password, subject

@@ -682,3 +682,20 @@ def test_a_wrongly_typed_file_reads_as_damaged_not_a_crash(client):
         assert r.status_code == 409 and "damaged" in r.json()["detail"]
     finally:
         os.replace(kept, admin_lock.PASSWORD_PATH)
+
+
+def test_a_damaged_password_file_is_logged_once_per_change(own_file, monkeypatch):
+    """Every locked request read the file and logged it again (Qwen review
+    of 0193): once now, and again when the file changes."""
+    logged = []
+    monkeypatch.setattr(own_file.log, "error", lambda msg, *a, **k: logged.append(msg))
+    with open(own_file.PASSWORD_PATH, "w") as f:
+        f.write("{}")
+    for _ in range(5):
+        assert own_file.damaged()
+    assert len(logged) == 1
+    with open(own_file.PASSWORD_PATH, "w") as f:
+        f.write("not json at all")
+    for _ in range(3):
+        assert own_file.damaged()
+    assert len(logged) == 2

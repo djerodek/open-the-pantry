@@ -101,7 +101,8 @@ several user accounts.
 - **HTTPS on your LAN** (optional): a real Let's Encrypt certificate, set
   up from Settings for cPanel-managed domains.
 - **Backups**: full backups (credentials left out) on demand or daily, to
-  another disk if you like (`RECIPE_APP_BACKUP_DIR`), restored from
+  another disk if you like (`RECIPE_APP_BACKUP_DIR`; not encrypted, so
+  somewhere only you can read), restored from
   Settings; every recipe as PDFs or schema.org JSON; import schema.org JSON
   or a Paprika export.
 - **PWA**: installable, light/dark themes, adjustable text size, keyboard

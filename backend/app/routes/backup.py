@@ -158,30 +158,37 @@ def _export_all(db: Session, prefix: str, what: str, name: str, build):
 MAX_IMPORT_BYTES = 1024 ** 3   # a library export with every photo
 
 
-def _match_tags(db: Session, names: list[str], keep_unknown: bool) -> list[schemas.TagIn]:
+def _tags_by_name(db: Session) -> dict[str, tuple]:
+    """Every tag by its name in any case, read once per import; the lowest
+    id wins. Each recipe saved meanwhile adds its tags (_save_imported):
+    the table was read twice per recipe (Qwen review of 0193)."""
+    by_name = {}
+    for t in db.query(models.Tag).order_by(models.Tag.id):
+        by_name.setdefault(t.name.casefold(), (t.name, t.category, t.subgroup))
+    return by_name
+
+
+def _match_tags(by_name: dict[str, tuple], names: list[str], keep_unknown: bool) -> list[schemas.TagIn]:
     """Labels from another app, matched to existing tags by name (any
     case). Unknown ones become Custom tags only when they're the person's
     own categories (Paprika), not a website's keywords."""
-    if not names:
-        return []
-    by_name = {}
-    for t in db.query(models.Tag).all():
-        by_name.setdefault(t.name.casefold(), t)
     out = []
     for n in names:
         t = by_name.get(n.casefold())
         if t:
-            out.append(schemas.TagIn(name=t.name, category=t.category, subgroup=t.subgroup))
+            out.append(schemas.TagIn(name=t[0], category=t[1], subgroup=t[2]))
         elif keep_unknown:
             out.append(schemas.TagIn(name=n, category="custom"))
     return out
 
 
 def _save_imported(db: Session, r: "interchange.ImportedRecipe",
-                   index: "duplicates.Index | None" = None) -> tuple[int, Optional[dict]]:
+                   index: "duplicates.Index | None" = None,
+                   tags: dict[str, tuple] | None = None) -> tuple[int, Optional[dict]]:
     """Saves one imported recipe through create_recipe (the same checks and
     caps as any save). Returns (recipe id, duplicate_of or None). index:
-    the import's duplicates.Index, which the new recipe is added to."""
+    the import's duplicates.Index, which the new recipe is added to; tags:
+    its _tags_by_name(), which the new recipe's tags are added to."""
     if index is not None:
         found = index.same_title(r.title)
         same_title = [found] if found else []
@@ -191,7 +198,9 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe",
     if r.tags:
         tag_ins = [schemas.TagIn(**t) for t in r.tags]
     else:
-        tag_ins = _match_tags(db, r.tag_names, keep_unknown=False) + _match_tags(db, r.custom_tag_names, keep_unknown=True)
+        if tags is None:
+            tags = _tags_by_name(db)
+        tag_ins = _match_tags(tags, r.tag_names, keep_unknown=False) + _match_tags(tags, r.custom_tag_names, keep_unknown=True)
         for n, c, sg in suggest_tags(r.title, [i["name"] or i["raw_line"] for i in parsed], " ".join(r.steps)):
             tag_ins.append(schemas.TagIn(name=n, category=c, subgroup=sg))
     seen, unique_tags = set(), []
@@ -227,6 +236,9 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe",
         db.commit()
     if index is not None:
         index.add(recipe.id, recipe.title, recipe.source_url)
+    if tags is not None:
+        for t in recipe.tags:
+            tags.setdefault(t.name.casefold(), (t.name, t.category, t.subgroup))
     return recipe.id, (same_title[0] if same_title else None)
 
 
@@ -243,14 +255,14 @@ def _validation_text(e: Exception) -> str:
 def _import_and_save(db: Session, path: str, name: str):
     succeeded, failed, skipped = [], [], []
     with interchange.opened(path, name) as (recipes, problems):
-        index = duplicates.Index(db)
+        index, tags = duplicates.Index(db), _tags_by_name(db)
         for r in recipes:
             try:
                 existing = index.same_link(r.source_url)
                 if existing:
                     skipped.append({"origin": r.origin, "recipe_id": existing["id"], "title": existing["title"]})
                     continue
-                rid, dup = _save_imported(db, r, index)
+                rid, dup = _save_imported(db, r, index, tags)
                 succeeded.append({"origin": r.origin, "recipe_id": rid, "title": r.title[:500], "duplicate_of": dup})
             except Exception as e:
                 db.rollback()

@@ -369,23 +369,29 @@ def _demote_to_tmp(filename: str | None):
             pass
 
 
-def _delete_recipe_files(recipe: models.Recipe):
-    """Total deletion: remove any file on disk associated with this recipe.
-    Nothing file-related is left behind once a recipe is deleted. Callers
-    must only invoke this AFTER the corresponding DB delete has committed
-    successfully -- deleting the file first would leave an unrecoverable
-    inconsistency (DB row/reference survives, file already gone) if the
-    commit then failed."""
-    if recipe.image_path:
-        # safe_join returns None for anything outside UPLOADS_DIR, so a
-        # malformed stored value can never resolve to a file elsewhere.
-        path = safe_join(UPLOADS_DIR, recipe.image_path)
-        if path and os.path.isfile(path):
-            try:
-                remove_upload_file(path)
-            except OSError:
-                log.debug("_delete_recipe_files: caught error, continuing", exc_info=True)
-                pass
+def _remove_photo(db: Session, filename: str | None, where: str) -> None:
+    """Deletes a photo in uploads/ that a recipe no longer uses. Callers
+    only call it once the commit that dropped the reference has landed:
+    deleting first would leave a row pointing at nothing if the commit
+    failed. Kept while any recipe, Recently deleted included, still names
+    it: the app copies a photo it shares (Duplicate, Merge), but a library
+    edited by hand or by another tool can have two recipes on one file
+    (Qwen review of 0193)."""
+    if not filename:
+        return
+    # safe_join returns None for anything outside UPLOADS_DIR, so a
+    # malformed stored value can never resolve to a file elsewhere.
+    path = safe_join(UPLOADS_DIR, filename)
+    if not path or not os.path.isfile(path):
+        return
+    if (db.query(models.Recipe.id).execution_options(include_deleted=True)
+            .filter(models.Recipe.image_path == filename).first()):
+        log.info("%s: photo %s kept, another recipe uses it", where, filename)
+        return
+    try:
+        remove_upload_file(path)
+    except OSError:
+        log.debug("%s: photo %s not removed", where, filename, exc_info=True)
 
 
 # ---------------------------------------------------------------------------

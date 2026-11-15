@@ -173,3 +173,41 @@ def test_emptying_recently_deleted_commits_in_chunks(client, monkeypatch):
     assert r.json()["deleted"] == len(before) >= 5
     assert len(commits) == -(-len(before) // 2)
     assert client.get("/api/recently-deleted").json()["recipes"] == []
+
+
+def test_a_photo_two_recipes_share_goes_with_the_last_of_them(client):
+    """The app copies a photo it shares (Duplicate, Merge), but a library
+    edited by hand or by another tool can have two recipes on one file:
+    deleting or re-photographing one took the other's photo (Qwen review
+    of 0193)."""
+    from app import models
+    from app.database import SessionLocal, UPLOADS_DIR
+    sfx = uuid.uuid4().hex[:6]
+    a = _recipe(client, f"Shared photo A {sfx}", photo=True)
+    b = _recipe(client, f"Shared photo B {sfx}")
+    c = _recipe(client, f"Shared photo C {sfx}")
+    shared = a["image_path"]
+    path = os.path.join(UPLOADS_DIR, shared)
+    db = SessionLocal()
+    try:
+        for rid in (b["id"], c["id"]):
+            db.get(models.Recipe, rid).image_path = shared
+        db.commit()
+    finally:
+        db.close()
+    # Deleted for good: the others keep it.
+    client.delete(f"/api/recipes/{a['id']}")
+    assert client.delete(f"/api/recently-deleted/{a['id']}").status_code in (200, 204)
+    assert os.path.isfile(path)
+    # Photo removed by Edit (update_recipe), then by the photo button
+    # (update_image): kept while one recipe still names it.
+    body = {"title": b["title"], "source_type": "manual", "ingredients": [{"raw_line": "1 cup rice"}],
+            "steps": ["Cook."], "tags": [], "image_path": None}
+    r = client.put(f"/api/recipes/{b['id']}", json=body)
+    assert r.status_code == 200, r.text
+    assert os.path.isfile(path)
+    assert client.patch(f"/api/recipes/{c['id']}/image", json={"image_path": None}).status_code == 200
+    assert not os.path.isfile(path)               # the last one: gone, as before
+    for rid in (b["id"], c["id"]):
+        client.delete(f"/api/recipes/{rid}")
+        client.delete(f"/api/recently-deleted/{rid}")

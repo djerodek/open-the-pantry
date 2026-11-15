@@ -33,7 +33,7 @@ import threading
 import time
 
 from .database import DATA_DIR
-from .logging_setup import get_logger
+from .logging_setup import get_logger, once_per_file_state
 
 log = get_logger("settings-password")
 
@@ -142,11 +142,12 @@ def _read() -> dict | None:
             d = json.load(f)
         if _valid(d):
             return d
-        log.error("admin-password.json is damaged: not the expected fields")
+        once_per_file_state(PASSWORD_PATH, lambda: log.error("admin-password.json is damaged: not the expected fields"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as e:
-        log.error("admin-password.json is damaged or unreadable: %s", e)
+        log.debug("_read: admin-password.json unreadable", exc_info=True)
+        once_per_file_state(PASSWORD_PATH, lambda err=e: log.error("admin-password.json is damaged or unreadable: %s", err))
     return None
 
 

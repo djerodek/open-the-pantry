@@ -1,6 +1,6 @@
 import os
 from cryptography.fernet import Fernet, InvalidToken
-from .logging_setup import get_logger
+from .logging_setup import get_logger, once_per_file_state
 
 log = get_logger("crypto")
 
@@ -41,22 +41,11 @@ def _read_key_file() -> str:
         return ""
 
 
-_warned_invalid_file: tuple | None = None
-
-
 def _warn_invalid_key_file():
     """Once per state of the file, not on every request that asks where
-    the key comes from (DeepSeek review of 0114)."""
-    global _warned_invalid_file
-    try:
-        st = os.stat(key_file_path())
-        state = (st.st_mtime_ns, st.st_size)
-    except OSError:
-        log.debug("_warn_invalid_key_file: key file unreadable", exc_info=True)
-        state = None
-    if state != _warned_invalid_file:
-        _warned_invalid_file = state
-        log.warning("key_source: %s exists but doesn't hold a valid key", key_file_path())
+    the key comes from."""
+    path = key_file_path()
+    once_per_file_state(path, lambda: log.warning("key_source: %s exists but doesn't hold a valid key", path))
 
 
 def key_source() -> str | None:

@@ -451,6 +451,8 @@ Dans Paramètres → Sauvegarde et exportation :
   - Elles vont dans `data/backups/`. Pour une vraie deuxième copie, montez
     un dossier sur un autre disque et réglez `RECIPE_APP_BACKUP_DIR`; le
     fichier compose a les lignes, en commentaire.
+  - Les sauvegardes ne sont pas chiffrées : elles contiennent chaque
+    recette, note et photo; gardez-les là où vous seul pouvez les lire.
   - Seuls les fichiers de sauvegarde de l'application y sont supprimés.
   - Changer l'horaire demande le mot de passe des paramètres.
 - **Ce qu'une sauvegarde laisse de côté** : l'identifiant et le mot de

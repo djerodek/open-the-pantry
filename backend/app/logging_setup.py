@@ -77,6 +77,26 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{LOGGER_NAME}.{name}")
 
 
+log = get_logger("logging")
+_reported_states: dict[str, object] = {}
+
+
+def once_per_file_state(path: str, report) -> None:
+    """Calls report() once per state of the file at path (its modification
+    time and size), not on every request that reads it: a damaged file is
+    logged once, and again when it changes (DeepSeek review of 0114; the
+    settings password file too, Qwen review of 0193)."""
+    try:
+        st = os.stat(path)
+        state = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        log.debug("once_per_file_state: %s unreadable", path, exc_info=True)
+        state = None
+    if path not in _reported_states or _reported_states[path] != state:
+        _reported_states[path] = state
+        report()
+
+
 # ---------------------------------------------------------------------------
 # Settings -> Logs: view, download, clear
 # ---------------------------------------------------------------------------

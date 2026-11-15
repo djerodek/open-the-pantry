@@ -24,7 +24,7 @@ from .. import duplicates
 from .. import interchange
 from ..ml import service as learning
 from ..file_validation import safe_join
-from .common import _add_lines, _apply_tags, _attachment_disposition, _copy_upload, _delete_recipe_files, _demote_to_tmp, _get_or_create_tags, _ingredient_fields, _iso_utc, _logged_minutes, _promote_temp_file, _split_keywords, _utc_now, refresh_user_keywords
+from .common import _add_lines, _apply_tags, _attachment_disposition, _copy_upload, _demote_to_tmp, _get_or_create_tags, _ingredient_fields, _iso_utc, _logged_minutes, _promote_temp_file, _remove_photo, _split_keywords, _utc_now, refresh_user_keywords
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -428,13 +428,7 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         if new_image and new_image != keep.image_path and new_image.startswith("merge-"):
             remove_upload_file(os.path.join(UPLOADS_DIR, new_image))
         raise
-    if dropped_image:
-        path = safe_join(UPLOADS_DIR, dropped_image)
-        if path and os.path.isfile(path):
-            try:
-                remove_upload_file(path)
-            except OSError:
-                log.debug("merge_recipes: old photo not removed", exc_info=True)
+    _remove_photo(db, dropped_image, "merge_recipes")
     db.refresh(keep)
     log.info("Recipes merged: %s kept, %s to Recently deleted", keep.id, other.id)
     return keep
@@ -509,11 +503,12 @@ def _delete_for_good(db: Session, recipes: list) -> int:
     done = 0
     for start in range(0, len(recipes), DELETE_CHUNK):
         chunk = recipes[start:start + DELETE_CHUNK]
+        photos = [r.image_path for r in chunk]
         for r in chunk:
             db.delete(r)
         db.commit()
-        for r in chunk:
-            _delete_recipe_files(r)
+        for photo in photos:
+            _remove_photo(db, photo, "delete_for_good")
         done += len(chunk)
     return done
 
@@ -653,10 +648,8 @@ def update_recipe(recipe_id: schemas.DbId, payload: schemas.RecipeCreate, db: Se
         raise
 
     # Only remove the superseded file once the swap has actually committed.
-    if old_image and old_image != new_image:
-        old_path = safe_join(UPLOADS_DIR, old_image)
-        if old_path and os.path.isfile(old_path):
-            remove_upload_file(old_path)
+    if old_image != new_image:
+        _remove_photo(db, old_image, "update_recipe")
 
     db.refresh(recipe)
     return recipe
@@ -750,10 +743,8 @@ def update_image(recipe_id: schemas.DbId, payload: schemas.ImageUpdate, db: Sess
         raise
 
     # Only remove the superseded file once the swap has actually committed.
-    if old_image and old_image != new_image:
-        old_path = safe_join(UPLOADS_DIR, old_image)
-        if old_path and os.path.isfile(old_path):
-            remove_upload_file(old_path)
+    if old_image != new_image:
+        _remove_photo(db, old_image, "update_image")
 
     db.refresh(recipe)
     return recipe

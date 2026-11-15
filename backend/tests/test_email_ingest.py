@@ -1097,7 +1097,6 @@ def test_a_damaged_key_file_is_reported_once(tmp_path, monkeypatch):
     key.write_text("not a key")
     monkeypatch.setattr(crypto, "key_file_path", lambda: str(key))
     monkeypatch.delenv(crypto.ENCRYPTION_KEY_ENV_VAR, raising=False)
-    monkeypatch.setattr(crypto, "_warned_invalid_file", None)
     warned = []
     monkeypatch.setattr(crypto.log, "warning", lambda msg, *a, **k: warned.append(msg))
     for _ in range(5):

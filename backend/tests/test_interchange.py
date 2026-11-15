@@ -374,3 +374,32 @@ def test_an_offset_date_is_stored_as_the_same_moment_and_exported_with_one(clien
     finally:
         client.delete(f"/api/recipes/{rid}", headers=H)
         client.delete(f"/api/recently-deleted/{rid}", headers=H)
+
+
+def test_an_import_reads_the_tag_table_once(client):
+    """Each recipe read the whole tag table twice (Qwen review of 0193).
+    A category made by one recipe is still matched by the next, any case."""
+    from sqlalchemy import event
+
+    from app.database import engine
+    sfx = uuid.uuid4().hex[:6]
+    data = _paprika([{"name": f"Tag count {i} {sfx}", "ingredients": "1 onion", "directions": "Cook.",
+                      "categories": [f"Batch{sfx}" if i % 2 else f"batch{sfx}", "Dinner"],
+                      "source_url": f"https://example.com/tag-count-{i}-{sfx}"} for i in range(6)])
+    statements = []
+    listener = lambda conn, cursor, stmt, *a: statements.append(stmt)    # noqa: E731
+    event.listen(engine, "before_cursor_execute", listener)
+    try:
+        body = _import(client, "tags.paprikarecipes", data).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", listener)
+    try:
+        assert len(body["succeeded"]) == 6
+        whole_table = [s for s in statements if "FROM tags" in s and "WHERE" not in s]
+        assert len(whole_table) == 1, f"{len(whole_table)} reads of the whole tag table"
+        names = set()
+        for rid in _ids(body):
+            names |= {t["name"] for t in client.get(f"/api/recipes/{rid}").json()["tags"] if t["category"] == "custom"}
+        assert names == {f"batch{sfx}"}            # the first one's spelling, one tag
+    finally:
+        client.post("/api/recipes/batch-delete", headers=H, json={"ids": _ids(body)})
