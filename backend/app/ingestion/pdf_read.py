@@ -1,5 +1,7 @@
 """Reading a PDF: its text layer page by page (a page without one goes to
 OCR) and its largest embedded image. Split out of pdf_ingest.py (0186)."""
+import time
+
 import pdfplumber
 
 from ..logging_setup import get_logger
@@ -11,6 +13,13 @@ log = get_logger("pdf")
 
 MIN_CHARS_PER_PAGE = 20
 MAX_PDF_PAGES = 60  # generous for even a multi-recipe scanned chapter; bounds worst-case OCR time
+
+
+# OCR time for one PDF, all its scanned pages together. Each Tesseract run
+# has its own limit (OCR_TIMEOUT_SECONDS, up to two runs a page), so 60
+# scanned pages could hold an OCR slot for hours (GPT review of 0190). A
+# recipe's few pages take seconds each.
+MAX_PDF_OCR_SECONDS = 10 * 60
 
 
 class PdfTooLargeError(ValueError):
@@ -211,6 +220,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
     page_texts = []
     ocr_pages = []
     ocr_confidences = []
+    started = time.monotonic()
 
     with pdfplumber.open(pdf_path) as pdf:
         page_count = len(pdf.pages)
@@ -226,6 +236,11 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                 continue
 
             # No usable text layer on this page -- render to image and OCR it.
+            if ocr_pages and time.monotonic() - started > MAX_PDF_OCR_SECONDS:
+                raise PdfTooLargeError(
+                    f"Reading this PDF's scanned pages took more than {MAX_PDF_OCR_SECONDS // 60} minutes "
+                    f"(stopped before page {i + 1}). Try splitting it."
+                )
             ocr_pages.append(i + 1)
             pil_image = page.to_image(resolution=_ocr_resolution(page.width, page.height)).original
             ocr_text, confidence = _ocr_image(pil_image)

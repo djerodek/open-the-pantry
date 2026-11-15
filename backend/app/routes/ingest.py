@@ -1,6 +1,8 @@
 """Add Recipe: link, PDF, photo and combined-photo imports, single and batch. Each returns a draft
 for the review screen, or saves to the review queue for the batch paths."""
 import os
+import threading
+import time
 import uuid
 from fastapi import Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -9,7 +11,7 @@ from ..database import get_db, UPLOADS_DIR, TMP_DIR
 from ..ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
 from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
 from ..ingestion.pdf_read import PdfTooLargeError, extract_pdf_text
-from ..ingestion.segment import segment_raw_text
+from ..ingestion.segment import segment_raw_text, text_was_cut
 from ..ingestion.image_ingest import ingest_and_segment, ingest_image
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import suggest_tags, explain_tags
@@ -99,9 +101,34 @@ MAX_BATCH_PDFS = 20
 # the request itself belongs in a reverse proxy, if one is in front.
 MAX_BATCH_PDF_BYTES = 100 * 1024 * 1024
 
+# A whole batch's time, on top of each item's own limits (a link: 30 s for
+# its page, 30 s for its photo; a PDF: MAX_PDF_OCR_SECONDS). Those multiply:
+# 50 links could wait 50 minutes. Past this, the rest is reported as not
+# tried, to send again; one item can still finish past it. And one batch at
+# a time: each holds a worker thread for as long as it runs, waiting for an
+# OCR slot or not (GPT review of 0190).
+MAX_BATCH_SECONDS = 15 * 60
+_batch_slot = threading.Semaphore(1)
+
+
+def batch_deadline():
+    """The batch routes' dependency: the batch slot, held until the answer
+    is sent, and the time.monotonic() past which no new item is started."""
+    if not _batch_slot.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Another batch import is still running. Try again once it has finished.")
+    try:
+        yield time.monotonic() + MAX_BATCH_SECONDS
+    finally:
+        _batch_slot.release()
+
+
+def _not_tried() -> str:
+    return f"Not tried: the batch reached its {MAX_BATCH_SECONDS // 60}-minute limit. Send it again."
+
 
 @router.post("/api/ingest/url/batch")
-def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = Depends(get_db)):
+def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = Depends(get_db),
+                          deadline: float = Depends(batch_deadline)):
     """Batch add: unlike the single-URL path, results are saved directly
     (using the auto-parsed fields and auto-suggested tags as-is) rather than
     routed through the manual-review screen -- reviewing N items one at a
@@ -113,6 +140,9 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
     for url in payload.urls:
         url = url.strip()
         if not url:
+            continue
+        if time.monotonic() > deadline:
+            failed.append({"url": url, "error": _not_tried()})
             continue
         image_path = None
         try:
@@ -195,6 +225,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         "source_type": "pdf",
         "servings": segmented.get("servings"),
         "raw_text": pdf_result.raw_text,
+        "text_cut": text_was_cut(pdf_result.raw_text),
         "image_path": image_path,  # draft reference; promoted on save
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
@@ -212,7 +243,8 @@ BATCH_INCOMPLETE_ADVICE = (" Add it on its own from screenshots of the recipe "
 
 
 @router.post("/api/ingest/pdf/batch")
-def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Depends(get_db),
+                          deadline: float = Depends(batch_deadline)):
     """Batch add for PDFs: auto-saves each file directly, same rationale as
     the URL batch endpoint. The source PDF itself isn't kept as an image
     attachment here (only screenshot/manual entries carry an image) -- only
@@ -233,6 +265,9 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
         )
     succeeded, failed = [], []
     for file in files:
+        if time.monotonic() > deadline:
+            failed.append({"filename": file.filename, "error": _not_tried()})
+            continue
         name_prefix = f"pdf-{uuid.uuid4().hex}"
         temp_path = None
         try:
@@ -304,6 +339,7 @@ def ingest_from_image(file: UploadFile = File(...)):
         "source_type": "screenshot",
         "servings": segmented.get("servings"),
         "raw_text": segmented["raw_text"],
+        "text_cut": text_was_cut(segmented["raw_text"]),
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
         "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
@@ -389,6 +425,7 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
         "source_type": "screenshot",
         "servings": segmented.get("servings"),
         "raw_text": combined_raw_text,
+        "text_cut": text_was_cut(combined_raw_text),
         "ingredients": parsed_ingredients,
         "steps": [{"text": s} for s in segmented["steps"]],
         "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)

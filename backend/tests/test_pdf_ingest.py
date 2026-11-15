@@ -832,3 +832,23 @@ def test_french_words_after_the_noun_and_a_hyphen_after_a_comma_end_an_item():
         assert _clean_ingredients([a, b]) == [a, b], (a, b)
     for a, b in (("1 cup flat-leaf", "parsley"), ("1 cup grated", "parmesan"), ("2 cups all-purpose", "flour")):
         assert _clean_ingredients([a, b]) == [f"{a} {b}"], (a, b)
+
+
+def test_a_pdf_stops_being_read_past_its_ocr_time(monkeypatch, tmp_path):
+    """GPT review of 0190: each Tesseract run has its own limit, up to two a
+    page, so 60 scanned pages could hold an OCR slot for hours. One PDF's
+    scanned pages share 10 minutes; past it the PDF is refused, saying
+    where it stopped."""
+    from app.ingestion import pdf_read
+    path = tmp_path / "scan.pdf"
+    pages = [Image.new("RGB", (400, 500), "white") for _ in range(3)]
+    pages[0].save(path, save_all=True, append_images=pages[1:])
+    read = []
+    monkeypatch.setattr(pdf_read, "_ocr_image", lambda img: (read.append(1), ("", None))[1])
+    monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", -1)
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped before page 2"):
+        pdf_read.extract_pdf_text(str(path))
+    assert read == [1]
+    monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
+    read.clear()
+    assert pdf_read.extract_pdf_text(str(path)).ocr_used_on_pages == [1, 2, 3] and len(read) == 3

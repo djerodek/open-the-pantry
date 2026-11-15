@@ -593,6 +593,14 @@ function showReviewScreen(draft) {
       : tx("OCR confidence: {1}%", { 1: Math.round(draft.ocr_confidence) });
     addBody.appendChild(el("div", { class: `badge badge-confidence-${tier}`, text: msg, style: "margin-bottom:0.75rem;display:inline-block;" }));
   }
+  // Said before saving too, not only in a saved recipe's "Check these"
+  // (reviews of 0174 and 0190).
+  if (draft.text_cut) {
+    addBody.appendChild(el("div", {
+      class: "badge badge-confidence-low", role: "note", style: "margin-bottom:0.75rem;display:inline-block;",
+      text: tx("Only the start of the text was read, because it is very long. What comes after is not in this recipe."),
+    }));
+  }
 
   const titleInput = el("input", { type: "text", id: "review-title", value: draft.title || "" });
   const servingsInput = el("input", { type: "text", id: "review-servings", maxlength: "100", placeholder: tx("e.g. 4"), value: draft.servings || "" });

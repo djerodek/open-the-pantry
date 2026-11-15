@@ -565,8 +565,12 @@ Son fonctionnement :
     préparation a utilisé environ 400 Mio au plus fort lors d'un essai avec
     une photo de 50 mégapixels (une mesure, pas une limite), sans compter
     Tesseract, qui tourne à part; 3 photos au plus sont préparées à la fois.
-  - **PDF** : au plus 60 pages, et au plus 3 tâches d'OCR à la fois. Parmi
+  - **PDF** : au plus 60 pages, au plus 10 minutes d'OCR pour les pages
+    numérisées d'un même PDF, et au plus 3 tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
+  - **Lots** (liens, PDF) : un à la fois, et 15 minutes pour tout le lot; ce
+    qui n'a pas été commencé à temps est indiqué comme pas essayé, à
+    envoyer de nouveau.
   - **Archives** (sauvegardes, importations) : au plus 20 000 fichiers,
     vérifié avant de lire la liste des fichiers, et taille limitée à la
     décompression.

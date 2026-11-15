@@ -484,8 +484,12 @@ How it works:
     megapixels. Preparing one took about 400 MiB at its peak in a test with
     a 50-megapixel photo (a measurement, not a limit), before Tesseract,
     which runs separately; up to 3 photos are prepared at once.
-  - **PDFs**: at most 60 pages, and at most 3 OCR jobs at once. From a PDF's
-    photos, only the largest is decoded.
+  - **PDFs**: at most 60 pages, at most 10 minutes of OCR for one PDF's
+    scanned pages, and at most 3 OCR jobs at once. From a PDF's photos,
+    only the largest is decoded.
+  - **Batches** (links, PDFs): one at a time, and 15 minutes for the whole
+    batch; what wasn't started by then is listed as not tried, to send
+    again.
   - **Archives** (backups, imports): at most 20,000 files, checked before
     the file list is read, and size-limited when unpacked.
   - **Downloaded pages**: at most 10 MB and 30 seconds in all (the

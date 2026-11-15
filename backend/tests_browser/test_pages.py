@@ -849,3 +849,22 @@ def test_check_email_inbox_from_the_add_dialog(server, page):
     pg.click("#add-recipe-fab")
     pg.click("#add-recipe-body button:has-text('Check email inbox')")
     pg.wait_for_selector("#add-recipe-body .scan-status:has-text('Scanned 1: 0 ingested, 1 failed.')")
+
+
+def test_the_draft_says_when_only_the_start_was_read(server, page):
+    """Reviews of 0174 and 0190: the warning that a very long text was only
+    read from its start shows on the draft, before saving."""
+    p = page()
+    pg = p.page
+    draft = {"incomplete": None, "title": "Long", "source_type": "pdf", "servings": None, "raw_text": "x",
+             "text_cut": True, "image_path": None, "ingredients": [{"raw_line": "1 egg", "name": "egg"}],
+             "steps": [{"text": "Cook."}], "suggested_tags": [], "ocr_used_on_pages": [], "ocr_confidence": None,
+             "stored_file": None}
+    pg.route("**/api/ingest/pdf", lambda route: route.fulfill(status=200, content_type="application/json",
+                                                               body=json.dumps(draft)))
+    pg.goto(server["url"])
+    pg.click("#add-recipe-fab")
+    pg.click("#add-recipe-body button:has-text('PDF')")
+    pg.set_input_files("#pdf-input", files=[{"name": "a.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"}])
+    pg.click("#add-recipe-body button:has-text('Process PDF')")
+    pg.wait_for_selector("#add-recipe-body [role=note]:has-text('Only the start of the text was read')")

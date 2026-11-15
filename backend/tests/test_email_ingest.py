@@ -1437,3 +1437,23 @@ def test_links_over_2000_characters_arent_taken_from_an_email():
     raw = ("From: a@example.com\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
            f"{long_link}\r\nhttps://example.com/soup\r\n").encode()
     assert extract_email_parts(email.message_from_bytes(raw))["urls"] == ["https://example.com/soup"]
+
+
+def test_the_subject_is_read_from_its_first_4_kb_only():
+    """GPT review of 0190: the Subject header of every unread message was
+    fetched whole, before the size check (the sender's is capped at 2 KB),
+    so a message with a huge Subject was downloaded on every scan."""
+    from app import email_client
+    asked = []
+
+    class Imap:
+        def search(self, *a):
+            return "OK", [b"1 2"]
+
+        def fetch(self, msg_id, spec):
+            asked.append(spec)
+            subject = b"Recipe: soup" if msg_id == b"1" else b"Hello"
+            return "OK", [(b"1 (BODY[HEADER.FIELDS (SUBJECT)]<0> {20}", b"Subject: " + subject + b"\r\n\r\n"), b")"]
+
+    assert email_client.search_unseen_by_subject(Imap(), "recipe") == [b"1"]
+    assert asked and all("[HEADER.FIELDS (SUBJECT)]<0.4096>" in a for a in asked), asked

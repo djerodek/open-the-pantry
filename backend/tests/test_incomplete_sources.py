@@ -139,3 +139,36 @@ def test_a_page_without_markup_in_french_or_english():
     en = parse_html("<h1>Soup</h1><h4>Prep time 15 minutes</h4><p>Serves 4</p><h2>Ingredients</h2><ul><li>1 onion</li></ul>"
                     "<h2>Method</h2><p>Soften the onion.</p>", "https://example.com/soup")
     assert en.ingredients == ["1 onion"] and en.steps == ["Soften the onion."]
+
+
+def test_a_pdf_batch_stops_starting_files_at_its_time_limit(client, monkeypatch):
+    """GPT review of 0190: the PDF batch's files share the batch's time."""
+    import time
+
+    from app.main import app
+    from app.routes import ingest as routes_ingest
+    app.dependency_overrides[routes_ingest.batch_deadline] = lambda: time.monotonic() - 1   # already past
+    try:
+        r = client.post("/api/ingest/pdf/batch", files=[("files", ("whole.pdf", _pdf(WHOLE), "application/pdf"))]).json()
+    finally:
+        app.dependency_overrides.pop(routes_ingest.batch_deadline, None)
+    assert r["succeeded"] == []
+    assert r["failed"] == [{"filename": "whole.pdf", "error": "Not tried: the batch reached its 15-minute limit. Send it again."}]
+
+
+def test_a_text_too_long_to_read_whole_is_said_on_the_draft(client, monkeypatch):
+    """Reviews of 0174 and 0190: a draft from a very long text said nothing
+    before saving; only a saved recipe's "Check these" did."""
+    from app.ingestion.pdf_read import PdfIngestResult
+    from app.ingestion.segment import SEGMENT_MAX_LINES
+    from app.routes import ingest as routes_ingest
+    long_text = WHOLE.replace("<h1>", "").replace("</h1>", "") + "\nmore\n" * (SEGMENT_MAX_LINES + 1)
+    monkeypatch.setattr(routes_ingest, "extract_pdf_text", lambda path: PdfIngestResult(
+        raw_text=long_text, ocr_used_on_pages=[], avg_ocr_confidence=None, page_count=1))
+    d = client.post("/api/ingest/pdf", files={"file": ("long.pdf", _pdf(WHOLE), "application/pdf")}).json()
+    assert d["text_cut"] is True
+    _drop(client, d)
+    monkeypatch.undo()
+    d = client.post("/api/ingest/pdf", files={"file": ("whole.pdf", _pdf(WHOLE), "application/pdf")}).json()
+    assert d["text_cut"] is False
+    _drop(client, d)
