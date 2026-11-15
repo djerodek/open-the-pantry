@@ -36,6 +36,6 @@ services:
       # Your time zone, so the daily email scan runs at the hour you set.
       # Change to yours, e.g. America/Toronto, Europe/Paris.
       TZ: "UTC"
-    #   # Optional; Settings can create encryption.key instead. See README.
+    #   # Optional; Settings can create encryption.key instead. See SECURITY.md.
     #   RECIPE_APP_ENCRYPTION_KEY: "paste-generated-key-here"
     #   RECIPE_APP_API_KEY: "choose-a-long-random-string"

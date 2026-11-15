@@ -2,7 +2,7 @@ services:
   open-the-pantry:
     # :main follows every change. To stay on a build you've tested, pin its
     # digest instead, e.g. djerodek/open-the-pantry@sha256:<digest> (README,
-    # "Deployment notes").
+    # "Run it").
     image: djerodek/open-the-pantry:main
     container_name: open-the-pantry
     ports:
@@ -24,8 +24,8 @@ services:
       # the page uses it. The right side stays 8091.
       - "8091:8091"
     # Optional: a .env file next to this one. Settings -> HTTPS can take the
-    # cPanel login itself; values put in .env instead win (see README,
-    # "Optional: HTTPS on your network"). Ignored if the file doesn't exist.
+    # cPanel login itself; values put in .env instead win (see
+    # docs/https.md). Ignored if the file doesn't exist.
     env_file:
       - path: .env
         required: false
@@ -60,11 +60,11 @@ services:
     #
     #   # Only if you reach the app by a host name with a dot in it that
     #   # isn't .local/.lan/.home.arpa (e.g. behind a reverse proxy). See
-    #   # README "Other websites can't use the app through your browser".
+    #   # SECURITY.md, "Other websites can't use the app through your browser".
     #   RECIPE_APP_ALLOWED_HOSTS: "pantry.example.com"
     #
-    #   # Strongly recommended if you enable email ingest -- see the README's
-    #   # security notes. Requires a client or reverse proxy that sends the
+    #   # Strongly recommended if you enable email ingest -- see
+    #   # SECURITY.md. Requires a client or reverse proxy that sends the
     #   # X-API-Key header.
     #   RECIPE_APP_API_KEY: "choose-a-long-random-string"
     #

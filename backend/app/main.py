@@ -368,15 +368,15 @@ app.add_middleware(BodySizeLimit)
 
 # ---------------------------------------------------------------------------
 # Optional API key auth. Off by default (RECIPE_APP_API_KEY unset), matching
-# the "personal LAN tool" default this app is designed around -- see the
-# README security notes for the reasoning. Setting the env var turns this
+# the "personal LAN tool" default this app is designed around -- see
+# SECURITY.md for the reasoning. Setting the env var turns this
 # into a required `X-API-Key` header on every request except /healthz (so
 # Docker's HEALTHCHECK, which sends no such header, keeps working).
 #
 # This is API-level enforcement only -- there's no frontend login screen in
 # this version, so using it currently means either an API client that sends
 # the header itself, or a reverse proxy configured to inject it. Documented
-# as such in the README rather than presented as a full turnkey login flow.
+# as such in SECURITY.md rather than presented as a full turnkey login flow.
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("RECIPE_APP_API_KEY", "").strip()
 if API_KEY:

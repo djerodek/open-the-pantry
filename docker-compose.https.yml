@@ -3,8 +3,8 @@
 # instead; it needs no extra containers.
 #
 # Not used unless you turn it on -- nothing here runs with the plain
-# `docker compose up -d`. Setup is in the README, "Optional: HTTPS on your
-# network". In short: copy https.env.example to .env and traefik.env.example
+# `docker compose up -d`. Setup is in docs/https.md,
+# "Other DNS hosts". In short: copy https.env.example to .env and traefik.env.example
 # to traefik.env, next to your docker-compose.yml, fill both in, then
 # `docker compose up -d`.
 #
@@ -20,8 +20,8 @@
 services:
   open-the-pantry:
     environment:
-      # The app refuses host names it doesn't know (see README, "Other
-      # websites can't use the app through your browser").
+      # The app refuses host names it doesn't know (see SECURITY.md,
+      # "Other websites can't use the app through your browser").
       RECIPE_APP_ALLOWED_HOSTS: ${PANTRY_DOMAIN:?Set PANTRY_DOMAIN in .env (see https.env.example)}
       # Believe the visitor's address and https:// as Traefik reports them,
       # but only from Traefik's fixed address below. Without this the app
@@ -74,8 +74,8 @@ services:
       # the socket file itself being replaced; it does NOT make the Docker
       # API read-only, so anything that takes over Traefik controls Docker
       # (root on the host). To limit that, put a socket proxy that allows
-      # only container listing in front of it (README, "Optional: HTTPS on
-      # your network").
+      # only container listing in front of it (docs/https.md,
+      # "Other DNS hosts").
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # The certificate and Let's Encrypt account, kept across restarts.
       - ./letsencrypt:/letsencrypt

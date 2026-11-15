@@ -202,7 +202,7 @@ jobs:
       # copies DOCKERHUB.md into it on pushes to main. Docker Hub only accepts
       # description updates from a token with the Read, Write, Delete scope;
       # with a narrower DOCKERHUB_TOKEN this step fails by itself and the image
-      # above is still published (see README, "Publishing your own build").
+      # above is still published.
       - name: Update Docker Hub overview
         continue-on-error: true
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0

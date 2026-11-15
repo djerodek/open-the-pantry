@@ -112,7 +112,7 @@ def generate_key_file() -> None:
     key file exists). Replacing a key would make every stored credential
     undecryptable, so that is never something one button press should do.
 
-    The trade-off, stated in the README: the key sits next to the database,
+    The trade-off, stated in SECURITY.md: the key sits next to the database,
     so a copy of the whole data directory carries both. The backup zip does
     not include this file, so a leaked backup still exposes nothing.
     """

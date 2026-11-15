@@ -38,7 +38,7 @@ Save as `docker-compose.yml`:
           - "8090:8090"
           - "8443:8443"   # HTTPS, once set up in Settings
           - "8091:8091"   # What to eat?, once switched on in Settings
-        env_file:         # optional; see the README's HTTPS section
+        env_file:         # optional; see docs/https.md in the repository
           - path: .env
             required: false
         volumes:
@@ -47,7 +47,7 @@ Save as `docker-compose.yml`:
         # environment:
         #   # Optional: email ingest can create its own key in Settings.
         #   # Set this only to keep the key outside ./data.
-        #   RECIPE_APP_ENCRYPTION_KEY: "see-README"
+        #   RECIPE_APP_ENCRYPTION_KEY: "see-SECURITY.md"
         #   # Recommended if anything beyond you can reach this.
         #   RECIPE_APP_API_KEY: "a-long-random-string"
 
