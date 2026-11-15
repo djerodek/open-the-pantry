@@ -421,7 +421,6 @@
     "That's {1} links; the limit is 50 per batch. Send the rest separately.":
       "Ça fait {1} liens; la limite est de 50 par lot. Envoyez le reste séparément.",
     "Fetching {1} recipe(s)...": "Récupération de {1} recette(s)…",
-    "Batch import failed (error {1}).": "L'importation par lot a échoué (erreur {1}).",
     "{1} added, {2} failed.": "{1} ajoutée(s), {2} en échec.",
     "Batch import failed.": "L'importation par lot a échoué.",
     "Recipe URLs (one per line)": "URL des recettes (une par ligne)",

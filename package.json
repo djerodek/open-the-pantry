@@ -1,0 +1,9 @@
+{
+  "name": "open-the-pantry-checks",
+  "private": true,
+  "description": "CI's undefined-name check for the page scripts (eslint.config.mjs). Not part of the app or the image.",
+  "devDependencies": {
+    "eslint": "9.39.5",
+    "globals": "15.12.0"
+  }
+}

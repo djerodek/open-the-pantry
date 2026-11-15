@@ -868,3 +868,21 @@ def test_the_draft_says_when_only_the_start_was_read(server, page):
     pg.set_input_files("#pdf-input", files=[{"name": "a.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"}])
     pg.click("#add-recipe-body button:has-text('Process PDF')")
     pg.wait_for_selector("#add-recipe-body [role=note]:has-text('Only the start of the text was read')")
+
+
+def test_a_refused_batch_says_why(server, page):
+    """Review of 0199: a batch the server refuses for its shape (one link
+    over 2,000 characters) has a list as its detail, and the page showed
+    "[object Object]"."""
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click("#add-recipe-fab")
+    pg.click("#add-recipe-body button:has-text('URL')")
+    pg.click("#add-recipe-body .mode-switch button:has-text('Batch')")
+    pg.fill("#url-batch-input", "https://example.com/" + "a" * 2100)
+    pg.click("#add-recipe-body button:has-text('Import all')")
+    last = "[...document.querySelectorAll('#add-recipe-body form > div')].pop().textContent"
+    wait_until(pg, f"{last}.length > 0")
+    text = pg.evaluate(last)
+    assert "[object Object]" not in text and "2000" in text.replace(",", ""), text

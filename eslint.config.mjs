@@ -2,8 +2,8 @@
 // never defined or imported fails the build. Only no-undef, on purpose: a
 // move between modules that forgets an import passes every test that
 // doesn't click the one button using it (runInboxScan, review of
-// 0185-0189). Run: npm install --no-save eslint@9.14.0 globals@15.12.0 &&
-// npx eslint
+// 0185-0189). Run: npm ci --ignore-scripts && npx eslint (versions in
+// package-lock.json).
 import globals from "globals";
 
 export default [

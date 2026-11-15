@@ -17,6 +17,7 @@ import {
   API, tx, tagLabel, $, $$, announce, announceError, el, topOverlay, openModal, closeModal, tagsFromInput, linesOf,
   ingredientsOf, jsonBody, discardDraftFile, refreshLibrary, state, loadTimeBuckets, loadRecipes, tagSourcesNote,
   ingredientText, makeDurationInput, openRecipeDetail, partHint, fetchWithTimeout, writeFailureMessage,
+  apiErrorText,
 } from "./app.js";
 // The + menu's "Check email inbox" (missing until 0190: the button threw
 // a ReferenceError; review of 0185-0189).
@@ -94,8 +95,10 @@ function savedResultRow(recipeId, title, note) {
 // A batch import's answer: what was added and what failed, then the
 // library refreshed; or the error.
 async function showBatchResult(res, resultsEl) {
-  const result = await res.json();
-  if (!res.ok) { resultsEl.textContent = result.detail || tx("Batch import failed (error {1}).", { 1: res.status }); return; }
+  const result = await res.json().catch(() => ({}));
+  // A refused request's detail can be a list (one link over 2,000
+  // characters): it showed "[object Object]" (review of 0199).
+  if (!res.ok) { resultsEl.textContent = apiErrorText(result, res.status); return; }
   renderBatchResults(resultsEl, result);
   announce(tx("{1} added, {2} failed.", { 1: result.succeeded.length, 2: result.failed.length }));
   await refreshLibrary();

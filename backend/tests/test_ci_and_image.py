@@ -1,6 +1,7 @@
 """CI and the Docker image: the workflow, the Dockerfile, the entrypoint and the build context.
 
 Read as text: these can't be run in a test."""
+import json
 import os
 import re
 import shutil
@@ -186,7 +187,13 @@ def test_ci_fails_on_an_undefined_name_in_the_page_scripts():
     without importing runInboxScan, and "Check email inbox" threw; no test
     clicked it. CI runs ESLint's no-undef over every page script."""
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    assert "npx eslint" in ci and "eslint@9.14.0 globals@15.12.0" in ci
+    assert "npm ci --ignore-scripts" in ci and "npx eslint" in ci
+    # Every version fixed by the lockfile, dependencies included (review
+    # of 0199), and the two named ones exact in package.json.
+    pkg = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for v in pkg["devDependencies"].values()), pkg
+    lock = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+    assert lock["packages"][""]["devDependencies"] == pkg["devDependencies"]
     config = (ROOT / "eslint.config.mjs").read_text(encoding="utf-8")
     assert '"no-undef": "error"' in config
     # Reads the config as written: each block's `files: [...]` on its own,
