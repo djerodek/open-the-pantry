@@ -22,7 +22,7 @@ A self-hosted recipe manager. You can add recipes from a link, a PDF, a photo or
 
 ## How it differs
 
-Compared with Mealie and Tandoor, as their documentation stood in October
+Compared with Mealie and Tandoor, as their documentation stood in November
 2026:
 
 - **Photos, screenshots and PDFs are read without an AI model**: OCR and
@@ -259,7 +259,7 @@ Send a recipe to an inbox you've set up, with a keyword in the subject
 The app tries, in order:
 1. a PDF attachment;
 2. a photo;
-3. links in the body;
+3. links in the body (the first 3);
 4. the text itself.
 
 Mail without the keyword is never read. A scan missed at its hour (the
@@ -290,8 +290,8 @@ container was down) runs later the same day.
     Tags manages groups, tags and keywords, and can tag every recipe.
 - **Learning** (Settings → Learning, on by default) trains two small models
   on your corrected recipes, one for reading imports and one for tags, each
-  used only where it beats the built-in rules (Settings shows the scores;
-  the import model needs a 5-point lead, and never flattens a recipe's parts).
+  used only where it clearly beats the built-in rules (Settings shows the
+  scores).
   Recipes still *To review* aren't learned from. The models (`data/ml/`)
   are rebuilt automatically and aren't in backups.
 - **Search** covers titles, ingredients, steps, notes, original text and
@@ -406,8 +406,7 @@ In Settings → Backup & export:
     backup schedule and email settings; a new install takes the backup's
     mail server names and ports.
   - If a restore fails partway, the app stays closed (503) until it's
-    restarted, and finishes the restore at start-up, this server's own
-    settings included (kept in `restore-kept.json` meanwhile). If it can't tell
+    restarted, and finishes the restore at start-up. If it can't tell
     whether the library was replaced, the log names the folders to check.
   - **Anything else adds its recipes**: schema.org `.json`, a `.zip` of
     them, or a Paprika export (`.paprikarecipes`). A recipe whose link is
@@ -477,15 +476,12 @@ How it works:
 - **Everything that comes in is treated as hostile.**
   - **Uploads**: at most 20 MB, checked by their content rather than their
     file extension. A request is cut off as soon as it passes its limit
-    (20 MB a file, 1 GB an import, 16 GB a full backup with the settings
-    password, 32 MB anything else, each plus 1 MB for the form itself), so no
-    more than that reaches the disk.
+    (20 MB a file, 1 GB an import, 16 GB a full backup, 32 MB anything
+    else), so no more than that reaches the disk.
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused. A photo read for text is first reduced to 35
-    megapixels. Preparing one took about 400 MiB at its peak in a test with
-    a 50-megapixel photo (a measurement, not a limit), before Tesseract,
-    which runs separately; up to 3 photos are prepared at once.
+    megapixels, and up to 3 are prepared at once.
   - **PDFs**: at most 60 pages, at most 10 minutes of OCR for one PDF's
     scanned pages, and at most 3 OCR jobs at once. From a PDF's photos,
     only the largest is decoded.
@@ -494,10 +490,9 @@ How it works:
     again.
   - **Archives** (backups, imports): at most 20,000 files, checked before
     the file list is read, and size-limited when unpacked.
-  - **Downloaded pages**: at most 10 MB and 30 seconds in all (the
-    connection, TLS handshake included, is shut at 30 seconds, even from a
-    server that sends its headers or page a byte at a time), from public
-    addresses only; every redirect is checked again.
+  - **Downloaded pages**: at most 10 MB and 30 seconds in all, however
+    slowly the server answers, from public addresses only; every redirect
+    is checked again.
   - **Outgoing connections** (mail, links, cPanel, Let's Encrypt) check the
     certificate against the image's current roots, and refuse chains
     through known-compromised CA keys (eMudhra, October 2026).
@@ -588,8 +583,9 @@ run uses a temporary data folder.
   zoom is off on purpose.
 
 CI (`.github/workflows/ci.yml`) runs on every push, every Sunday, and on
-demand. It runs both test suites, a dependency audit, and a Docker build
-that is started and checked. The image is published only once those pass,
+demand. It runs both test suites, an undefined-name check of the page
+scripts (ESLint), a dependency audit, and a Docker build that is started
+and checked. The image is published only once those pass,
 so the weekly run refreshes it with the newest base image, trusted roots
 and Chrome version (the browser name link imports send). GitHub pauses
 scheduled runs after 60 days without a commit.
@@ -597,10 +593,11 @@ scheduled runs after 60 days without a commit.
 ```
 backend/app/        FastAPI app (main.py: start-up, middleware), models, backup, HTTPS, picker
   routes/           the API by area: recipes, ingest, email, settings, backup; common.py shared
-  ingestion/        link, PDF, photo and email reading; tagging
+  ingestion/        link, PDF (pdf_read), OCR (ocr), layout (segment) and email reading; tagging
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template
-backend/tests/      server tests; corpus/: import corpus cases; tests_browser/: page tests
+backend/tests/      server tests; corpus/: import corpus cases
+backend/tests_browser/  page tests (Playwright)
 frontend/           the app: index.html, js/app.js (a JavaScript module, no build step),
                     js/settings.js (the Settings panels), js/add_recipe.js (the Add dialog),
                     js/i18n.js, css/;

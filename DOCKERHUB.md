@@ -1,7 +1,7 @@
 # Open the Pantry
 
-Self-hosted, searchable recipe manager. Add recipes by URL, PDF, screenshot,
-or manual entry; browse, filter, rate, and export clean printable copies.
+Self-hosted, searchable recipe manager. Add recipes by URL, PDF, photo,
+email or typing; browse, filter, rate, and export printable copies.
 Interface in English or French. No LLM dependency.
 
 ---
@@ -9,8 +9,9 @@ Interface in English or French. No LLM dependency.
 ## ⚠️ Run this on your own network only
 
 **There is no login.** Anyone who can reach the container can read, change
-and delete every recipe. Only Email ingest, HTTPS, Logs, Email PDF and
-restoring a backup need a settings password, created in the app.
+and delete every recipe. Only Email ingest, HTTPS, Logs, Email PDF,
+restoring a backup and the backup schedule need a settings password,
+created in the app.
 
 **Don't expose it to the internet.** Use it on your LAN, or from outside
 through a VPN or a reverse proxy that does its own authentication. A
@@ -67,7 +68,7 @@ a weekly cron job running that command keeps a server current. Pin a digest
 
 ## How it differs
 
-Compared with Mealie and Tandoor (their documentation, October 2026):
+Compared with Mealie and Tandoor (their documentation, November 2026):
 photos, screenshots and PDFs are read with OCR and rules on your server, with
 no AI model, API key or GPU. It learns from your corrections, reads English
 and Quebec French, takes recipes by email, and picks a random one for you.
@@ -102,8 +103,7 @@ several user accounts.
   up from Settings for cPanel-managed domains.
 - **Backups**: full backups (credentials left out) on demand or daily, to
   another disk if you like (`RECIPE_APP_BACKUP_DIR`; not encrypted, so
-  somewhere only you can read), restored from
-  Settings; every recipe as PDFs or schema.org JSON; import schema.org JSON
+  somewhere only you can read), restored from Settings; every recipe as PDFs or schema.org JSON; import schema.org JSON
   or a Paprika export.
 - **PWA**: installable, light/dark themes, adjustable text size, keyboard
   and screen-reader accessible.

@@ -27,7 +27,7 @@ Un gestionnaire de recettes auto-hébergé. On peut ajouter une recette à parti
 
 ## Ce qui la distingue
 
-Par rapport à Mealie et Tandoor, d'après leur documentation en octobre
+Par rapport à Mealie et Tandoor, d'après leur documentation en novembre
 2026 :
 
 - **Les photos, captures d'écran et PDF sont lus sans modèle d'IA** : OCR
@@ -299,7 +299,7 @@ dans l'objet (`[RECIPE]` par défaut), et l'application la récupère :
 Elle essaie, dans l'ordre :
 1. un PDF joint;
 2. une photo;
-3. les liens du message;
+3. les liens du message (les 3 premiers);
 4. le texte lui-même.
 
 Le courriel sans le mot-clé n'est jamais lu. Une vérification manquée à
@@ -335,9 +335,8 @@ son heure (conteneur arrêté) se fait plus tard le même jour.
 - **L'apprentissage** (Paramètres → Apprentissage, activé par défaut)
   entraîne deux petits modèles sur vos recettes corrigées, l'un pour lire
   les importations et l'autre pour les étiquettes, chacun utilisé seulement
-  là où il fait mieux que les règles intégrées (les paramètres affichent
-  les scores; celui des importations doit avoir 5 points d'avance et ne
-  fusionne jamais les parties d'une recette). Les recettes encore *À vérifier* n'y servent pas. Les
+  là où il fait nettement mieux que les règles intégrées (les paramètres
+  affichent les scores). Les recettes encore *À vérifier* n'y servent pas. Les
   modèles (`data/ml/`) sont reconstruits automatiquement et ne sont pas
   dans les sauvegardes.
 - **La recherche** couvre les titres, les ingrédients, les étapes, les
@@ -472,9 +471,7 @@ Dans Paramètres → Sauvegarde et exportation :
     de la sauvegarde.
   - Si une restauration échoue en cours de route, l'application reste
     fermée (503) jusqu'à son redémarrage, et termine la restauration au
-    démarrage, paramètres propres à ce serveur compris (gardés dans
-    `restore-kept.json` entre-temps). Si elle ne peut pas savoir si la
-    bibliothèque a été
+    démarrage. Si elle ne peut pas savoir si la bibliothèque a été
     remplacée, le journal nomme les dossiers à vérifier.
   - **Tout autre fichier ajoute ses recettes** : du `.json` schema.org, un
     `.zip` de ceux-ci, ou une exportation Paprika (`.paprikarecipes`). Une
@@ -557,16 +554,13 @@ Son fonctionnement :
   - **Téléversements** : au plus 20 Mo, vérifiés par leur contenu plutôt
     que leur extension. Une requête est coupée dès qu'elle dépasse sa
     limite (20 Mo par fichier, 1 Go pour un fichier de recettes à ajouter,
-    16 Go pour une sauvegarde complète avec le mot de passe des paramètres,
-    32 Mo pour le reste, plus 1 Mo chaque fois pour le formulaire
-    lui-même) : rien de plus n'atteint le disque.
+    16 Go pour une sauvegarde complète, 32 Mo pour le reste) : rien de plus
+    n'atteint le disque.
   - **Images** : elles sont réencodées, ce qui retire les métadonnées et
     tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
     sont utilisés, et toute image de plus de 50 mégapixels est refusée. Une
-    photo lue pour son texte est d'abord réduite à 35 mégapixels. Sa
-    préparation a utilisé environ 400 Mio au plus fort lors d'un essai avec
-    une photo de 50 mégapixels (une mesure, pas une limite), sans compter
-    Tesseract, qui tourne à part; 3 photos au plus sont préparées à la fois.
+    photo lue pour son texte est d'abord réduite à 35 mégapixels, et 3 au
+    plus sont préparées à la fois.
   - **PDF** : au plus 60 pages, au plus 10 minutes d'OCR pour les pages
     numérisées d'un même PDF, et au plus 3 tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
@@ -576,10 +570,8 @@ Son fonctionnement :
   - **Archives** (sauvegardes, importations) : au plus 20 000 fichiers,
     vérifié avant de lire la liste des fichiers, et taille limitée à la
     décompression.
-  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout (la
-    connexion, négociation TLS comprise, est coupée à 30 secondes, même avec
-    un serveur qui envoie ses en-têtes ou la page un octet à la fois),
-    depuis des adresses publiques seulement; chaque redirection est vérifiée
+  - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout, quelle
+    que soit la lenteur du serveur, depuis des adresses publiques seulement; chaque redirection est vérifiée
     de nouveau.
   - **Connexions sortantes** (courriel, liens, cPanel, Let's Encrypt) : le
     certificat est vérifié d'après les racines à jour de l'image, et les
@@ -683,7 +675,8 @@ et chaque exécution utilise un dossier de données temporaire.
 
 L'intégration continue (`.github/workflows/ci.yml`) s'exécute à chaque
 envoi, chaque dimanche et sur demande. Elle lance les deux suites de
-tests, un audit des dépendances, et une construction Docker démarrée et
+tests, une vérification des noms non définis dans les scripts des pages
+(ESLint), un audit des dépendances, et une construction Docker démarrée et
 vérifiée. L'image n'est publiée qu'une fois ces étapes réussies;
 l'exécution hebdomadaire la reconstruit donc avec l'image de base, les
 racines et la version de Chrome les plus récentes (le nom de navigateur
@@ -693,10 +686,11 @@ planifiées après 60 jours sans commit.
 ```
 backend/app/        application FastAPI (main.py : démarrage, middleware), modèles, sauvegarde, HTTPS, On mange quoi?
   routes/           l'API par domaine : recettes, importation, courriel, paramètres, sauvegarde; common.py partagé
-  ingestion/        lecture des liens, PDF, photos et courriels; étiquetage
+  ingestion/        lecture des liens, PDF (pdf_read), OCR (ocr), mise en page (segment) et courriels; étiquetage
   ml/               Paramètres -> Apprentissage (numpy seulement)
   templates/        le gabarit d'impression/PDF/HTML
-backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation; tests_browser/ : tests des pages
+backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation
+backend/tests_browser/  tests des pages (Playwright)
 frontend/           l'application : index.html, js/app.js (un module JavaScript, sans compilation),
                     js/settings.js (les panneaux des Paramètres), js/add_recipe.js (la fenêtre Ajouter),
                     js/i18n.js, css/;

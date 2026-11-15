@@ -1,6 +1,6 @@
 # Tests
 
-Run from `backend/`: `python -m pytest -q`. The scaling tests run `app.js`
+Run from `backend/`: `python -m pytest -q`. The scaling tests run `amounts.js`
 functions in Node and are skipped without it. The pages' own tests are in
 `../tests_browser/` (headless Chromium, `python -m pytest tests_browser`),
 with the accessibility scan in `test_accessibility.py`.
