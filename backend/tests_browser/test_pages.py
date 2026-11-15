@@ -594,7 +594,7 @@ def test_a_damaged_password_file_is_shown(server, page):
     try:
         p = page()
         _open_settings(p, server["url"])
-        p.page.wait_for_function("document.querySelector('#admin-lock-status').innerText.includes('damaged')")
+        wait_until(p.page, "document.querySelector('#admin-lock-status').innerText.includes('damaged')")
         assert not p.page.is_visible("#admin-lock-actions")
         try:
             _req.urlopen(server["url"] + "/api/logs")

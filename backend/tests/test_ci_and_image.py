@@ -204,3 +204,13 @@ def test_ci_fails_on_an_undefined_name_in_the_page_scripts():
     scripts = {f"frontend/js/{p.name}" for p in (ROOT / "frontend" / "js").glob("*.js")}
     assert scripts <= covered, f"not checked: {sorted(scripts - covered)}"
     assert "frontend/service-worker.js" in covered and "frontend-picker/*.js" in covered
+
+
+def test_browser_tests_dont_use_wait_for_function():
+    """Playwright's wait_for_function runs a string through eval, which
+    the app's CSP refuses. test_a_damaged_password_file_is_shown passed
+    here (Chromium 153) and failed in CI (Chromium 141, 2026-11-15).
+    conftest.wait_until polls with evaluate instead."""
+    offenders = [p.name for p in (ROOT / "backend/tests_browser").glob("*.py")
+                 if p.name != "conftest.py" and "wait_for_function(" in p.read_text(encoding="utf-8")]
+    assert offenders == [], offenders
