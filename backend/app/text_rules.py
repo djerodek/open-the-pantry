@@ -13,9 +13,11 @@ def is_part_name(text) -> bool:
     """"Sauce tartare:", "For the dough:": a part of the recipe, shown as a
     small heading. A short line ending in ":", but not an ingredient that
     happens to end in one ("Salt and pepper to taste:", DeepSeek review of
-    0096)."""
+    0096). A line that starts with such words is the part itself ("To
+    serve:", "Pour garnir :"; owner, 2026-11-15)."""
     t = (text or "").strip()
-    return t.endswith(":") and len(t.split()) <= 6 and not INGREDIENT_TAIL.search(t)
+    tail = INGREDIENT_TAIL.search(t)
+    return t.endswith(":") and len(t.split()) <= 6 and not (tail and tail.start() > 0)
 
 
 def is_steps_only(raw_text, steps) -> bool:

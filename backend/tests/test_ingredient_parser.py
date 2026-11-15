@@ -95,5 +95,8 @@ def test_an_ingredient_ending_in_a_colon_isnt_a_part_name():
     assert is_part_name("Sauce:") and is_part_name("Pour la pâte :")
     assert not is_part_name("Salt and pepper to taste:") and not is_part_name("Persil, pour garnir :")
     assert not is_part_name("Just a line") and not is_part_name("one two three four five six seven:")
+    # Starting with those words, it is the part (owner, 2026-11-15).
+    assert is_part_name("To serve:") and is_part_name("Pour servir :") and is_part_name("For garnish:")
+    assert is_part_name("To serve (optional):") and not is_part_name("Lemon wedges, to serve:")
     assert _instructions(["Salt and pepper to taste:", "Stir."]) == [
         {"@type": "HowToStep", "text": "Salt and pepper to taste:"}, {"@type": "HowToStep", "text": "Stir."}]

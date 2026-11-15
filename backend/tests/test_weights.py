@@ -208,3 +208,21 @@ def test_french_recipes_get_a_decimal_comma():
 def test_scaling_reads_00_flour_too():
     run = _run([["1 cup 00 flour", 2]])
     assert run == [["converted", "230 g 00 flour"]]        # 2 x 116 g
+
+
+def test_part_names_match_the_server():
+    """isPartName (amounts.js) and text_rules.is_part_name decide alike:
+    "To serve:" was an ingredient tail to both, so it showed as step 8
+    (owner, 2026-11-15)."""
+    from app.text_rules import is_part_name
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    lines = ["To serve:", "To serve (optional):", "For garnish:", "Pour servir :", "Optional toppings:",
+             "Sauce:", "Pour la pâte :", "Salt and pepper to taste:", "Lemon wedges, to serve:",
+             "Persil, pour garnir :", "Flour, for dusting:", "one two three four five six seven:", "Just a line"]
+    src = amounts_js() + f"\nconsole.log(JSON.stringify({json.dumps(lines)}.map(isPartName)));"
+    out = subprocess.run([node, "-e", src], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [is_part_name(l) for l in lines]
+    assert json.loads(out.stdout)[:7] == [True] * 7 and not any(json.loads(out.stdout)[7:])

@@ -34,7 +34,9 @@
     // Not an ingredient that ends in ":" ("Salt and pepper to taste:").
     // Same pattern as text_rules.INGREDIENT_TAIL (test_ui_consistency).
     const notAPart = /\b(to taste|for serving|to serve|for garnish|to garnish|for dusting|optional|as needed|au go[uû]t|pour servir|pour garnir|pour d[ée]corer|facultatif|au besoin|en quantit[ée] suffisante|pour (?:la )?friture|for frying|for deep[- ]frying)\b/i;
-    return t.endsWith(":") && t.split(/\s+/).length <= 6 && !notAPart.test(t);
+    // A line that starts with those words is the part itself ("To serve:").
+    const tail = notAPart.exec(t);
+    return t.endsWith(":") && t.split(/\s+/).length <= 6 && !(tail && tail.index > 0);
   }
 
   // -------------------------------------------------------------------
