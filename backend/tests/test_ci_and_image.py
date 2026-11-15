@@ -189,6 +189,8 @@ def test_ci_fails_on_an_undefined_name_in_the_page_scripts():
     assert "npx eslint" in ci and "eslint@9.14.0 globals@15.12.0" in ci
     config = (ROOT / "eslint.config.mjs").read_text(encoding="utf-8")
     assert '"no-undef": "error"' in config
+    # Reads the config as written: each block's `files: [...]` on its own,
+    # names in double quotes. A reformatted config fails here, not silently.
     covered = set()
     for block in config.split("files: [")[1:]:
         covered |= set(re.findall(r'"([^"]+)"', block.split("]", 1)[0]))

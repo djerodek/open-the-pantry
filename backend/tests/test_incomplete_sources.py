@@ -163,12 +163,12 @@ def test_a_text_too_long_to_read_whole_is_said_on_the_draft(client, monkeypatch)
     from app.ingestion.segment import SEGMENT_MAX_LINES
     from app.routes import ingest as routes_ingest
     long_text = WHOLE.replace("<h1>", "").replace("</h1>", "") + "\nmore\n" * (SEGMENT_MAX_LINES + 1)
-    monkeypatch.setattr(routes_ingest, "extract_pdf_text", lambda path: PdfIngestResult(
-        raw_text=long_text, ocr_used_on_pages=[], avg_ocr_confidence=None, page_count=1))
-    d = client.post("/api/ingest/pdf", files={"file": ("long.pdf", _pdf(WHOLE), "application/pdf")}).json()
+    with monkeypatch.context() as m:
+        m.setattr(routes_ingest, "extract_pdf_text", lambda path: PdfIngestResult(
+            raw_text=long_text, ocr_used_on_pages=[], avg_ocr_confidence=None, page_count=1))
+        d = client.post("/api/ingest/pdf", files={"file": ("long.pdf", _pdf(WHOLE), "application/pdf")}).json()
     assert d["text_cut"] is True
     _drop(client, d)
-    monkeypatch.undo()
     d = client.post("/api/ingest/pdf", files={"file": ("whole.pdf", _pdf(WHOLE), "application/pdf")}).json()
     assert d["text_cut"] is False
     _drop(client, d)

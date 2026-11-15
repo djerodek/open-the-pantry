@@ -265,7 +265,10 @@ def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> 
         # The first 4 KB of the Subject header, as the sender's is capped at
         # 2 KB: this runs on every unread message, before the size check,
         # and one with a huge Subject was downloaded whole on every scan
-        # (GPT review of 0190). A keyword past 4 KB isn't found.
+        # (GPT review of 0190). A keyword past 4 KB isn't found, and a
+        # Subject cut inside an encoded word or a UTF-8 character decodes
+        # with a garbled tail; only a substring is looked for, so that's
+        # the trade (DeepSeek review of 0191).
         status, header_data = imap_conn.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (SUBJECT)]<0.4096>)")
         if status != "OK" or not header_data or not isinstance(header_data[0], tuple):
             continue

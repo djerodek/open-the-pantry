@@ -524,19 +524,24 @@ def test_normal_page_still_downloads():
 def test_a_link_batch_stops_starting_links_at_its_time_limit(client, monkeypatch):
     """GPT review of 0190: each link has its own limits (30 s for the page,
     30 s for its photo), but 50 of them could wait 50 minutes. Past the
-    batch's limit the rest are reported as not tried, to send again."""
+    batch's limit the rest are reported as not tried, to send again; a link
+    already saved is still reported as skipped (DeepSeek review of 0191)."""
     import time
 
     from app.main import app
     from app.routes import ingest as routes_ingest
     app.dependency_overrides[routes_ingest.batch_deadline] = lambda: time.monotonic() - 1   # already past
     monkeypatch.setattr(routes_ingest, "ingest_url", lambda url: pytest.fail("fetched past the limit"))
+    monkeypatch.setattr(routes_ingest.duplicates, "same_link",
+                        lambda db, url: {"id": 7, "title": "Saved"} if url.endswith("/saved") else None)
     try:
-        r = client.post("/api/ingest/url/batch", json={"urls": ["https://example.com/a", "https://example.com/b"]}).json()
+        r = client.post("/api/ingest/url/batch", json={"urls": ["https://example.com/a", "https://example.com/saved",
+                                                                "https://example.com/b"]}).json()
         fr = client.post("/api/ingest/url/batch", headers={"X-App-Lang": "fr"}, json={"urls": ["https://example.com/a"]}).json()
     finally:
         app.dependency_overrides.pop(routes_ingest.batch_deadline, None)
     assert r["succeeded"] == [] and [f["url"] for f in r["failed"]] == ["https://example.com/a", "https://example.com/b"]
+    assert [s["url"] for s in r["skipped"]] == ["https://example.com/saved"]
     assert r["failed"][0]["error"] == "Not tried: the batch reached its 15-minute limit. Send it again."
     assert fr["failed"][0]["error"] == "Pas essayé : le lot a atteint sa limite de 15 minutes. Envoyez-le de nouveau."
 
@@ -548,13 +553,14 @@ def test_one_batch_import_at_a_time(client):
     assert routes_ingest._batch_slot.acquire(blocking=False)
     try:
         r = client.post("/api/ingest/url/batch", json={"urls": ["https://example.com/a"]})
-        assert r.status_code == 429
+        assert r.status_code == 429 and r.headers["retry-after"] == "60"
         assert r.json()["detail"] == "Another batch import is still running. Try again once it has finished."
+        fr = client.post("/api/ingest/url/batch", headers={"X-App-Lang": "fr"}, json={"urls": ["https://example.com/a"]})
+        assert fr.json()["detail"] == "Un autre ajout en lot est en cours. Réessayez quand il sera terminé."
         r = client.post("/api/ingest/pdf/batch", files=[("files", ("a.pdf", b"%PDF-1.4", "application/pdf"))])
         assert r.status_code == 429
     finally:
         routes_ingest._batch_slot.release()
-    # Released after each batch, whatever its result.
-    client.post("/api/ingest/url/batch", json={"urls": [" "]})
-    assert routes_ingest._batch_slot.acquire(blocking=False)
-    routes_ingest._batch_slot.release()
+    # Released after each batch, whatever its result: the next ones run.
+    for _ in range(2):
+        assert client.post("/api/ingest/url/batch", json={"urls": [" "]}).status_code == 200

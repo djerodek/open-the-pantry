@@ -115,7 +115,8 @@ def batch_deadline():
     """The batch routes' dependency: the batch slot, held until the answer
     is sent, and the time.monotonic() past which no new item is started."""
     if not _batch_slot.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="Another batch import is still running. Try again once it has finished.")
+        raise HTTPException(status_code=429, detail="Another batch import is still running. Try again once it has finished.",
+                            headers={"Retry-After": "60"})
     try:
         yield time.monotonic() + MAX_BATCH_SECONDS
     finally:
@@ -141,9 +142,6 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
         url = url.strip()
         if not url:
             continue
-        if time.monotonic() > deadline:
-            failed.append({"url": url, "error": _not_tried()})
-            continue
         image_path = None
         try:
             # Already saved from this link: not fetched or saved again.
@@ -152,6 +150,11 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
             existing = duplicates.same_link(db, url)
             if existing:
                 skipped.append({"url": url, "recipe_id": existing["id"], "title": existing["title"]})
+                continue
+            # After the check above: a link already saved is reported as
+            # skipped, not as one to send again (DeepSeek review of 0191).
+            if time.monotonic() > deadline:
+                failed.append({"url": url, "error": _not_tried()})
                 continue
             result = require_complete(ingest_url(url))
             same_title = duplicates.find(db, title=result.title, limit=1)

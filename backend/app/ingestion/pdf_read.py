@@ -220,7 +220,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
     page_texts = []
     ocr_pages = []
     ocr_confidences = []
-    started = time.monotonic()
+    started = None   # at the first scanned page: the budget is OCR time
 
     with pdfplumber.open(pdf_path) as pdf:
         page_count = len(pdf.pages)
@@ -236,7 +236,9 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                 continue
 
             # No usable text layer on this page -- render to image and OCR it.
-            if ocr_pages and time.monotonic() - started > MAX_PDF_OCR_SECONDS:
+            if started is None:
+                started = time.monotonic()
+            elif time.monotonic() - started > MAX_PDF_OCR_SECONDS:
                 raise PdfTooLargeError(
                     f"Reading this PDF's scanned pages took more than {MAX_PDF_OCR_SECONDS // 60} minutes "
                     f"(stopped before page {i + 1}). Try splitting it."

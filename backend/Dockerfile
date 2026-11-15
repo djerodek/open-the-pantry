@@ -96,4 +96,7 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 # route depends on it: X-Forwarded-Proto from the proxy (trusted through
 # FORWARDED_ALLOW_IPS, set by docker-compose.https.yml) is what tells the
 # app a request came in over https.
+# One process, on purpose (no --workers): the request rate limit, the 3 OCR
+# slots and the one-batch-at-a-time slot are kept in memory, and each
+# worker would have its own.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--proxy-headers"]
