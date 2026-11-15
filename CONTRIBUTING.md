@@ -43,7 +43,7 @@ scheduled runs after 60 days without a commit.
 ```
 backend/app/        FastAPI app (main.py: start-up, middleware), models, backup, HTTPS, picker
   routes/           the API by area: recipes, ingest, email, settings, backup; common.py shared
-  ingestion/        link, PDF (pdf_read), OCR (ocr), layout (segment) and email reading; tagging
+  ingestion/        link, PDF (pdf_read), OCR (ocr), segmentation into title, ingredients and steps (segment) and email reading; tagging
   ml/               Settings -> Learning (numpy only)
   templates/        the print/PDF/HTML template
 backend/tests/      server tests; corpus/: import corpus cases

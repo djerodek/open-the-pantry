@@ -379,8 +379,9 @@ def _remove_photo(db: Session, filename: str | None, where: str) -> None:
     (Qwen review of 0193)."""
     if not filename:
         return
-    # safe_join returns None for anything outside UPLOADS_DIR, so a
-    # malformed stored value can never resolve to a file elsewhere.
+    # safe_join returns None for any name the app couldn't have stored
+    # (is_safe_stored_filename: no folders, "./" or "..", the generated
+    # shape only), so the reference check below compares like with like.
     path = safe_join(UPLOADS_DIR, filename)
     if not path or not os.path.isfile(path):
         return

@@ -56,8 +56,8 @@ How it works:
 - **Everything that comes in is treated as hostile.**
   - **Uploads**: at most 20 MB, checked by their content rather than their
     file extension. A request is cut off as soon as it passes its limit
-    (20 MB a file, 1 GB an import, 16 GB a full backup, 32 MB anything
-    else), so no more than that reaches the disk.
+    (20 MB a file, 1 GB an import, 16 GB a full backup with the settings
+    password, 32 MB anything else), so no more than that reaches the disk.
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused. A photo read for text is first reduced to 35

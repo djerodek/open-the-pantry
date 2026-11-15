@@ -47,7 +47,7 @@ planifiées après 60 jours sans commit.
 ```
 backend/app/        application FastAPI (main.py : démarrage, middleware), modèles, sauvegarde, HTTPS, On mange quoi?
   routes/           l'API par domaine : recettes, importation, courriel, paramètres, sauvegarde; common.py partagé
-  ingestion/        lecture des liens, PDF (pdf_read), OCR (ocr), mise en page (segment) et courriels; étiquetage
+  ingestion/        lecture des liens, PDF (pdf_read), OCR (ocr), découpage en titre, ingrédients et étapes (segment) et courriels; étiquetage
   ml/               Paramètres -> Apprentissage (numpy seulement)
   templates/        le gabarit d'impression/PDF/HTML
 backend/tests/      tests du serveur; corpus/ : cas du corpus d'importation

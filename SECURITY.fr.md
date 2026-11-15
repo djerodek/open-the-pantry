@@ -66,8 +66,8 @@ Son fonctionnement :
   - **Téléversements** : au plus 20 Mo, vérifiés par leur contenu plutôt
     que leur extension. Une requête est coupée dès qu'elle dépasse sa
     limite (20 Mo par fichier, 1 Go pour un fichier de recettes à ajouter,
-    16 Go pour une sauvegarde complète, 32 Mo pour le reste) : rien de plus
-    n'atteint le disque.
+    16 Go pour une sauvegarde complète avec le mot de passe des paramètres,
+    32 Mo pour le reste) : rien de plus n'atteint le disque.
   - **Images** : elles sont réencodées, ce qui retire les métadonnées et
     tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
     sont utilisés, et toute image de plus de 50 mégapixels est refusée. Une
