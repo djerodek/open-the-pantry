@@ -22,7 +22,6 @@ backend/static
 traefik.env
 letsencrypt/
 
-
 # CI's ESLint check (package.json, eslint.config.mjs): installed by npm ci,
 # never committed.
 node_modules/
