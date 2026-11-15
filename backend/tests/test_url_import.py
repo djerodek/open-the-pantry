@@ -564,3 +564,19 @@ def test_one_batch_import_at_a_time(client):
     # Released after each batch, whatever its result: the next ones run.
     for _ in range(2):
         assert client.post("/api/ingest/url/batch", json={"urls": [" "]}).status_code == 200
+
+
+def test_a_second_batch_is_refused_before_it_uploads(client, monkeypatch):
+    """GPT review of 0204: the slot was a route dependency, which FastAPI
+    resolves after reading the body, so a second batch uploaded all of it
+    before hearing no. Refused first now: past the size limit it still
+    gets the 429, not the 413 that reading it would give."""
+    from app.routes import ingest as routes_ingest
+    monkeypatch.setattr(routes_ingest, "MAX_BATCH_PDF_BYTES", 1024)
+    big = [("files", ("a.pdf", b"%PDF-1.4" + b" " * 5_000_000, "application/pdf"))]
+    assert routes_ingest._batch_slot.acquire(blocking=False)
+    try:
+        assert client.post("/api/ingest/pdf/batch", files=big).status_code == 429
+    finally:
+        routes_ingest._batch_slot.release()
+    assert client.post("/api/ingest/pdf/batch", files=big).status_code == 413

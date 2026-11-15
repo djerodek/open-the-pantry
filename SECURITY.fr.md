@@ -72,11 +72,14 @@ Son fonctionnement :
     tout ce qui y serait caché. Seuls les décodeurs JPEG, PNG, GIF et WEBP
     sont utilisés, et toute image de plus de 50 mégapixels est refusée. Une
     photo lue pour son texte est d'abord réduite à 35 mégapixels, et 3 au
-    plus sont préparées à la fois.
+    plus sont préparées à la fois. Jusqu'à 10 photos réunies en une recette
+    partagent 10 minutes d'OCR.
   - **PDF** : au plus 60 pages, au plus 10 minutes d'OCR pour les pages
-    numérisées d'un même PDF, et au plus 3 tâches d'OCR à la fois. Parmi
+    numérisées d'un même PDF (la page en cours s'arrête aussi), et au plus 3
+    tâches d'OCR à la fois. Parmi
     les photos d'un PDF, seule la plus grande est décodée.
-  - **Lots** (liens, PDF) : un à la fois, et 15 minutes pour tout le lot; ce
+  - **Lots** (liens, PDF) : un à la fois (un deuxième est refusé avant
+    d'être envoyé), et 15 minutes pour tout le lot; ce
     qui n'a pas été commencé à temps est indiqué comme pas essayé, à
     envoyer de nouveau.
   - **Courriel** : un courriel de plus de 30 Mo, trop imbriqué, ou que

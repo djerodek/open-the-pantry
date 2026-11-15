@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import uuid
-from fastapi import Depends, HTTPException, UploadFile, File
+from fastapi import Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.orm import Session
 from .. import schemas
 from ..database import get_db, UPLOADS_DIR, TMP_DIR
@@ -13,6 +13,7 @@ from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, Inco
 from ..ingestion.pdf_read import PdfTooLargeError, extract_pdf_text
 from ..ingestion.segment import segment_raw_text, text_was_cut
 from ..ingestion.image_ingest import ingest_and_segment, ingest_image
+from ..ingestion import ocr
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import suggest_tags, explain_tags
 from ..backup import remove_upload_file
@@ -111,16 +112,14 @@ MAX_BATCH_SECONDS = 15 * 60
 _batch_slot = threading.Semaphore(1)
 
 
-def batch_deadline():
-    """The batch routes' dependency: the batch slot, held until the answer
-    is sent, and the time.monotonic() past which no new item is started."""
-    if not _batch_slot.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="Another batch import is still running. Try again once it has finished.",
-                            headers={"Retry-After": "60"})
-    try:
-        yield time.monotonic() + MAX_BATCH_SECONDS
-    finally:
-        _batch_slot.release()
+def batch_deadline(request: Request) -> float:
+    """The batch routes' dependency: the time.monotonic() past which no new
+    item is started. main.BatchSlot takes the batch slot (_batch_slot)
+    and starts this clock before the request's body is read."""
+    deadline = getattr(request.state, "batch_deadline", None)
+    if deadline is None:     # not through BatchSlot: refuse rather than run unbounded
+        raise HTTPException(status_code=500, detail="Batch imports must go through the batch slot.")
+    return deadline
 
 
 def _not_tried() -> str:
@@ -379,6 +378,8 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
     temp_names = []
     raw_texts = []
     confidences = []
+    # One clock for all the photos' OCR (GPT review of 0204).
+    clock = ocr.start_deadline(ocr.MAX_IMPORT_OCR_SECONDS)
     try:
         for file in files:
             name_prefix = f"img-{uuid.uuid4().hex}"
@@ -400,7 +401,13 @@ def ingest_from_images(files: list[UploadFile] = File(...)):
                 os.remove(path)
         if isinstance(e, HTTPException):
             raise
+        if isinstance(e, ocr.OcrTimeUp):
+            raise HTTPException(status_code=400, detail=(
+                f"Reading these images took more than {int(ocr.MAX_IMPORT_OCR_SECONDS // 60)} minutes. "
+                "Try fewer at a time."))
         raise HTTPException(status_code=400, detail="Could not read text from one of these images.")
+    finally:
+        ocr.end_deadline(clock)
 
     combined_raw_text = "\n\n".join(raw_texts)
     segmented = segment_raw_text(combined_raw_text)

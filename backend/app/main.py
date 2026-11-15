@@ -366,6 +366,36 @@ class BodySizeLimit:
 app.add_middleware(BodySizeLimit)
 
 
+class BatchSlot:
+    """ASGI middleware: a batch import takes the one batch slot before its
+    body is read, and keeps it until its answer has been sent. A second
+    batch is refused at once, before it uploads (FastAPI reads a body
+    before a route's dependencies; GPT review of 0204). The batch's
+    15-minute clock starts here too (ingest_routes.batch_deadline)."""
+
+    PATHS = ("/api/ingest/url/batch", "/api/ingest/pdf/batch")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "POST" or scope.get("path") not in self.PATHS:
+            return await self.app(scope, receive, send)
+        if not ingest_routes._batch_slot.acquire(blocking=False):
+            return await JSONResponse(
+                {"detail": "Another batch import is still running. Try again once it has finished."},
+                status_code=429, headers={"Retry-After": "60"})(scope, receive, send)
+        try:
+            scope.setdefault("state", {})["batch_deadline"] = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
+            await self.app(scope, receive, send)
+        finally:
+            ingest_routes._batch_slot.release()
+
+
+# Added after BodySizeLimit, so it runs before it: a refused batch isn't read.
+app.add_middleware(BatchSlot)
+
+
 # ---------------------------------------------------------------------------
 # Optional API key auth. Off by default (RECIPE_APP_API_KEY unset), matching
 # the "personal LAN tool" default this app is designed around -- see

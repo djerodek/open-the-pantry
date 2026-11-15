@@ -61,12 +61,14 @@ How it works:
   - **Images** are re-encoded, which drops metadata and anything hidden in
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused. A photo read for text is first reduced to 35
-    megapixels, and up to 3 are prepared at once.
+    megapixels, and up to 3 are prepared at once. Up to 10 photos combined
+    into one recipe share 10 minutes of OCR.
   - **PDFs**: at most 60 pages, at most 10 minutes of OCR for one PDF's
-    scanned pages, and at most 3 OCR jobs at once. From a PDF's photos,
+    scanned pages (the page under way stops too), and at most 3 OCR jobs
+    at once. From a PDF's photos,
     only the largest is decoded.
-  - **Batches** (links, PDFs): one at a time, and 15 minutes for the whole
-    batch; what wasn't started by then is listed as not tried, to send
+  - **Batches** (links, PDFs): one at a time (a second one is refused
+    before it uploads), and 15 minutes for the whole batch; what wasn't started by then is listed as not tried, to send
     again.
   - **Email**: mail over 30 MB, nested too deeply, or that OCR can't read
     reliably is refused and marked read; senders not allowed are refused

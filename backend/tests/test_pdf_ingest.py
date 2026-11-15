@@ -846,7 +846,7 @@ def test_a_pdf_stops_being_read_past_its_ocr_time(monkeypatch, tmp_path):
     read = []
     monkeypatch.setattr(pdf_read, "_ocr_image", lambda img: (read.append(1), ("", None))[1])
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", -1)
-    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped before page 2"):
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped at page 2"):
         pdf_read.extract_pdf_text(str(path))
     assert read == [1]
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
@@ -878,3 +878,28 @@ def test_reading_the_text_layer_doesnt_use_the_ocr_budget(monkeypatch, tmp_path)
     result = pdf_read.extract_pdf_text(str(path))
     assert clock[0] >= 700          # the slow page was simulated (pages counted from 1)
     assert result.ocr_used_on_pages == [1, 2]
+
+
+def test_a_scanned_page_stops_at_the_pdfs_ocr_time(monkeypatch, tmp_path):
+    """GPT review of 0204: the time was checked only between pages, so the
+    page under way could run up to two Tesseract limits (4 minutes) past
+    it. Each run is now cut to what's left of the PDF's OCR time."""
+    import time as _time
+
+    from app.ingestion import ocr, pdf_read
+    path = tmp_path / "scan.pdf"
+    Image.new("RGB", (400, 500), "white").save(path)
+    timeouts = []
+
+    def slow(*a, timeout=None, **k):
+        timeouts.append(timeout)
+        _time.sleep(timeout)
+        raise RuntimeError("Tesseract process timeout")
+    monkeypatch.setattr(ocr.pytesseract, "image_to_data", slow)
+    monkeypatch.setattr(ocr.pytesseract, "image_to_osd", slow)
+    monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 0.4)
+    started = _time.monotonic()
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped at page 1"):
+        pdf_read.extract_pdf_text(str(path))
+    assert _time.monotonic() - started < 3 and all(t <= 0.4 for t in timeouts), timeouts
+    assert ocr._deadline.get() is None

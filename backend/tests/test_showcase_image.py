@@ -259,3 +259,35 @@ def test_export_html_includes_image_pdf_excludes_it(client, data_dir):
         assert r.content[:4] == b"%PDF"
     finally:
         client.delete(f"/api/recipes/{recipe_id}")
+
+
+def test_combined_photos_share_one_ocr_clock(client, monkeypatch):
+    """GPT review of 0204: up to 10 photos, each up to two Tesseract runs of
+    120 s, could hold a slot for 40 minutes. They share one clock; each run
+    is cut to what's left, and past it the request says so (in French
+    too) and leaves no file behind."""
+    import time as _time
+
+    from app.database import TMP_DIR
+    from app.ingestion import ocr
+    monkeypatch.setattr(ocr, "MAX_IMPORT_OCR_SECONDS", 0.4)
+    timeouts = []
+
+    def slow(*a, timeout=None, **k):        # Tesseract stopped at its limit
+        timeouts.append(timeout)
+        _time.sleep(timeout)
+        raise RuntimeError("Tesseract process timeout")
+    monkeypatch.setattr(ocr.pytesseract, "image_to_data", slow)
+    monkeypatch.setattr(ocr.pytesseract, "image_to_osd", slow)
+    before = set(os.listdir(TMP_DIR))
+    shot = _make_text_screenshot(["Ingredients", "2 cups flour"])
+    files = [("files", (f"s{i}.png", shot, "image/png")) for i in range(5)]
+    started = _time.monotonic()
+    r = client.post("/api/ingest/images", files=files)
+    assert _time.monotonic() - started < 3
+    assert r.status_code == 400 and r.json()["detail"].endswith("Try fewer at a time."), r.text
+    assert timeouts and all(t <= 0.4 for t in timeouts), timeouts
+    assert set(os.listdir(TMP_DIR)) == before
+    fr = client.post("/api/ingest/images", files=files, headers={"X-App-Lang": "fr"})
+    assert fr.json()["detail"].endswith("Essayez-en moins à la fois.")
+    assert ocr._deadline.get() is None      # the clock doesn't outlive its request

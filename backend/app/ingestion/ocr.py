@@ -1,6 +1,9 @@
 """OCR of a page or photo with Tesseract: preparing the image, reading it
 (its own layout first, whole lines when that misses), and putting
 two-column lists back in order. Split out of pdf_ingest.py (0186)."""
+import contextvars
+import time
+
 import numpy as np
 import pytesseract
 from PIL import Image
@@ -64,6 +67,47 @@ _ocr_lang_cache = None
 # and the email scan (Claude security audit of 0140). A full page takes
 # a few seconds.
 OCR_TIMEOUT_SECONDS = 120
+
+# OCR time for one import, all its pages or photos together: a PDF's scanned
+# pages, or the photos combined into one recipe (up to 10, each up to two
+# Tesseract runs: 40 minutes at the per-run limit; GPT reviews of 0190 and
+# 0204). Each run's limit is cut to what is left, so the import stops at
+# this time, not after the page under way.
+MAX_IMPORT_OCR_SECONDS = 10 * 60
+
+_deadline: contextvars.ContextVar = contextvars.ContextVar("ocr_deadline", default=None)
+
+
+class OcrTimeUp(Exception):
+    """The import's OCR time (MAX_IMPORT_OCR_SECONDS) ran out."""
+
+
+def start_deadline(seconds: float):
+    """Starts the current import's OCR clock; returns the token for
+    end_deadline(). Every Tesseract run in this thread until then stops
+    at it."""
+    return _deadline.set(time.monotonic() + seconds)
+
+
+def end_deadline(token) -> None:
+    _deadline.reset(token)
+
+
+def run_timeout() -> float:
+    """The time one Tesseract run may take: OCR_TIMEOUT_SECONDS, or what is
+    left of the import's OCR time if less. Raises OcrTimeUp when none is."""
+    deadline = _deadline.get()
+    if deadline is None:
+        return OCR_TIMEOUT_SECONDS
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise OcrTimeUp()
+    return min(OCR_TIMEOUT_SECONDS, left)
+
+
+def _time_up() -> bool:
+    deadline = _deadline.get()
+    return deadline is not None and time.monotonic() >= deadline
 
 
 def ocr_lang() -> str:
@@ -141,8 +185,16 @@ def _reading_score(text: str) -> tuple[tuple[int, int], int]:
 
 def _ocr_once(processed: Image.Image, config: str | None):
     kwargs = {"config": config} if config else {}
-    data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
-                                     timeout=OCR_TIMEOUT_SECONDS, **kwargs)
+    try:
+        data = pytesseract.image_to_data(processed, lang=ocr_lang(), output_type=pytesseract.Output.DICT,
+                                         timeout=run_timeout(), **kwargs)
+    except RuntimeError:
+        # pytesseract's "Tesseract process timeout": the import's time, not
+        # this run's own limit, when the clock has run out.
+        log.debug("_ocr_once: Tesseract stopped", exc_info=True)
+        if _time_up():
+            raise OcrTimeUp() from None
+        raise
     confidences = []
     for c in data["conf"]:
         try:
