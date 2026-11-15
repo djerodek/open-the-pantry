@@ -852,3 +852,27 @@ def test_a_pdf_stops_being_read_past_its_ocr_time(monkeypatch, tmp_path):
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
     read.clear()
     assert pdf_read.extract_pdf_text(str(path)).ocr_used_on_pages == [1, 2, 3] and len(read) == 3
+
+
+def test_reading_the_text_layer_doesnt_use_the_ocr_budget(monkeypatch, tmp_path):
+    """DeepSeek review of 0192: the budget is OCR time. A slow first page
+    (here 700 s of a 600 s budget spent on its text layer, before any OCR)
+    doesn't stop the scanned pages after it."""
+    import pdfplumber.page
+
+    from app.ingestion import pdf_read
+    path = tmp_path / "scan.pdf"
+    pages = [Image.new("RGB", (400, 500), "white") for _ in range(2)]
+    pages[0].save(path, save_all=True, append_images=pages[1:])
+    clock = [0.0]
+    monkeypatch.setattr(pdf_read.time, "monotonic", lambda: clock[0])
+    real = pdfplumber.page.Page.extract_text
+
+    def slow_first(self, *a, **k):
+        if self.page_number == 1:
+            clock[0] += 700
+        return real(self, *a, **k)
+    monkeypatch.setattr(pdfplumber.page.Page, "extract_text", slow_first)
+    monkeypatch.setattr(pdf_read, "_ocr_image", lambda img: ("", None))
+    monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
+    assert pdf_read.extract_pdf_text(str(path)).ocr_used_on_pages == [1, 2]

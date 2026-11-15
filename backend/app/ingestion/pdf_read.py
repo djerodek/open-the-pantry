@@ -220,7 +220,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
     page_texts = []
     ocr_pages = []
     ocr_confidences = []
-    started = None   # at the first scanned page: the budget is OCR time
+    ocr_started = None   # at the first scanned page: the budget is OCR time
 
     with pdfplumber.open(pdf_path) as pdf:
         page_count = len(pdf.pages)
@@ -236,9 +236,12 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                 continue
 
             # No usable text layer on this page -- render to image and OCR it.
-            if started is None:
-                started = time.monotonic()
-            elif time.monotonic() - started > MAX_PDF_OCR_SECONDS:
+            # Checked before each page after the first: one page can still run
+            # past the budget, bounded by Tesseract's own per-run timeout
+            # (DeepSeek review of 0192).
+            if ocr_started is None:
+                ocr_started = time.monotonic()
+            elif time.monotonic() - ocr_started > MAX_PDF_OCR_SECONDS:
                 raise PdfTooLargeError(
                     f"Reading this PDF's scanned pages took more than {MAX_PDF_OCR_SECONDS // 60} minutes "
                     f"(stopped before page {i + 1}). Try splitting it."

@@ -203,3 +203,38 @@ def test_a_failed_merge_photo_copy_leaves_nothing(client, monkeypatch):
         for rid in (a["id"], b["id"]):
             client.delete(f"/api/recipes/{rid}", headers=H)
             client.delete(f"/api/recently-deleted/{rid}", headers=H)
+
+
+def test_a_text_from_a_web_page_keeps_its_link(client):
+    """Owner's call on a point open since the review of 0138: taking the
+    text of a link import and the link of a recipe without one left it
+    marked "Link" with no link. The link of the recipe the text came from
+    is kept then; a link chosen explicitly still wins."""
+    sfx = uuid.uuid4().hex[:6]
+    web = _recipe(client, f"Merge web {sfx}", source_type="url", source_url=f"https://example.com/w-{sfx}")
+    hand = _recipe(client, f"Merge hand {sfx}", source_type="manual")
+    take = {"title": "keep", "photo": "keep", "details": "keep", "ratings": "keep", "notes": "both"}
+    try:
+        m = client.post("/api/recipes/merge", json={"keep_id": hand["id"], "other_id": web["id"],
+                                                    "take": {**take, "content": "other", "source": "keep"}}).json()
+        assert m["source_type"] == "url" and m["source_url"] == f"https://example.com/w-{sfx}"
+    finally:
+        _cleanup(client, web["id"], hand["id"])
+    web = _recipe(client, f"Merge web2 {sfx}", source_type="url", source_url=f"https://example.com/v-{sfx}")
+    hand = _recipe(client, f"Merge hand2 {sfx}", source_type="manual")
+    try:
+        # The text kept is the web one; its link was replaced by none.
+        m = client.post("/api/recipes/merge", json={"keep_id": web["id"], "other_id": hand["id"],
+                                                    "take": {**take, "content": "keep", "source": "other"}}).json()
+        assert m["source_type"] == "url" and m["source_url"] == f"https://example.com/v-{sfx}"
+    finally:
+        _cleanup(client, web["id"], hand["id"])
+    web = _recipe(client, f"Merge web3 {sfx}", source_type="url", source_url=f"https://example.com/u-{sfx}")
+    hand = _recipe(client, f"Merge hand3 {sfx}", source_type="manual")
+    try:
+        # A text typed by hand, no link chosen: none is added.
+        m = client.post("/api/recipes/merge", json={"keep_id": web["id"], "other_id": hand["id"],
+                                                    "take": {**take, "content": "other", "source": "other"}}).json()
+        assert m["source_type"] == "manual" and m["source_url"] is None
+    finally:
+        _cleanup(client, web["id"], hand["id"])

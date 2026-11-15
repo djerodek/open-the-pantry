@@ -573,7 +573,10 @@ def translate(text, lang: str | None = None):
     return text
 
 
-# Fields of a JSON response that hold messages for people to read.
+# Fields of a JSON response that hold messages for people to read. Every
+# error's "detail" goes through here, whatever its status (400, 413, the
+# 429 for a second batch...): an HTTPException(detail="...") in English is
+# translated by these patterns on the way out (DeepSeek review of 0192).
 MESSAGE_FIELDS = {"detail", "message", "messages", "error", "last_problem", "step", "last_error", "last_message"}
 
 

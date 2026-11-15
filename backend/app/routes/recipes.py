@@ -402,7 +402,15 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
             keep.language = other.language
         d = pick("details")
         keep.servings, keep.prep_time, keep.cook_time, keep.total_time = d.servings, d.prep_time, d.cook_time, d.total_time
+        # A text read from a web page keeps a link to it: taking the text of a
+        # link import and the link of a recipe without one left it marked
+        # "Link" with none (open since the review of 0138; the owner's call,
+        # 0193). The link of the recipe the text came from is used then; read
+        # before keep's own link is replaced.
+        content_link = pick("content").source_url
         keep.source_url = pick("source").source_url
+        if keep.source_type == "url" and not keep.source_url:
+            keep.source_url = content_link
         r = pick("ratings")
         (keep.favorite, keep.tastiness_rating, keep.cook_time_rating, keep.difficulty_rating,
          keep.actual_cook_time_minutes) = (r.favorite, r.tastiness_rating, r.cook_time_rating,
