@@ -882,7 +882,9 @@ def test_a_refused_batch_says_why(server, page):
     pg.click("#add-recipe-body .mode-switch button:has-text('Batch')")
     pg.fill("#url-batch-input", "https://example.com/" + "a" * 2100)
     pg.click("#add-recipe-body button:has-text('Import all')")
-    last = "[...document.querySelectorAll('#add-recipe-body form > div')].pop().textContent"
-    wait_until(pg, f"{last}.length > 0")
-    text = pg.evaluate(last)
+    # The results box is the form's last div; reading it would throw while
+    # the form had none, so the wait checks for one first.
+    last = "[...document.querySelectorAll('#add-recipe-body form > div')].pop()"
+    wait_until(pg, f"(({last}) || {{}}).textContent")
+    text = pg.evaluate(f"{last}.textContent")
     assert "[object Object]" not in text and "2000" in text.replace(",", ""), text

@@ -22,8 +22,7 @@ backend/static
 traefik.env
 letsencrypt/
 
-# ESLint for CI's undefined-name check (eslint.config.mjs)
-node_modules/
 
-# CI's ESLint check (package.json): installed by npm ci, never committed.
+# CI's ESLint check (package.json, eslint.config.mjs): installed by npm ci,
+# never committed.
 node_modules/
