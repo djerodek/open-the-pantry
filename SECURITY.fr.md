@@ -107,6 +107,13 @@ Son fonctionnement :
   L'API ne renvoie jamais le mot de passe; changer le serveur ou le nom
   d'utilisateur de courriel l'efface, sauf s'il est entré de nouveau; les
   sauvegardes laissent la clé de côté.
+- **Ce qu'une sauvegarde laisse de côté**, puisque n'importe qui sur votre
+  réseau peut en télécharger une : l'identifiant et le mot de passe de
+  courriel, le mot-clé d'objet, les expéditeurs permis, l'adresse de
+  notification et les destinataires récents, le nom et les adresses HTTPS,
+  ainsi que `encryption.key`, `admin-password.json` et `data/https/` (le
+  certificat et l'identifiant cPanel). Une sauvegarde contient quand même
+  chaque recette, note et photo, sans chiffrement.
 - **Le jeton cPanel** ne peut gérer que le nom enregistré par
   l'application, mais du code qui tournerait dans le conteneur aurait le
   jeton lui-même : donnez-lui une date d'expiration et, là où cPanel le

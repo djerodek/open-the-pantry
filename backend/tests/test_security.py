@@ -294,8 +294,12 @@ def test_safe_join_confines_to_base_dir(tmp_path):
 
     good = f"img-{uuid.uuid4().hex}.jpg"
     assert safe_join(str(tmp_path), good) is not None
-    for bad in ["/etc/passwd", "../escape.jpg", "nope.txt"]:
-        assert safe_join(str(tmp_path), bad) is None
+    # Only the names the app generates: _remove_photo's check for another
+    # recipe naming the same file compares the stored text, so "./x" or
+    # "a//x" resolving to the same file must be refused here (DeepSeek
+    # review of 0197).
+    for bad in ["/etc/passwd", "../escape.jpg", "nope.txt", f"./{good}", f"sub//{good}", f"sub/{good}"]:
+        assert safe_join(str(tmp_path), bad) is None, bad
 
 
 def test_riff_container_that_is_not_webp_is_rejected(tmp_path):

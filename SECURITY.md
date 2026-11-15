@@ -90,6 +90,12 @@ How it works:
   `docker exec open-the-pantry python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
   The API never returns the password; changing the email server or username
   clears it unless you enter it again; backups leave the key out.
+- **What a backup leaves out**, since anyone on your network can download
+  one: the email login and password, subject keyword, allowed senders,
+  notification address and recent recipients, the HTTPS name and
+  addresses, and `encryption.key`, `admin-password.json` and `data/https/`
+  (the certificate and cPanel login). A backup still holds every recipe,
+  note and photo, unencrypted.
 - **The cPanel token** can only manage the one saved name through the app,
   but code running in the container would have the token itself: give it
   an expiry date and, where cPanel allows it, DNS access only.

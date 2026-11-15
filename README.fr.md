@@ -13,7 +13,7 @@ sans service d'IA.
 > **Il n'y a pas de connexion.** Quiconque peut joindre l'application peut
 > lire, modifier et supprimer toutes les recettes. Seules les parties qui
 > utilisent votre compte de courriel ou votre accès DNS, et la restauration
-> d'une sauvegarde, demandent le
+> ou l'horaire des sauvegardes, demandent le
 > [mot de passe des paramètres](#mot-de-passe-des-paramètres).
 >
 > **Ne l'exposez pas à Internet.** Utilisez-la sur votre réseau local, ou de
@@ -67,9 +67,9 @@ docker compose up -d
 ```
 
 Ouvrez `http://<serveur>:8090`, puis **créez tout de suite le mot de passe
-des paramètres** (Paramètres → Réception par courriel le demande) : tant
-qu'il n'existe pas, la première personne de votre réseau à ouvrir cette
-section le choisit.
+des paramètres** (Paramètres → Réception par courriel, HTTPS ou Journal le
+demande) : tant qu'il n'existe pas, la première personne de votre réseau à
+ouvrir une de ces sections le choisit.
 
 - **Mise à jour** : `docker compose pull && docker compose up -d`; la base
   de données est mise à jour au démarrage. `:main` est reconstruite chaque
@@ -118,7 +118,8 @@ courriel et HTTPS.
 ### Ajouter des recettes
 
 - **À partir d'un lien**, un seul ou jusqu'à 50 à la fois, avec la photo
-  de la page.
+  de la page. Plus de 100 sites ont leur propre lecteur; les autres sont lus
+  d'après les données de recette de la page, puis son texte.
 - **À partir d'un PDF**, un seul ou jusqu'à 20 à la fois. Les pages
   numérisées passent par l'OCR; la plus grande photo devient celle de la
   recette.
@@ -146,7 +147,9 @@ Un courriel avec un mot-clé dans l'objet (`[RECIPE]` par défaut) envoyé à
 une boîte que vous configurez est récupéré une fois par jour, ou avec
 **Vérifier la boîte de courriel** dans le menu +. L'application essaie un
 PDF joint, puis une photo, puis les 3 premiers liens, puis le texte, et
-répond par `[SUCCESS]`, `[FAILURE]` ou `[PARTIAL]`.
+répond par `[SUCCESS]`, `[FAILURE]` ou `[PARTIAL]`. Une vérification
+manquée pendant que le conteneur était arrêté se fait plus tard le même
+jour; les résultats qui n'ont pas pu être envoyés attendent la prochaine.
 
 - Le courriel sans le mot-clé n'est jamais lu; « Accepter les courriels
   seulement de » limite les expéditeurs (une ligne From peut être falsifiée :
@@ -203,7 +206,8 @@ Paramètres → Sauvegarde et exportation :
   montez un dossier sur un autre disque et réglez `RECIPE_APP_BACKUP_DIR`
   (lignes dans le fichier compose).
 - **Les sauvegardes laissent de côté** l'identifiant de courriel, les
-  adresses de notification et les réglages HTTPS, puisque n'importe qui sur
+  adresses de notification et les réglages HTTPS
+  ([liste complète](SECURITY.fr.md)), puisque n'importe qui sur
   votre réseau peut en télécharger une. Elles ne sont pas chiffrées :
   gardez-les là où vous seul pouvez les lire.
 - **Restaurer ou importer** : une sauvegarde complète remplace la

@@ -11,7 +11,8 @@ service.
 >
 > **There is no login.** Anyone who can reach the app can read, change and
 > delete every recipe. Only the parts that use your email account or DNS
-> login, and restoring a backup, need the [settings password](#settings-password).
+> login, and restoring or scheduling backups, need the
+> [settings password](#settings-password).
 >
 > **Don't expose it to the internet.** Use it on your LAN, or from outside
 > through a VPN (WireGuard, Tailscale…) or a reverse proxy that does its own
@@ -55,8 +56,8 @@ docker compose up -d
 ```
 
 Open `http://<server>:8090`, then **create the settings password right
-away** (Settings → Email ingest asks for it): until one exists, the first
-person on your network to open that section sets it.
+away** (Settings → Email ingest, HTTPS or Logs asks for it): until one
+exists, the first person on your network to open one of them sets it.
 
 - **Update**: `docker compose pull && docker compose up -d`; the database
   is upgraded at start-up. `:main` is rebuilt every Sunday, so a weekly cron
@@ -98,7 +99,9 @@ A backup doesn't contain `encryption.key`, `admin-password.json` or
 
 ### Adding recipes
 
-- **From a link**, one or up to 50 at once, with the page's photo.
+- **From a link**, one or up to 50 at once, with the page's photo. Over 100
+  sites have their own reader; others are read from the page's recipe data,
+  then its text.
 - **From a PDF**, one or up to 20 at once. Scanned pages go through OCR;
   the largest photo becomes the recipe's.
 - **From photos or screenshots**, up to 10 combined into one recipe. Pages
@@ -121,7 +124,9 @@ like English ones.
 Mail with a keyword in its subject (`[RECIPE]` by default) sent to an inbox
 you set up is picked up once a day, or with **Check email inbox** in the +
 menu. The app tries a PDF attachment, then a photo, then the first 3 links,
-then the text, and emails back `[SUCCESS]`, `[FAILURE]` or `[PARTIAL]`.
+then the text, and emails back `[SUCCESS]`, `[FAILURE]` or `[PARTIAL]`. A
+scan missed while the container was down runs later the same day; results
+that couldn't be sent wait for the next scan.
 
 - Mail without the keyword is never read; "Only accept email from" limits
   senders (a From line can be forged: it filters, it doesn't prove).
@@ -165,7 +170,8 @@ Settings → Backup & export:
   in `data/backups/`. For a real second copy, mount a folder on another
   disk and set `RECIPE_APP_BACKUP_DIR` (lines in the compose file).
 - **Backups leave out** the email login, notification addresses and HTTPS
-  settings, since anyone on your network can download one. They aren't
+  settings ([full list](SECURITY.md)), since anyone on your network can
+  download one. They aren't
   encrypted: keep them where only you can read them.
 - **Restore or import**: a full backup replaces the library (settings
   password; a safety copy is written first; this server keeps its own
