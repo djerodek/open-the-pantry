@@ -395,8 +395,9 @@ def test_an_import_reads_the_tag_table_once(client):
         event.remove(engine, "before_cursor_execute", listener)
     try:
         assert len(body["succeeded"]) == 6
-        whole_table = [s for s in statements if "FROM tags" in s and "WHERE" not in s]
-        assert len(whole_table) == 1, f"{len(whole_table)} reads of the whole tag table"
+        tag_reads = [s for s in statements if "FROM tags" in s]
+        whole_table = [s for s in tag_reads if "WHERE" not in s]
+        assert len(whole_table) == 1, f"{len(whole_table)} reads of the whole tag table among {tag_reads}"
         names = set()
         for rid in _ids(body):
             names |= {t["name"] for t in client.get(f"/api/recipes/{rid}").json()["tags"] if t["category"] == "custom"}

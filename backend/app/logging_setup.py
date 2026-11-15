@@ -85,7 +85,10 @@ def once_per_file_state(path: str, report) -> None:
     """Calls report() once per state of the file at path (its modification
     time and size), not on every request that reads it: a damaged file is
     logged once, and again when it changes (DeepSeek review of 0114; the
-    settings password file too, Qwen review of 0193)."""
+    settings password file too, Qwen review of 0193). One reporter per
+    path: a second caller watching the same file would be silenced by the
+    first. No lock: two requests at once can both report, which costs a
+    repeated log line and nothing else."""
     try:
         st = os.stat(path)
         state = (st.st_mtime_ns, st.st_size)

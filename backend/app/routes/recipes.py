@@ -406,7 +406,8 @@ def merge_recipes(payload: schemas.MergeRequest, db: Session = Depends(get_db)):
         # link import and the link of a recipe without one left it marked
         # "Link" with none (open since the review of 0138; the owner's call,
         # 0193). The link of the recipe the text came from is used then; read
-        # before keep's own link is replaced.
+        # before keep's own link is replaced. keep.source_type has already
+        # followed the content pick above.
         content_link = pick("content").source_url
         keep.source_url = pick("source").source_url
         if keep.source_type == "url" and not keep.source_url:

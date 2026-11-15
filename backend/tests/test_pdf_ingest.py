@@ -876,3 +876,4 @@ def test_reading_the_text_layer_doesnt_use_the_ocr_budget(monkeypatch, tmp_path)
     monkeypatch.setattr(pdf_read, "_ocr_image", lambda img: ("", None))
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
     assert pdf_read.extract_pdf_text(str(path)).ocr_used_on_pages == [1, 2]
+    assert clock[0] >= 700          # the slow page was simulated (pages counted from 1)
