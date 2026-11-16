@@ -171,6 +171,8 @@ _FR_PATTERNS = [
        r"Le PDF compte \1 pages (limite de \2) : trop volumineux à traiter. Essayez d'abord de le diviser."),
     _p(r"Reading this PDF's scanned pages took more than (\d+) minutes \(stopped at page (\d+)\)\. Try splitting it\.",
        r"La lecture des pages numérisées de ce PDF a pris plus de \1 minutes (arrêt à la page \2). Essayez de le diviser."),
+    _p(r"Reading this PDF's scanned pages took more than (\d+) minutes \(stopped before page (\d+)\)\. Try splitting it\.",
+       r"La lecture des pages numérisées de ce PDF a pris plus de \1 minutes (arrêt avant la page \2). Essayez de le diviser."),
     _p(r"Reading these images took more than (\d+) minutes\. Try fewer at a time\.",
        r"La lecture de ces images a pris plus de \1 minutes. Essayez-en moins à la fois."),
     _p(r"Not tried: the batch reached its (\d+)-minute limit\. Send it again\.",

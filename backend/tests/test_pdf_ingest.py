@@ -846,7 +846,7 @@ def test_a_pdf_stops_being_read_past_its_ocr_time(monkeypatch, tmp_path):
     read = []
     monkeypatch.setattr(pdf_read, "_ocr_image", lambda img: (read.append(1), ("", None))[1])
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", -1)
-    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped at page 2"):
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped before page 2"):
         pdf_read.extract_pdf_text(str(path))
     assert read == [1]
     monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 600)
@@ -893,7 +893,7 @@ def test_a_scanned_page_stops_at_the_pdfs_ocr_time(monkeypatch, tmp_path):
 
     def slow(*a, timeout=None, **k):
         timeouts.append(timeout)
-        _time.sleep(timeout)
+        _time.sleep(timeout + 0.02)     # past it on a coarse clock too
         raise RuntimeError("Tesseract process timeout")
     monkeypatch.setattr(ocr.pytesseract, "image_to_data", slow)
     monkeypatch.setattr(ocr.pytesseract, "image_to_osd", slow)

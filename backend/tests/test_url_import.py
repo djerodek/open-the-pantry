@@ -569,8 +569,10 @@ def test_one_batch_import_at_a_time(client):
 def test_a_second_batch_is_refused_before_it_uploads(client, monkeypatch):
     """GPT review of 0204: the slot was a route dependency, which FastAPI
     resolves after reading the body, so a second batch uploaded all of it
-    before hearing no. Refused first now: past the size limit it still
-    gets the 429, not the 413 that reading it would give."""
+    before hearing no. Refused before the body is read now: past the size
+    limit it still gets the 429, not the 413 that reading it would give.
+    (TestClient has the body in memory already; a real client gets the 429
+    before sending it.)"""
     from app.routes import ingest as routes_ingest
     monkeypatch.setattr(routes_ingest, "MAX_BATCH_PDF_BYTES", 1024)
     big = [("files", ("a.pdf", b"%PDF-1.4" + b" " * 5_000_000, "application/pdf"))]

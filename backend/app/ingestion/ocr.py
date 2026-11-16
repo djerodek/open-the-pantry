@@ -81,6 +81,10 @@ _deadline: contextvars.ContextVar = contextvars.ContextVar("ocr_deadline", defau
 class OcrTimeUp(Exception):
     """The import's OCR time (MAX_IMPORT_OCR_SECONDS) ran out."""
 
+    def __init__(self):
+        # A message for the logs that catch it broadly (deskew.auto_orient).
+        super().__init__("the import's OCR time ran out")
+
 
 def start_deadline(seconds: float):
     """Starts the current import's OCR clock; returns the token for

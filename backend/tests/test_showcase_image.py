@@ -275,7 +275,7 @@ def test_combined_photos_share_one_ocr_clock(client, monkeypatch):
 
     def slow(*a, timeout=None, **k):        # Tesseract stopped at its limit
         timeouts.append(timeout)
-        _time.sleep(timeout)
+        _time.sleep(timeout + 0.02)     # past it on a coarse clock too
         raise RuntimeError("Tesseract process timeout")
     monkeypatch.setattr(ocr.pytesseract, "image_to_data", slow)
     monkeypatch.setattr(ocr.pytesseract, "image_to_osd", slow)

@@ -211,10 +211,13 @@ class PdfIngestResult:
         self.avg_ocr_confidence = avg_ocr_confidence
 
 
-def _ocr_too_long(page: int) -> PdfTooLargeError:
+def _ocr_too_long(page: int, started: bool) -> PdfTooLargeError:
+    """started: the time ran out while reading this page ("at"), or before
+    it began ("before"), so the pages read are clear (review of 0205)."""
+    where = "at" if started else "before"
     return PdfTooLargeError(
         f"Reading this PDF's scanned pages took more than {int(MAX_PDF_OCR_SECONDS // 60)} minutes "
-        f"(stopped at page {page}). Try splitting it.")
+        f"(stopped {where} page {page}). Try splitting it.")
 
 
 def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
@@ -252,14 +255,14 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                     ocr_started = time.monotonic()
                     clock = start_deadline(MAX_PDF_OCR_SECONDS)
                 elif time.monotonic() - ocr_started > MAX_PDF_OCR_SECONDS:
-                    raise _ocr_too_long(i + 1)
+                    raise _ocr_too_long(i + 1, started=False)
                 ocr_pages.append(i + 1)
                 pil_image = page.to_image(resolution=_ocr_resolution(page.width, page.height)).original
                 try:
                     ocr_text, confidence = _ocr_image(pil_image)
                 except OcrTimeUp:
                     log.debug("extract_pdf_text: OCR time ran out on page %d", i + 1, exc_info=True)
-                    raise _ocr_too_long(i + 1) from None
+                    raise _ocr_too_long(i + 1, started=True) from None
                 page_texts.append(ocr_text)
                 if confidence is not None:
                     ocr_confidences.append(confidence)
