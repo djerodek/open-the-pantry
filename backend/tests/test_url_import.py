@@ -610,7 +610,13 @@ def test_a_stalled_batch_upload_frees_the_slot(monkeypatch):
     async def sent(message):
         pass
     scope = {"type": "http", "method": "POST", "path": "/api/ingest/pdf/batch"}
-    asyncio.run(asyncio.wait_for(main.BatchSlot(inner)(scope, stalls, sent), 5))
-    assert seen == ["http.request", "http.disconnect"]
-    assert routes_ingest._batch_slot.acquire(blocking=False)    # free again
-    routes_ingest._batch_slot.release()
+    try:
+        asyncio.run(asyncio.wait_for(main.BatchSlot(inner)(scope, stalls, sent), 5))
+        assert seen == ["http.request", "http.disconnect"]
+    finally:
+        # Free either way, so a failure here can't turn every later batch
+        # test into a 429 (review of 0207): the release undoes this acquire,
+        # or frees a slot the middleware left held.
+        free = routes_ingest._batch_slot.acquire(blocking=False)
+        routes_ingest._batch_slot.release()
+    assert free

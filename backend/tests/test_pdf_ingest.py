@@ -903,3 +903,21 @@ def test_a_scanned_page_stops_at_the_pdfs_ocr_time(monkeypatch, tmp_path):
         pdf_read.extract_pdf_text(str(path))
     assert _time.monotonic() - started < 3 and all(t <= 0.4 for t in timeouts), timeouts
     assert ocr._deadline.get() is None
+
+
+def test_the_ocr_clock_starts_at_the_first_tesseract_run():
+    """Review of 0206: the photos' clock started before they were saved and
+    an OCR slot was free, so waiting on a busy server used it up and the
+    error said reading took too long when nothing had been read."""
+    import time as _time
+
+    from app.ingestion import ocr
+    token = ocr.start_deadline(0.3)
+    try:
+        _time.sleep(0.4)                          # saving, waiting for a slot
+        assert 0.25 < ocr.run_timeout() <= 0.3    # the clock starts now
+        _time.sleep(0.35)
+        with pytest.raises(ocr.OcrTimeUp):
+            ocr.run_timeout()
+    finally:
+        ocr.end_deadline(token)
