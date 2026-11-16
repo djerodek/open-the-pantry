@@ -86,11 +86,26 @@ class OcrTimeUp(Exception):
         super().__init__("the import's OCR time ran out")
 
 
+class _Clock:
+    """An import's OCR time. It starts at its first Tesseract run, not when
+    set: photos wait to be saved and for an OCR slot first, and a busy
+    server used up the clock before anything was read (review of 0206)."""
+
+    def __init__(self, seconds: float):
+        self.seconds = seconds
+        self.ends = None
+
+    def left(self) -> float:
+        if self.ends is None:
+            self.ends = time.monotonic() + self.seconds
+        return self.ends - time.monotonic()
+
+
 def start_deadline(seconds: float):
-    """Starts the current import's OCR clock; returns the token for
-    end_deadline(). Every Tesseract run in this thread until then stops
-    at it."""
-    return _deadline.set(time.monotonic() + seconds)
+    """Sets the current import's OCR clock, which starts at its first
+    Tesseract run; returns the token for end_deadline(). Every Tesseract
+    run in this thread until then stops at it."""
+    return _deadline.set(_Clock(seconds))
 
 
 def end_deadline(token) -> None:
@@ -100,18 +115,18 @@ def end_deadline(token) -> None:
 def run_timeout() -> float:
     """The time one Tesseract run may take: OCR_TIMEOUT_SECONDS, or what is
     left of the import's OCR time if less. Raises OcrTimeUp when none is."""
-    deadline = _deadline.get()
-    if deadline is None:
+    clock = _deadline.get()
+    if clock is None:
         return OCR_TIMEOUT_SECONDS
-    left = deadline - time.monotonic()
+    left = clock.left()
     if left <= 0:
         raise OcrTimeUp()
     return min(OCR_TIMEOUT_SECONDS, left)
 
 
 def _time_up() -> bool:
-    deadline = _deadline.get()
-    return deadline is not None and time.monotonic() >= deadline
+    clock = _deadline.get()
+    return clock is not None and clock.left() <= 0
 
 
 def ocr_lang() -> str:

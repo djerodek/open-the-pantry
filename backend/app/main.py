@@ -374,6 +374,7 @@ class BatchSlot:
     15-minute clock starts here too (ingest_routes.batch_deadline)."""
 
     PATHS = ("/api/ingest/url/batch", "/api/ingest/pdf/batch")
+    UPLOAD_IDLE_SECONDS = 60
 
     def __init__(self, app):
         self.app = app
@@ -385,9 +386,28 @@ class BatchSlot:
             return await JSONResponse(
                 {"detail": "Another batch import is still running. Try again once it has finished."},
                 status_code=429, headers={"Retry-After": "60"})(scope, receive, send)
+        body_done = False
+
+        async def receive_or_give_up():
+            # An upload that stops sending without closing (a phone leaving
+            # Wi-Fi) held the slot until a restart (review of 0206): after
+            # UPLOAD_IDLE_SECONDS without data it is treated as a disconnect.
+            # Only while the body arrives; after that, receive is untouched.
+            nonlocal body_done
+            if body_done:
+                return await receive()
+            try:
+                message = await asyncio.wait_for(receive(), self.UPLOAD_IDLE_SECONDS)
+            except asyncio.TimeoutError:
+                log.warning("Batch upload stalled for %ss; slot freed", self.UPLOAD_IDLE_SECONDS)
+                return {"type": "http.disconnect"}
+            if message["type"] != "http.request" or not message.get("more_body", False):
+                body_done = True
+            return message
+
         try:
             scope.setdefault("state", {})["batch_deadline"] = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
-            await self.app(scope, receive, send)
+            await self.app(scope, receive_or_give_up, send)
         finally:
             ingest_routes._batch_slot.release()
 

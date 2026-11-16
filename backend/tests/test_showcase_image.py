@@ -291,3 +291,23 @@ def test_combined_photos_share_one_ocr_clock(client, monkeypatch):
     fr = client.post("/api/ingest/images", files=files, headers={"X-App-Lang": "fr"})
     assert fr.json()["detail"].endswith("Essayez-en moins à la fois.")
     assert ocr._deadline.get() is None      # the clock doesn't outlive its request
+
+
+def test_the_ocr_clock_starts_at_the_first_tesseract_run():
+    """Review of 0206: the photos' clock started before they were saved and
+    an OCR slot was free, so waiting on a busy server used it up and the
+    error said reading took too long when nothing had been read."""
+    import time as _time
+
+    import pytest
+
+    from app.ingestion import ocr
+    token = ocr.start_deadline(0.3)
+    try:
+        _time.sleep(0.4)                          # saving, waiting for a slot
+        assert 0.25 < ocr.run_timeout() <= 0.3    # the clock starts now
+        _time.sleep(0.35)
+        with pytest.raises(ocr.OcrTimeUp):
+            ocr.run_timeout()
+    finally:
+        ocr.end_deadline(token)

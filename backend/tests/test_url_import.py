@@ -582,3 +582,35 @@ def test_a_second_batch_is_refused_before_it_uploads(client, monkeypatch):
     finally:
         routes_ingest._batch_slot.release()
     assert client.post("/api/ingest/pdf/batch", files=big).status_code == 413
+
+
+def test_a_stalled_batch_upload_frees_the_slot(monkeypatch):
+    """Review of 0206: an upload that stopped sending without closing (a
+    phone leaving Wi-Fi) held the batch slot until a restart. After the
+    idle time it is a disconnect, and the slot is free again."""
+    import asyncio
+
+    from app import main
+    from app.routes import ingest as routes_ingest
+    monkeypatch.setattr(main.BatchSlot, "UPLOAD_IDLE_SECONDS", 0.2)
+    seen = []
+
+    async def inner(scope, receive, send):      # reads the body as a route would
+        while True:
+            message = await receive()
+            seen.append(message["type"])
+            if message["type"] == "http.disconnect" or not message.get("more_body"):
+                return
+
+    async def stalls():
+        if not seen:
+            return {"type": "http.request", "body": b"part", "more_body": True}
+        await asyncio.sleep(3600)
+
+    async def sent(message):
+        pass
+    scope = {"type": "http", "method": "POST", "path": "/api/ingest/pdf/batch"}
+    asyncio.run(asyncio.wait_for(main.BatchSlot(inner)(scope, stalls, sent), 5))
+    assert seen == ["http.request", "http.disconnect"]
+    assert routes_ingest._batch_slot.acquire(blocking=False)    # free again
+    routes_ingest._batch_slot.release()
