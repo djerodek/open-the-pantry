@@ -77,9 +77,11 @@ Son fonctionnement :
   - **PDF** : au plus 60 pages, au plus 3 tâches d'OCR à la fois, et seule
     la plus grande des photos d'un PDF est décodée.
   - **Minuterie d'OCR** : l'OCR d'une importation s'arrête 10 minutes après
-    son premier passage de Tesseract, la page ou la photo en cours
-    comprise. L'enregistrement des fichiers et l'attente d'une tâche d'OCR
-    libre viennent avant et ne comptent pas.
+    son début, la page ou la photo en cours comprise. Pour un PDF, elle
+    commence à la première page numérisée, donc la préparation de cette
+    page compte; pour des photos réunies, au premier passage de Tesseract,
+    donc leur enregistrement et l'attente d'une tâche d'OCR libre ne
+    comptent pas.
   - **Lots** (liens, PDF) : un à la fois, et 15 minutes pour tout le lot,
     envoi compris. Un deuxième lot est refusé avant que l'application lise
     son envoi, et un envoi inactif pendant 60 secondes met fin à la

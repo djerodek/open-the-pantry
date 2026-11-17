@@ -65,9 +65,11 @@ How it works:
     into one recipe share one OCR clock (below).
   - **PDFs**: at most 60 pages, at most 3 OCR jobs at once, and only the
     largest of a PDF's photos is decoded.
-  - **OCR clock**: an import's OCR stops 10 minutes after its first
-    Tesseract run, the page or photo under way included. Saving the files
-    and waiting for an OCR job to be free come before it and don't count.
+  - **OCR clock**: an import's OCR stops 10 minutes after it starts, the
+    page or photo under way included. For a PDF it starts at the first
+    scanned page, so preparing that page counts; for combined photos, at
+    the first Tesseract run, so saving them and waiting for an OCR job to
+    be free don't.
   - **Batches** (links, PDFs): one at a time, and 15 minutes for the whole
     batch, upload included. A second batch is refused before the app reads
     its upload, and an upload idle for 60 seconds ends the request. What

@@ -369,9 +369,10 @@ app.add_middleware(BodySizeLimit)
 class BatchSlot:
     """ASGI middleware: a batch import takes the one batch slot before its
     body is read, and keeps it until its answer has been sent. A second
-    batch is refused at once, before it uploads (FastAPI reads a body
-    before a route's dependencies; GPT review of 0204). The batch's
-    15-minute clock starts here too (ingest_routes.batch_deadline)."""
+    batch is refused at once, before the app reads its upload (FastAPI
+    reads a body before a route's dependencies; GPT review of 0204; some
+    of it may already be in the server's buffers). The batch's 15-minute
+    clock starts here too, and bounds the upload (ingest_routes.batch_deadline)."""
 
     PATHS = ("/api/ingest/url/batch", "/api/ingest/pdf/batch")
     UPLOAD_IDLE_SECONDS = 60
@@ -386,6 +387,7 @@ class BatchSlot:
             return await JSONResponse(
                 {"detail": "Another batch import is still running. Try again once it has finished."},
                 status_code=429, headers={"Retry-After": "60"})(scope, receive, send)
+        deadline = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
         body_done = False
 
         async def receive_or_give_up():
@@ -406,13 +408,17 @@ class BatchSlot:
             try:
                 message = await asyncio.wait_for(receive(), min(self.UPLOAD_IDLE_SECONDS, left))
             except asyncio.TimeoutError:
-                log.warning("Batch upload stalled or past the batch's time limit; slot freed")
+                log.warning("Batch upload idle for too long, or over the batch's time limit; slot freed")
+                return {"type": "http.disconnect"}
+            # wait_for's timeout needs the event loop: a busy loop can hand
+            # over a chunk that arrived after the deadline (GPT review of 0209).
+            if message["type"] == "http.request" and time.monotonic() >= deadline:
+                log.warning("Batch upload still arriving at the batch's time limit; slot freed")
                 return {"type": "http.disconnect"}
             if message["type"] != "http.request" or not message.get("more_body", False):
                 body_done = True
             return message
 
-        deadline = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
         try:
             scope.setdefault("state", {})["batch_deadline"] = deadline
             await self.app(scope, receive_or_give_up, send)

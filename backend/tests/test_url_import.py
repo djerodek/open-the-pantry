@@ -655,3 +655,34 @@ def test_a_trickling_batch_upload_stops_at_the_batch_time(monkeypatch):
         free = routes_ingest._batch_slot.acquire(blocking=False)
         routes_ingest._batch_slot.release()
     assert free
+
+
+def test_a_chunk_that_arrives_after_the_batch_time_is_refused(monkeypatch):
+    """GPT review of 0209: wait_for's timeout needs the event loop, so a
+    loop held up past the deadline could still hand the route a chunk that
+    arrived after it. Checked again once the chunk is in hand."""
+    import asyncio
+    import time as _time
+
+    from app import main
+    from app.routes import ingest as routes_ingest
+    monkeypatch.setattr(routes_ingest, "MAX_BATCH_SECONDS", 0.05)
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append((await receive())["type"])
+
+    async def late():
+        _time.sleep(0.1)          # holds the loop past the deadline, then delivers
+        return {"type": "http.request", "body": b"x", "more_body": False}
+
+    async def sent(message):
+        pass
+    scope = {"type": "http", "method": "POST", "path": "/api/ingest/pdf/batch"}
+    try:
+        asyncio.run(asyncio.wait_for(main.BatchSlot(inner)(scope, late, sent), 5))
+        assert seen == ["http.disconnect"]
+    finally:
+        free = routes_ingest._batch_slot.acquire(blocking=False)
+        routes_ingest._batch_slot.release()
+    assert free
