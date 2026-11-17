@@ -393,20 +393,28 @@ class BatchSlot:
             # Wi-Fi) held the slot until a restart (review of 0206): after
             # UPLOAD_IDLE_SECONDS without data it is treated as a disconnect.
             # Only while the body arrives; after that, receive is untouched.
+            # The batch's own 15 minutes bound the upload too: a little data
+            # every 59 s kept the idle limit from ever firing (GPT review of
+            # 0208).
             nonlocal body_done
             if body_done:
                 return await receive()
+            left = deadline - time.monotonic()
+            if left <= 0:
+                log.warning("Batch upload still arriving at the batch's time limit; slot freed")
+                return {"type": "http.disconnect"}
             try:
-                message = await asyncio.wait_for(receive(), self.UPLOAD_IDLE_SECONDS)
+                message = await asyncio.wait_for(receive(), min(self.UPLOAD_IDLE_SECONDS, left))
             except asyncio.TimeoutError:
-                log.warning("Batch upload stalled for %ss; slot freed", self.UPLOAD_IDLE_SECONDS)
+                log.warning("Batch upload stalled or past the batch's time limit; slot freed")
                 return {"type": "http.disconnect"}
             if message["type"] != "http.request" or not message.get("more_body", False):
                 body_done = True
             return message
 
+        deadline = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
         try:
-            scope.setdefault("state", {})["batch_deadline"] = time.monotonic() + ingest_routes.MAX_BATCH_SECONDS
+            scope.setdefault("state", {})["batch_deadline"] = deadline
             await self.app(scope, receive_or_give_up, send)
         finally:
             ingest_routes._batch_slot.release()

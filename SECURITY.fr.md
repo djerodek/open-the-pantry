@@ -73,15 +73,18 @@ Son fonctionnement :
     sont utilisés, et toute image de plus de 50 mégapixels est refusée. Une
     photo lue pour son texte est d'abord réduite à 35 mégapixels, et 3 au
     plus sont préparées à la fois. Jusqu'à 10 photos réunies en une recette
-    partagent 10 minutes d'OCR.
-  - **PDF** : au plus 60 pages, au plus 10 minutes d'OCR pour les pages
-    numérisées d'un même PDF (la page en cours s'arrête aussi), et au plus 3
-    tâches d'OCR à la fois. Parmi
-    les photos d'un PDF, seule la plus grande est décodée.
-  - **Lots** (liens, PDF) : un à la fois (un deuxième est refusé avant
-    d'être envoyé), et 15 minutes pour tout le lot; ce
-    qui n'a pas été commencé à temps est indiqué comme pas essayé, à
-    envoyer de nouveau.
+    partagent la même minuterie d'OCR (plus bas).
+  - **PDF** : au plus 60 pages, au plus 3 tâches d'OCR à la fois, et seule
+    la plus grande des photos d'un PDF est décodée.
+  - **Minuterie d'OCR** : l'OCR d'une importation s'arrête 10 minutes après
+    son premier passage de Tesseract, la page ou la photo en cours
+    comprise. L'enregistrement des fichiers et l'attente d'une tâche d'OCR
+    libre viennent avant et ne comptent pas.
+  - **Lots** (liens, PDF) : un à la fois, et 15 minutes pour tout le lot,
+    envoi compris. Un deuxième lot est refusé avant que l'application lise
+    son envoi, et un envoi inactif pendant 60 secondes met fin à la
+    requête. Ce qui n'a pas été commencé à temps est indiqué comme pas
+    essayé, à envoyer de nouveau.
   - **Courriel** : un courriel de plus de 30 Mo, trop imbriqué, ou que
     l'OCR ne peut pas lire de façon fiable est refusé et marqué lu; les
     expéditeurs non permis sont refusés d'après la ligne From, avant que le

@@ -620,3 +620,38 @@ def test_a_stalled_batch_upload_frees_the_slot(monkeypatch):
         free = routes_ingest._batch_slot.acquire(blocking=False)
         routes_ingest._batch_slot.release()
     assert free
+
+
+def test_a_trickling_batch_upload_stops_at_the_batch_time(monkeypatch):
+    """GPT review of 0208: a little data before each idle limit kept an
+    upload going, and the slot held, past the batch's own time limit. The
+    upload now ends there too."""
+    import asyncio
+
+    from app import main
+    from app.routes import ingest as routes_ingest
+    monkeypatch.setattr(main.BatchSlot, "UPLOAD_IDLE_SECONDS", 0.2)
+    monkeypatch.setattr(routes_ingest, "MAX_BATCH_SECONDS", 0.5)
+    seen = []
+
+    async def inner(scope, receive, send):
+        while True:
+            message = await receive()
+            seen.append(message["type"])
+            if message["type"] == "http.disconnect" or not message.get("more_body"):
+                return
+
+    async def trickles():                      # a chunk every 0.1 s, never the end
+        await asyncio.sleep(0.1)
+        return {"type": "http.request", "body": b"x", "more_body": True}
+
+    async def sent(message):
+        pass
+    scope = {"type": "http", "method": "POST", "path": "/api/ingest/url/batch"}
+    try:
+        asyncio.run(asyncio.wait_for(main.BatchSlot(inner)(scope, trickles, sent), 5))
+        assert seen[-1] == "http.disconnect" and 3 <= seen.count("http.request") <= 6, seen
+    finally:
+        free = routes_ingest._batch_slot.acquire(blocking=False)
+        routes_ingest._batch_slot.release()
+    assert free

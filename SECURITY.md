@@ -62,14 +62,16 @@ How it works:
     them. Only JPEG, PNG, GIF and WEBP decoders are used, and anything over
     50 megapixels is refused. A photo read for text is first reduced to 35
     megapixels, and up to 3 are prepared at once. Up to 10 photos combined
-    into one recipe share 10 minutes of OCR.
-  - **PDFs**: at most 60 pages, at most 10 minutes of OCR for one PDF's
-    scanned pages (the page under way stops too), and at most 3 OCR jobs
-    at once. From a PDF's photos,
-    only the largest is decoded.
-  - **Batches** (links, PDFs): one at a time (a second one is refused
-    before it uploads), and 15 minutes for the whole batch; what wasn't started by then is listed as not tried, to send
-    again.
+    into one recipe share one OCR clock (below).
+  - **PDFs**: at most 60 pages, at most 3 OCR jobs at once, and only the
+    largest of a PDF's photos is decoded.
+  - **OCR clock**: an import's OCR stops 10 minutes after its first
+    Tesseract run, the page or photo under way included. Saving the files
+    and waiting for an OCR job to be free come before it and don't count.
+  - **Batches** (links, PDFs): one at a time, and 15 minutes for the whole
+    batch, upload included. A second batch is refused before the app reads
+    its upload, and an upload idle for 60 seconds ends the request. What
+    wasn't started in time is listed as not tried, to send again.
   - **Email**: mail over 30 MB, nested too deeply, or that OCR can't read
     reliably is refused and marked read; senders not allowed are refused
     from the From line, before the mail is downloaded.
