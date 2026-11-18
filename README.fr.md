@@ -146,8 +146,8 @@ signalé. Les recettes en français sont lues comme celles en anglais.
 Un courriel avec un mot-clé dans l'objet (`[RECIPE]` par défaut) envoyé à
 une boîte que vous configurez est récupéré une fois par jour, ou avec
 **Vérifier la boîte de courriel** dans le menu +. L'application essaie un
-PDF joint, puis une photo, puis les 3 premiers liens, puis le texte, et
-répond par `[SUCCESS]`, `[FAILURE]` ou `[PARTIAL]`. Une vérification
+PDF joint, puis un fichier Word, texte ou Markdown, puis une photo, puis
+les 3 premiers liens, puis le texte, et répond par `[SUCCESS]`, `[FAILURE]` ou `[PARTIAL]`. Une vérification
 manquée pendant que le conteneur était arrêté se fait plus tard le même
 jour; les résultats qui n'ont pas pu être envoyés attendent la prochaine.
 

@@ -5,13 +5,14 @@ import uuid
 
 from .completeness import missing_parts as missing_sections
 from .pdf_read import PdfTooLargeError, extract_pdf_text
+from .document_read import DocumentError, document_kind, extract_document_text
 from .segment import segment_raw_text
 from .image_ingest import ingest_image
 from .url_ingest import ingest_url, log_url, redact_urls, require_complete, UrlValidationError, NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, \
     SiteUnreachableError
 from .ingredient_parser import parse_ingredient_block
 from .tagger import suggest_tags
-from ..file_validation import validate_and_save_pdf_bytes, validate_and_save_image_bytes
+from ..file_validation import MAX_UPLOAD_BYTES, validate_and_save_pdf_bytes, validate_and_save_image_bytes
 from ..logging_setup import get_logger
 
 log = get_logger("email")
@@ -141,6 +142,8 @@ def extract_email_parts(msg) -> dict:
     """
     pdf_bytes = None
     pdf_name = None
+    doc_bytes = None
+    doc_name = None
     image_bytes = None
     image_name = None
     inline_images = []  # (pixels, name, payload)
@@ -165,6 +168,15 @@ def extract_email_parts(msg) -> dict:
                 pdf_bytes, pdf_name = payload, filename or "PDF"
             continue
 
+        # A Word, text or Markdown attachment (owner, 2026-11-18: the Document
+        # button's files by email too). What it really is comes from its
+        # bytes when it's read; the type or name only picks it out here.
+        if is_file and _is_document_part(content_type, filename):
+            payload = part.get_payload(decode=True)
+            if payload and doc_bytes is None:
+                doc_bytes, doc_name = payload, filename or content_type
+            continue
+
         if is_file and content_type.startswith("image/"):
             payload = part.get_payload(decode=True)
             if not payload:
@@ -185,7 +197,7 @@ def extract_email_parts(msg) -> dict:
             continue
 
         if is_file:
-            skipped.append(f"{filename or content_type}: {content_type} isn't a PDF or image")
+            skipped.append(f"{filename or content_type}: {content_type} isn't a PDF, Word, text or Markdown file, or an image")
             continue
 
         if content_type == "text/plain" and not body_text:
@@ -218,6 +230,7 @@ def extract_email_parts(msg) -> dict:
 
     return {
         "pdf_bytes": pdf_bytes, "pdf_name": pdf_name,
+        "doc_bytes": doc_bytes, "doc_name": doc_name,
         "image_bytes": image_bytes, "image_name": image_name,
         "body_text": body_text, "urls": urls, "skipped": skipped,
     }
@@ -274,13 +287,59 @@ def _ocr_too_poor(confidence) -> bool:
     return confidence is not None and confidence < MIN_EMAIL_OCR_CONFIDENCE
 
 
+_DOCUMENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/markdown", "text/x-markdown",
+}
+_DOCUMENT_NAME = re.compile(r"\.(?:docx|txt|md|markdown)$", re.I)
+
+
+def _is_document_part(content_type: str, filename: str | None) -> bool:
+    """An attachment that may be a Word, text or Markdown file: by its type,
+    or a plain-text or untyped one by its name. A text/plain attachment
+    without a name is one too (Content-Disposition: attachment)."""
+    if content_type in _DOCUMENT_TYPES:
+        return True
+    if content_type == "text/plain":
+        return not filename or bool(_DOCUMENT_NAME.search(filename))
+    return content_type == "application/octet-stream" and bool(_DOCUMENT_NAME.search(filename or ""))
+
+
+def _read_document_bytes(data: bytes, tmp_dir: str, name_prefix: str) -> tuple[str, str | None]:
+    """(text, None), or ("", the reason it can't be read). The bytes go to a
+    temporary file for document_read and are removed after; same size limit
+    as any upload."""
+    if len(data) > MAX_UPLOAD_BYTES:
+        return "", "over the size limit"
+    path = os.path.join(tmp_dir, f"{name_prefix}-doc")
+    try:
+        with open(path, "wb") as f:
+            f.write(data)
+        kind = document_kind(path, data[:16])
+        if kind is None:
+            return "", "not a Word, text or Markdown file"
+        return extract_document_text(path, kind), None
+    except DocumentError as e:
+        log.info("Document attachment refused: %s", e)
+        return "", str(e)
+    except OSError:
+        log.warning("Document attachment couldn't be read", exc_info=True)
+        return "", "couldn't be read"
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            log.debug("Document attachment: no temporary file to remove", exc_info=True)
+
+
 def _failure(reason: str) -> dict:
     return {"success": False, "error": reason}
 
 
 def process_tagged_email(msg, tmp_dir: str) -> dict:
-    """Attempts extraction in order: PDF attachment, image attachment, a
-    single clear URL in the body, then the body text itself. Each path
+    """Attempts extraction in order: PDF attachment, Word/text/Markdown
+    attachment, image attachment, a single clear URL in the body, then the
+    body text itself. Each path
     reuses the same ingestion pipeline as its manual-entry equivalent.
     Never raises for an ordinary parse failure -- returns a result dict
     with success=False and a reason instead, so one bad email in a scan
@@ -363,7 +422,32 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
             else:
                 tried.append(f"{label}: no ingredient or step lines found in its text")
 
-    # 2. Image attachment
+    # 2. Word, text or Markdown attachment: document_read, as the Document
+    # button reads them.
+    if parts.get("doc_bytes"):
+        label = parts["doc_name"]
+        text, problem = _read_document_bytes(parts["doc_bytes"], tmp_dir, name_prefix)
+        if problem:
+            tried.append(f"{label}: {problem}")
+        else:
+            try:
+                segmented = segment_raw_text(text)
+            except Exception as e:
+                log.exception("Document attachment %s: reading the text failed", label)
+                return _failure(f"Could not read document attachment: {e}")
+            if not missing_sections(segmented["ingredients"], segmented["steps"]):
+                return _build_result(
+                    segmented["title_guess"], segmented["ingredients"], segmented["steps"],
+                    text, source_detail="document attachment", servings=segmented.get("servings"),
+                )
+            elif segmented["ingredients"] or segmented["steps"]:
+                incomplete_hint = True
+                tried.append(f"{label}: only part of a recipe "
+                             f"(no {' or '.join(missing_sections(segmented['ingredients'], segmented['steps']))} found)")
+            else:
+                tried.append(f"{label}: no ingredient or step lines found in its text")
+
+    # 3. Image attachment
     if parts["image_bytes"]:
         label = parts["image_name"]
         image_name = validate_and_save_image_bytes(parts["image_bytes"], tmp_dir, name_prefix)
@@ -406,7 +490,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 os.remove(image_path)  # nothing usable came from it; don't leave it as an orphaned draft file
                 tried.append(f"{label}: text recognition found no ingredient or step lines")
 
-    # 3. A single clear URL in the body -- hand off to the existing,
+    # 4. A single clear URL in the body -- hand off to the existing,
     # SSRF-guarded URL ingestion pipeline rather than trying to parse
     # marketing/newsletter HTML directly.
     # Reaching here means no attachment produced a usable recipe -- both
@@ -443,7 +527,7 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
                 else:
                     tried.append(f"link {url}: {e}")
 
-    # 4. Last resort: treat the body text itself as the recipe.
+    # 5. Last resort: treat the body text itself as the recipe.
     if parts["body_text"]:
         segmented = segment_raw_text(parts["body_text"])
         if not missing_sections(segmented["ingredients"], segmented["steps"]):

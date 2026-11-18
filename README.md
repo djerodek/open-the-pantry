@@ -124,8 +124,8 @@ like English ones.
 
 Mail with a keyword in its subject (`[RECIPE]` by default) sent to an inbox
 you set up is picked up once a day, or with **Check email inbox** in the +
-menu. The app tries a PDF attachment, then a photo, then the first 3 links,
-then the text, and emails back `[SUCCESS]`, `[FAILURE]` or `[PARTIAL]`. A
+menu. The app tries a PDF attachment, then a Word, text or Markdown file,
+then a photo, then the first 3 links, then the text, and emails back `[SUCCESS]`, `[FAILURE]` or `[PARTIAL]`. A
 scan missed while the container was down runs later the same day; results
 that couldn't be sent wait for the next scan.
 
