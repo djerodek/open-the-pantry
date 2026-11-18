@@ -183,10 +183,16 @@ def list_recipes(
         *_sort_clauses("created" if sort == "relevance" else sort, "desc" if sort == "relevance" else direction)).all()
     if by_rank:
         results.sort(key=lambda r: found["rank"].get(r.id, 0.0))     # stable: ties keep newest first
+    # Filtered here, after the query and its order, since it reads every
+    # ingredient line; the list has no pages. If it ever gets them, this
+    # has to move into the query (review of 0216).
     if in_season is not None and results:
         lines: dict[int, list[str]] = {}
-        for rid, line in db.query(models.Ingredient.recipe_id, models.Ingredient.raw_line):
-            lines.setdefault(rid, []).append(line)
+        ids = [r.id for r in results]
+        for start in range(0, len(ids), 500):        # SQLite's bound-parameter limit
+            for rid, line in db.query(models.Ingredient.recipe_id, models.Ingredient.raw_line).filter(
+                    models.Ingredient.recipe_id.in_(ids[start:start + 500])):
+                lines.setdefault(rid, []).append(line)
         when = month or datetime.now().month
         results = [r for r in results if seasons.in_season(lines.get(r.id, ()), when) == in_season]
 

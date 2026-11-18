@@ -1086,3 +1086,33 @@ def test_in_season_filter(server, api, page):
     toggle_setting()
     wait_until(p.page, f"{cards}.length === 2")
     assert p.page.evaluate("localStorage.getItem('recipe-app-season-filter')") == "false"
+
+
+def test_a_time_filter_tapped_twice_leaves_its_recipes_out(server, api, page):
+    """DeepSeek review of 0215: the hour chip goes off → in → out → off;
+    "out" leaves out exactly the hour shown, even after a finer step was
+    picked under it, and the finer steps are offered only for "in"."""
+    sfx = uuid.uuid4().hex[:6]
+    add_recipe(api, f"Quick eggs {sfx}", actual_cook_time="00:00:15")
+    add_recipe(api, f"Slow ribs {sfx}", actual_cook_time="00:03:00")
+    add_recipe(api, f"Untimed salad {sfx}")
+    p = page()
+    p.page.goto(server["url"])
+    p.page.fill("#search-input", sfx)
+    p.page.press("#search-input", "Enter")
+    cards = "document.querySelectorAll('.recipe-card')"
+    titles = f"[...{cards}].map((c) => c.querySelector('h2, h3').textContent).join('|')"
+    wait_until(p.page, f"{cards}.length === 3")
+    p.page.click("#filters-toggle")
+    hour = ".time-filter-row:not(.sub) button.filter-chip:text-is('≤ 1h')"
+    p.page.click(hour)
+    wait_until(p.page, f"{cards}.length === 1")
+    assert "Quick eggs" in p.page.evaluate(titles)
+    p.page.click(".time-filter-row.sub button.filter-chip:text-is('≤ 20m')")    # a finer step
+    wait_until(p.page, f"{cards}.length === 1")
+    p.page.click(hour)
+    wait_until(p.page, f"{cards}.length === 2 && !({titles}).includes('Quick eggs')")
+    assert p.page.get_attribute(hour.replace(":text-is('≤ 1h')", "[data-filter='out']"), "aria-label") == "≤ 1h: left out"
+    assert p.page.locator(".time-filter-row.sub").count() == 0
+    p.page.click(".time-filter-row:not(.sub) button.filter-chip[data-filter='out']")
+    wait_until(p.page, f"{cards}.length === 3")

@@ -79,14 +79,15 @@ Son fonctionnement :
   - **Fichiers Word, texte et Markdown** : la nature d'un fichier vient de
     son contenu, pas de son nom. D'un fichier Word, seul le texte du
     document est lu (au plus 20 Mo, parmi au plus 2 000 parties), et son
-    XML ne va jamais rien chercher ailleurs. Aucun de ces fichiers n'est
+    XML ne va jamais rien chercher ailleurs. Un fichier texte fait au plus
+    1 Mo, et une page Web ou un SVG est refusé. Aucun de ces fichiers n'est
     gardé, seulement le texte de la recette.
   - **Minuterie d'OCR** : l'OCR d'une importation s'arrête 10 minutes après
     son début, la page ou la photo en cours comprise. Pour un PDF, elle
     commence à la première page numérisée, donc la préparation de cette
     page compte; pour des photos réunies, au premier passage de Tesseract,
-    donc leur enregistrement et l'attente d'une tâche d'OCR libre ne
-    comptent pas.
+    donc leur enregistrement et l'attente de la première tâche d'OCR libre
+    ne comptent pas (les attentes entre les photos ensuite, oui).
   - **Lots** (liens, PDF) : un à la fois, et 15 minutes pour tout le lot,
     envoi compris. Un deuxième lot est refusé avant que l'application lise
     son envoi, et un envoi inactif pendant 60 secondes met fin à la

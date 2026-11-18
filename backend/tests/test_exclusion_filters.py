@@ -22,7 +22,7 @@ def test_each_filter_leaves_out_what_it_would_show(client):
     tag = lambda n, c: {"name": n, "category": c, "subgroup": None}  # noqa: E731
     ids = [
         _recipe(client, f"Chicken {sfx}", tags=[tag("Dinner", "meal_type"), tag("Chicken", "main_ingredient")],
-                cook_time_rating="quick", actual_cook_time="00:00:15"),
+                cook_time_rating="quick", actual_cook_time="00:00:15"),          # dd:hh:mm, 15 minutes
         _recipe(client, f"Beef {sfx}", tags=[tag("Dinner", "meal_type")], cook_time_rating="long",
                 actual_cook_time="00:03:00"),
         _recipe(client, f"Plain {sfx}"),                       # no tags, pace or time
@@ -33,6 +33,7 @@ def test_each_filter_leaves_out_what_it_would_show(client):
         assert _titles(client, sfx, not_tags=["Chicken"]) == {"Beef", "Plain"}
         assert _titles(client, sfx, tags=["Dinner"], not_tags=["Chicken"]) == {"Beef"}
         assert _titles(client, sfx, not_pace=["quick"]) == {"Beef", "Plain"}
+        assert _titles(client, sfx, not_pace=["quick", "long"]) == {"Plain"}
         assert _titles(client, sfx, max_minutes=20) == {"Chicken"}
         assert _titles(client, sfx, max_minutes=20, minutes_out="true") == {"Beef", "Plain"}
         from app import models

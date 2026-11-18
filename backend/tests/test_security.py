@@ -35,7 +35,7 @@ def test_oversized_upload_rejected(client):
     assert r.status_code == 413
 
 
-def test_fake_pdf_bad_magic_bytes_rejected(client):
+def test_an_uploads_kind_comes_from_its_bytes_not_its_name(client):
     """What an upload is comes from its bytes, never its name. Since the
     Document button (2026-11-18) text is accepted too: a ".pdf" holding
     text is read as text, not as a PDF; one holding neither is refused."""

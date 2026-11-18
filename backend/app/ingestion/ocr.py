@@ -95,9 +95,12 @@ class _Clock:
         self.seconds = seconds
         self.ends = None
 
-    def left(self) -> float:
+    def start(self):
         if self.ends is None:
             self.ends = time.monotonic() + self.seconds
+
+    def left(self) -> float:
+        self.start()
         return self.ends - time.monotonic()
 
 
@@ -109,7 +112,7 @@ def start_deadline(seconds: float, now: bool = False):
     stops at it."""
     clock = _Clock(seconds)
     if now:
-        clock.left()
+        clock.start()
     return _deadline.set(clock)
 
 

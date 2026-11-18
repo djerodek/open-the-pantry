@@ -31,6 +31,8 @@ def months(line):
     ("1 tasse de mûres", ".......AS..."),
     ("1 red bell pepper", "........S..."),
     ("1 jalapeño, seeded", "........S..."),
+    ("4 stalks rhubarb", "....MJJAS..."),        # the calendar's available months (review of 0216)
+    ("1 bunch asparagus", "....MJ......"),
 ])
 def test_produce_in_its_months(line, expected):
     assert months(line) == expected
@@ -43,6 +45,9 @@ def test_produce_in_its_months(line, expected):
     "1 cup frozen blueberries", "1 cup blueberries, frozen", "1 can (796 ml) diced tomatoes",
     "2 tbsp tomato paste", "1 cup applesauce", "1 tsp red pepper flakes", "2 tbsp cornstarch",
     "1 c. à thé de piment de la Jamaïque", "2 bananes mûres", "1 pineapple", "Sauce:", "",
+    # Review of 0216: canned without the word "canned", and choux pastry.
+    "1 (796 ml) can tomatoes", "1 boîte (796 ml) de tomates", "2 tins chopped tomatoes", "1 jar roasted red peppers",
+    "1 recette de pâte à choux",
 ])
 def test_not_counted(line):
     assert line_months(line) == 0

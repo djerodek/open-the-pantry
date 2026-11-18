@@ -678,8 +678,8 @@ const state = {
   // turns "only these" into "not these" (nextFilterMode).
   excludeTags: new Set(),
   excludePace: new Set(),
-  timeOut: false,          // maxMinutes leaves out those within it
-  reviewOut: false,        // leave out recipes to review
+  timeExcluded: false,     // maxMinutes leaves out those within it
+  reviewExcluded: false,   // leave out recipes to review
   season: null,            // "in" / "out": produce in season this month (seasons.py)
   // Opt-in, per device (owner, 2026-11-18): the season filter is Quebec's.
   seasonFilter: storageGet("recipe-app-season-filter") === "true",   // default off
@@ -727,7 +727,7 @@ function activeFilterCount() {
   return state.filterTags.size + state.excludeTags.size
     + (state.maxMinutes != null ? 1 : 0)
     + (state.pace.size || state.excludePace.size ? 1 : 0)
-    + (state.toReview || state.reviewOut ? 1 : 0)
+    + (state.toReview || state.reviewExcluded ? 1 : 0)
     + (state.season ? 1 : 0)
     + (state.query ? 1 : 0);
 }
@@ -736,12 +736,12 @@ function clearAllFilters() {
   state.filterTags.clear();
   state.excludeTags.clear();
   state.maxMinutes = null;
-  state.timeOut = false;
+  state.timeExcluded = false;
   uiTimeLevel1 = null;
   state.pace.clear();
   state.excludePace.clear();
   state.toReview = false;
-  state.reviewOut = false;
+  state.reviewExcluded = false;
   state.season = null;
   state.query = "";
   const searchInput = $("#search-input");
@@ -909,13 +909,13 @@ function renderSidebar() {
 
   // Recipes saved without review (batch links, batch PDFs, email). Shown
   // only while there are some, or while the filter is on.
-  if (state.reviewCount || state.toReview || state.reviewOut) {
-    const mode = state.toReview ? "in" : state.reviewOut ? "out" : null;
+  if (state.reviewCount || state.toReview || state.reviewExcluded) {
+    const mode = state.toReview ? "in" : state.reviewExcluded ? "out" : null;
     container.appendChild(el("div", { class: "sidebar-review-region" }, [
       filterButton("tag-node review-filter", tx("To review ({1})", { 1: state.reviewCount }), mode, () => {
         const next = nextFilterMode(mode);
         state.toReview = next === "in";
-        state.reviewOut = next === "out";
+        state.reviewExcluded = next === "out";
         renderSidebar();
         syncClearFiltersButton();
         loadRecipes();
@@ -1091,22 +1091,23 @@ function renderFilterPanel() {
     timeSection.appendChild(el("div", { class: "field-hint", text: tx("No logged cook times yet \u2014 this filter appears once recipes have a real-world time logged.") }));
   } else {
     const hourBuckets = state.timeBuckets.filter((b) => b.minutes % 60 === 0);
-    // The hour chosen is in or out (state.timeOut); the finer steps under
-    // it narrow the same choice.
+    // The hour chosen is in or out (state.timeExcluded). The finer steps
+    // under it narrow "in" only: a change of mode goes back to the hour,
+    // so "≤ 1h: left out" leaves out exactly that (DeepSeek review of 0215).
     timeSection.appendChild(el("div", { class: "time-filter-row" }, hourBuckets.map((b) => {
-      const mode = uiTimeLevel1 !== b.minutes ? null : state.timeOut ? "out" : "in";
+      const mode = uiTimeLevel1 !== b.minutes ? null : state.timeExcluded ? "out" : "in";
       return filterButton("filter-chip", `\u2264 ${durationLabel(b.minutes)}`, mode, () => {
         const next = nextFilterMode(mode);
         uiTimeLevel1 = next ? b.minutes : null;
-        state.maxMinutes = next ? (mode ? state.maxMinutes : b.minutes) : null;
-        state.timeOut = next === "out";
+        state.maxMinutes = next ? b.minutes : null;
+        state.timeExcluded = next === "out";
         renderFilterPanel();
         syncClearFiltersButton();
         loadRecipes();
       });
     })));
 
-    if (uiTimeLevel1 != null) {
+    if (uiTimeLevel1 != null && !state.timeExcluded) {
       const subOptions = state.timeBuckets.filter((b) => b.minutes <= uiTimeLevel1);
       timeSection.appendChild(el("div", { class: "time-filter-row sub" }, subOptions.map((b) =>
         el("button", {
@@ -1230,8 +1231,10 @@ $("#search-clear").addEventListener("click", clearSearch);
     // Under the box's left end, moved left as far as needed to stay on
     // screen (on a phone the box starts after the menu button).
     box.style.left = "";
-    const over = box.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
-    if (over > 0) box.style.left = `${-over}px`;
+    const r = box.getBoundingClientRect();
+    const over = r.right - (document.documentElement.clientWidth - 8);
+    // Never past the left edge either (DeepSeek review of 0215).
+    if (over > 0) box.style.left = `${-Math.min(over, r.left - 8)}px`;
   };
   toggle.addEventListener("click", () => { pinned = !pinned || box.hidden; show(pinned); });
   toggle.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" && !pinned) show(true); });
@@ -1923,11 +1926,11 @@ async function loadRecipes() {
   for (const t of state.filterTags) params.append("tags", t);
   for (const t of state.excludeTags) params.append("not_tags", t);
   if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
-  if (state.maxMinutes != null && state.timeOut) params.set("minutes_out", "true");
+  if (state.maxMinutes != null && state.timeExcluded) params.set("minutes_out", "true");
   for (const p of state.pace) params.append("pace", p);
   for (const p of state.excludePace) params.append("not_pace", p);
   if (state.toReview) params.set("to_review", "true");
-  else if (state.reviewOut) params.set("to_review", "false");
+  else if (state.reviewExcluded) params.set("to_review", "false");
   if (state.season) {
     params.set("in_season", String(state.season === "in"));
     params.set("month", String(new Date().getMonth() + 1));
@@ -2061,11 +2064,11 @@ async function refreshReviewCount() {
     if (!res.ok) return;
     count = (await res.json()).count;
   } catch { return; }
-  if (count === state.reviewCount && (count || !(state.toReview || state.reviewOut))) return;
+  if (count === state.reviewCount && (count || !(state.toReview || state.reviewExcluded))) return;
   state.reviewCount = count;
-  if (!count && (state.toReview || state.reviewOut)) {
+  if (!count && (state.toReview || state.reviewExcluded)) {
     state.toReview = false;
-    state.reviewOut = false;
+    state.reviewExcluded = false;
     syncClearFiltersButton();
     renderSidebar();
     loadRecipes();

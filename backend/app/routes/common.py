@@ -175,12 +175,7 @@ def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, ex
         os.remove(tmp_write_path)
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    if expect == "pdf":
-        if not first_chunk.startswith(PDF_MAGIC):
-            os.remove(tmp_write_path)
-            raise HTTPException(status_code=400, detail="File does not look like a valid PDF.")
-        ext = ".pdf"
-    elif expect == "document":
+    if expect == "document":
         # A PDF, a Word file or text, told from the bytes (document_read).
         if first_chunk.startswith(PDF_MAGIC):
             ext = ".pdf"

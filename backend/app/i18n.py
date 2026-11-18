@@ -152,7 +152,6 @@ _FR_PATTERNS = [
     # Uploads and ingest
     _p(r"File too large \(max (\d+) MB\)\.", r"Fichier trop volumineux (maximum \1 Mo)."),
     _p(r"Uploaded file is empty\.", "Le fichier envoyé est vide."),
-    _p(r"File does not look like a valid PDF\.", "Le fichier ne semble pas être un PDF valide."),
     _p(r"File does not look like a valid image\.", "Le fichier ne semble pas être une image valide."),
     _p(r"File could not be decoded as a valid image\.", "Le fichier n'a pas pu être lu comme une image valide."),
     _p(r"Unknown expected file type\.", "Type de fichier attendu inconnu."),
@@ -186,6 +185,10 @@ _FR_PATTERNS = [
     _p(r"This Word file has too many parts to read\.", "Ce fichier Word a trop de parties pour être lu."),
     _p(r"This Word file's text is too large to read\.", "Le texte de ce fichier Word est trop volumineux pour être lu."),
     _p(r"This Word file can't be read\.", "Ce fichier Word ne peut pas être lu."),
+    _p(r"This text file is too large to be a recipe \(over 1 MB\)\.",
+       "Ce fichier texte est trop volumineux pour être une recette (plus de 1 Mo)."),
+    _p(r"This is a web page or an SVG image, not text: save the page as a PDF instead\.",
+       "C'est une page Web ou une image SVG, pas du texte : enregistrez plutôt la page en PDF."),
     _p(r"Could not read text from this image\.", "Impossible de lire le texte de cette image."),
     _p(r"Could not read text from one of these images\.", "Impossible de lire le texte d'une de ces images."),
     _p(r"No images provided\.", "Aucune image fournie."),

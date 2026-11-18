@@ -8,8 +8,9 @@ were read from the two calendar pages (bar colour per month column).
 
 What counts, as the owner asked:
 - the calendar's "Haute saison" months; a product with none uses its
-  "Disponible" months (haskap, blueberries, blackberries); apples use their
-  marked "Saison des pommes";
+  "Disponible" months (haskap, blueberries, blackberries), as do asparagus
+  and rhubarb (see their entries); apples use their marked "Saison des
+  pommes";
 - not greenhouse or indoor produce (greenhouse cucumbers, tomatoes and
   peppers, hydroponic Boston lettuce, mushrooms, endive), nor potatoes,
   whose high season is the whole year;
@@ -35,7 +36,11 @@ JAN, FEB, MAR, APR, MAY, JUN, JUL, AUG, SEP, OCT, NOV, DEC = range(1, 13)
 # (English names, French names, months in high season, or None to block)
 PRODUCE = [
     # Spring and early summer
-    (["asparagus"], ["asperge"], [JUN]),
+    # Asparagus and rhubarb use the calendar's available months: its high
+    # season alone (asparagus June, rhubarb August-September) misses May
+    # and June, when Aliments du Québec's harvest guide (2024) and
+    # Marchés publics de Montréal place them (review of 0216).
+    (["asparagus"], ["asperge"], [MAY, JUN]),
     (["rutabaga"], ["rutabaga"], [JUN]),
     (["strawberry", "strawberries"], ["fraise"], [JUN, JUL, AUG, SEP, OCT]),
     (["romaine", "romaine lettuce"], ["laitue romaine", "romaine"], [JUN, JUL, AUG]),
@@ -78,7 +83,7 @@ PRODUCE = [
     (["ground cherry", "ground cherries", "physalis"], ["cerise de terre", "cerises de terre", "physalis"], [AUG, SEP]),
     (["fennel", "fennel bulb"], ["fenouil", "bulbe de fenouil"], [AUG, SEP]),
     (["eggplant", "aubergine"], ["aubergine"], [AUG, SEP]),
-    (["rhubarb"], ["rhubarbe"], [SEP]),
+    (["rhubarb"], ["rhubarbe"], [MAY, JUN, JUL, AUG, SEP]),
     (["daikon", "lo bok", "chinese radish"], ["radis chinois", "radis daikon", "daikon"], [SEP]),
     (["leek"], ["poireau"], [SEP]),
     (["beet", "beetroot"], ["betterave"], [SEP]),
@@ -126,6 +131,7 @@ PRODUCE = [
     (["corn starch", "cornstarch", "corn syrup", "cornmeal", "corn flour"],
      ["fecule de mais", "sirop de mais", "semoule de mais", "farine de mais", "mais en creme", "mais en grains"], None),
     (["carrot cake"], ["gateau aux carottes"], None),
+    (["choux pastry"], ["pate a choux", "choux a la creme"], None),
     # « mûre » is also "ripe": ripe bananas and pears aren't blackberries.
     ([], ["banane mure", "bananes mures", "poire mure", "poires mures", "mangue mure", "mangues mures", "peche mure", "peches mures",
           "bien mure", "bien mures"], None),
@@ -134,7 +140,7 @@ PRODUCE = [
 # A line with any of these isn't fresh produce (anywhere in the line:
 # "1 cup blueberries, frozen").
 _PRESERVED = re.compile(
-    r"(?:^|[^a-z0-9])(?:frozen|canned|tinned|dried|dehydrated|jarred|pickled|jam|jelly|preserves|juice|powder|concentrate|"
+    r"(?:^|[^a-z0-9])(?:frozen|canned|tinned|cans?|tins?|jars?|boites?|pots?|dried|dehydrated|jarred|pickled|jam|jelly|preserves|juice|powder|concentrate|"
     r"surgelee?s?|congelee?s?|en conserve|en boite|sechee?s?|deshydratee?s?|en pot|marinee?s?|confiture|gelee|jus|poudre|concentre)"
     r"(?![a-z0-9])")
 _BRACKETS = re.compile(r"\([^)]*\)|\[[^\]]*\]")

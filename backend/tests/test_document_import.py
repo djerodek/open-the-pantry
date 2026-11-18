@@ -99,3 +99,81 @@ def test_markdown_marks_come_off_the_words_stay():
           "![photo](x.jpg) [link text](https://example.com)\n- 1 cup flour\n1. Mix.")
     assert markdown_to_text(md).split("\n") == ["Title", "a quote", "code", "bold and it and b",
                                                "link text", "- 1 cup flour", "1. Mix."]
+
+
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _docx_body(body):
+    xml = (f'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="{W_NS}" xmlns:mc="{MC_NS}">'
+           f'<w:body>{body}</w:body></w:document>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml", xml)
+    return buf.getvalue()
+
+
+def _p(text):
+    return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def test_a_word_table_row_is_one_line_and_a_text_box_is_read_once(tmp_path):
+    """Review of 0216: each cell was a line ("2 cups", "flour"), and a text
+    box came out four times (Word's two copies, each read twice)."""
+    from app.ingestion.document_read import extract_document_text
+    row = lambda *cells: "<w:tr>" + "".join(f"<w:tc>{_p(c)}</w:tc>" for c in cells) + "</w:tr>"  # noqa: E731
+    box = f"<w:txbxContent>{_p('Serves 4')}</w:txbxContent>"
+    body = (_p("Table pancakes") + "<w:tbl>" + row("2 cups", "flour") + row("2", "eggs") + "</w:tbl>"
+            + f'<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps">{box}</mc:Choice>'
+            + f"<mc:Fallback>{box}</mc:Fallback></mc:AlternateContent></w:r></w:p>"
+            + _p("Mix."))
+    path = tmp_path / "t.docx"
+    path.write_bytes(_docx_body(body))
+    assert extract_document_text(str(path), "docx").split("\n") == [
+        "Table pancakes", "2 cups flour", "2 eggs", "", "Serves 4", "Mix."]
+
+
+@pytest.mark.parametrize("data,detail", [
+    (b"a" * 70_000 + b"\x00tail", "This file isn't text that can be read."),        # NUL past the first 64 KB
+    (b"<!DOCTYPE html><html><body>Pancakes</body></html>",
+     "This is a web page or an SVG image, not text: save the page as a PDF instead."),
+    (b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>',
+     "This is a web page or an SVG image, not text: save the page as a PDF instead."),
+], ids=["nul-late", "html", "svg"])
+def test_text_that_isnt_a_recipe_text_is_refused(client, data, detail):
+    r = _post(client, "x.txt", data)
+    assert r.status_code == 400 and r.json()["detail"] == detail, r.text
+
+
+def test_a_text_file_over_the_limit_is_refused(client, monkeypatch):
+    from app.ingestion import document_read
+    monkeypatch.setattr(document_read, "MAX_TEXT_BYTES", 100)
+    r = _post(client, "big.txt", "\n".join(["Big pancakes"] + RECIPE_LINES * 3).encode())
+    assert r.status_code == 400 and r.json()["detail"] == "This text file is too large to be a recipe (over 1 MB).", r.text
+    fr = client.post("/api/ingest/pdf", files={"file": ("big.txt", b"x" * 200, "text/plain")}, headers={"X-App-Lang": "fr"})
+    assert fr.json()["detail"] == "Ce fichier texte est trop volumineux pour être une recette (plus de 1 Mo)."
+
+
+def test_a_long_markdown_line_is_quick():
+    """Review of 0216: 23 KB of " *a" took 2.1 s, four times longer each
+    time the line doubled. Past 2,000 characters it's left as written."""
+    import time
+    line = " *a" * 8_000
+    t = time.monotonic()
+    assert markdown_to_text("Title\n" + line).split("\n")[1] == line.strip()
+    assert time.monotonic() - t < 0.5
+
+
+def test_a_document_draft_saves(client):
+    """DeepSeek review of 0214: the single draft through Save, as the review
+    screen sends it: source "document", no photo, no stored file."""
+    draft = _post(client, "r.txt", "\n".join([f"Saved pancakes {uuid.uuid4().hex[:6]}"] + RECIPE_LINES).encode()).json()
+    body = {k: draft[k] for k in ("title", "source_type", "raw_text", "image_path", "stored_file")}
+    body.update(ingredients=[{"raw_line": i["raw_line"]} for i in draft["ingredients"]],
+                steps=[s["text"] for s in draft["steps"]], tags=[])
+    r = client.post("/api/recipes", json=body)
+    assert r.status_code == 200, r.text
+    saved = r.json()
+    assert saved["source_type"] == "document" and saved["image_path"] is None and saved["ingredients"]
+    client.post("/api/recipes/batch-delete", headers={"X-Requested-With": "XMLHttpRequest"}, json={"ids": [saved["id"]]})

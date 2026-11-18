@@ -5,11 +5,14 @@ PDFs and these.
 
 A .docx is a zip; only word/document.xml is read, with the same kind of
 size limits as the archives elsewhere, and its XML through ElementTree,
-which doesn't fetch external entities (and Python's expat refuses entity
-expansion bombs). A text file is anything that decodes as UTF-8 (or, failing
-that, Windows-1252, what Word's "Plain text" often writes) without NUL
-bytes; .txt and .md can't be told apart by their bytes, and Markdown's
-marks are taken off either way.
+which doesn't fetch external entities (and the expat in Python 3.13, 2.6,
+refuses entity expansion bombs). A table row becomes one line ("2 cups" |
+"flour" → "2 cups flour"), and a text box is read once (Word writes it a
+second time for older readers). A text file is at most MAX_TEXT_BYTES of
+anything that decodes as UTF-8 (or, failing that, Windows-1252, what Word's
+"Plain text" often writes) without NUL bytes, and isn't a web page or SVG;
+.txt and .md can't be told apart by their bytes, and Markdown's marks are
+taken off either way.
 """
 import re
 import zipfile
@@ -23,7 +26,12 @@ DOCX_MAGIC = b"PK\x03\x04"
 DOCX_BODY = "word/document.xml"
 MAX_DOCX_ENTRIES = 2000
 MAX_DOCX_XML_BYTES = 20 * 1024 * 1024
+# A recipe as text is a few kilobytes; a 19 MB text file took 25 s and was
+# all stored with the recipe (review of 0216).
+MAX_TEXT_BYTES = 1024 * 1024
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+_MARKUP = re.compile(r"\A\s*<(?:\?xml|!doctype|html|svg|head|body)\b", re.I)
 
 
 class DocumentError(ValueError):
@@ -66,9 +74,15 @@ def extract_document_text(path: str, kind: str) -> str:
     if kind == "docx":
         return _docx_text(path)
     with open(path, "rb") as f:
-        text = _decode(f.read())
+        data = f.read(MAX_TEXT_BYTES + 1)
+    if len(data) > MAX_TEXT_BYTES:
+        raise DocumentError("This text file is too large to be a recipe (over 1 MB).")
+    # document_kind looked at the first 64 KB; this is all of it.
+    text = None if b"\x00" in data else _decode(data)
     if text is None:
         raise DocumentError("This file isn't text that can be read.")
+    if _MARKUP.match(text):
+        raise DocumentError("This is a web page or an SVG image, not text: save the page as a PDF instead.")
     return markdown_to_text(text)
 
 
@@ -91,18 +105,53 @@ def _docx_text(path: str) -> str:
     except (zipfile.BadZipFile, KeyError, ET.ParseError, OSError, RuntimeError) as e:
         log.info("_docx_text: unreadable Word file", exc_info=True)
         raise DocumentError("This Word file can't be read.") from e
-    lines = []
-    for p in root.iter(f"{_W}p"):
-        parts = []
-        for node in p.iter():
-            if node.tag == f"{_W}t" and node.text:
-                parts.append(node.text)
-            elif node.tag == f"{_W}tab":
-                parts.append("\t")
-            elif node.tag in (f"{_W}br", f"{_W}cr"):
-                parts.append("\n")
-        lines.append("".join(parts))
+    lines: list[str] = []
+    _docx_block(root, lines)
     return "\n".join(lines).strip()
+
+
+def _docx_block(node, lines: list[str]):
+    """Paragraphs and tables under node, in order, as lines. Each element
+    is visited once: a paragraph's text boxes come out after it, and Word's
+    second copy of a text box (mc:Fallback) is skipped."""
+    for child in node:
+        if child.tag == _MC_FALLBACK:
+            continue
+        if child.tag == f"{_W}p":
+            parts: list[str] = []
+            boxes: list[str] = []
+            _docx_runs(child, parts, boxes)
+            lines.append("".join(parts))
+            lines.extend(boxes)
+        elif child.tag == f"{_W}tbl":
+            for row in child.findall(f"{_W}tr"):
+                cells = []
+                for cell in row.findall(f"{_W}tc"):
+                    inner: list[str] = []
+                    _docx_block(cell, inner)
+                    text = " ".join(x.strip() for x in inner if x.strip())
+                    if text:
+                        cells.append(text)
+                lines.append(" ".join(cells))
+        else:
+            _docx_block(child, lines)
+
+
+def _docx_runs(node, parts: list[str], boxes: list[str]):
+    for child in node:
+        tag = child.tag
+        if tag == _MC_FALLBACK:
+            continue
+        if tag == f"{_W}txbxContent":
+            _docx_block(child, boxes)
+        elif tag == f"{_W}t":
+            parts.append(child.text or "")
+        elif tag == f"{_W}tab":
+            parts.append("\t")
+        elif tag in (f"{_W}br", f"{_W}cr"):
+            parts.append("\n")
+        else:
+            _docx_runs(child, parts, boxes)
 
 
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -112,6 +161,7 @@ _MD_EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1|(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?!
 _MD_RULE = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$")
 _MD_QUOTE = re.compile(r"^\s{0,3}>\s?")
 _MD_FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+MD_MAX_LINE = 2_000
 
 
 def markdown_to_text(text: str) -> str:
@@ -122,6 +172,12 @@ def markdown_to_text(text: str) -> str:
     out = []
     for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         if _MD_FENCE.match(line) or _MD_RULE.match(line):
+            continue
+        if len(line) > MD_MAX_LINE:
+            # Past what the recipe rules read anyway (segment.bounded_text):
+            # left as written, since the emphasis pattern's time grows with
+            # the square of a line's length (review of 0216).
+            out.append(line.strip())
             continue
         line = _MD_QUOTE.sub("", line)
         m = _MD_HEADING.match(line)

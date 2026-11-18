@@ -68,12 +68,13 @@ How it works:
   - **Word, text and Markdown files**: what a file is comes from its bytes,
     not its name. From a Word file only the document's text is read (at
     most 20 MB of it, from at most 2,000 parts), and its XML never fetches
-    anything. None of these files is kept, only the recipe's text.
+    anything. A text file is at most 1 MB, and a web page or SVG is
+    refused. None of these files is kept, only the recipe's text.
   - **OCR clock**: an import's OCR stops 10 minutes after it starts, the
     page or photo under way included. For a PDF it starts at the first
     scanned page, so preparing that page counts; for combined photos, at
-    the first Tesseract run, so saving them and waiting for an OCR job to
-    be free don't.
+    the first Tesseract run, so saving them and waiting for the first OCR
+    job to be free don't (waits between photos after that do).
   - **Batches** (links, PDFs): one at a time, and 15 minutes for the whole
     batch, upload included. A second batch is refused before the app reads
     its upload, and an upload idle for 60 seconds ends the request. What
