@@ -27,9 +27,13 @@ on:
 permissions:
   contents: read
 
+# Every job names its Ubuntu release: ubuntu-latest moved to 26.04 in
+# November 2026, which Playwright 1.56 can't install Chromium on, and its
+# newer Tesseract may read the OCR tests' images differently. Move all four
+# together, deliberately.
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -74,7 +78,7 @@ jobs:
     # The pages in headless Chromium against a real server (backend/
     # tests_browser): JavaScript errors, CSP violations, and the page bugs
     # the server tests can't see.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -99,7 +103,7 @@ jobs:
         run: cd backend && python -m pytest tests_browser -v
 
   docker-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test, browser]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,7 +153,7 @@ jobs:
     # Only once the tests, the audit, the browser tests and the test build
     # have passed, and only for main (a push, the weekly run, or Run
     # workflow), never for a pull request.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test, browser, docker-build]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     steps:

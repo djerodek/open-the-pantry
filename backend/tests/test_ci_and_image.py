@@ -214,3 +214,12 @@ def test_browser_tests_dont_use_wait_for_function():
     offenders = [p.name for p in (ROOT / "backend/tests_browser").glob("*.py")
                  if p.name != "conftest.py" and "wait_for_function(" in p.read_text(encoding="utf-8")]
     assert offenders == [], offenders
+
+
+def test_ci_jobs_name_their_ubuntu_release():
+    """ubuntu-latest moved to 26.04 (November 2026) and the browser job
+    failed: Playwright 1.56 can't install Chromium there. Every job names
+    its release, so a move is a change made on purpose."""
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    runners = re.findall(r"^\s+runs-on:\s*(\S+)", ci, re.M)
+    assert len(runners) == 4 and set(runners) == {"ubuntu-24.04"}, runners
