@@ -33,9 +33,24 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 # A web page or SVG, also after comments or with a script or style first
 # (review of 0217). Other HTML falls through to the recipe rules, which
-# find no ingredients or steps in it.
-_MARKUP = re.compile(r"\A\s*(?:<!--.*?-->\s*)*<(?:\?xml|!doctype|html|svg|head|body|script|style|meta)\b",
-                     re.I | re.S)
+# find no ingredients or steps in it. The comments are skipped by
+# _looks_like_markup, not the pattern: as "(?:<!--.*?-->\s*)*" a file of
+# many comments and no tag backtracked without end (1 MB ran for over
+# 2 minutes; found checking the review of 0219).
+_MARKUP_TAG = re.compile(r"<(?:\?xml|!doctype|html|svg|head|body|script|style|meta)\b", re.I)
+_MARKUP_HEAD = 64 * 1024
+
+
+def _looks_like_markup(text: str) -> bool:
+    head = text[:_MARKUP_HEAD]
+    i = len(head) - len(head.lstrip())
+    while head.startswith("<!--", i):
+        end = head.find("-->", i + 4)
+        if end < 0:
+            return False
+        rest = head[end + 3:]
+        i = end + 3 + len(rest) - len(rest.lstrip())
+    return bool(_MARKUP_TAG.match(head, i))
 
 
 class DocumentError(ValueError):
@@ -85,7 +100,7 @@ def extract_document_text(path: str, kind: str) -> str:
     text = None if b"\x00" in data else _decode(data)
     if text is None:
         raise DocumentError("This file isn't text that can be read.")
-    if _MARKUP.match(text):
+    if _looks_like_markup(text):
         raise DocumentError("This is a web page or an SVG image, not text: save the page as a PDF instead.")
     return markdown_to_text(text)
 

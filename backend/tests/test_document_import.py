@@ -164,7 +164,7 @@ def test_a_long_markdown_line_is_quick():
     line = " *a" * 8_000
     t = time.monotonic()
     assert markdown_to_text("Title\n" + line).split("\n")[1] == line.strip()
-    assert time.monotonic() - t < 1.0          # was 2.1 s; generous for a loaded CI runner (review of 0217)
+    assert time.monotonic() - t < 1.0      # the bug took 2.1 s; the fix is far under 1 s even on a loaded runner
 
 
 def test_a_document_draft_saves(client):
@@ -179,3 +179,16 @@ def test_a_document_draft_saves(client):
     saved = r.json()
     assert saved["source_type"] == "document" and saved["image_path"] is None and saved["ingredients"]
     client.post("/api/recipes/batch-delete", headers={"X-Requested-With": "XMLHttpRequest"}, json={"ids": [saved["id"]]})
+
+
+def test_a_file_of_comments_is_checked_quickly():
+    """Found checking the review of 0219: as one pattern, a file of many
+    HTML comments and no tag backtracked for minutes. Only the first 64 KB
+    is looked at, comments skipped in a loop."""
+    import time
+    from app.ingestion.document_read import _looks_like_markup
+    t = time.monotonic()
+    assert not _looks_like_markup("<!-- a -->" * 100_000)
+    assert not _looks_like_markup("<!--" * 250_000)
+    assert _looks_like_markup("<!-- a -->" * 100 + "\n<html>")
+    assert time.monotonic() - t < 1.0
