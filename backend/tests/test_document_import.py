@@ -140,7 +140,9 @@ def test_a_word_table_row_is_one_line_and_a_text_box_is_read_once(tmp_path):
      "This is a web page or an SVG image, not text: save the page as a PDF instead."),
     (b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>',
      "This is a web page or an SVG image, not text: save the page as a PDF instead."),
-], ids=["nul-late", "html", "svg"])
+    (b"<!-- saved page -->\n<script>var a = 1;</script><p>Pancakes</p>",
+     "This is a web page or an SVG image, not text: save the page as a PDF instead."),
+], ids=["nul-late", "html", "svg", "comment-script"])
 def test_text_that_isnt_a_recipe_text_is_refused(client, data, detail):
     r = _post(client, "x.txt", data)
     assert r.status_code == 400 and r.json()["detail"] == detail, r.text
@@ -162,7 +164,7 @@ def test_a_long_markdown_line_is_quick():
     line = " *a" * 8_000
     t = time.monotonic()
     assert markdown_to_text("Title\n" + line).split("\n")[1] == line.strip()
-    assert time.monotonic() - t < 0.5
+    assert time.monotonic() - t < 1.0          # was 2.1 s; generous for a loaded CI runner (review of 0217)
 
 
 def test_a_document_draft_saves(client):

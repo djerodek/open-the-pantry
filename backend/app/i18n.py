@@ -555,7 +555,7 @@ _FR_PATTERNS = [
     _p(r"Could not read image attachment: ", "Impossible de lire la pièce jointe image : "),
     _p(r"Could not read document attachment: ", "Impossible de lire le document joint : "),
     _p(r": not a Word, text or Markdown file(?=[;.]|$)", " : pas un fichier Word, texte ou Markdown"),
-    _p(r": over the size limit(?=[;.]|$)", " : trop volumineux"),
+    _p(r": over the (\d+) MB limit(?=[;.]|$)", r" : plus de \1 Mo"),
     _p(r": couldn't be read(?=[;.]|$)", " : illisible"),
     _p(r"No recipe found\. Tried: ", "Aucune recette trouvée. Essais : "),
     _p(r": not a valid PDF, or over the size limit", " : PDF invalide, ou trop volumineux"),

@@ -19,7 +19,8 @@ DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ("\n".join(["Mailed text pancakes"] + RECIPE_LINES).encode(), "text/plain", "pancakes.txt"),
     (("# Mailed markdown pancakes\n\n## Ingredients\n- 1 cup flour\n- 2 eggs\n\n"
       "## Steps\n1. Mix everything together.\n2. Cook in a hot pan.\n").encode(), "text/markdown", "pancakes.md"),
-], ids=["docx", "docx-untyped", "txt", "md"])
+    ("\n".join(["Mailed unnamed pancakes"] + RECIPE_LINES).encode(), "text/plain", None),   # attachment, no name
+], ids=["docx", "docx-untyped", "txt", "md", "txt-unnamed"])
 def test_a_document_attachment_gives_the_recipe(tmp_path, data, mime, name):
     msg = _make_email(body="Here you go.", attachment=data, attach_type=mime, filename=name)
     result = process_tagged_email(msg, str(tmp_path))
@@ -70,3 +71,17 @@ def test_the_french_reply_names_the_document():
         "Aucune recette trouvée. Essais : notes.docx : pas un fichier Word, texte ou Markdown."
     assert i18n.translate('Saved "Pancakes" (from "Recipe", via document attachment)', "fr").endswith(
         "(de « Recipe », par le document joint)")
+
+
+def test_a_document_over_the_upload_limit_is_named(tmp_path, monkeypatch):
+    """Review of 0218: the email path's own size check, with the limit."""
+    from app import i18n
+    from app.ingestion import email_processing
+    monkeypatch.setattr(email_processing, "MAX_UPLOAD_BYTES", 2 * 1024 * 1024)
+    msg = _make_email(body="See attached.", attachment=b"a" * (2 * 1024 * 1024 + 1), attach_type="text/plain",
+                      filename="huge.txt")
+    result = process_tagged_email(msg, str(tmp_path))
+    assert result["success"] is False
+    assert "huge.txt: over the 2 MB limit" in result["error"], result
+    assert "huge.txt : plus de 2 Mo" in i18n.translate(result["error"], "fr")
+    assert os.listdir(tmp_path) == []

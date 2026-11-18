@@ -310,7 +310,7 @@ def _read_document_bytes(data: bytes, tmp_dir: str, name_prefix: str) -> tuple[s
     temporary file for document_read and are removed after; same size limit
     as any upload."""
     if len(data) > MAX_UPLOAD_BYTES:
-        return "", "over the size limit"
+        return "", f"over the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit"
     path = os.path.join(tmp_dir, f"{name_prefix}-doc")
     try:
         with open(path, "wb") as f:

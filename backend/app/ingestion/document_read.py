@@ -31,7 +31,11 @@ MAX_DOCX_XML_BYTES = 20 * 1024 * 1024
 MAX_TEXT_BYTES = 1024 * 1024
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
-_MARKUP = re.compile(r"\A\s*<(?:\?xml|!doctype|html|svg|head|body)\b", re.I)
+# A web page or SVG, also after comments or with a script or style first
+# (review of 0217). Other HTML falls through to the recipe rules, which
+# find no ingredients or steps in it.
+_MARKUP = re.compile(r"\A\s*(?:<!--.*?-->\s*)*<(?:\?xml|!doctype|html|svg|head|body|script|style|meta)\b",
+                     re.I | re.S)
 
 
 class DocumentError(ValueError):
@@ -124,6 +128,7 @@ def _docx_block(node, lines: list[str]):
             lines.append("".join(parts))
             lines.extend(boxes)
         elif child.tag == f"{_W}tbl":
+            # A table inside a cell joins that cell's line.
             for row in child.findall(f"{_W}tr"):
                 cells = []
                 for cell in row.findall(f"{_W}tc"):
