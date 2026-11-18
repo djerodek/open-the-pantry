@@ -253,7 +253,7 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                 # rendering each later one, and every Tesseract run stops at it.
                 if ocr_started is None:
                     ocr_started = time.monotonic()
-                    clock = start_deadline(MAX_PDF_OCR_SECONDS)
+                    clock = start_deadline(MAX_PDF_OCR_SECONDS, now=True)
                 elif time.monotonic() - ocr_started > MAX_PDF_OCR_SECONDS:
                     raise _ocr_too_long(i + 1, started=False)
                 ocr_pages.append(i + 1)

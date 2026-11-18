@@ -921,3 +921,34 @@ def test_the_ocr_clock_starts_at_the_first_tesseract_run():
             ocr.run_timeout()
     finally:
         ocr.end_deadline(token)
+
+
+def test_rendering_a_pdfs_first_scanned_page_counts_against_its_ocr_time(monkeypatch, tmp_path):
+    """GPT review of 0210: the PDF's clock started at the first Tesseract
+    run, after the first scanned page was rendered, so a page slow to render
+    still got a fresh 10 minutes. It starts before rendering now, as
+    SECURITY says: past the time, no Tesseract run begins."""
+    import time as _time
+
+    import pdfplumber.page
+
+    from app.ingestion import ocr, pdf_read
+    path = tmp_path / "scan.pdf"
+    Image.new("RGB", (400, 500), "white").save(path)
+    runs = []
+
+    def tesseract(*a, timeout=None, **k):
+        runs.append(timeout)
+        raise RuntimeError("Tesseract process timeout")
+    real = pdfplumber.page.Page.to_image
+
+    def slow_render(self, *a, **k):
+        _time.sleep(0.5)
+        return real(self, *a, **k)
+    monkeypatch.setattr(ocr.pytesseract, "image_to_data", tesseract)
+    monkeypatch.setattr(ocr.pytesseract, "image_to_osd", tesseract)
+    monkeypatch.setattr(pdfplumber.page.Page, "to_image", slow_render)
+    monkeypatch.setattr(pdf_read, "MAX_PDF_OCR_SECONDS", 0.3)
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped at page 1"):
+        pdf_read.extract_pdf_text(str(path))
+    assert runs == []

@@ -101,11 +101,16 @@ class _Clock:
         return self.ends - time.monotonic()
 
 
-def start_deadline(seconds: float):
+def start_deadline(seconds: float, now: bool = False):
     """Sets the current import's OCR clock, which starts at its first
-    Tesseract run; returns the token for end_deadline(). Every Tesseract
-    run in this thread until then stops at it."""
-    return _deadline.set(_Clock(seconds))
+    Tesseract run, or at once with now=True (a PDF's, at its first scanned
+    page, before that page is rendered: GPT review of 0210); returns the
+    token for end_deadline(). Every Tesseract run in this thread until then
+    stops at it."""
+    clock = _Clock(seconds)
+    if now:
+        clock.left()
+    return _deadline.set(clock)
 
 
 def end_deadline(token) -> None:
