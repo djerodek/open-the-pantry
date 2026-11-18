@@ -404,7 +404,10 @@
 
     // Add recipe
     "🔗 URL": "🔗 URL",
-    "📄 PDF": "📄 PDF",
+    "📄 Document": "📄 Document",
+    "PDF / Word / TXT / MD": "PDF / Word / TXT / MD",
+    "Document": "Document",
+    "Saved from a batch of documents without being checked.": "Enregistrée à partir d'un lot de documents sans avoir été vérifiée.",
     "📷 Screenshot/Photo": "📷 Capture d'écran/photo",
     "✍️ Manual/Handwritten": "✍️ Manuelle/manuscrite",
     "📥 Check email inbox": "📥 Vérifier la boîte de courriel",
@@ -427,7 +430,7 @@
     "Each recipe is saved directly using auto-detected fields — open it afterward to correct anything.":
       "Chaque recette est enregistrée directement avec les champs détectés automatiquement. Ouvrez-la ensuite pour corriger au besoin.",
     "Import all": "Tout importer",
-    "Add from PDF": "Ajouter à partir d'un PDF",
+    "Add from a document": "Ajouter à partir d'un document",
     "Only part of the recipe came through": "Seule une partie de la recette a été récupérée",
     "Couldn't import this page": "Impossible d'importer cette page",
     "A PDF of the page usually works: your browser has the whole page, and the app reads recipe text from PDFs well.":
@@ -456,16 +459,16 @@
     "Enter it by hand.": "La saisir à la main.",
     "Add from screenshots": "Ajouter à partir de captures d'écran",
     "Enter manually": "Saisir à la main",
-    "Reading PDF (this can take a moment for scanned pages)...": "Lecture du PDF (les pages numérisées peuvent prendre un moment)…",
-    "Could not process PDF.": "Impossible de traiter le PDF.",
-    "PDF file": "Fichier PDF",
-    "Text-based PDFs are read directly; scanned pages fall back to OCR automatically.":
-      "Les PDF contenant du texte sont lus directement; les pages numérisées passent automatiquement par la reconnaissance de texte.",
-    "Process PDF": "Traiter le PDF",
-    "That's {1} PDFs; the limit is 20 per batch. Send the rest separately.":
-      "Ça fait {1} PDF; la limite est de 20 par lot. Envoyez le reste séparément.",
-    "Processing {1} PDF(s)...": "Traitement de {1} PDF…",
-    "PDF files": "Fichiers PDF",
+    "Reading the document (a scanned PDF can take a moment)...": "Lecture du document (un PDF numérisé peut prendre un moment)…",
+    "Could not read this document.": "Impossible de lire ce document.",
+    "PDF, Word, text or Markdown file": "Fichier PDF, Word, texte ou Markdown",
+    "Text is read directly; a PDF's scanned pages go through text recognition.":
+      "Le texte est lu directement; les pages numérisées d'un PDF passent par la reconnaissance de texte.",
+    "Read document": "Lire le document",
+    "That's {1} files; the limit is 20 per batch. Send the rest separately.":
+      "Ça fait {1} fichiers; la limite est de 20 par lot. Envoyez le reste séparément.",
+    "Reading {1} file(s)...": "Lecture de {1} fichier(s)…",
+    "PDF, Word, text or Markdown files": "Fichiers PDF, Word, texte ou Markdown",
     "Each is saved directly using auto-detected fields.": "Chacun est enregistré directement avec les champs détectés automatiquement.",
     "Add from screenshot / photo": "Ajouter à partir d'une capture d'écran ou d'une photo",
     "Reading image with OCR...": "Lecture de l'image par reconnaissance de texte…",

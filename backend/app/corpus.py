@@ -300,7 +300,7 @@ def case_kind(recipe: dict) -> str | None:
     None: typed in, imported from a file, or no original text kept."""
     if recipe["source_url"] and recipe["source_type"] in ("url", "email"):
         return "url"
-    if recipe["source_type"] in ("pdf", "screenshot", "email") and (recipe["raw_text"] or "").strip():
+    if recipe["source_type"] in ("pdf", "document", "screenshot", "email") and (recipe["raw_text"] or "").strip():
         return "text"
     return None
 

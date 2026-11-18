@@ -1998,6 +1998,7 @@ function reviewBanner(recipe) {
   if (!recipe.needs_review) return null;
   const where = { url: tx("Saved from a batch of links without being checked."),
     pdf: tx("Saved from a batch of PDFs without being checked."),
+    document: tx("Saved from a batch of documents without being checked."),
     email: tx("Saved from an email without being checked.") }[recipe.source_type]
     || tx("Saved without being checked.");
   return el("div", { class: "review-banner", role: "note" }, [
@@ -2105,7 +2106,7 @@ function showListError(message) {
 }
 
 function sourceBadge(recipe) {
-  const label = { url: tx("Web"), pdf: "PDF", screenshot: tx("Screenshot"), manual: tx("Handwritten/Manual"), email: tx("Email"),
+  const label = { url: tx("Web"), pdf: "PDF", document: tx("Document"), screenshot: tx("Screenshot"), manual: tx("Handwritten/Manual"), email: tx("Email"),
     import: tx("Imported") }[recipe.source_type] || recipe.source_type;
   return el("span", { class: `badge badge-source-${recipe.source_type}`, text: label });
 }

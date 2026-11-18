@@ -1085,6 +1085,8 @@ main {
 .recipe-grid[data-list-style="tiles"] .card-notes-icon { color: #fff; }
 .recipe-grid[data-list-style="tiles"] .badge-matched,
 .recipe-grid[data-list-style="tiles"] .card-snippet { display: none; }
+/* Without :has() (Safari before 15.4) the row shows whole: more text on a
+   tile, but "To review" never hidden (DeepSeek review of 0212). */
 .recipe-grid[data-list-style="tiles"] .card-matched-row:not(:has(.badge-review)) { display: none; }
 .recipe-grid[data-list-style="tiles"] .card-matched-row { margin-top: 0.3rem; }
 /* No photo: the title, larger, centred on a plain tile. */
@@ -1283,6 +1285,13 @@ main {
   text-align: center;
 }
 .source-type-picker button:hover { border-color: var(--color-accent); }
+/* The Document button's file types, small under its name. */
+.source-type-note {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--color-ink-muted);
+}
 
 .field { margin-bottom: 0.85rem; }
 .field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; }

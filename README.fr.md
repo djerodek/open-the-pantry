@@ -120,9 +120,9 @@ courriel et HTTPS.
 - **À partir d'un lien**, un seul ou jusqu'à 50 à la fois, avec la photo
   de la page. Plus de 100 sites ont leur propre lecteur; les autres sont lus
   d'après les données de recette de la page, puis son texte.
-- **À partir d'un PDF**, un seul ou jusqu'à 20 à la fois. Les pages
-  numérisées passent par l'OCR; la plus grande photo devient celle de la
-  recette.
+- **À partir d'un document** (PDF, Word, texte ou Markdown), un seul ou
+  jusqu'à 20 à la fois. Les pages numérisées d'un PDF passent par l'OCR, et
+  sa plus grande photo devient celle de la recette.
 - **À partir de photos ou de captures d'écran**, jusqu'à 10 réunies en une
   recette. Les pages sont découpées, remises à l'endroit et redressées; les
   titres en couleur et les listes d'ingrédients sur deux colonnes sont lus.

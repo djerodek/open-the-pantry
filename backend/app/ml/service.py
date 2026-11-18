@@ -249,7 +249,7 @@ def _examples(db):
         ings = [i.raw_line or i.name or "" for i in r.ingredients]
         ings = [i for i in ings if i.strip()]
         steps = [s.text for s in r.steps if (s.text or "").strip()]
-        raw = r.raw_text if r.source_type in ("pdf", "screenshot", "email") else None
+        raw = r.raw_text if r.source_type in ("pdf", "document", "screenshot", "email") else None
         # An emailed link's stored text is the page's steps (with the link's
         # address since 0047, without it before): nothing to learn layouts
         # from.

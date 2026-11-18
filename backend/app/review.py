@@ -37,7 +37,7 @@ def read_from_text(recipe: models.Recipe) -> bool:
     not from a web page's recipe data. A link import's stored text is its
     steps, which the segmenter never read: the hints that re-read the text
     (lines left out, text cut) apply only here (Claude review of 0175)."""
-    return recipe.source_type in ("pdf", "screenshot", "email") and not recipe.source_url and bool(recipe.raw_text)
+    return recipe.source_type in ("pdf", "document", "screenshot", "email") and not recipe.source_url and bool(recipe.raw_text)
 
 
 def _left_out(recipe: models.Recipe) -> list[str]:

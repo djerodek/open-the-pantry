@@ -77,7 +77,7 @@ def render_recipe_html(recipe, absolute_image_path: str | None = None, include_n
 
 
 # The recipe page's labels (frontend sourceBadge), not the stored codes.
-SOURCE_LABELS = {"url": "Web", "pdf": "PDF", "screenshot": "Screenshot", "email": "Email", "import": "Imported"}
+SOURCE_LABELS = {"url": "Web", "pdf": "PDF", "document": "Document", "screenshot": "Screenshot", "email": "Email", "import": "Imported"}
 
 
 def render_recipe_pdf(recipe, absolute_image_path: str | None = None, include_notes: bool = False,

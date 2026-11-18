@@ -102,8 +102,9 @@ A backup doesn't contain `encryption.key`, `admin-password.json` or
 - **From a link**, one or up to 50 at once, with the page's photo. Over 100
   sites have their own reader; others are read from the page's recipe data,
   then its text.
-- **From a PDF**, one or up to 20 at once. Scanned pages go through OCR;
-  the largest photo becomes the recipe's.
+- **From a document** (PDF, Word, text or Markdown), one or up to 20 at
+  once. A PDF's scanned pages go through OCR, and its largest photo becomes
+  the recipe's.
 - **From photos or screenshots**, up to 10 combined into one recipe. Pages
   are cropped, turned upright and straightened; coloured titles and
   two-column ingredient lists are read. Not handwriting: type those in.
@@ -189,8 +190,9 @@ Other DNS hosts can use Traefik instead. Setup: [docs/https.md](docs/https.md).
 ### Interface
 
 English or French per device; installable (PWA); light or dark theme; text
-size; the recipe list as titles, cards with photos, or tiles; pinch-zoom off on phones on purpose (it pushed buttons off screen);
-keyboard and screen-reader support, checked by an automated scan.
+size; the recipe list as titles, cards with photos, or tiles; pinch-zoom
+off on phones on purpose (it pushed buttons off screen); keyboard and
+screen-reader support, checked by an automated scan.
 
 ## Settings password
 

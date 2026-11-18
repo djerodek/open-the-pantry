@@ -6,6 +6,7 @@ an empty field."""
 
 SOURCES = {
     "pdf": "This PDF",
+    "document": "This document",
     "image": "This image",
     "images": "These images",
 }

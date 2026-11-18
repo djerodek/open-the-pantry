@@ -864,9 +864,9 @@ def test_the_draft_says_when_only_the_start_was_read(server, page):
                                                                body=json.dumps(draft)))
     pg.goto(server["url"])
     pg.click("#add-recipe-fab")
-    pg.click("#add-recipe-body button:has-text('PDF')")
+    pg.click("#add-recipe-body button.source-document")
     pg.set_input_files("#pdf-input", files=[{"name": "a.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"}])
-    pg.click("#add-recipe-body button:has-text('Process PDF')")
+    pg.click("#add-recipe-body button:has-text('Read document')")
     pg.wait_for_selector("#add-recipe-body [role=note]:has-text('Only the start of the text was read')")
 
 
@@ -952,3 +952,21 @@ def test_the_old_photos_switch_still_counts(server, api, page):
     p.page.wait_for_selector(".recipe-grid")
     assert p.page.get_attribute(".recipe-grid", "data-list-style") == "titles"
     p.page.evaluate("localStorage.removeItem('recipe-app-show-thumbnails')")
+
+
+def test_a_markdown_file_from_the_document_button(server, page):
+    """Owner, 2026-11-18: the PDF button is now Document, with the file
+    types under its name, and takes Word, text and Markdown files."""
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click("#add-recipe-fab")
+    button = "#add-recipe-body button.source-document"
+    assert pg.inner_text(f"{button} .source-type-note") == "PDF / Word / TXT / MD"
+    pg.click(button)
+    accept = pg.get_attribute("#pdf-input", "accept")
+    assert all(t in accept for t in (".pdf", ".docx", ".txt", ".md"))
+    md = "# Pantry test pancakes\n\n## Ingredients\n\n- 1 cup flour\n- 2 eggs\n\n## Steps\n\n1. Mix.\n2. Cook.\n"
+    pg.set_input_files("#pdf-input", files=[{"name": "p.md", "mimeType": "text/markdown", "buffer": md.encode()}])
+    pg.click("#add-recipe-body button:has-text('Read document')")
+    pg.wait_for_selector("#add-recipe-body input[value='Pantry test pancakes'], #add-recipe-body :text('Pantry test pancakes')")

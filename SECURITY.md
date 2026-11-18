@@ -65,6 +65,10 @@ How it works:
     into one recipe share one OCR clock (below).
   - **PDFs**: at most 60 pages, at most 3 OCR jobs at once, and only the
     largest of a PDF's photos is decoded.
+  - **Word, text and Markdown files**: what a file is comes from its bytes,
+    not its name. From a Word file only the document's text is read (at
+    most 20 MB of it, from at most 2,000 parts), and its XML never fetches
+    anything. None of these files is kept, only the recipe's text.
   - **OCR clock**: an import's OCR stops 10 minutes after it starts, the
     page or photo under way included. For a PDF it starts at the first
     scanned page, so preparing that page counts; for combined photos, at

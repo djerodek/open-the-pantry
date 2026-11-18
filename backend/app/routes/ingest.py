@@ -10,7 +10,8 @@ from .. import schemas
 from ..database import get_db, UPLOADS_DIR, TMP_DIR
 from ..ingestion.completeness import incomplete_info, incomplete_message, missing_parts as missing_sections
 from ..ingestion.url_ingest import ingest_url, log_url, UrlValidationError, IncompleteRecipeError, require_complete, missing_parts
-from ..ingestion.pdf_read import PdfTooLargeError, extract_pdf_text
+from ..ingestion.pdf_read import PdfIngestResult, PdfTooLargeError, extract_pdf_text
+from ..ingestion.document_read import DocumentError, extract_document_text
 from ..ingestion.segment import segment_raw_text, text_was_cut
 from ..ingestion.image_ingest import ingest_and_segment, ingest_image
 from ..ingestion import ocr
@@ -184,15 +185,30 @@ def ingest_from_url_batch(payload: schemas.BatchUrlIngestRequest, db: Session = 
     return {"succeeded": succeeded, "failed": failed, "skipped": skipped}
 
 
+def _read_document(temp_name: str, temp_path: str) -> PdfIngestResult:
+    """A saved upload's text: a PDF's through extract_pdf_text (OCR where
+    needed, in an OCR slot), a Word or text file's through document_read.
+    _save_upload_streaming(expect="document") named it by what its bytes are."""
+    if temp_name.endswith(".pdf"):
+        return _run_heavy(extract_pdf_text, temp_path)
+    kind = "docx" if temp_name.endswith(".docx") else "text"
+    return PdfIngestResult(extract_document_text(temp_path, kind), [], None)
+
+
+# The /pdf routes take Word, text and Markdown files too, under the one
+# "Document" button (owner, 2026-11-18); the paths stay for old pages and
+# shortcuts.
 @router.post("/api/ingest/pdf")
 def ingest_from_pdf(file: UploadFile = File(...)):
-    name_prefix = f"pdf-{uuid.uuid4().hex}"
-    temp_name = _save_upload_streaming(file, TMP_DIR, name_prefix, expect="pdf")
+    name_prefix = f"doc-{uuid.uuid4().hex}"
+    temp_name = _save_upload_streaming(file, TMP_DIR, name_prefix, expect="document")
     temp_path = os.path.join(TMP_DIR, temp_name)
+    is_pdf = temp_name.endswith(".pdf")
 
     try:
-        pdf_result = _run_heavy(extract_pdf_text, temp_path)
-    except PdfTooLargeError as e:
+        pdf_result = _read_document(temp_name, temp_path)
+    except (PdfTooLargeError, DocumentError) as e:
+        log.info("ingest_from_pdf: refused: %s", e)
         os.remove(temp_path)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -201,7 +217,9 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         log.warning("ingest_from_pdf: request failed", exc_info=True)
         if os.path.isfile(temp_path):
             os.remove(temp_path)
-        raise HTTPException(status_code=400, detail="Could not read this PDF.")
+        raise HTTPException(status_code=400, detail="Could not read this PDF." if is_pdf else "Could not read this document.")
+    if not is_pdf:
+        os.remove(temp_path)     # only its text is kept; there's no photo in it to take
 
     segmented = segment_raw_text(pdf_result.raw_text)
     parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
@@ -213,18 +231,20 @@ def ingest_from_pdf(file: UploadFile = File(...)):
     # Best-effort: pull out the largest embedded image as a showcase photo.
     # A failure here never fails the ingestion -- the recipe's text content
     # is returned either way.
-    image_path = _run_heavy(_extract_pdf_showcase_image, temp_path, TMP_DIR, f"pdf-img-{uuid.uuid4().hex}")
+    image_path = (_run_heavy(_extract_pdf_showcase_image, temp_path, TMP_DIR, f"pdf-img-{uuid.uuid4().hex}")
+                  if is_pdf else None)
+    source = "pdf" if is_pdf else "document"
 
     # No ingredients or no steps: reported as a failed import, with the
     # draft attached so "Continue anyway" can still open it.
-    incomplete = incomplete_info("pdf", segmented["ingredients"], segmented["steps"])
+    incomplete = incomplete_info(source, segmented["ingredients"], segmented["steps"])
     if incomplete:
         log.info("Add from PDF: incomplete recipe from %s: %s", file.filename, incomplete["message"])
 
     return {
         "incomplete": incomplete,
         "title": segmented["title_guess"],
-        "source_type": "pdf",
+        "source_type": source,
         "servings": segmented.get("servings"),
         "raw_text": pdf_result.raw_text,
         "text_cut": text_was_cut(pdf_result.raw_text),
@@ -234,7 +254,7 @@ def ingest_from_pdf(file: UploadFile = File(...)):
         "suggested_tags": tag_suggestions,     # with where each came from (tagger.explain_tags)
         "ocr_used_on_pages": pdf_result.ocr_used_on_pages,
         "ocr_confidence": pdf_result.avg_ocr_confidence,
-        "stored_file": temp_name,  # a draft reference; promoted to UPLOADS_DIR only on save
+        "stored_file": temp_name if is_pdf else None,  # a draft reference, discarded unless saved
     }
 
 
@@ -252,7 +272,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
     attachment here (only screenshot/manual entries carry an image) -- only
     its extracted content is saved."""
     if len(files) > MAX_BATCH_PDFS:
-        raise HTTPException(status_code=400, detail=f"Too many PDFs in one batch (max {MAX_BATCH_PDFS}). Send the rest separately.")
+        raise HTTPException(status_code=400, detail=f"Too many files in one batch (max {MAX_BATCH_PDFS}). Send the rest separately.")
     total = 0
     for f in files:
         size = getattr(f, "size", None)
@@ -262,7 +282,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
     if total > MAX_BATCH_PDF_BYTES:
         raise HTTPException(
             status_code=400,
-            detail=f"These PDFs total {total / 1048576:.0f} MB; one batch can be at most "
+            detail=f"These files total {total / 1048576:.0f} MB; one batch can be at most "
                    f"{MAX_BATCH_PDF_BYTES // 1048576} MB. Send them in smaller groups.",
         )
     succeeded, failed = [], []
@@ -270,17 +290,18 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
         if time.monotonic() > deadline:
             failed.append({"filename": file.filename, "error": _not_tried()})
             continue
-        name_prefix = f"pdf-{uuid.uuid4().hex}"
+        name_prefix = f"doc-{uuid.uuid4().hex}"
         temp_path = None
         try:
-            temp_name = _save_upload_streaming(file, TMP_DIR, name_prefix, expect="pdf")
+            temp_name = _save_upload_streaming(file, TMP_DIR, name_prefix, expect="document")
             temp_path = os.path.join(TMP_DIR, temp_name)
-            pdf_result = _run_heavy(extract_pdf_text, temp_path)
+            source = "pdf" if temp_name.endswith(".pdf") else "document"
+            pdf_result = _read_document(temp_name, temp_path)
             segmented = segment_raw_text(pdf_result.raw_text)
             missing = missing_sections(segmented["ingredients"], segmented["steps"])
             if missing:
-                log.info("PDF batch: incomplete recipe from %s (no %s)", file.filename, " or ".join(missing))
-                failed.append({"filename": file.filename, "error": incomplete_message("pdf", missing) + BATCH_INCOMPLETE_ADVICE})
+                log.info("Document batch: incomplete recipe from %s (no %s)", file.filename, " or ".join(missing))
+                failed.append({"filename": file.filename, "error": incomplete_message(source, missing) + BATCH_INCOMPLETE_ADVICE})
                 continue
             parsed_ingredients = parse_ingredient_block(segmented["ingredients"])
             tag_suggestions = suggest_tags(
@@ -293,7 +314,7 @@ def ingest_from_pdf_batch(files: list[UploadFile] = File(...), db: Session = Dep
                  "raw_text": pdf_result.raw_text}, parsed_ingredients, segmented["steps"])
             recipe = _add_recipe(db, fields, parsed_ingredients, steps,
                                  [schemas.TagIn(name=n, category=c, subgroup=s) for n, c, s in tag_suggestions],
-                                 source_type="pdf", ocr_confidence=pdf_result.avg_ocr_confidence, needs_review=True)
+                                 source_type=source, ocr_confidence=pdf_result.avg_ocr_confidence, needs_review=True)
             db.commit()
             succeeded.append({"filename": file.filename, "recipe_id": recipe.id, "title": recipe.title,
                               "duplicate_of": same_title[0] if same_title else None})

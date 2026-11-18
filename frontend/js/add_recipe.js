@@ -43,7 +43,11 @@ function showSourcePicker() {
   addBody.innerHTML = "";
   const picker = el("div", { class: "source-type-picker" }, [
     el("button", { type: "button", text: tx("\ud83d\udd17 URL"), onclick: showUrlForm }),
-    el("button", { type: "button", text: tx("\ud83d\udcc4 PDF"), onclick: showPdfForm }),
+    // One button for PDFs, Word, text and Markdown files (owner, 2026-11-18).
+    el("button", { type: "button", class: "source-document", onclick: showPdfForm }, [
+      document.createTextNode(tx("\ud83d\udcc4 Document")),
+      el("span", { class: "source-type-note", text: tx("PDF / Word / TXT / MD") }),
+    ]),
     el("button", { type: "button", text: tx("\ud83d\udcf7 Screenshot/Photo"), onclick: () => showImageForm() }),
     el("button", { type: "button", text: tx("\u270d\ufe0f Manual/Handwritten"), onclick: showManualForm }),
   ]);
@@ -227,7 +231,7 @@ function showPdfFallback(message, draft) {
   ]));
   addBody.appendChild(el("p", { class: "field-hint", text: tx("Or email the PDF to the recipe inbox as an attachment, if email ingest is set up.") }));
   const actions = [
-    el("button", { type: "button", class: "btn-primary", text: tx("Add from PDF"), onclick: async () => {
+    el("button", { type: "button", class: "btn-primary", text: tx("Add from a document"), onclick: async () => {
       if (draft) await discardCurrentDraftFiles();
       showPdfForm();
     } }),
@@ -278,7 +282,7 @@ function showSourceFallback(kind, message, draft) {
     actions.push(el("button", { type: "button", class: "btn-primary", text: tx("Add from screenshots"), onclick: leave(() => showImageForm(true)) }));
   } else {
     if (kind === "image") actions.push(el("button", { type: "button", class: "btn-primary", text: tx("Combine multiple"), onclick: leave(() => showImageForm(true)) }));
-    actions.push(el("button", { type: "button", class: kind === "image" ? "btn-secondary" : "btn-primary", text: tx("Add from PDF"), onclick: leave(showPdfForm) }));
+    actions.push(el("button", { type: "button", class: kind === "image" ? "btn-secondary" : "btn-primary", text: tx("Add from a document"), onclick: leave(showPdfForm) }));
   }
   actions.push(el("button", { type: "button", class: "btn-secondary", text: tx("Enter manually"), onclick: leave(showManualForm) }));
   if (draft) {
@@ -413,23 +417,27 @@ function openSharedLink() {
   if (next) next.focus();
 }
 
+// The files the Document button takes; the server checks what each really
+// is from its bytes.
+const DOCUMENT_TYPES = "application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain,.md,text/markdown";
+
 function showPdfForm() {
   addBody.innerHTML = "";
-  addBody.appendChild(el("h3", { text: tx("Add from PDF") }));
+  addBody.appendChild(el("h3", { text: tx("Add from a document") }));
   const formArea = el("div");
 
   function renderSingle() {
     formArea.innerHTML = "";
-    const input = el("input", { type: "file", id: "pdf-input", accept: "application/pdf", required: "" });
+    const input = el("input", { type: "file", id: "pdf-input", accept: DOCUMENT_TYPES, required: "" });
     formArea.appendChild(el("form", {
       onsubmit: async (e) => {
         e.preventDefault();
         if (!input.files.length) return;
-        setBusy(true, tx("Reading PDF (this can take a moment for scanned pages)..."));
+        setBusy(true, tx("Reading the document (a scanned PDF can take a moment)..."));
         try {
           const fd = new FormData(); fd.append("file", input.files[0]);
           const res = await fetch(`${API}/ingest/pdf`, { method: "POST", body: fd });
-          if (!res.ok) { showSourceFallback("pdf", await errorDetail(res, tx("Could not process PDF.")), null); return; }
+          if (!res.ok) { showSourceFallback("pdf", await errorDetail(res, tx("Could not read this document.")), null); return; }
           const draft = await res.json();
           trackDraftFile(draft.stored_file);
           trackDraftFile(draft.image_path);
@@ -441,27 +449,27 @@ function showPdfForm() {
       },
     }, [
       el("div", { class: "field" }, [
-        el("label", { for: "pdf-input", text: tx("PDF file") }),
+        el("label", { for: "pdf-input", text: tx("PDF, Word, text or Markdown file") }),
         input,
-        el("div", { class: "field-hint", text: tx("Text-based PDFs are read directly; scanned pages fall back to OCR automatically.") }),
+        el("div", { class: "field-hint", text: tx("Text is read directly; a PDF's scanned pages go through text recognition.") }),
       ]),
-      el("button", { class: "btn-primary", type: "submit", text: tx("Process PDF") }),
+      el("button", { class: "btn-primary", type: "submit", text: tx("Read document") }),
     ]));
   }
 
   function renderBatch() {
     formArea.innerHTML = "";
-    const input = el("input", { type: "file", id: "pdf-batch-input", accept: "application/pdf", multiple: "" });
+    const input = el("input", { type: "file", id: "pdf-batch-input", accept: DOCUMENT_TYPES, multiple: "" });
     const resultsEl = el("div");
     formArea.appendChild(el("form", {
       onsubmit: async (e) => {
         e.preventDefault();
         if (!input.files.length) return;
         if (input.files.length > 20) {  // MAX_BATCH_PDFS on the server
-          resultsEl.textContent = tx("That's {1} PDFs; the limit is 20 per batch. Send the rest separately.", { 1: input.files.length });
+          resultsEl.textContent = tx("That's {1} files; the limit is 20 per batch. Send the rest separately.", { 1: input.files.length });
           return;
         }
-        setBusy(true, tx("Processing {1} PDF(s)...", { 1: input.files.length }));
+        setBusy(true, tx("Reading {1} file(s)...", { 1: input.files.length }));
         try {
           const fd = new FormData();
           for (const f of input.files) fd.append("files", f);
@@ -473,7 +481,7 @@ function showPdfForm() {
       },
     }, [
       el("div", { class: "field" }, [
-        el("label", { for: "pdf-batch-input", text: tx("PDF files") }),
+        el("label", { for: "pdf-batch-input", text: tx("PDF, Word, text or Markdown files") }),
         input,
         el("div", { class: "field-hint", text: tx("Each is saved directly using auto-detected fields.") }),
       ]),

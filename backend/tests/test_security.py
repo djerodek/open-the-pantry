@@ -36,8 +36,13 @@ def test_oversized_upload_rejected(client):
 
 
 def test_fake_pdf_bad_magic_bytes_rejected(client):
-    r = client.post("/api/ingest/pdf", files={"file": ("fake.pdf", b"not a real pdf", "application/pdf")})
+    """What an upload is comes from its bytes, never its name. Since the
+    Document button (2026-11-18) text is accepted too: a ".pdf" holding
+    text is read as text, not as a PDF; one holding neither is refused."""
+    r = client.post("/api/ingest/pdf", files={"file": ("fake.pdf", b"\x00\x01 not a real pdf", "application/pdf")})
     assert r.status_code == 400
+    r = client.post("/api/ingest/pdf", files={"file": ("fake.pdf", b"not a real pdf", "application/pdf")})
+    assert r.status_code == 200 and r.json()["source_type"] == "document" and r.json()["stored_file"] is None
 
 
 def test_fake_image_bad_magic_bytes_rejected(client):

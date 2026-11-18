@@ -12,6 +12,7 @@ from .. import models, schemas
 from ..database import SessionLocal, DATA_DIR, UPLOADS_DIR, TMP_DIR
 from ..ingestion.url_ingest import safe_get
 from ..ingestion.pdf_read import extract_largest_embedded_image
+from ..ingestion.document_read import document_kind
 from ..ingestion.ingredient_parser import parse_ingredient_block
 from ..ingestion.tagger import set_user_keywords
 from ..backup import remove_upload_file
@@ -179,6 +180,16 @@ def _save_upload_streaming(file: UploadFile, dest_dir: str, name_prefix: str, ex
             os.remove(tmp_write_path)
             raise HTTPException(status_code=400, detail="File does not look like a valid PDF.")
         ext = ".pdf"
+    elif expect == "document":
+        # A PDF, a Word file or text, told from the bytes (document_read).
+        if first_chunk.startswith(PDF_MAGIC):
+            ext = ".pdf"
+        else:
+            kind = document_kind(tmp_write_path, first_chunk)
+            if kind is None:
+                os.remove(tmp_write_path)
+                raise HTTPException(status_code=400, detail="This file isn't a PDF, Word, text or Markdown file.")
+            ext = ".docx" if kind == "docx" else ".txt"
     elif expect == "image":
         ext = detect_image_ext(first_chunk[:16])
         if ext is None:

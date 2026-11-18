@@ -76,6 +76,11 @@ Son fonctionnement :
     partagent la même minuterie d'OCR (plus bas).
   - **PDF** : au plus 60 pages, au plus 3 tâches d'OCR à la fois, et seule
     la plus grande des photos d'un PDF est décodée.
+  - **Fichiers Word, texte et Markdown** : la nature d'un fichier vient de
+    son contenu, pas de son nom. D'un fichier Word, seul le texte du
+    document est lu (au plus 20 Mo, parmi au plus 2 000 parties), et son
+    XML ne va jamais rien chercher ailleurs. Aucun de ces fichiers n'est
+    gardé, seulement le texte de la recette.
   - **Minuterie d'OCR** : l'OCR d'une importation s'arrête 10 minutes après
     son début, la page ou la photo en cours comprise. Pour un PDF, elle
     commence à la première page numérisée, donc la préparation de cette
