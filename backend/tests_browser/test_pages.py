@@ -888,3 +888,67 @@ def test_a_refused_batch_says_why(server, page):
     wait_until(pg, f"(({last}) || {{}}).textContent")
     text = pg.evaluate(f"{last}.textContent")
     assert "[object Object]" not in text and "2000" in text.replace(",", ""), text
+
+
+def _photo_recipe(api, title, colour):
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (900, 600), colour).save(buf, "JPEG")
+    up = api.post("/api/upload-image", files={"file": ("p.jpg", buf.getvalue(), "image/jpeg")})
+    assert up.status_code == 200, up.text
+    return add_recipe(api, title, image_path=up.json()["stored_file"])
+
+
+def test_tiles(server, api, page):
+    """Owner, 2026-11-18: a tile view beside titles and photos. Two square
+    tiles a row on a phone, the title over the photo, no buttons on a tile
+    (a tap opens the recipe), a plain tile for a recipe without a photo,
+    and one tile a row at a large text size."""
+    sfx = uuid.uuid4().hex[:6]
+    _photo_recipe(api, f"Tile soup {sfx}", "#8a5")
+    _photo_recipe(api, f"Tile stew with a long title that has to wrap on a tile {sfx}", "#a65")
+    add_recipe(api, f"Tile bread {sfx}")
+    p = page(width=390)
+    _open_settings(p, server["url"])
+    p.page.click("#list-style-switch button[data-list-style='tiles']")
+    assert p.page.get_attribute("#list-style-switch button[data-list-style='tiles']", "aria-pressed") == "true"
+    p.page.click("#settings-close")
+    p.page.fill("#search-input", sfx)
+    p.page.press("#search-input", "Enter")
+    wait_until(p.page, "document.querySelectorAll('.recipe-grid[data-list-style=tiles] .recipe-card').length === 3")
+    boxes = p.page.evaluate("""[...document.querySelectorAll('.recipe-card')].map((c) => {
+        const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; })""")
+    assert len({b[1] for b in boxes[:2]}) == 1 and boxes[0][0] != boxes[1][0], boxes   # two a row
+    assert all(abs(b[2] - b[3]) <= 1 for b in boxes), boxes                           # square
+    assert p.page.evaluate("document.querySelectorAll('.recipe-grid .card-quick-controls').length") == 0
+    assert p.page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    p.page.click("text=Select")                    # the checkbox in each tile's corner
+    corners = p.page.evaluate("""[...document.querySelectorAll('.recipe-card')].map((c) => {
+        const b = c.querySelector('.card-select-box').getBoundingClientRect(), r = c.getBoundingClientRect();
+        return [Math.round(b.left - r.left), Math.round(b.top - r.top)]; })""")
+    assert all(x < 20 and y < 20 for x, y in corners), corners
+    p.page.click("text=Select")
+    p.page.click(f"text=Tile soup {sfx}")
+    p.page.wait_for_selector("#recipe-detail-heading")
+    # Kept on reload, and one a row at a large text size.
+    p.page.evaluate("localStorage.setItem('recipe-app-font-size-idx', '6')")
+    p.page.goto(server["url"])
+    p.page.fill("#search-input", sfx)
+    p.page.press("#search-input", "Enter")
+    wait_until(p.page, "document.querySelectorAll('.recipe-grid[data-list-style=tiles] .recipe-card').length === 3")
+    lefts = p.page.evaluate("[...document.querySelectorAll('.recipe-card')].map((c) => Math.round(c.getBoundingClientRect().left))")
+    assert len(set(lefts)) == 1, lefts
+    p.page.evaluate("localStorage.removeItem('recipe-app-font-size-idx'); localStorage.removeItem('recipe-app-list-style')")
+
+
+def test_the_old_photos_switch_still_counts(server, api, page):
+    """Before tiles, "Show photos" was a switch (recipe-app-show-thumbnails);
+    its "off" still shows titles only until a style is chosen."""
+    add_recipe(api, f"Switch soup {uuid.uuid4().hex[:6]}")
+    p = page()
+    p.page.goto(server["url"])
+    p.page.evaluate("localStorage.setItem('recipe-app-show-thumbnails', 'false')")
+    p.page.reload()
+    p.page.wait_for_selector(".recipe-grid")
+    assert p.page.get_attribute(".recipe-grid", "data-list-style") == "titles"
+    p.page.evaluate("localStorage.removeItem('recipe-app-show-thumbnails')")

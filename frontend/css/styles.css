@@ -1039,6 +1039,73 @@ main {
 
 .recipe-card-body { padding: 0.6rem 0.75rem 0.8rem; flex: 1; }
 
+/* Tiles (owner, 2026-11-18): photos side by side, each title on a dark band
+   over the bottom of its photo; tap a tile to open the recipe. 9.5rem keeps
+   two a row on a phone at the normal text size and drops to one at the
+   larger sizes, as the cards do. The band is a fixed dark colour with white
+   text in both themes, so the title stays readable over any photo. */
+.recipe-grid[data-list-style="tiles"] {
+  grid-template-columns: repeat(auto-fill, minmax(min(9.5rem, 100%), 1fr));
+  gap: 0.6rem;
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card {
+  aspect-ratio: 1;
+  justify-content: flex-end;
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card-image {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  aspect-ratio: auto;
+}
+/* In the tile's corner, a photo-less tile's too (cards put that one in
+   flow, above the title). */
+.recipe-grid[data-list-style="tiles"] .card-select-box,
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image .card-select-box {
+  position: absolute;
+  margin: 0;
+  z-index: 1;
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card-body {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.55rem;
+  background: rgba(0, 0, 0, 0.75);
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card-title,
+.recipe-grid[data-list-style="tiles"] .recipe-card:hover .recipe-card-title {
+  color: #fff;
+  font-size: 0.9rem;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.recipe-grid[data-list-style="tiles"] .card-notes-icon { color: #fff; }
+.recipe-grid[data-list-style="tiles"] .badge-matched,
+.recipe-grid[data-list-style="tiles"] .card-snippet { display: none; }
+.recipe-grid[data-list-style="tiles"] .card-matched-row:not(:has(.badge-review)) { display: none; }
+.recipe-grid[data-list-style="tiles"] .card-matched-row { margin-top: 0.3rem; }
+/* No photo: the title, larger, centred on a plain tile. */
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image {
+  justify-content: center;
+  background: var(--color-border);
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image .recipe-card-body {
+  background: none;
+  text-align: center;
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image .recipe-card-title,
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image:hover .recipe-card-title {
+  color: var(--color-ink);
+  font-size: 1.05rem;
+  -webkit-line-clamp: 5;
+}
+.recipe-grid[data-list-style="tiles"] .recipe-card--no-image .card-notes-icon {
+  color: var(--color-accent-text, var(--color-accent));
+}
+
 .recipe-card-title {
   font-size: 1rem;
   margin: 0 0 0.3rem;

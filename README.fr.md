@@ -229,7 +229,8 @@ passer par Traefik. Configuration : [docs/https.fr.md](docs/https.fr.md).
 ### Interface
 
 Anglais ou français par appareil; installable (PWA); thème clair ou
-sombre; taille du texte; zoom par pincement désactivé sur les téléphones,
+sombre; taille du texte; la liste des recettes en titres, en fiches avec
+photos ou en mosaïque; zoom par pincement désactivé sur les téléphones,
 exprès (il poussait les boutons hors de l'écran); prise en charge du
 clavier et des lecteurs d'écran, vérifiée par un balayage automatique.
 

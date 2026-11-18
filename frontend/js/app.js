@@ -682,7 +682,12 @@ const state = {
   selectMode: false,
   selectedIds: new Set(),
   currentDraftFiles: new Set(),  // temp file(s) awaiting save/discard for the open add-recipe session
-  showThumbnails: storageGet("recipe-app-show-thumbnails") !== "false",  // default on
+  // "titles", "photos" (the default) or "tiles" (owner, 2026-11-18). Before
+  // tiles it was an on/off switch, recipe-app-show-thumbnails; its "false"
+  // still means titles until a style is chosen.
+  listStyle: ["titles", "photos", "tiles"].includes(storageGet("recipe-app-list-style"))
+    ? storageGet("recipe-app-list-style")
+    : (storageGet("recipe-app-show-thumbnails") === "false" ? "titles" : "photos"),
   showTicks: storageGet("recipe-app-checkboxes") === "true",             // default off
   // Which sidebar category groups are open. Default is ALL CLOSED: fully
   // expanded, the tree runs well past a phone screen. This has to live in
@@ -2423,6 +2428,11 @@ function cardQuickControls(recipe, inline = false) {
   return wrap;
 }
 
+function gridAttrs() {
+  return { class: "recipe-grid", "data-select-mode": String(state.selectMode),
+           "data-show-thumbnails": String(state.listStyle !== "titles"), "data-list-style": state.listStyle };
+}
+
 function recipeCard(recipe) {
   const isSelected = state.selectedIds.has(recipe.id);
   const card = el("a", {
@@ -2485,7 +2495,8 @@ function recipeCard(recipe) {
       matched,
     ]) : null,
     matchSnippet(recipe),
-    state.selectMode ? null : cardQuickControls(recipe),
+    // Tiles show the photo and title; the rest is a tap away.
+    state.selectMode || state.listStyle === "tiles" ? null : cardQuickControls(recipe),
   ]));
   return card;
 }
@@ -2500,7 +2511,7 @@ function renderRecipeList(recipes) {
   }
 
   if (state.grouping === "all") {
-    region.appendChild(el("div", { class: "recipe-grid", "data-select-mode": String(state.selectMode), "data-show-thumbnails": String(state.showThumbnails) }, recipes.map(recipeCard)));
+    region.appendChild(el("div", gridAttrs(), recipes.map(recipeCard)));
     return;
   }
 
@@ -2537,7 +2548,7 @@ function renderRecipeList(recipes) {
 function groupSection(title, recipes) {
   return el("section", { class: "group-section" }, [
     el("h3", { text: title }),
-    el("div", { class: "recipe-grid", "data-select-mode": String(state.selectMode), "data-show-thumbnails": String(state.showThumbnails) }, recipes.map(recipeCard)),
+    el("div", gridAttrs(), recipes.map(recipeCard)),
   ]);
 }
 

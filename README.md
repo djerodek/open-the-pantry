@@ -189,7 +189,7 @@ Other DNS hosts can use Traefik instead. Setup: [docs/https.md](docs/https.md).
 ### Interface
 
 English or French per device; installable (PWA); light or dark theme; text
-size; pinch-zoom off on phones on purpose (it pushed buttons off screen);
+size; the recipe list as titles, cards with photos, or tiles; pinch-zoom off on phones on purpose (it pushed buttons off screen);
 keyboard and screen-reader support, checked by an automated scan.
 
 ## Settings password

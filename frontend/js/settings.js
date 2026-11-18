@@ -1272,12 +1272,15 @@ async function refreshPicker() {
   if (st && ticket === pickerSwitchTicket) renderPickerSettings(st);
 }
 
-const thumbnailsSetting = $("#thumbnails-setting");
+// Settings -> Recipe list: titles, photos or tiles.
+function showListStyle() {
+  $$("#list-style-switch button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.listStyle === state.listStyle)));
+}
 
 // Settings -> Recipe view: checkboxes beside ingredients and steps.
 const checkboxesSetting = $("#checkboxes-setting");
 
-// Settings -> Learning, What to eat?, photos on cards and checkboxes.
+// Settings -> Learning, What to eat?, the recipe list's style and checkboxes.
 export function initPreferencePanels() {
   learningEnabled.addEventListener("change", async () => {
     const res = await fetch(`${API}/learning`, jsonBody("PUT", { enabled: learningEnabled.checked })).catch(() => null);
@@ -1319,12 +1322,13 @@ export function initPreferencePanels() {
     announceError(await responseErrorText(res));
     refreshPicker();
   });
-  thumbnailsSetting.checked = state.showThumbnails;
-  thumbnailsSetting.addEventListener("change", () => {
-    state.showThumbnails = thumbnailsSetting.checked;
-    try { localStorage.setItem("recipe-app-show-thumbnails", String(state.showThumbnails)); } catch { /* private mode */ }
+  showListStyle();
+  $$("#list-style-switch button").forEach((btn) => btn.addEventListener("click", () => {
+    state.listStyle = btn.dataset.listStyle;
+    storageSet("recipe-app-list-style", state.listStyle);
+    showListStyle();
     renderRecipeList(currentRecipes);
-  });
+  }));
   checkboxesSetting.checked = state.showTicks;
   checkboxesSetting.addEventListener("change", () => {
     state.showTicks = checkboxesSetting.checked;

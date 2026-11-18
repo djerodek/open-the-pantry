@@ -347,12 +347,13 @@
       </div>
 
       <div class="filter-section">
-        <div class="filter-section-title">Recipe list</div>
-        <label class="switch-row" for="thumbnails-setting">
-          <span>Show photos on recipe cards</span>
-          <input type="checkbox" role="switch" id="thumbnails-setting" class="switch">
-        </label>
-        <div class="field-hint">Off: titles only. On this device.</div>
+        <div class="filter-section-title" id="list-style-label">Recipe list</div>
+        <div class="mode-switch" id="list-style-switch" role="group" aria-labelledby="list-style-label">
+          <button type="button" data-list-style="titles">Titles</button>
+          <button type="button" data-list-style="photos">Photos</button>
+          <button type="button" data-list-style="tiles">Tiles</button>
+        </div>
+        <div class="field-hint">Titles: no photos. Tiles: photos side by side; tap one to open it. On this device.</div>
       </div>
 
       <div class="filter-section">
