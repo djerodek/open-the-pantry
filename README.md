@@ -142,7 +142,9 @@ that couldn't be sent wait for the next scan.
   corrected recipes, for reading imports and for tags; Settings shows how
   each scores against the rules.
 - **Search** covers every field, forgives typos, takes `-word` to leave a
-  word out, and puts the best match first. Filters stack.
+  word out, and puts the best match first; the ⓘ beside it lists what it
+  understands. Filters stack, and a filter tapped twice leaves its recipes
+  out.
 - **On a recipe**: ratings, servings, logged cook time, notes; ½ / 1× / 2×
   scaling; **Weights** and **Volumes** conversions from a table of about
   220 ingredients, which leave a line as written when no conversion is

@@ -336,6 +336,55 @@ a { color: var(--color-focus); }
 .search-form .search-clear:hover { color: var(--color-ink); }
 .search-form .search-clear .icon { width: 1rem; height: 1rem; }
 
+/* Search tips (owner, 2026-11-18): the (i) at the box's right end, the X
+   just left of it; the tips open under the box. */
+.search-form input[type="search"] { padding-right: 4.6rem; }
+.search-form .search-clear { right: 2.2rem; }
+.search-form .search-help-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2.2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.search-form .search-help-toggle:hover,
+.search-form .search-help-toggle[aria-expanded="true"] { color: var(--color-ink); }
+.search-form .search-help-toggle .icon { width: 1.15rem; height: 1.15rem; }
+.search-help {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: min(22rem, calc(100vw - 2rem));
+  z-index: 80;
+  padding: 0.7rem 0.85rem;
+  background: var(--color-bg-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px var(--shadow-color);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.search-help[hidden] { display: none; }
+.search-help h2 { font-size: 0.9rem; margin: 0 0 0.35rem; }
+.search-help ul { margin: 0; padding-left: 1.1rem; }
+.search-help li + li { margin-top: 0.25rem; }
+.search-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  padding: 0 0.2rem;
+  border-radius: 3px;
+  background: var(--color-border);
+}
+
 /* The spacer must not grow. With flex:1 on both it and .search-form, the two
    split the spare width evenly, and once .search-form had min-width:0 (see
    above) nothing held it at its natural width any more -- on a phone the
@@ -624,6 +673,17 @@ main {
   background: var(--color-sage);
   border-color: var(--color-sage);
   color: #fff;
+}
+/* Leaving recipes out (owner, 2026-11-18): crossed (the label starts with
+   ✕), struck through, on a dashed outline rather than filled. */
+.filter-chip[data-filter="out"],
+button.tag-node[data-filter="out"] {
+  background: transparent;
+  color: var(--color-ink);
+  text-decoration: line-through;
+}
+.filter-chip[data-filter="out"] {
+  border: 1px dashed var(--color-ink);
 }
 
 .time-filter-row {

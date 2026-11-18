@@ -40,6 +40,12 @@
       <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
+      <!-- What the search understands: hover on a computer, tap on a phone. -->
+      <button type="button" id="search-help-toggle" class="search-help-toggle" aria-label="Search tips"
+        aria-expanded="false" aria-controls="search-help">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 10.5v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.3" r="1.2" fill="currentColor"/></svg>
+      </button>
+      <div id="search-help" class="search-help" hidden><!-- filled by app.js --></div>
     </div>
     <button type="submit" aria-label="Search">&#128269;</button>
   </form>

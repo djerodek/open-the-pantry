@@ -8,7 +8,7 @@ from typing import Literal, Optional
 from datetime import timedelta
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import case, asc, desc, func
+from sqlalchemy import and_, case, asc, desc, func, not_, or_
 from sqlalchemy.orm import Session, selectinload
 from .. import models, schemas
 from ..database import get_db, SessionLocal, UPLOADS_DIR, TMP_DIR
@@ -91,6 +91,12 @@ def list_recipes(
     # one pace, so AND across values could never match).
     pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
     favorite: bool | None = None,
+    # Every filter can also leave recipes out (owner, 2026-11-18): not_tags
+    # (none of these), not_pace, minutes_out (leave out those within
+    # max_minutes), to_review=false (leave out those to review).
+    not_tags: list[str] | None = Query(default=None),
+    not_pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
+    minutes_out: bool = False,
     to_review: bool | None = None,
     sort: Literal["created", "title", "rating", "cook_time", "difficulty", "relevance"] = "created",
     direction: Literal["asc", "desc"] = "desc",
@@ -125,21 +131,33 @@ def list_recipes(
 
     if to_review:
         query = query.filter(models.Recipe.needs_review.is_(True))
+    elif to_review is False:
+        query = query.filter(models.Recipe.needs_review.isnot(True))
 
     if pace:
         query = query.filter(models.Recipe.cook_time_rating.in_(pace))
+    if not_pace:
+        # A recipe without a pace isn't one of them: it stays.
+        query = query.filter(or_(models.Recipe.cook_time_rating.is_(None),
+                                 models.Recipe.cook_time_rating.notin_(not_pace)))
 
     if max_minutes is not None:
-        query = query.filter(
-            models.Recipe.actual_cook_time_minutes.isnot(None),
-            models.Recipe.actual_cook_time_minutes <= max_minutes,
-        )
+        within = and_(models.Recipe.actual_cook_time_minutes.isnot(None),
+                      models.Recipe.actual_cook_time_minutes <= max_minutes)
+        # Left out: those within it; a recipe without a logged time stays.
+        query = query.filter(not_(within) if minutes_out else within)
 
     # Stacked tag filters: AND logic -- a recipe must carry every selected tag.
     # At most MAX_TAG_FILTERS (as tags on a recipe): about 1,000 gave a 500
     # (SQLite's expression depth) and a 240 KB log entry each (review of 0158).
-    if tags and len(tags) > MAX_TAG_FILTERS:
+    if len(tags or []) + len(not_tags or []) > MAX_TAG_FILTERS:
         raise HTTPException(status_code=422, detail=f"At most {MAX_TAG_FILTERS} tags can be selected at once.")
+    for tag_name in not_tags or []:
+        query = query.filter(
+            models.Recipe.id.notin_(
+                db.query(models.Recipe.id).join(models.Recipe.tags).filter(models.Tag.name == tag_name)
+            )
+        )
     if tags:
         for tag_name in tags:
             query = query.filter(

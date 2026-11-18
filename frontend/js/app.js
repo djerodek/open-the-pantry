@@ -674,6 +674,12 @@ const state = {
   maxMinutes: null,        // time filter ceiling (minutes), null = no limit
   pace: new Set(),         // pace-rating filter: 'quick' | 'moderate' | 'long', OR logic
   toReview: false,         // only recipes saved without review (batch, email)
+  // The same filters leaving recipes out (owner, 2026-11-18): a second tap
+  // turns "only these" into "not these" (nextFilterMode).
+  excludeTags: new Set(),
+  excludePace: new Set(),
+  timeOut: false,          // maxMinutes leaves out those within it
+  reviewOut: false,        // leave out recipes to review
   reviewCount: 0,          // how many there are (sidebar)
   binCount: 0,             // recipes in Recently deleted (sidebar)
   grouping: "all",         // 'all' | 'meal_type' | 'cooking_style' | 'main_ingredient'
@@ -715,19 +721,23 @@ let uiTimeLevel1 = null;   // UI-only: which coarse hour bucket is expanded in t
 // for when the list seems wrong.
 // -------------------------------------------------------------------
 function activeFilterCount() {
-  return state.filterTags.size
+  return state.filterTags.size + state.excludeTags.size
     + (state.maxMinutes != null ? 1 : 0)
-    + (state.pace.size ? 1 : 0)
-    + (state.toReview ? 1 : 0)
+    + (state.pace.size || state.excludePace.size ? 1 : 0)
+    + (state.toReview || state.reviewOut ? 1 : 0)
     + (state.query ? 1 : 0);
 }
 
 function clearAllFilters() {
   state.filterTags.clear();
+  state.excludeTags.clear();
   state.maxMinutes = null;
+  state.timeOut = false;
   uiTimeLevel1 = null;
   state.pace.clear();
+  state.excludePace.clear();
   state.toReview = false;
+  state.reviewOut = false;
   state.query = "";
   const searchInput = $("#search-input");
   if (searchInput) searchInput.value = "";
@@ -894,17 +904,16 @@ function renderSidebar() {
 
   // Recipes saved without review (batch links, batch PDFs, email). Shown
   // only while there are some, or while the filter is on.
-  if (state.reviewCount || state.toReview) {
+  if (state.reviewCount || state.toReview || state.reviewOut) {
+    const mode = state.toReview ? "in" : state.reviewOut ? "out" : null;
     container.appendChild(el("div", { class: "sidebar-review-region" }, [
-      el("button", {
-        type: "button", class: "tag-node review-filter", "aria-pressed": String(state.toReview),
-        text: tx("To review ({1})", { 1: state.reviewCount }),
-        onclick: () => {
-          state.toReview = !state.toReview;
-          renderSidebar();
-          syncClearFiltersButton();
-          loadRecipes();
-        },
+      filterButton("tag-node review-filter", tx("To review ({1})", { 1: state.reviewCount }), mode, () => {
+        const next = nextFilterMode(mode);
+        state.toReview = next === "in";
+        state.reviewOut = next === "out";
+        renderSidebar();
+        syncClearFiltersButton();
+        loadRecipes();
       }),
     ]));
   }
@@ -942,7 +951,7 @@ function renderSidebar() {
     const tagsInCat = state.allTags.filter((t) => t.category === catKey);
     if (!tagsInCat.length) continue;
 
-    const activeCount = tagsInCat.filter((t) => state.filterTags.has(t.name)).length;
+    const activeCount = tagsInCat.filter((t) => tagMode(t.name)).length;
     const children = [];
 
     const mainTags = tagsInCat.filter((t) => !t.subgroup);
@@ -952,7 +961,7 @@ function renderSidebar() {
     for (const sg of subgroups) {
       const sgTags = tagsInCat.filter((t2) => t2.subgroup === sg);
       const sgKey = `${catKey}:${sg}`;
-      const sgActive = sgTags.filter((t) => state.filterTags.has(t.name)).length;
+      const sgActive = sgTags.filter((t) => tagMode(t.name)).length;
       children.push(collapsibleSection(
         sgKey,
         sg === "cocktail" ? tx("Cocktail Prep") : sg,
@@ -969,9 +978,35 @@ function renderSidebar() {
   }
 }
 
+// A filter is off, "in" (only these) or "out" (not these); each tap moves
+// it on: off, in, out, off (owner, 2026-11-18).
+function nextFilterMode(mode) {
+  return mode === "in" ? "out" : mode === "out" ? null : "in";
+}
+
+// A filter's button in any of the three: pressed for in and out, and "out"
+// marked with a cross and struck through (CSS [data-filter=out]), its
+// accessible name saying so.
+function filterButton(cls, label, mode, onclick) {
+  return el("button", {
+    class: cls, type: "button",
+    "aria-pressed": String(Boolean(mode)), "data-filter": mode || "off",
+    "aria-label": mode === "out" ? tx("{1}: left out", { 1: label }) : label,
+    text: mode === "out" ? `\u2715 ${label}` : label,
+    onclick,
+  });
+}
+
+function tagMode(name) {
+  return state.filterTags.has(name) ? "in" : state.excludeTags.has(name) ? "out" : null;
+}
+
 function toggleTagFilter(tagName) {
-  if (state.filterTags.has(tagName)) state.filterTags.delete(tagName);
-  else state.filterTags.add(tagName);
+  const next = nextFilterMode(tagMode(tagName));
+  state.filterTags.delete(tagName);
+  state.excludeTags.delete(tagName);
+  if (next === "in") state.filterTags.add(tagName);
+  if (next === "out") state.excludeTags.add(tagName);
   renderSidebar();
   if (!$("#filter-panel").hidden) renderFilterPanel();
   syncClearFiltersButton();
@@ -979,27 +1014,14 @@ function toggleTagFilter(tagName) {
 }
 
 function makeTagButton(tag) {
-  const pressed = state.filterTags.has(tag.name);
-  return el("button", {
-    class: "tag-node",
-    type: "button",
-    "aria-pressed": String(pressed),
-    text: tagLabel(tag),
-    onclick: () => toggleTagFilter(tag.name),
-  });
+  return filterButton("tag-node", tagLabel(tag), tagMode(tag.name), () => toggleTagFilter(tag.name));
 }
 
 // -------------------------------------------------------------------
 // Filter panel (All tab): stacked tag filters (AND) + nested time filter
 // -------------------------------------------------------------------
 function makeFilterChip(tag) {
-  const pressed = state.filterTags.has(tag.name);
-  return el("button", {
-    class: "filter-chip", type: "button",
-    "aria-pressed": String(pressed),
-    text: tagLabel(tag),
-    onclick: () => toggleTagFilter(tag.name),
-  });
+  return filterButton("filter-chip", tagLabel(tag), tagMode(tag.name), () => toggleTagFilter(tag.name));
 }
 
 function renderFilterPanel() {
@@ -1010,6 +1032,8 @@ function renderFilterPanel() {
     el("h2", { class: "filter-panel-title", id: "filter-panel-title", text: tx("Filters") }),
     el("button", { class: "filter-panel-close", type: "button", "aria-label": tx("Close filters"), text: "\u00d7", onclick: closeFilterPanel }),
   ]));
+  panel.appendChild(el("p", { class: "field-hint filter-modes-hint",
+    text: tx("Tap a filter once to show only those recipes, twice to leave them out, a third time to turn it off.") }));
 
   const categories = tagGroups();
   for (const [catKey, catLabel] of categories) {
@@ -1025,19 +1049,19 @@ function renderFilterPanel() {
   // view. Selecting more than one shows recipes with any of them.
   panel.appendChild(el("div", { class: "filter-section" }, [
     el("div", { class: "filter-section-title", text: tx("Pace") }),
-    el("div", { class: "filter-chip-row" }, ["quick", "moderate", "long"].map((v) =>
-      el("button", {
-        class: "filter-chip", type: "button",
-        "aria-pressed": String(state.pace.has(v)),
-        text: valueLabel(v),
-        onclick: () => {
-          if (state.pace.has(v)) state.pace.delete(v); else state.pace.add(v);
-          renderFilterPanel();
-          syncClearFiltersButton();
-          loadRecipes();
-        },
-      })
-    )),
+    el("div", { class: "filter-chip-row" }, ["quick", "moderate", "long"].map((v) => {
+      const mode = state.pace.has(v) ? "in" : state.excludePace.has(v) ? "out" : null;
+      return filterButton("filter-chip", valueLabel(v), mode, () => {
+        const next = nextFilterMode(mode);
+        state.pace.delete(v);
+        state.excludePace.delete(v);
+        if (next === "in") state.pace.add(v);
+        if (next === "out") state.excludePace.add(v);
+        renderFilterPanel();
+        syncClearFiltersButton();
+        loadRecipes();
+      });
+    })),
   ]));
 
   const timeSection = el("div", { class: "filter-section" });
@@ -1046,20 +1070,20 @@ function renderFilterPanel() {
     timeSection.appendChild(el("div", { class: "field-hint", text: tx("No logged cook times yet \u2014 this filter appears once recipes have a real-world time logged.") }));
   } else {
     const hourBuckets = state.timeBuckets.filter((b) => b.minutes % 60 === 0);
-    timeSection.appendChild(el("div", { class: "time-filter-row" }, hourBuckets.map((b) =>
-      el("button", {
-        class: "filter-chip", type: "button",
-        "aria-pressed": String(uiTimeLevel1 === b.minutes),
-        text: `\u2264 ${durationLabel(b.minutes)}`,
-        onclick: () => {
-          uiTimeLevel1 = uiTimeLevel1 === b.minutes ? null : b.minutes;
-          state.maxMinutes = uiTimeLevel1;
-          renderFilterPanel();
-          syncClearFiltersButton();
-          loadRecipes();
-        },
-      })
-    )));
+    // The hour chosen is in or out (state.timeOut); the finer steps under
+    // it narrow the same choice.
+    timeSection.appendChild(el("div", { class: "time-filter-row" }, hourBuckets.map((b) => {
+      const mode = uiTimeLevel1 !== b.minutes ? null : state.timeOut ? "out" : "in";
+      return filterButton("filter-chip", `\u2264 ${durationLabel(b.minutes)}`, mode, () => {
+        const next = nextFilterMode(mode);
+        uiTimeLevel1 = next ? b.minutes : null;
+        state.maxMinutes = next ? (mode ? state.maxMinutes : b.minutes) : null;
+        state.timeOut = next === "out";
+        renderFilterPanel();
+        syncClearFiltersButton();
+        loadRecipes();
+      });
+    })));
 
     if (uiTimeLevel1 != null) {
       const subOptions = state.timeBuckets.filter((b) => b.minutes <= uiTimeLevel1);
@@ -1084,8 +1108,9 @@ function renderFilterPanel() {
   // panel -- but it's the obvious way out, where a thumb reaches after
   // scrolling through the chips.
   const bits = [];
-  if (state.filterTags.size) bits.push(txn(state.filterTags.size, "{n} tag filter", "{n} tag filters"));
-  if (state.pace.size) bits.push(tx("pace filter"));
+  const tagFilters = state.filterTags.size + state.excludeTags.size;
+  if (tagFilters) bits.push(txn(tagFilters, "{n} tag filter", "{n} tag filters"));
+  if (state.pace.size || state.excludePace.size) bits.push(tx("pace filter"));
   if (state.maxMinutes != null) bits.push(tx("time filter"));
   if (state.query) bits.push(tx("search"));
   // Done on the left: the + button covers the bottom-right corner.
@@ -1158,6 +1183,47 @@ $("#search-input").addEventListener("keydown", (e) => {
   }
 });
 $("#search-clear").addEventListener("click", clearSearch);
+
+// Search tips: what the box understands (search.py) and that filters can
+// leave recipes out too. Opens on hover with a mouse, and on a tap or
+// click, which keeps it open until a second tap, Escape or a tap elsewhere.
+(function searchHelp() {
+  const toggle = $("#search-help-toggle");
+  const box = $("#search-help");
+  const code = (t) => el("code", { text: t });
+  const tip = (...parts) => el("li", {}, parts.map((p) => (typeof p === "string" ? document.createTextNode(p) : p)));
+  box.appendChild(el("h2", { text: tx("Search tips") }));
+  box.appendChild(el("ul", {}, [
+    tip(tx("Every word must match, from its start: "), code("chick"), tx(" finds chicken.")),
+    tip(tx("It looks in titles, ingredients, steps, notes, tags and the original text.")),
+    tip(code("-word"), tx(" leaves out recipes with that word: "), code(tx("chicken -curry")), "."),
+    tip(tx("Small typos are corrected, in words of four letters or more.")),
+    tip(tx("Filters can leave recipes out too: tap a tag or filter twice.")),
+  ]));
+  let pinned = false;
+  const show = (open) => {
+    box.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (!open) return;
+    // Under the box's left end, moved left as far as needed to stay on
+    // screen (on a phone the box starts after the menu button).
+    box.style.left = "";
+    const over = box.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+    if (over > 0) box.style.left = `${-over}px`;
+  };
+  toggle.addEventListener("click", () => { pinned = !pinned || box.hidden; show(pinned); });
+  toggle.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" && !pinned) show(true); });
+  toggle.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse" && !pinned && !box.matches(":hover")) show(false);
+  });
+  box.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && !pinned) show(false); });
+  document.addEventListener("pointerdown", (e) => {
+    if (!box.hidden && !box.contains(e.target) && !toggle.contains(e.target)) { pinned = false; show(false); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !box.hidden) { pinned = false; show(false); toggle.focus(); }
+  });
+})();
 // Going back to the page (and a reload in Firefox) can put the old text
 // back in the box without an input event.
 syncSearchClear();
@@ -1833,9 +1899,13 @@ async function loadRecipes() {
   const params = new URLSearchParams();
   if (state.query) params.set("q", state.query);
   for (const t of state.filterTags) params.append("tags", t);
+  for (const t of state.excludeTags) params.append("not_tags", t);
   if (state.maxMinutes != null) params.set("max_minutes", String(state.maxMinutes));
+  if (state.maxMinutes != null && state.timeOut) params.set("minutes_out", "true");
   for (const p of state.pace) params.append("pace", p);
+  for (const p of state.excludePace) params.append("not_pace", p);
   if (state.toReview) params.set("to_review", "true");
+  else if (state.reviewOut) params.set("to_review", "false");
   params.set("sort", state.query && state.bestMatch ? "relevance" : state.sort);
   params.set("direction", state.direction);
   // An error used to be parsed as the recipe list, which came out empty
@@ -1965,10 +2035,11 @@ async function refreshReviewCount() {
     if (!res.ok) return;
     count = (await res.json()).count;
   } catch { return; }
-  if (count === state.reviewCount && (count || !state.toReview)) return;
+  if (count === state.reviewCount && (count || !(state.toReview || state.reviewOut))) return;
   state.reviewCount = count;
-  if (!count && state.toReview) {
+  if (!count && (state.toReview || state.reviewOut)) {
     state.toReview = false;
+    state.reviewOut = false;
     syncClearFiltersButton();
     renderSidebar();
     loadRecipes();

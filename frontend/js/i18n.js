@@ -524,6 +524,20 @@
     "Decrease text size": "Réduire la taille du texte",
     "Increase text size": "Augmenter la taille du texte",
     "Recipe list": "Liste des recettes",
+    "{1}: left out": "{1} : exclu",
+    "Search tips": "Conseils de recherche",
+    "Every word must match, from its start: ": "Chaque mot doit correspondre, depuis son début : ",
+    " finds chicken.": " trouve chicken.",
+    "It looks in titles, ingredients, steps, notes, tags and the original text.":
+      "Elle cherche dans les titres, les ingrédients, les étapes, les notes, les étiquettes et le texte original.",
+    " leaves out recipes with that word: ": " exclut les recettes qui contiennent ce mot : ",
+    "chicken -curry": "poulet -cari",
+    "Small typos are corrected, in words of four letters or more.":
+      "Les petites fautes de frappe sont corrigées, dans les mots de quatre lettres ou plus.",
+    "Filters can leave recipes out too: tap a tag or filter twice.":
+      "Les filtres peuvent aussi exclure des recettes : touchez deux fois une étiquette ou un filtre.",
+    "Tap a filter once to show only those recipes, twice to leave them out, a third time to turn it off.":
+      "Touchez un filtre une fois pour n'afficher que ces recettes, deux fois pour les exclure, une troisième fois pour le désactiver.",
     "Titles": "Titres",
     "Photos": "Photos",
     "Tiles": "Mosaïque",

@@ -169,7 +169,8 @@ jour; les résultats qui n'ont pas pu être envoyés attendent la prochaine.
   règles.
 - **La recherche** couvre tous les champs, pardonne les fautes de frappe,
   accepte `-mot` pour exclure un mot, et met la meilleure correspondance en
-  premier. Les filtres se combinent.
+  premier; le ⓘ à côté explique ce qu'elle comprend. Les filtres se
+  combinent, et un filtre touché deux fois exclut ses recettes.
 - **Sur une recette** : évaluations, portions, temps de cuisson noté, notes
   personnelles;
   ajustement ½ / 1× / 2×; conversions **Poids** et **Volumes** d'après une

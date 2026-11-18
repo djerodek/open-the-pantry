@@ -970,3 +970,71 @@ def test_a_markdown_file_from_the_document_button(server, page):
     pg.set_input_files("#pdf-input", files=[{"name": "p.md", "mimeType": "text/markdown", "buffer": md.encode()}])
     pg.click("#add-recipe-body button:has-text('Read document')")
     pg.wait_for_selector("#add-recipe-body input[value='Pantry test pancakes'], #add-recipe-body :text('Pantry test pancakes')")
+
+
+def test_a_tag_tapped_twice_leaves_its_recipes_out(server, api, page):
+    """Owner, 2026-11-18: any filter can show only its recipes or leave
+    them out. A tag goes off → in → out → off; "out" is marked and named
+    as such, and the list loses that tag's recipes."""
+    sfx = uuid.uuid4().hex[:6]
+    tag = f"Leftout{sfx}"
+    add_recipe(api, f"Kept soup {sfx}")
+    add_recipe(api, f"Dropped soup {sfx}", tags=[{"name": tag, "category": "custom"}])
+    p = page()
+    p.page.goto(server["url"])
+    p.page.fill("#search-input", sfx)
+    p.page.press("#search-input", "Enter")
+    wait_until(p.page, "document.querySelectorAll('.recipe-card').length === 2")
+    button = f"button.tag-node:has-text('{tag}')"
+    # The side menu is a drawer at this width; the button is pressed as a tap would.
+    tap = lambda: p.page.eval_on_selector(button, "b => b.click()")
+    tap()
+    wait_until(p.page, "document.querySelectorAll('.recipe-card').length === 1")
+    assert p.page.get_attribute(button, "data-filter") == "in"
+    assert "Dropped soup" in p.page.inner_text(".recipe-card")
+    tap()
+    wait_until(p.page, "document.querySelectorAll('.recipe-card').length === 1"
+                       " && document.querySelector('.recipe-card').textContent.includes('Kept soup')")
+    assert p.page.get_attribute(button, "data-filter") == "out"
+    assert p.page.get_attribute(button, "aria-label") == f"{tag}: left out"
+    assert p.page.get_attribute(button, "aria-pressed") == "true"
+    assert "line-through" in p.page.eval_on_selector(button, "b => getComputedStyle(b).textDecorationLine")
+    tap()
+    wait_until(p.page, "document.querySelectorAll('.recipe-card').length === 2")
+    assert p.page.get_attribute(button, "data-filter") == "off"
+
+
+def test_search_tips_beside_the_search_box(server, page):
+    """Owner, 2026-11-18: an (i) by the search box explains what it
+    understands; hover with a mouse, tap on a phone; Escape and a tap
+    elsewhere close it."""
+    p = page()
+    p.page.goto(server["url"])
+    toggle, box = "#search-help-toggle", "#search-help"
+    t = p.page.locator(toggle).bounding_box()
+    s = p.page.locator("#search-input").bounding_box()
+    assert s["x"] <= t["x"] and t["x"] + t["width"] <= s["x"] + s["width"] + 1    # inside the box
+    assert p.page.is_hidden(box)
+    p.page.hover(toggle)
+    assert p.page.is_visible(box)
+    text = p.page.inner_text(box)
+    assert "-word" in text and "chick" in text and "twice" in text
+    p.page.mouse.move(0, 0)
+    wait_until(p.page, "document.querySelector('#search-help').hidden")
+    p.page.click(toggle)                       # a click keeps it open
+    p.page.mouse.move(0, 0)
+    assert p.page.is_visible(box) and p.page.get_attribute(toggle, "aria-expanded") == "true"
+    p.page.keyboard.press("Escape")
+    assert p.page.is_hidden(box)
+    p.page.click(toggle)
+    p.page.click("h1, header", position={"x": 2, "y": 2})
+    assert p.page.is_hidden(box)
+    # The clear X sits beside it, not under it.
+    p.page.fill("#search-input", "soup")
+    c = p.page.locator("#search-clear").bounding_box()
+    assert c["x"] + c["width"] <= t["x"] + 1
+    # In a phone's width the tips stay on screen.
+    p.page.set_viewport_size({"width": 360, "height": 740})
+    p.page.click(toggle)
+    b = p.page.locator(box).bounding_box()
+    assert b["x"] >= 0 and b["x"] + b["width"] <= 360
