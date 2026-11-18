@@ -144,7 +144,9 @@ that couldn't be sent wait for the next scan.
 - **Search** covers every field, forgives typos, takes `-word` to leave a
   word out, and puts the best match first; the ⓘ beside it lists what it
   understands. Filters stack, and a filter tapped twice leaves its recipes
-  out.
+  out. **In season in Quebec**, off unless turned on in Settings, keeps
+  recipes with Quebec produce in high season this month (Mangez Québec's
+  calendar; not greenhouse produce, potatoes, garlic, onions or herbs).
 - **On a recipe**: ratings, servings, logged cook time, notes; ½ / 1× / 2×
   scaling; **Weights** and **Volumes** conversions from a table of about
   220 ingredients, which leave a line as written when no conversion is

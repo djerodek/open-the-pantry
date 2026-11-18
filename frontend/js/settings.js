@@ -20,7 +20,7 @@ import {
   jsonBody, refreshLibrary, settingsOverlay, setMailState, loadMailState, recentRecipientsEditor, state,
   currentRecipes, apiErrorText, responseErrorText, renderRecipeList, detailOverlay, detailRecipeId, detailRecipe,
   renderRecipeDetail, saveBlob, filenameFromResponse, formatBytes, refreshBackupStats, fetchWithTimeout,
-  writeFailureMessage,
+  writeFailureMessage, renderFilterPanel, syncClearFiltersButton, loadRecipes,
 } from "./app.js";
 import { savedResultRow, renderBatchResults, modeSwitchControl } from "./add_recipe.js";
 
@@ -1279,6 +1279,8 @@ function showListStyle() {
 
 // Settings -> Recipe view: checkboxes beside ingredients and steps.
 const checkboxesSetting = $("#checkboxes-setting");
+// Settings -> Filters: the Quebec season filter, off unless turned on.
+const seasonSetting = $("#season-setting");
 
 // Settings -> Learning, What to eat?, the recipe list's style and checkboxes.
 export function initPreferencePanels() {
@@ -1334,6 +1336,16 @@ export function initPreferencePanels() {
     state.showTicks = checkboxesSetting.checked;
     storageSet("recipe-app-checkboxes", String(state.showTicks));
     if (!detailOverlay.hidden && detailRecipe && detailRecipeId === detailRecipe.id) renderRecipeDetail(detailRecipe);
+  });
+  seasonSetting.checked = state.seasonFilter;
+  seasonSetting.addEventListener("change", () => {
+    state.seasonFilter = seasonSetting.checked;
+    storageSet("recipe-app-season-filter", String(state.seasonFilter));
+    const wasOn = Boolean(state.season);
+    if (!state.seasonFilter) state.season = null;
+    renderFilterPanel();
+    syncClearFiltersButton();
+    if (wasOn && !state.season) loadRecipes();
   });
 }
 

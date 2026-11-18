@@ -5,7 +5,7 @@ import re
 import os
 import uuid
 from typing import Literal, Optional
-from datetime import timedelta
+from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import and_, case, asc, desc, func, not_, or_
@@ -20,6 +20,7 @@ from .. import review
 from .. import i18n
 from .. import picker
 from .. import search
+from .. import seasons
 from .. import duplicates
 from .. import interchange
 from ..ml import service as learning
@@ -98,6 +99,11 @@ def list_recipes(
     not_pace: list[Literal["quick", "moderate", "long"]] | None = Query(default=None),
     minutes_out: bool = False,
     to_review: bool | None = None,
+    # In season (seasons.py, Quebec): true keeps recipes with produce in
+    # high season in `month` (the device's month, 1-12; the server's when
+    # left out), false leaves them out.
+    in_season: bool | None = None,
+    month: int | None = Query(default=None, ge=1, le=12),
     sort: Literal["created", "title", "rating", "cook_time", "difficulty", "relevance"] = "created",
     direction: Literal["asc", "desc"] = "desc",
     db: Session = Depends(get_db),
@@ -177,6 +183,12 @@ def list_recipes(
         *_sort_clauses("created" if sort == "relevance" else sort, "desc" if sort == "relevance" else direction)).all()
     if by_rank:
         results.sort(key=lambda r: found["rank"].get(r.id, 0.0))     # stable: ties keep newest first
+    if in_season is not None and results:
+        lines: dict[int, list[str]] = {}
+        for rid, line in db.query(models.Ingredient.recipe_id, models.Ingredient.raw_line):
+            lines.setdefault(rid, []).append(line)
+        when = month or datetime.now().month
+        results = [r for r in results if seasons.in_season(lines.get(r.id, ()), when) == in_season]
 
     summaries = []
     for r in results:

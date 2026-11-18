@@ -9,7 +9,7 @@ const API = "/api";
 
 // Interface language helpers (js/i18n.js). Static page text is
 // translated first, before anything is rendered from script.
-const { lang: LANG, setLang, tx, txn, tagLabel, groupLabel, valueLabel, fmtDateTime, durationLabel, translateStatic } = window.OTP_I18N;
+const { lang: LANG, setLang, tx, txn, tagLabel, groupLabel, valueLabel, fmtDateTime, durationLabel, monthName, translateStatic } = window.OTP_I18N;
 const { isPartName } = window.OTP_AMOUNTS;   // amounts.js
 translateStatic(document.body);
 
@@ -680,6 +680,9 @@ const state = {
   excludePace: new Set(),
   timeOut: false,          // maxMinutes leaves out those within it
   reviewOut: false,        // leave out recipes to review
+  season: null,            // "in" / "out": produce in season this month (seasons.py)
+  // Opt-in, per device (owner, 2026-11-18): the season filter is Quebec's.
+  seasonFilter: storageGet("recipe-app-season-filter") === "true",   // default off
   reviewCount: 0,          // how many there are (sidebar)
   binCount: 0,             // recipes in Recently deleted (sidebar)
   grouping: "all",         // 'all' | 'meal_type' | 'cooking_style' | 'main_ingredient'
@@ -725,6 +728,7 @@ function activeFilterCount() {
     + (state.maxMinutes != null ? 1 : 0)
     + (state.pace.size || state.excludePace.size ? 1 : 0)
     + (state.toReview || state.reviewOut ? 1 : 0)
+    + (state.season ? 1 : 0)
     + (state.query ? 1 : 0);
 }
 
@@ -738,6 +742,7 @@ function clearAllFilters() {
   state.excludePace.clear();
   state.toReview = false;
   state.reviewOut = false;
+  state.season = null;
   state.query = "";
   const searchInput = $("#search-input");
   if (searchInput) searchInput.value = "";
@@ -1064,6 +1069,22 @@ function renderFilterPanel() {
     })),
   ]));
 
+  // In season (owner, 2026-11-18): recipes with Quebec produce in high
+  // season this month, from Mangez Québec's calendar; not greenhouse
+  // produce, potatoes, garlic, onions or herbs (seasons.py).
+  if (state.seasonFilter) panel.appendChild(el("div", { class: "filter-section" }, [
+    el("div", { class: "filter-section-title", text: tx("Season (Quebec)") }),
+    el("div", { class: "filter-chip-row" }, [
+      filterButton("filter-chip season-filter", tx("In season in Quebec in {1}", { 1: monthName(new Date().getMonth()) }), state.season, () => {
+        state.season = nextFilterMode(state.season);
+        renderFilterPanel();
+        syncClearFiltersButton();
+        loadRecipes();
+      }),
+    ]),
+    el("div", { class: "field-hint", text: tx("Quebec produce in high season (Mangez Québec's calendar), not greenhouse. Not for other regions.") }),
+  ]));
+
   const timeSection = el("div", { class: "filter-section" });
   timeSection.appendChild(el("div", { class: "filter-section-title", text: tx("Cook Time") }));
   if (!state.timeBuckets.length) {
@@ -1112,6 +1133,7 @@ function renderFilterPanel() {
   if (tagFilters) bits.push(txn(tagFilters, "{n} tag filter", "{n} tag filters"));
   if (state.pace.size || state.excludePace.size) bits.push(tx("pace filter"));
   if (state.maxMinutes != null) bits.push(tx("time filter"));
+  if (state.season) bits.push(tx("season filter"));
   if (state.query) bits.push(tx("search"));
   // Done on the left: the + button covers the bottom-right corner.
   panel.appendChild(el("div", { class: "filter-panel-footer" }, [
@@ -1906,6 +1928,10 @@ async function loadRecipes() {
   for (const p of state.excludePace) params.append("not_pace", p);
   if (state.toReview) params.set("to_review", "true");
   else if (state.reviewOut) params.set("to_review", "false");
+  if (state.season) {
+    params.set("in_season", String(state.season === "in"));
+    params.set("month", String(new Date().getMonth() + 1));
+  }
   params.set("sort", state.query && state.bestMatch ? "relevance" : state.sort);
   params.set("direction", state.direction);
   // An error used to be parsed as the recipe list, which came out empty
@@ -3915,7 +3941,7 @@ if ("serviceWorker" in navigator) {
 // What add_recipe.js uses from here (besides what settings.js does).
 export {
   topOverlay, tagsFromInput, linesOf, ingredientsOf, discardDraftFile, loadTimeBuckets, loadRecipes, tagSourcesNote,
-  ingredientText, makeDurationInput, openRecipeDetail, partHint,
+  ingredientText, makeDurationInput, openRecipeDetail, partHint, renderFilterPanel, syncClearFiltersButton,
 };
 
 // What settings.js uses from here.

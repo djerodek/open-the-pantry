@@ -1038,3 +1038,51 @@ def test_search_tips_beside_the_search_box(server, page):
     p.page.click(toggle)
     b = p.page.locator(box).bounding_box()
     assert b["x"] >= 0 and b["x"] + b["width"] <= 360
+
+
+def test_in_season_filter(server, api, page):
+    """Owner, 2026-11-18: opt-in (Settings → Filters, per device) and
+    named as Quebec's; then Filters → Season (Quebec), tri-state like the
+    other filters, sends this device's month."""
+    sfx = uuid.uuid4().hex[:6]
+    add_recipe(api, f"Squash soup {sfx}", ingredients=[{"raw_line": "1 butternut squash"}, {"raw_line": "1 onion"}])
+    add_recipe(api, f"Mushroom toast {sfx}", ingredients=[{"raw_line": "2 cups sliced mushrooms"}])
+    p = page()
+    p.page.clock.set_fixed_time("2026-10-15T12:00:00")     # squash is in season in October
+    chip = "button.season-filter"
+    cards = "document.querySelectorAll('.recipe-card')"
+
+    def search():
+        p.page.fill("#search-input", sfx)
+        p.page.press("#search-input", "Enter")
+        wait_until(p.page, f"{cards}.length === 2")
+
+    def toggle_setting():
+        p.page.click("#settings-toggle")
+        p.page.wait_for_selector("#settings-overlay:not([hidden])")
+        p.page.click("label[for='season-setting']")
+        p.page.click("#settings-close")
+
+    p.page.goto(server["url"])
+    search()
+    p.page.click("#filters-toggle")
+    assert p.page.locator(chip).count() == 0              # off until turned on
+    p.page.click("#filters-toggle")
+    toggle_setting()
+    p.page.click("#filters-toggle")
+    assert p.page.inner_text(chip) == "In season in Quebec in October"
+    p.page.click(chip)
+    wait_until(p.page, f"{cards}.length === 1 && {cards}[0].textContent.includes('Squash soup')")
+    p.page.click(chip)
+    wait_until(p.page, f"{cards}.length === 1 && {cards}[0].textContent.includes('Mushroom toast')")
+    assert p.page.get_attribute(chip, "data-filter") == "out"
+    p.page.click(chip)
+    wait_until(p.page, f"{cards}.length === 2")
+    # Kept on this device; turning it off drops a filter in use.
+    assert p.page.evaluate("localStorage.getItem('recipe-app-season-filter')") == "true"
+    p.page.click(chip)
+    wait_until(p.page, f"{cards}.length === 1")
+    p.page.click("#filters-toggle")
+    toggle_setting()
+    wait_until(p.page, f"{cards}.length === 2")
+    assert p.page.evaluate("localStorage.getItem('recipe-app-season-filter')") == "false"

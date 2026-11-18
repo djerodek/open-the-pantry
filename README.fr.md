@@ -170,7 +170,11 @@ jour; les résultats qui n'ont pas pu être envoyés attendent la prochaine.
 - **La recherche** couvre tous les champs, pardonne les fautes de frappe,
   accepte `-mot` pour exclure un mot, et met la meilleure correspondance en
   premier; le ⓘ à côté explique ce qu'elle comprend. Les filtres se
-  combinent, et un filtre touché deux fois exclut ses recettes.
+  combinent, et un filtre touché deux fois exclut ses recettes. **De
+  saison au Québec**, à activer dans les Paramètres, garde les recettes avec
+  des fruits et légumes du Québec en haute saison ce mois-ci (calendrier de
+  Mangez Québec; ni produits de serre, ni pommes de terre, ail, oignons ou
+  fines herbes).
 - **Sur une recette** : évaluations, portions, temps de cuisson noté, notes
   personnelles;
   ajustement ½ / 1× / 2×; conversions **Poids** et **Volumes** d'après une

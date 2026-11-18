@@ -229,6 +229,14 @@
       "Aucun temps de cuisson noté pour l'instant. Ce filtre apparaît dès qu'une recette a un temps réel noté.",
     "pace filter": "filtre de rythme",
     "time filter": "filtre de temps",
+    "season filter": "filtre de saison",
+    "Season (Quebec)": "Saison (Québec)",
+    "In season in Quebec in {1}": "De saison au Québec en {1}",
+    "Quebec produce in high season (Mangez Québec's calendar), not greenhouse. Not for other regions.":
+      "Fruits et légumes du Québec en haute saison (calendrier de Mangez Québec), pas de serre. Pas pour les autres régions.",
+    "\"In season in Quebec\" filter": "Filtre « De saison au Québec »",
+    "Recipes with Quebec produce in high season this month, from Mangez Québec's calendar. Not for other regions. On this device.":
+      "Recettes avec des fruits et légumes du Québec en haute saison ce mois-ci, selon le calendrier de Mangez Québec. Pas pour les autres régions. Sur cet appareil.",
     "search": "recherche",
     "{1} active": "{1} actif(s)",
     "No filters active": "Aucun filtre actif",
@@ -1131,6 +1139,17 @@
     }
   }
 
+  // A month's name (0 = January), in the page's language: "November" /
+  // "novembre".
+  function monthName(index) {
+    const d = new Date(2026, index, 1);
+    try {
+      return d.toLocaleString(locale(), { month: "long" });
+    } catch {
+      return d.toLocaleString(undefined, { month: "long" });
+    }
+  }
+
   // A duration in minutes, as on the time filter: "1h 20m" / "1 h 20".
   function durationLabel(total) {
     const days = Math.floor(total / 1440), hours = Math.floor((total % 1440) / 60), mins = total % 60;
@@ -1179,7 +1198,7 @@
   }
 
   window.OTP_I18N = {
-    lang, setLang, tx, txn, tagLabel, groupLabel, valueLabel, fmtDateTime, durationLabel, translateStatic,
+    lang, setLang, tx, txn, tagLabel, groupLabel, valueLabel, fmtDateTime, durationLabel, monthName, translateStatic,
     // For tests and for matching typed tag names back to stored ones.
     catalog: FR, frTags: FR_TAGS,
   };
