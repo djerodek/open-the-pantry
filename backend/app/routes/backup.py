@@ -653,16 +653,19 @@ def _put_back_kept(kept_rows: dict, email_kept) -> None:
         _put_back_blanked_email_fields(email_kept[0])
 
 
-def put_back_after_restart() -> bool:
+def put_back_after_restart(staged_fit: bool = False) -> bool:
     """At start-up, before the interrupted restore's photos are finished:
     this server's settings kept by a restore that stopped after the copy
     are put back. Only while the restore's marker says the database was
-    replaced: a file left over from a finished restore (it couldn't be
-    removed) put old settings back over newer ones at every start (Claude
-    review of 0167). Returns whether there were any."""
+    replaced, or the restore's staged photos fit the library (staged_fit,
+    restore.staged_photos_fit: it may have replaced the database just
+    before writing the marker; GPT review of 0222): a file left over from a
+    finished restore (it couldn't be removed) put old settings back over
+    newer ones at every start (Claude review of 0167). Returns whether
+    there were any."""
     if not os.path.exists(_kept_path()):
         return False
-    if not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER)):
+    if not staged_fit and not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER)):
         log.warning("Start-up: %s was left from a restore that finished or never replaced the database; "
                     "removed, not applied", KEPT_FILE)
         _remove_kept()

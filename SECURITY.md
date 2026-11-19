@@ -66,7 +66,8 @@ How it works:
   - **PDFs**: at most 60 pages, at most 3 OCR jobs at once, and only the
     largest of a PDF's photos is decoded. A page's text layer is measured
     before it is read: at most 30,000 characters a page and 400,000 in
-    all, and 20 MB of drawing instructions a page.
+    all, 20 MB of drawing instructions and embedded fonts a page, and 4 MB
+    of fonts' character maps. A PDF that can't be measured is refused.
   - **Word, text and Markdown files**: what a file is comes from its bytes,
     not its name. From a Word file only the document's text is read (at
     most 20 MB of it, from at most 2,000 parts), and its XML never fetches

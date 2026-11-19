@@ -1014,3 +1014,54 @@ def test_the_pdf_text_limit_message_in_french(client, tmp_path):
     assert r.status_code in (400, 413, 422), r.text
     assert r.json()["detail"] == ("La page 1 de ce PDF contient plus de texte qu'une page de recette (plus de 30 000 "
                                   "caractères). Essayez un PDF de la recette seulement.")
+
+
+def _cmap_pdf(path, cmap_bytes):
+    """One page, one character, and a font whose /ToUnicode map is
+    cmap_bytes long once inflated (GPT review of 0222)."""
+    import zlib
+    cmap = (b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+            b"1 begincodespacerange <00> <FF> endcodespacerange\n")
+    line = b"1 beginbfchar <61> <0061> endbfchar\n"
+    cmap += line * (cmap_bytes // len(line)) + b"endcmap end end\n"
+    body = zlib.compress(b"BT /F1 12 Tf 72 720 Td (a) Tj ET")
+    cm = zlib.compress(cmap, 9)
+    objs = {1: b"<< /Type /Catalog /Pages 2 0 R >>",
+            2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> "
+               b"/Contents 4 0 R >>",
+            4: b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(body) + body + b"\nendstream",
+            5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>",
+            6: b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(cm) + cm + b"\nendstream"}
+    out, offsets = b"%PDF-1.4\n", {}
+    for n in sorted(objs):
+        offsets[n] = len(out)
+        out += b"%d 0 obj\n" % n + objs[n] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % offsets[n] for n in sorted(objs))
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    path.write_bytes(out)
+    return path
+
+
+def test_a_fonts_character_map_is_measured_before_pdfminer_parses_it(tmp_path):
+    """GPT review of 0222: a 10 MB /ToUnicode map in an 11 KB PDF was decoded
+    and parsed by pdfminer before any character was counted."""
+    path = _cmap_pdf(tmp_path / "cmap.pdf", 10 * 1024 * 1024)
+    assert path.stat().st_size < 50_000
+    from unittest.mock import patch as mock_patch
+    with mock_patch.object(pdf_read.PDFPageInterpreter, "process_page",
+                           side_effect=AssertionError("pdfminer reached")):
+        with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF holds far more than a recipe"):
+            pdf_read.extract_pdf_text(str(path))
+    small = _cmap_pdf(tmp_path / "small.pdf", 2_000)
+    assert pdf_read._page_streams(PdfReader(str(small)).pages[0], {})[1] > 2_000      # measured, under the limit
+
+
+def test_a_pdf_pypdf_cant_measure_is_refused(tmp_path, monkeypatch):
+    """GPT review of 0222: a pypdf error turned every size limit off."""
+    path = _text_stream_pdf(tmp_path / "ok.pdf", 2_000)
+    monkeypatch.setattr(pdf_read, "_page_streams", lambda page, sizes: (_ for _ in ()).throw(KeyError("/Bad")))
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF is damaged and can't be checked"):
+        pdf_read.extract_pdf_text(str(path))

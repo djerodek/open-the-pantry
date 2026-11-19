@@ -365,6 +365,37 @@ def _matching_folder(data_dir: str, folders: list[str]) -> str | None:
     return None
 
 
+def settle_marker(data_dir: str, live_dir: str) -> bool:
+    """At start-up, first: staged photos without the marker that match the
+    library mean the restore had replaced the database and stopped before
+    writing the marker. The marker is written now, so the settings the
+    restore kept (restore-kept.json) are put back like any interrupted
+    restore's before recover_interrupted_restore finishes the photos (GPT
+    review of 0222: put_back_after_restart removed them unapplied, seeing
+    no marker). Returns whether it wrote one. Anything it can't decide is
+    left to recover_interrupted_restore."""
+    staged = live_dir.rstrip("/") + STAGED_SUFFIX
+    if os.path.exists(os.path.join(data_dir, MARKER)) or not os.path.isdir(staged):
+        return False
+    if _matching_folder(data_dir, [live_dir.rstrip("/"), staged]) != staged:
+        return False
+    mark_database_replaced(data_dir)
+    log.warning("Start-up: a restore stopped after the library was replaced but before its marker (its staged "
+                "photos match the library); marked as replaced so it's finished")
+    return True
+
+
+def staged_photos_fit(data_dir: str, live_dir: str) -> bool:
+    """Staged photos are there and hold every photo the library uses. With
+    restore-kept.json present that means a restore stopped at this start
+    (both are removed once one is settled), possibly after replacing the
+    database even when uploads/ holds the same photos (a library restored
+    from its own backup), so its kept settings are put back: written just
+    before the restore, they match this server either way."""
+    staged = live_dir.rstrip("/") + STAGED_SUFFIX
+    return os.path.isdir(staged) and _matching_folder(data_dir, [staged]) == staged
+
+
 def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
     """At start-up: a restore stopped part way (the container killed, the
     power cut) is finished or cleaned up so the photos match the database.

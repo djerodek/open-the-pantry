@@ -1,6 +1,7 @@
 """Reading a PDF: its text layer page by page (a page without one goes to
 OCR) and its largest embedded image. Split out of pdf_ingest.py (0186)."""
 import time
+import zlib
 
 import pdfplumber
 from pdfminer.pdfdevice import PDFTextDevice
@@ -34,13 +35,19 @@ class PdfTooLargeError(ValueError):
 # 0221). pdfplumber builds a layout object for every character, about
 # 3 KB each, and a compressed content stream is tiny for its text: a
 # 1.6 KB PDF of 1,000,000 characters took 28 s and 2.2 GB. A dense recipe
-# page holds a few thousand characters. Each page's decoded content
-# (forms included) is measured with pypdf, whose decoders stop at 75 MB,
-# and its characters counted by pdfminer with a device that keeps nothing,
+# page holds a few thousand characters. Each page's streams pdfminer will
+# decode are measured first with pypdf: content, form XObjects, embedded
+# font files and Type 3 glyphs (MAX_PDF_PAGE_CONTENT_BYTES), and the fonts'
+# /ToUnicode maps, which pdfminer parses into a table before any text is
+# drawn (MAX_PDF_PAGE_CMAP_BYTES: a 10 KB PDF with a 10 MB map took 120 MB;
+# GPT review of 0222). Flate streams are inflated only as far as the limit;
+# other filters go through pypdf, whose decoders stop at 75 MB. Then the
+# characters are counted by pdfminer with a device that keeps nothing,
 # stopping at the limit.
 MAX_PDF_PAGE_CHARS = 30_000
 MAX_PDF_TEXT_CHARS = 400_000          # all pages; segment reads no more (SEGMENT_MAX_CHARS)
 MAX_PDF_PAGE_CONTENT_BYTES = 20 * 1024 * 1024
+MAX_PDF_PAGE_CMAP_BYTES = 4 * 1024 * 1024
 
 
 class _TooMuchText(Exception):
@@ -60,64 +67,112 @@ class _CharCounter(PDFTextDevice):
         return 0.0
 
 
-def _content_bytes(page) -> int:
-    """Decoded size of a pypdf page's content streams and the form
-    XObjects it draws, each counted once."""
-    total = 0
-    contents = page.get_contents()
-    if contents is not None:
-        total += len(contents.get_data())
+def _decoded_size(stream, limit: int) -> int:
+    """A pypdf stream's decoded length, or limit + 1 once it's past limit.
+    Flate alone (the usual) is inflated only that far."""
+    filters = stream.get("/Filter")
+    if filters is None:
+        return len(stream._data)
+    names = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+    if names == ["/FlateDecode"]:
+        inflater = zlib.decompressobj()
+        try:
+            out = inflater.decompress(stream._data, limit + 1)
+        except zlib.error:
+            log.debug("_decoded_size: Flate data that doesn't inflate", exc_info=True)
+            return 0                      # pdfminer reads nothing from it either
+        return len(out)
+    return min(len(stream.get_data()), limit + 1)
+
+
+def _page_streams(page, sizes: dict) -> tuple[int, int]:
+    """(content bytes, ToUnicode bytes) decoded for a pypdf page: its
+    content, and through its resources (and those of its forms and Type 3
+    fonts) each form XObject, embedded font file, Type 3 glyph and
+    ToUnicode map, each counted once a page. sizes caches a stream's size
+    by object number across pages."""
+    content = cmaps = 0
+
+    def measure(ref, limit):
+        key = getattr(ref, "idnum", None)
+        if key is not None and key in sizes:
+            return sizes[key]
+        size = _decoded_size(ref.get_object(), limit)
+        if key is not None:
+            sizes[key] = size
+        return size
+
+    ref = page.raw_get("/Contents") if "/Contents" in page else None
+    obj = ref.get_object() if ref is not None else None
+    for item in (list(obj) if isinstance(obj, list) else [ref] if ref is not None else []):
+        content += measure(item, MAX_PDF_PAGE_CONTENT_BYTES)
     seen = set()
     todo = [page.get("/Resources")]
-    while todo:
+    while todo and content <= MAX_PDF_PAGE_CONTENT_BYTES and cmaps <= MAX_PDF_PAGE_CMAP_BYTES:
         res = todo.pop()
-        try:
-            res = res.get_object() if res is not None else None
-            xobjects = res.get("/XObject") if res is not None else None
-            xobjects = xobjects.get_object() if xobjects is not None else {}
-        except AttributeError:
-            log.debug("_content_bytes: resources without the usual shape", exc_info=True)
+        res = res.get_object() if res is not None else None
+        if not hasattr(res, "get"):
             continue
-        for ref in xobjects.values():
+        xobjects = res.get("/XObject")
+        for ref in (xobjects.get_object().values() if xobjects is not None else []):
             key = getattr(ref, "idnum", None) or id(ref)
             if key in seen:
                 continue
             seen.add(key)
             obj = ref.get_object()
             if obj.get("/Subtype") == "/Form":
-                total += len(obj.get_data())
+                content += measure(ref, MAX_PDF_PAGE_CONTENT_BYTES)
                 todo.append(obj.get("/Resources"))
-            if total > MAX_PDF_PAGE_CONTENT_BYTES:
-                return total
-    return total
+        fonts = res.get("/Font")
+        for ref in (fonts.get_object().values() if fonts is not None else []):
+            key = getattr(ref, "idnum", None) or id(ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            font = ref.get_object()
+            if font.get("/ToUnicode") is not None and hasattr(font["/ToUnicode"].get_object(), "get_data"):
+                cmaps += measure(font.raw_get("/ToUnicode"), MAX_PDF_PAGE_CMAP_BYTES)
+            descriptors = [font.get("/FontDescriptor")]
+            for d in (font.get("/DescendantFonts") or []):
+                descriptors.append(d.get_object().get("/FontDescriptor"))
+            for desc in descriptors:
+                desc = desc.get_object() if desc is not None else None
+                for name in ("/FontFile", "/FontFile2", "/FontFile3"):
+                    if desc is not None and desc.get(name) is not None:
+                        content += measure(desc.raw_get(name), MAX_PDF_PAGE_CONTENT_BYTES)
+            for glyph in (font.get("/CharProcs").get_object().values() if font.get("/CharProcs") is not None else []):
+                content += measure(glyph, MAX_PDF_PAGE_CONTENT_BYTES)
+            if font.get("/Resources") is not None:
+                todo.append(font.get("/Resources"))
+    return content, cmaps
 
 
 def _check_text_size(pdf_path: str, pdf) -> None:
     """PdfTooLargeError for a page whose text layer is past the limits,
-    before pdfplumber lays any of it out."""
+    before pdfplumber lays any of it out. A PDF pypdf can't measure is
+    refused too, page by page (GPT review of 0222: it used to turn every
+    size limit off)."""
+    from pypdf import PdfReader
     try:
-        from pypdf import PdfReader
-        from pypdf.errors import LimitReachedError
         reader = PdfReader(pdf_path)
-        sizes = []
-        for i, page in enumerate(reader.pages):
-            try:
-                sizes.append(_content_bytes(page))
-            except LimitReachedError:
-                log.info("PDF page %d: content past pypdf's decoding limit", i + 1, exc_info=True)
-                sizes.append(MAX_PDF_PAGE_CONTENT_BYTES + 1)
-    except PdfTooLargeError:
-        raise
-    except Exception:
-        # pdfplumber may still read what pypdf can't; the character count
-        # below holds either way.
-        log.info("_check_text_size: pypdf couldn't measure this PDF", exc_info=True)
-        sizes = []
-    for i, size in enumerate(sizes):
-        if size > MAX_PDF_PAGE_CONTENT_BYTES:
+        pages = list(reader.pages)
+    except Exception as e:
+        log.info("_check_text_size: pypdf can't open this PDF", exc_info=True)
+        raise PdfTooLargeError("This PDF is damaged and can't be checked before it's read. "
+                               "Try printing it to a new PDF.") from e
+    sizes: dict = {}
+    for i, page in enumerate(pages):
+        try:
+            content, cmaps = _page_streams(page, sizes)
+        except Exception as e:
+            log.info("_check_text_size: page %d can't be measured", i + 1, exc_info=True)
+            raise PdfTooLargeError(f"Page {i + 1} of this PDF is damaged and can't be checked before it's read. "
+                                   "Try printing it to a new PDF.") from e
+        if content > MAX_PDF_PAGE_CONTENT_BYTES or cmaps > MAX_PDF_PAGE_CMAP_BYTES:
+            log.warning("PDF page %d: %d bytes of content, %d of character maps", i + 1, content, cmaps)
             raise PdfTooLargeError(
-                f"Page {i + 1} of this PDF holds far more than a recipe ({size // (1024 * 1024)} MB of drawing "
-                "instructions). Try a PDF of just the recipe, or a screenshot.")
+                f"Page {i + 1} of this PDF holds far more than a recipe ({max(content, cmaps) // (1024 * 1024)} MB "
+                "of drawing instructions). Try a PDF of just the recipe, or a screenshot.")
     rsrcmgr = PDFResourceManager(caching=True)
     total = 0
     for i, page in enumerate(pdf.pages):

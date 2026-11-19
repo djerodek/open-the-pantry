@@ -77,7 +77,9 @@ Son fonctionnement :
   - **PDF** : au plus 60 pages, au plus 3 tâches d'OCR à la fois, et seule
     la plus grande des photos d'un PDF est décodée. La couche texte d'une
     page est mesurée avant d'être lue : au plus 30 000 caractères par page
-    et 400 000 en tout, et 20 Mo d'instructions de dessin par page.
+    et 400 000 en tout, 20 Mo d'instructions de dessin et de polices
+    intégrées par page, et 4 Mo de tables de caractères des polices. Un PDF
+    qui ne peut pas être mesuré est refusé.
   - **Fichiers Word, texte et Markdown** : la nature d'un fichier vient de
     son contenu, pas de son nom. D'un fichier Word, seul le texte du
     document est lu (au plus 20 Mo, parmi au plus 2 000 parties), et son

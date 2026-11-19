@@ -888,12 +888,17 @@ def test_no_photo_sweep_while_staged_photos_wait(client):
     assert not os.path.exists(path)
 
 
-def test_an_unfinished_restore_keeps_this_servers_settings_after_a_restart(client, configured, monkeypatch, after_restart):
+@pytest.mark.parametrize("marker", ["written", "not yet written"])
+def test_an_unfinished_restore_keeps_this_servers_settings_after_a_restart(client, configured, monkeypatch,
+                                                                          after_restart, marker):
     """Claude review of 0165: the settings a restore keeps (automatic-backup
     schedule, email login, HTTPS) were only in memory, so a restore that
     stopped after the copy lost them at the restart: backups off, no login,
     the backup's HTTPS. They're written to restore-kept.json first and put
-    back at start-up."""
+    back at start-up. GPT review of 0222: also when it stopped after the
+    copy but before the marker, which start-up now settles from the staged
+    photos (the put-back used to remove the file unapplied)."""
+    from app import main
     import stat
 
     from sqlalchemy import text
@@ -922,9 +927,16 @@ def test_an_unfinished_restore_keeps_this_servers_settings_after_a_restart(clien
         common._restoring.clear()
         engine.dispose()
         init_db()
-        assert routes_backup.put_back_after_restart() is True
-        restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+        if marker == "not yet written":
+            restore_mod.clear_marker(DATA_DIR)
+        main.settle_interrupted_restore()
+        assert not common._restore_incomplete.is_set()
         assert not os.path.exists(kept)
+        assert not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER))
+        # Restored from its own backup, uploads/ holds the same photos, so a
+        # missing marker leaves the staged copy (after_restart clears it);
+        # the settings come back either way.
+        assert os.path.isdir(UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX) == (marker == "not yet written")
         with engine.connect() as c:
             assert tuple(c.execute(text("SELECT enabled, hour, keep FROM backup_schedule")).one()) == (1, 2, 14)
             assert c.execute(text("SELECT username FROM email_ingest_settings")).scalar() == "cook@home.example"
@@ -1012,3 +1024,21 @@ def test_a_second_failed_put_back_doesnt_replace_the_first(monkeypatch, tmp_path
         assert routes_backup.put_back_after_restart() is False
     failed = sorted(n for n in os.listdir(tmp_path) if ".failed-" in n)
     assert failed == ["restore-kept.failed-20261113-100000.json", "restore-kept.failed-20261113-110000.json"]
+
+
+def test_settle_marker_marks_only_when_the_staged_photos_alone_fit(tmp_path):
+    """GPT review of 0222: the marker settled before the put-back reads it."""
+    from app import restore
+    live, staged = _layout(tmp_path)
+    _library(tmp_path, "img-restored.jpg")
+    assert restore.staged_photos_fit(str(tmp_path), str(live))
+    assert restore.settle_marker(str(tmp_path), str(live)) is True
+    assert (tmp_path / restore.MARKER).exists()
+    assert restore.settle_marker(str(tmp_path), str(live)) is False          # already there
+    (tmp_path / restore.MARKER).unlink()
+    (live / "img-restored.jpg").write_bytes(b"same")                          # both fit: uploads/ wins
+    assert restore.settle_marker(str(tmp_path), str(live)) is False
+    assert restore.staged_photos_fit(str(tmp_path), str(live))
+    (tmp_path / "recipes.db").unlink()
+    _library(tmp_path, "img-old.jpg")
+    assert not restore.staged_photos_fit(str(tmp_path), str(live))

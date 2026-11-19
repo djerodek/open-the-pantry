@@ -198,20 +198,20 @@ def _warn_unprotected_credentials():
     return False
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Sync ingestion endpoints (OCR/PDF work) and lightweight CRUD endpoints
-    # share FastAPI's default worker thread pool. The default cap (40) is
-    # plenty for a personal app under normal use, but bumping it gives real
-    # headroom so a burst of heavy ingestion requests can't starve simple
-    # requests (list/search/get) of a thread. MAX_CONCURRENT_HEAVY_JOBS
-    # above is the actual CPU-thrashing guard; this is just pool headroom.
-    anyio.to_thread.current_default_thread_limiter().total_tokens = 100
-
-    # A restore stopped part way: this server's own settings it kept are put
-    # back (Claude review of 0165), and its photos are put in place, or its
-    # unused staged copy removed, so photos and database agree.
-    backup_routes.put_back_after_restart()
+def settle_interrupted_restore():
+    """At start-up, before anything reads the library: a restore stopped part
+    way has this server's own settings it kept put back (Claude review of
+    0165) and its photos put in place, or its staged copy left, so photos
+    and database agree; when that can't be decided, the app stays closed.
+    In this order: the marker settled from the photos first, since the
+    put-back reads it (GPT review of 0222)."""
+    staged_fit = False
+    try:
+        restore_mod.settle_marker(DATA_DIR, UPLOADS_DIR)
+        staged_fit = restore_mod.staged_photos_fit(DATA_DIR, UPLOADS_DIR)
+    except OSError:
+        log.exception("Start-up: couldn't mark an interrupted restore; left to the recovery below")
+    backup_routes.put_back_after_restart(staged_fit)
     try:
         restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
     except restore_mod.RestoreUnresolved as e:
@@ -222,6 +222,19 @@ async def lifespan(app: FastAPI):
         common.restore_closed_message = common.RESTORE_UNRESOLVED_MESSAGE
         _restoring.set()
         common._restore_incomplete.set()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Sync ingestion endpoints (OCR/PDF work) and lightweight CRUD endpoints
+    # share FastAPI's default worker thread pool. The default cap (40) is
+    # plenty for a personal app under normal use, but bumping it gives real
+    # headroom so a burst of heavy ingestion requests can't starve simple
+    # requests (list/search/get) of a thread. MAX_CONCURRENT_HEAVY_JOBS
+    # above is the actual CPU-thrashing guard; this is just pool headroom.
+    anyio.to_thread.current_default_thread_limiter().total_tokens = 100
+
+    settle_interrupted_restore()
     # A failed first sweep (the database still locked by the previous
     # container) mustn't stop the app starting; the loop sweeps again
     # (DeepSeek review and audit of 0143).
