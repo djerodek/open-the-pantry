@@ -220,9 +220,10 @@ Paramètres → Sauvegarde et exportation :
   bibliothèque (mot de passe des paramètres; une copie de sécurité est
   d'abord écrite; ce serveur garde ses propres réglages HTTPS, d'horaire et
   de courriel). Si une restauration échoue en cours de route, l'application
-  reste fermée jusqu'à son redémarrage et la termine au démarrage. Du JSON
-  schema.org, un zip de ceux-ci ou une exportation Paprika ajoute plutôt
-  ses recettes.
+  reste fermée jusqu'à son redémarrage et la termine au démarrage; si le
+  démarrage ne peut pas savoir quelles photos vont avec la bibliothèque,
+  elle reste fermée et le journal dit quoi faire. Du JSON schema.org, un
+  zip de ceux-ci ou une exportation Paprika ajoute plutôt ses recettes.
 
 ### HTTPS (facultatif)
 

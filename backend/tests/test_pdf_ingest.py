@@ -9,7 +9,7 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, NumberObject, StreamObject
 
-from app.ingestion import pdf_ingest
+from app.ingestion import pdf_ingest, pdf_read
 from app.ingestion.pdf_ingest import (PdfTooLargeError, extract_largest_embedded_image, extract_pdf_text,
                                       segment_raw_text)
 
@@ -952,3 +952,65 @@ def test_rendering_a_pdfs_first_scanned_page_counts_against_its_ocr_time(monkeyp
     with pytest.raises(pdf_read.PdfTooLargeError, match=r"stopped at page 1"):
         pdf_read.extract_pdf_text(str(path))
     assert runs == []
+
+
+def _text_stream_pdf(path, chars_per_page, pages=1):
+    """A PDF whose pages each hold one compressed run of text: tiny on disk,
+    any number of characters (GPT review of 0221)."""
+    import zlib
+    page_ids = [3 + 2 * i for i in range(pages)]
+    objs = {1: b"<< /Type /Catalog /Pages 2 0 R >>",
+            2: b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % p for p in page_ids) + b"] /Count %d >>" % pages}
+    font = 3 + 2 * pages
+    for p in page_ids:
+        body = zlib.compress(b"BT /F1 1 Tf 0 0 Td (" + b"a" * chars_per_page + b") Tj ET", 9)
+        objs[p] = (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 %d 0 R >> >> "
+                   b"/Contents %d 0 R >>" % (font, p + 1))
+        objs[p + 1] = b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(body) + body + b"\nendstream"
+    objs[font] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    out, offsets = b"%PDF-1.4\n", {}
+    for n in sorted(objs):
+        offsets[n] = len(out)
+        out += b"%d 0 obj\n" % n + objs[n] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % offsets[n] for n in sorted(objs))
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    path.write_bytes(out)
+    return path
+
+
+def test_a_compressed_text_layer_is_refused_before_it_is_laid_out(tmp_path):
+    """GPT review of 0221: a 1.6 KB PDF of 1,000,000 characters took 28 s and
+    2.2 GB in pdfplumber. The characters are counted first, without keeping
+    them, and the page refused at the limit."""
+    import resource
+    import time
+    path = _text_stream_pdf(tmp_path / "bomb.pdf", 1_000_000)
+    assert path.stat().st_size < 3000
+    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    t = time.monotonic()
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF holds more text than a recipe page"):
+        pdf_read.extract_pdf_text(str(path))
+    assert time.monotonic() - t < 3
+    assert resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before < 200 * 1024     # KB: under 200 MB more
+
+
+def test_pdf_text_limits_per_page_in_all_and_in_drawing(tmp_path, monkeypatch):
+    path = _text_stream_pdf(tmp_path / "three.pdf", 2_000, pages=3)
+    assert "aaaa" in pdf_read.extract_pdf_text(str(path)).raw_text        # under every limit
+    monkeypatch.setattr(pdf_read, "MAX_PDF_TEXT_CHARS", 5_000)
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"over 5,000 characters by page 3"):
+        pdf_read.extract_pdf_text(str(path))
+    monkeypatch.setattr(pdf_read, "MAX_PDF_PAGE_CONTENT_BYTES", 1_000)
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF holds far more than a recipe"):
+        pdf_read.extract_pdf_text(str(path))
+
+
+def test_the_pdf_text_limit_message_in_french(client, tmp_path):
+    path = _text_stream_pdf(tmp_path / "bomb.pdf", 40_000)
+    r = client.post("/api/ingest/pdf", files={"file": ("bomb.pdf", path.read_bytes(), "application/pdf")},
+                    headers={"X-App-Lang": "fr"})
+    assert r.status_code in (400, 413, 422), r.text
+    assert r.json()["detail"] == ("La page 1 de ce PDF contient plus de texte qu'une page de recette (plus de 30 000 "
+                                  "caractères). Essayez un PDF de la recette seulement.")

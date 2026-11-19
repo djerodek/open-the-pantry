@@ -324,6 +324,47 @@ def clear_marker(data_dir: str) -> None:
         pass
 
 
+class RestoreUnresolved(Exception):
+    """An interrupted restore start-up can't finish safely: which photos go
+    with the library is unclear, or the folders couldn't be checked. The app
+    stays closed (main.lifespan) until the owner sorts it out; the message
+    is for the log."""
+
+
+def _library_photos(data_dir: str) -> set[str] | None:
+    """The photo names the library's recipes use (Recently deleted
+    included), or None when the database can't be read."""
+    path = os.path.join(data_dir, "recipes.db")
+    if not os.path.exists(path):
+        return None
+    try:
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            return {r[0] for r in con.execute("SELECT image_path FROM recipes WHERE image_path IS NOT NULL")}
+        finally:
+            con.close()
+    except sqlite3.Error:
+        log.warning("Start-up: couldn't read the library's photo names", exc_info=True)
+        return None
+
+
+def _matching_folder(data_dir: str, folders: list[str]) -> str | None:
+    """The first of folders holding every photo the library uses (GPT review
+    of 0221: an interrupted restore without its marker can often be settled
+    this way rather than guessed). None when the library can't be read or no
+    folder holds them all."""
+    used = _library_photos(data_dir)
+    if used is None:
+        return None
+    for folder in folders:
+        try:
+            if os.path.isdir(folder) and used <= set(os.listdir(folder)):
+                return folder
+        except OSError:
+            log.warning("Start-up: couldn't list %s", folder, exc_info=True)
+    return None
+
+
 def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
     """At start-up: a restore stopped part way (the container killed, the
     power cut) is finished or cleaned up so the photos match the database.
@@ -333,10 +374,15 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
       hadn't started or stopped between its two renames. The old photos are
       kept in uploads-before-restore-<time>, named in the log.
     - Staged photos without a marker: most likely stopped before the
-      database copy (nothing uses them), but a stop just after the copy,
-      before the marker was written, looks the same. They're left in place
-      and named in the log; deleting them could lose the restored photos
-      (DeepSeek review of 0146; 0146 deleted them).
+      database copy, but a stop just after the copy, before the marker was
+      written, looks the same. The library's own photo names decide: if
+      uploads/ holds them all, the library is the old one and the staged
+      folder is left (named in the log); if only the staged folder does,
+      the restore had replaced it and its photos go into place. Deleting the
+      staged photos could lose the restored ones (DeepSeek review of 0146).
+    - Anything still unclear, or folders that can't be checked or moved,
+      raises RestoreUnresolved: the app stays closed rather than run with
+      photos that may not match (GPT review of 0221; it used to open).
 
     0144 moved the old photos back instead (wrong: the database was
     already the backup's). Returns the staged folder's former path when
@@ -350,10 +396,28 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
         left = sorted(n for n in os.listdir(parent or ".") if n.startswith(base + "-before-restore-"))
         empty = not os.path.isdir(live) or not os.listdir(live)
         has_staged = os.path.isdir(staged)
-    except OSError:
-        log.warning("Start-up: couldn't check for an interrupted restore", exc_info=True)
-        return None
+    except OSError as e:
+        log.error("Start-up: couldn't check for an interrupted restore", exc_info=True)
+        raise RestoreUnresolved(f"couldn't check the photo folders ({e})") from e
     try:
+        if has_staged and not marked:
+            # Settle it from the library's photo names, if they do.
+            match = _matching_folder(data_dir, [live, staged])
+            if match == live:
+                log.warning("Start-up: %s holds staged photos from a restore that stopped before the library "
+                            "was replaced (uploads/ has every photo the library uses); delete the folder when "
+                            "you like", os.path.basename(staged))
+                return None
+            if match == staged:
+                log.error("Start-up: a restore stopped after the library was replaced but before its marker; "
+                          "its photos match the library, so they're being put in place")
+                marked = True
+            else:
+                log.error("Start-up: %s holds staged photos from a restore that stopped, and neither it nor "
+                          "uploads/ has every photo the library uses. The app stays closed: stop it, check "
+                          "which folder belongs with recipes.db (or restore a backup again by hand, see the "
+                          "README), and move or delete %s.", os.path.basename(staged), os.path.basename(staged))
+                raise RestoreUnresolved("staged photos without a marker, matching neither the library nor uploads/")
         if has_staged and empty and len(left) == 1 and marked:
             # Between the two renames: the old photos are already aside.
             if os.path.isdir(live):
@@ -364,13 +428,12 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
             clear_marker(data_dir)
             return staged
         if has_staged and empty and left:
-            # More than one old folder, or no marker to say the library was
-            # replaced (GPT review of 0147: without one, moving the staged
-            # photos could pair them with the old library).
-            log.warning("Start-up: an interrupted restore left %s and %s with uploads/ empty; not moved "
-                        "(%s: check which is right by hand)", os.path.basename(staged), ", ".join(left),
-                        "more than one old folder" if marked else "no marker says the library was replaced")
-            return None
+            # More than one old folder (GPT review of 0147: moving the
+            # staged photos could pair them with the wrong library).
+            log.error("Start-up: an interrupted restore left %s and %s with uploads/ empty; not moved, and "
+                      "the app stays closed: check which belongs with recipes.db by hand",
+                      os.path.basename(staged), ", ".join(left))
+            raise RestoreUnresolved("staged photos and more than one old photo folder, uploads/ empty")
         if has_staged and marked:
             # The database was replaced, the swap hadn't started.
             old = swap_dirs(staged, live)
@@ -379,17 +442,12 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
                       "library looks right)", os.path.basename(old))
             clear_marker(data_dir)
             return staged
-        if has_staged:
-            log.warning("Start-up: %s holds staged photos from a restore that stopped, and no marker says "
-                        "the library was replaced. If recipes' photos show, the library is the old one and "
-                        "this folder can be deleted; if they don't, the restore had replaced it: stop the "
-                        "app and move this folder to uploads/ (or restore again).", os.path.basename(staged))
-            return None
         if marked:
             clear_marker(data_dir)          # the photos had been moved; only the clean-up was left
-    except OSError:
-        log.error("Start-up: couldn't finish an interrupted restore (%s)", staged, exc_info=True)
-        return None
+    except OSError as e:
+        log.error("Start-up: couldn't finish an interrupted restore (%s); the app stays closed", staged,
+                  exc_info=True)
+        raise RestoreUnresolved(f"couldn't move the photo folders ({e})") from e
     for name in left:
         # After a finished restore whose old-photo copy wasn't removed:
         # expected, so info; without the marker, someone's folders: warning.

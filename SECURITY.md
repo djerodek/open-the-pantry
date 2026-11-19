@@ -64,7 +64,9 @@ How it works:
     megapixels, and up to 3 are prepared at once. Up to 10 photos combined
     into one recipe share one OCR clock (below).
   - **PDFs**: at most 60 pages, at most 3 OCR jobs at once, and only the
-    largest of a PDF's photos is decoded.
+    largest of a PDF's photos is decoded. A page's text layer is measured
+    before it is read: at most 30,000 characters a page and 400,000 in
+    all, and 20 MB of drawing instructions a page.
   - **Word, text and Markdown files**: what a file is comes from its bytes,
     not its name. From a Word file only the document's text is read (at
     most 20 MB of it, from at most 2,000 parts), and its XML never fetches
@@ -82,8 +84,9 @@ How it works:
   - **Email**: mail over 30 MB, nested too deeply, or that OCR can't read
     reliably is refused and marked read; senders not allowed are refused
     from the From line, before the mail is downloaded.
-  - **Archives** (backups, imports): at most 20,000 files, checked before
-    the file list is read, and size-limited when unpacked.
+  - **Archives**: at most 20,000 files for an import, 50,000 for a full
+    backup, checked before the file list is read, and size-limited when
+    unpacked.
   - **Downloaded pages**: at most 10 MB and 30 seconds in all, however
     slowly the server answers, from public addresses only; every redirect
     is checked again.

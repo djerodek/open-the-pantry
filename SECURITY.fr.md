@@ -75,7 +75,9 @@ Son fonctionnement :
     plus sont préparées à la fois. Jusqu'à 10 photos réunies en une recette
     partagent la même minuterie d'OCR (plus bas).
   - **PDF** : au plus 60 pages, au plus 3 tâches d'OCR à la fois, et seule
-    la plus grande des photos d'un PDF est décodée.
+    la plus grande des photos d'un PDF est décodée. La couche texte d'une
+    page est mesurée avant d'être lue : au plus 30 000 caractères par page
+    et 400 000 en tout, et 20 Mo d'instructions de dessin par page.
   - **Fichiers Word, texte et Markdown** : la nature d'un fichier vient de
     son contenu, pas de son nom. D'un fichier Word, seul le texte du
     document est lu (au plus 20 Mo, parmi au plus 2 000 parties), et son
@@ -97,9 +99,9 @@ Son fonctionnement :
     l'OCR ne peut pas lire de façon fiable est refusé et marqué lu; les
     expéditeurs non permis sont refusés d'après la ligne From, avant que le
     courriel soit téléchargé.
-  - **Archives** (sauvegardes, importations) : au plus 20 000 fichiers,
-    vérifié avant de lire la liste des fichiers, et taille limitée à la
-    décompression.
+  - **Archives** : au plus 20 000 fichiers pour une importation, 50 000
+    pour une sauvegarde complète, vérifié avant de lire la liste des
+    fichiers, et taille limitée à la décompression.
   - **Pages téléchargées** : au plus 10 Mo et 30 secondes en tout, quelle
     que soit la lenteur du serveur, depuis des adresses publiques seulement; chaque redirection est vérifiée
     de nouveau.

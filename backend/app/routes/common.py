@@ -85,6 +85,12 @@ _restore_incomplete = threading.Event()
 RESTORE_INCOMPLETE_MESSAGE = ("A restore stopped after the library had been replaced and couldn't finish. "
                               "Restart the app (docker compose restart): it finishes the restore when it starts. "
                               "The library from before is in the safety backup (restore-safety-*.zip) in the data folder.")
+# Start-up couldn't settle an interrupted restore (restore.RestoreUnresolved):
+# closed the same way, with what to do (GPT review of 0221).
+RESTORE_UNRESOLVED_MESSAGE = ("A restore was interrupted and the app can't tell which photos belong with the "
+                              "library, so it stays closed. The log (docker logs open-the-pantry) names the "
+                              "folders and what to do; restart the app once they're sorted out.")
+restore_closed_message = RESTORE_INCOMPLETE_MESSAGE
 _inflight = 0
 _inflight_lock = threading.Lock()
 

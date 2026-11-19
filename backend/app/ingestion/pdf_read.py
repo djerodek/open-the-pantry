@@ -3,6 +3,8 @@ OCR) and its largest embedded image. Split out of pdf_ingest.py (0186)."""
 import time
 
 import pdfplumber
+from pdfminer.pdfdevice import PDFTextDevice
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 
 from ..logging_setup import get_logger
 # Private to ocr, but this module's to use: rendering a scanned page at the
@@ -26,6 +28,115 @@ MAX_PDF_OCR_SECONDS = MAX_IMPORT_OCR_SECONDS
 
 class PdfTooLargeError(ValueError):
     pass
+
+
+# A page's text layer, bounded before pdfplumber reads it (GPT review of
+# 0221). pdfplumber builds a layout object for every character, about
+# 3 KB each, and a compressed content stream is tiny for its text: a
+# 1.6 KB PDF of 1,000,000 characters took 28 s and 2.2 GB. A dense recipe
+# page holds a few thousand characters. Each page's decoded content
+# (forms included) is measured with pypdf, whose decoders stop at 75 MB,
+# and its characters counted by pdfminer with a device that keeps nothing,
+# stopping at the limit.
+MAX_PDF_PAGE_CHARS = 30_000
+MAX_PDF_TEXT_CHARS = 400_000          # all pages; segment reads no more (SEGMENT_MAX_CHARS)
+MAX_PDF_PAGE_CONTENT_BYTES = 20 * 1024 * 1024
+
+
+class _TooMuchText(Exception):
+    pass
+
+
+class _CharCounter(PDFTextDevice):
+    def __init__(self, rsrcmgr, limit: int):
+        super().__init__(rsrcmgr)
+        self.count = 0
+        self.limit = limit
+
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate) -> float:
+        self.count += 1
+        if self.count > self.limit:
+            raise _TooMuchText
+        return 0.0
+
+
+def _content_bytes(page) -> int:
+    """Decoded size of a pypdf page's content streams and the form
+    XObjects it draws, each counted once."""
+    total = 0
+    contents = page.get_contents()
+    if contents is not None:
+        total += len(contents.get_data())
+    seen = set()
+    todo = [page.get("/Resources")]
+    while todo:
+        res = todo.pop()
+        try:
+            res = res.get_object() if res is not None else None
+            xobjects = res.get("/XObject") if res is not None else None
+            xobjects = xobjects.get_object() if xobjects is not None else {}
+        except AttributeError:
+            log.debug("_content_bytes: resources without the usual shape", exc_info=True)
+            continue
+        for ref in xobjects.values():
+            key = getattr(ref, "idnum", None) or id(ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            obj = ref.get_object()
+            if obj.get("/Subtype") == "/Form":
+                total += len(obj.get_data())
+                todo.append(obj.get("/Resources"))
+            if total > MAX_PDF_PAGE_CONTENT_BYTES:
+                return total
+    return total
+
+
+def _check_text_size(pdf_path: str, pdf) -> None:
+    """PdfTooLargeError for a page whose text layer is past the limits,
+    before pdfplumber lays any of it out."""
+    try:
+        from pypdf import PdfReader
+        from pypdf.errors import LimitReachedError
+        reader = PdfReader(pdf_path)
+        sizes = []
+        for i, page in enumerate(reader.pages):
+            try:
+                sizes.append(_content_bytes(page))
+            except LimitReachedError:
+                log.info("PDF page %d: content past pypdf's decoding limit", i + 1, exc_info=True)
+                sizes.append(MAX_PDF_PAGE_CONTENT_BYTES + 1)
+    except PdfTooLargeError:
+        raise
+    except Exception:
+        # pdfplumber may still read what pypdf can't; the character count
+        # below holds either way.
+        log.info("_check_text_size: pypdf couldn't measure this PDF", exc_info=True)
+        sizes = []
+    for i, size in enumerate(sizes):
+        if size > MAX_PDF_PAGE_CONTENT_BYTES:
+            raise PdfTooLargeError(
+                f"Page {i + 1} of this PDF holds far more than a recipe ({size // (1024 * 1024)} MB of drawing "
+                "instructions). Try a PDF of just the recipe, or a screenshot.")
+    rsrcmgr = PDFResourceManager(caching=True)
+    total = 0
+    for i, page in enumerate(pdf.pages):
+        counter = _CharCounter(rsrcmgr, MAX_PDF_PAGE_CHARS)
+        try:
+            PDFPageInterpreter(rsrcmgr, counter).process_page(page.page_obj)
+        except _TooMuchText:
+            log.warning("PDF page %d: over %d characters of text", i + 1, MAX_PDF_PAGE_CHARS)
+            raise PdfTooLargeError(
+                f"Page {i + 1} of this PDF holds more text than a recipe page (over {MAX_PDF_PAGE_CHARS:,} "
+                "characters). Try a PDF of just the recipe.") from None
+        finally:
+            counter.close()
+        total += counter.count
+        if total > MAX_PDF_TEXT_CHARS:
+            log.warning("PDF: over %d characters of text by page %d", MAX_PDF_TEXT_CHARS, i + 1)
+            raise PdfTooLargeError(
+                f"This PDF holds more text than a recipe (over {MAX_PDF_TEXT_CHARS:,} characters by page {i + 1}). "
+                "Try a PDF of just the recipe.")
 
 
 MIN_SHOWCASE_IMAGE_DIMENSION = 200  # px -- avoids picking tiny icons/bullets/logos as the showcase image
@@ -242,30 +353,34 @@ def extract_pdf_text(pdf_path: str) -> PdfIngestResult:
                     f"PDF has {len(pdf.pages)} pages (limit {MAX_PDF_PAGES}) -- "
                     "too large to process. Try splitting it first."
                 )
+            _check_text_size(pdf_path, pdf)
             for i, page in enumerate(pdf.pages):
-                text = page.extract_text() or ""
-                if len(text.strip()) >= MIN_CHARS_PER_PAGE:
-                    page_texts.append(text)
-                    continue
-
-                # No usable text layer on this page -- render to image and OCR it.
-                # The clock starts at the first scanned page; checked again before
-                # rendering each later one, and every Tesseract run stops at it.
-                if ocr_started is None:
-                    ocr_started = time.monotonic()
-                    clock = start_deadline(MAX_PDF_OCR_SECONDS, now=True)
-                elif time.monotonic() - ocr_started > MAX_PDF_OCR_SECONDS:
-                    raise _ocr_too_long(i + 1, started=False)
-                ocr_pages.append(i + 1)
-                pil_image = page.to_image(resolution=_ocr_resolution(page.width, page.height)).original
                 try:
-                    ocr_text, confidence = _ocr_image(pil_image)
-                except OcrTimeUp:
-                    log.debug("extract_pdf_text: OCR time ran out on page %d", i + 1, exc_info=True)
-                    raise _ocr_too_long(i + 1, started=True) from None
-                page_texts.append(ocr_text)
-                if confidence is not None:
-                    ocr_confidences.append(confidence)
+                    text = page.extract_text() or ""
+                    if len(text.strip()) >= MIN_CHARS_PER_PAGE:
+                        page_texts.append(text)
+                        continue
+
+                    # No usable text layer on this page -- render to image and OCR it.
+                    # The clock starts at the first scanned page; checked again before
+                    # rendering each later one, and every Tesseract run stops at it.
+                    if ocr_started is None:
+                        ocr_started = time.monotonic()
+                        clock = start_deadline(MAX_PDF_OCR_SECONDS, now=True)
+                    elif time.monotonic() - ocr_started > MAX_PDF_OCR_SECONDS:
+                        raise _ocr_too_long(i + 1, started=False)
+                    ocr_pages.append(i + 1)
+                    pil_image = page.to_image(resolution=_ocr_resolution(page.width, page.height)).original
+                    try:
+                        ocr_text, confidence = _ocr_image(pil_image)
+                    except OcrTimeUp:
+                        log.debug("extract_pdf_text: OCR time ran out on page %d", i + 1, exc_info=True)
+                        raise _ocr_too_long(i + 1, started=True) from None
+                    page_texts.append(ocr_text)
+                    if confidence is not None:
+                        ocr_confidences.append(confidence)
+                finally:
+                    page.close()     # its layout objects; pdfplumber keeps them otherwise
     finally:
         if clock is not None:
             end_deadline(clock)

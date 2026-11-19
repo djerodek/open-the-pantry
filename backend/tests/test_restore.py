@@ -299,7 +299,11 @@ def after_restart():
     from app.routes import common
     common._restore_incomplete.clear()
     common._restoring.clear()
-    restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+    common.restore_closed_message = common.RESTORE_INCOMPLETE_MESSAGE
+    try:
+        restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+    except restore_mod.RestoreUnresolved:
+        pass                                      # settled just below, as a person would
     staged = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
     if os.path.isdir(staged):                     # no marker: left for a person; here, put in place
         restore_mod.mark_database_replaced(DATA_DIR)
@@ -506,7 +510,13 @@ def test_otherwise_nothing_is_moved(tmp_path, setup):
         (tmp_path / "uploads.restore-new" / "img-restored.jpg").write_bytes(b"new")
     if setup == "one left, uploads empty, no marker":
         (live / "img-2.jpg").unlink()
-    assert recover_interrupted_restore(str(tmp_path), str(live)) is None
+    if "uploads empty" in setup:
+        # No library to settle it by: the app stays closed (GPT review of 0221).
+        from app.restore import RestoreUnresolved
+        with pytest.raises(RestoreUnresolved):
+            recover_interrupted_restore(str(tmp_path), str(live))
+    else:
+        assert recover_interrupted_restore(str(tmp_path), str(live)) is None
     assert live.is_dir()
     if "uploads empty" in setup:
         # GPT review of 0147: without a marker this state is ambiguous; the
@@ -528,17 +538,77 @@ def test_stopped_after_the_database_copy_the_photos_follow(tmp_path):
     assert not (tmp_path / restore.MARKER).exists()
 
 
-def test_staged_photos_without_a_marker_are_left_for_the_owner(tmp_path, monkeypatch):
-    """No marker: usually stopped before the database copy, but a stop just
-    after it, before the marker, looks the same, so the staged photos
-    aren't deleted (DeepSeek review of 0146; 0146 deleted them)."""
+def _library(tmp_path, *photos):
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "recipes.db")
+    con.execute("CREATE TABLE recipes (id INTEGER PRIMARY KEY, image_path TEXT)")
+    con.executemany("INSERT INTO recipes (image_path) VALUES (?)", [(p,) for p in photos] + [(None,)])
+    con.commit()
+    con.close()
+
+
+def test_staged_photos_without_a_marker_are_left_when_uploads_matches(tmp_path, monkeypatch):
+    """No marker, and uploads/ holds every photo the library uses: stopped
+    before the database copy. The staged photos aren't deleted (DeepSeek
+    review of 0146; 0146 deleted them), and the app opens."""
     from app import restore
     warned = []
     monkeypatch.setattr(restore.log, "warning", lambda msg, *a, **k: warned.append(msg % a))
     live, staged = _layout(tmp_path)
+    _library(tmp_path, "img-old.jpg")
     assert restore.recover_interrupted_restore(str(tmp_path), str(live)) is None
     assert (live / "img-old.jpg").exists() and (staged / "img-restored.jpg").exists()
-    assert any("uploads.restore-new" in w and "no marker" in w for w in warned)
+    assert any("uploads.restore-new" in w and "before the library was replaced" in w for w in warned)
+
+
+def test_staged_photos_without_a_marker_go_in_when_they_match(tmp_path):
+    """GPT review of 0221: stopped after the database copy, before the
+    marker. Only the staged folder holds the library's photos, so the
+    restore is finished as if the marker were there."""
+    from app import restore
+    live, staged = _layout(tmp_path)
+    _library(tmp_path, "img-restored.jpg")
+    assert restore.recover_interrupted_restore(str(tmp_path), str(live)) == str(staged)
+    assert (live / "img-restored.jpg").exists() and not staged.exists()
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith("uploads-before-restore-")]
+
+
+@pytest.mark.parametrize("library", ["matches neither", "no database"])
+def test_staged_photos_that_settle_nothing_keep_the_app_closed(tmp_path, library):
+    from app import restore
+    live, staged = _layout(tmp_path)
+    if library == "matches neither":
+        _library(tmp_path, "img-old.jpg", "img-restored.jpg")
+    with pytest.raises(restore.RestoreUnresolved):
+        restore.recover_interrupted_restore(str(tmp_path), str(live))
+    assert (live / "img-old.jpg").exists() and (staged / "img-restored.jpg").exists()
+
+
+def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up(monkeypatch):
+    """GPT review of 0221: start-up logged the problem and opened anyway
+    (GET /api/recipes 200). Now every request but /healthz gets a 503 that
+    says what happened, and the sweeps, scans and backups stay off."""
+    from fastapi.testclient import TestClient
+    from app import restore as restore_mod
+    from app.database import UPLOADS_DIR
+    from app.main import app
+    from app.routes import common
+    staged = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
+    os.makedirs(staged)
+    monkeypatch.setattr(restore_mod, "_library_photos", lambda data_dir: {"nowhere.jpg"})
+    try:
+        with TestClient(app) as c:
+            r = c.get("/api/recipes")
+            assert r.status_code == 503 and r.json()["detail"] == common.RESTORE_UNRESOLVED_MESSAGE
+            assert c.get("/healthz").status_code == 200
+            assert common._restoring.is_set()
+            fr = c.get("/api/recipes", headers={"X-App-Lang": "fr"})
+            assert fr.json()["detail"].startswith("Une restauration a été interrompue")
+    finally:
+        os.rmdir(staged)
+        common._restore_incomplete.clear()
+        common._restoring.clear()
+        common.restore_closed_message = common.RESTORE_INCOMPLETE_MESSAGE
 
 
 def test_the_restore_marks_the_database_and_clears_the_mark(client, monkeypatch):

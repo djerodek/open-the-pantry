@@ -182,8 +182,10 @@ Settings → Backup & export:
 - **Restore or import**: a full backup replaces the library (settings
   password; a safety copy is written first; this server keeps its own
   HTTPS, schedule and email settings). If a restore fails partway, the app
-  stays closed until restarted and finishes it at start-up. schema.org
-  JSON, a zip of it, or a Paprika export adds its recipes instead.
+  stays closed until restarted and finishes it at start-up; if start-up
+  can't tell which photos go with the library, it stays closed and the log
+  says what to do. schema.org JSON, a zip of it, or a Paprika export adds
+  its recipes instead.
 
 ### HTTPS (optional)
 

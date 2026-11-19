@@ -212,7 +212,16 @@ async def lifespan(app: FastAPI):
     # back (Claude review of 0165), and its photos are put in place, or its
     # unused staged copy removed, so photos and database agree.
     backup_routes.put_back_after_restart()
-    restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+    try:
+        restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+    except restore_mod.RestoreUnresolved as e:
+        # Closed, both ports, and the sweeps, scans and backups off, until
+        # the owner sorts the folders out and restarts (GPT review of 0221:
+        # the app used to open with photos that might not match).
+        log.error("Start-up: the app stays closed (503) until the restore's folders are sorted out: %s", e)
+        common.restore_closed_message = common.RESTORE_UNRESOLVED_MESSAGE
+        _restoring.set()
+        common._restore_incomplete.set()
     # A failed first sweep (the database still locked by the previous
     # container) mustn't stop the app starting; the loop sweeps again
     # (DeepSeek review and audit of 0143).
@@ -458,7 +467,7 @@ async def restore_guard(request: Request, call_next):
         common._inflight += 1
     try:
         if common._restore_incomplete.is_set() and request.url.path != "/healthz":
-            return JSONResponse(status_code=503, content={"detail": common.RESTORE_INCOMPLETE_MESSAGE})
+            return JSONResponse(status_code=503, content={"detail": common.restore_closed_message})
         if _restoring.is_set() and request.url.path != "/healthz":
             return JSONResponse(status_code=503, content={"detail": "A backup is being restored. Try again in a minute."},
                                 headers={"Retry-After": "30"})
