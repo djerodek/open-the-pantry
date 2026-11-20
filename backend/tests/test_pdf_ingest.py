@@ -986,6 +986,8 @@ def test_a_compressed_text_layer_is_refused_before_it_is_laid_out(tmp_path):
     them, and the page refused at the limit."""
     import resource
     import time
+    if sys.platform != "linux":
+        pytest.skip("ru_maxrss is in KB on Linux only (bytes on macOS)")
     path = _text_stream_pdf(tmp_path / "bomb.pdf", 1_000_000)
     assert path.stat().st_size < 3000
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -1053,7 +1055,8 @@ def test_a_fonts_character_map_is_measured_before_pdfminer_parses_it(tmp_path):
     from unittest.mock import patch as mock_patch
     with mock_patch.object(pdf_read.PDFPageInterpreter, "process_page",
                            side_effect=AssertionError("pdfminer reached")):
-        with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF holds far more than a recipe"):
+        with pytest.raises(pdf_read.PdfTooLargeError,
+                           match=r"Page 1 of this PDF holds far more than a recipe \(\d+ MB of font character maps\)"):
             pdf_read.extract_pdf_text(str(path))
     small = _cmap_pdf(tmp_path / "small.pdf", 2_000)
     assert pdf_read._page_streams(PdfReader(str(small)).pages[0], {})[1] > 2_000      # measured, under the limit
@@ -1065,3 +1068,30 @@ def test_a_pdf_pypdf_cant_measure_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(pdf_read, "_page_streams", lambda page, sizes: (_ for _ in ()).throw(KeyError("/Bad")))
     with pytest.raises(pdf_read.PdfTooLargeError, match=r"Page 1 of this PDF is damaged and can't be checked"):
         pdf_read.extract_pdf_text(str(path))
+
+
+def test_a_font_file_two_fonts_share_is_counted_once_a_page(tmp_path):
+    """Review of 0222/0223: two fonts naming one /FontFile2 added its size
+    twice, refusing a page that decodes it once."""
+    import zlib
+    font_file = zlib.compress(b"\0" * 50_000)
+    w = PdfWriter()
+    page = w.add_blank_page(612, 792)
+    stream = StreamObject()
+    stream._data = font_file
+    stream[NameObject("/Filter")] = NameObject("/FlateDecode")
+    file_ref = w._add_object(stream)
+    from pypdf.generic import DictionaryObject
+    desc = w._add_object(DictionaryObject({NameObject("/Type"): NameObject("/FontDescriptor"),
+                                           NameObject("/FontFile2"): file_ref}))
+    fonts = DictionaryObject()
+    for name in ("/F1", "/F2"):
+        fonts[NameObject(name)] = w._add_object(DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/TrueType"),
+            NameObject("/BaseFont"): NameObject("/Shared"), NameObject("/FontDescriptor"): desc}))
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): fonts})
+    path = tmp_path / "shared.pdf"
+    with open(path, "wb") as f:
+        w.write(f)
+    content, _ = pdf_read._page_streams(PdfReader(str(path)).pages[0], {})
+    assert 50_000 <= content < 100_000

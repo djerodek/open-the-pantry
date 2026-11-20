@@ -584,7 +584,7 @@ def test_staged_photos_that_settle_nothing_keep_the_app_closed(tmp_path, library
     assert (live / "img-old.jpg").exists() and (staged / "img-restored.jpg").exists()
 
 
-def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up(monkeypatch):
+def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
     """GPT review of 0221: start-up logged the problem and opened anyway
     (GET /api/recipes 200). Now every request but /healthz gets a 503 that
     says what happened, and the sweeps, scans and backups stay off."""
@@ -593,9 +593,18 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up(monkeypatch):
     from app.database import UPLOADS_DIR
     from app.main import app
     from app.routes import common
+    import uuid
+    from app import models
+    from app.database import SessionLocal
     staged = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
     os.makedirs(staged)
-    monkeypatch.setattr(restore_mod, "_library_photos", lambda data_dir: {"nowhere.jpg"})
+    # A recipe whose photo is in neither folder (review of 0222/0223: the
+    # library itself, rather than a stand-in for its photo list).
+    with SessionLocal() as db:
+        lost = models.Recipe(title="Lost photo", source_type="manual", image_path=f"nowhere-{uuid.uuid4().hex}.jpg")
+        db.add(lost)
+        db.commit()
+        lost_id = lost.id
     try:
         with TestClient(app) as c:
             r = c.get("/api/recipes")
@@ -606,6 +615,9 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up(monkeypatch):
             assert fr.json()["detail"].startswith("Une restauration a été interrompue")
     finally:
         os.rmdir(staged)
+        with SessionLocal() as db:
+            db.query(models.Recipe).filter(models.Recipe.id == lost_id).delete()
+            db.commit()
         common._restore_incomplete.clear()
         common._restoring.clear()
         common.restore_closed_message = common.RESTORE_INCOMPLETE_MESSAGE

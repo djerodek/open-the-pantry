@@ -70,6 +70,9 @@ class _CharCounter(PDFTextDevice):
 def _decoded_size(stream, limit: int) -> int:
     """A pypdf stream's decoded length, or limit + 1 once it's past limit.
     Flate alone (the usual) is inflated only that far."""
+    # stream._data is pypdf's private copy of the raw bytes: the only way to
+    # inflate them part way (get_data() decodes all). Renamed some day, the
+    # AttributeError refuses the PDF as damaged, never skips the limit.
     filters = stream.get("/Filter")
     if filters is None:
         return len(stream._data)
@@ -92,9 +95,16 @@ def _page_streams(page, sizes: dict) -> tuple[int, int]:
     ToUnicode map, each counted once a page. sizes caches a stream's size
     by object number across pages."""
     content = cmaps = 0
+    counted: set = set()
 
     def measure(ref, limit):
+        # Once a page: two fonts sharing one font file decode it once
+        # (review of 0222/0223: it was counted twice).
         key = getattr(ref, "idnum", None)
+        if key is not None and key in counted:
+            return 0
+        if key is not None:
+            counted.add(key)
         if key is not None and key in sizes:
             return sizes[key]
         size = _decoded_size(ref.get_object(), limit)
@@ -170,9 +180,10 @@ def _check_text_size(pdf_path: str, pdf) -> None:
                                    "Try printing it to a new PDF.") from e
         if content > MAX_PDF_PAGE_CONTENT_BYTES or cmaps > MAX_PDF_PAGE_CMAP_BYTES:
             log.warning("PDF page %d: %d bytes of content, %d of character maps", i + 1, content, cmaps)
+            what = "page content and fonts" if content > MAX_PDF_PAGE_CONTENT_BYTES else "font character maps"
             raise PdfTooLargeError(
-                f"Page {i + 1} of this PDF holds far more than a recipe ({max(content, cmaps) // (1024 * 1024)} MB "
-                "of drawing instructions). Try a PDF of just the recipe, or a screenshot.")
+                f"Page {i + 1} of this PDF holds far more than a recipe "
+                f"({max(content, cmaps) // (1024 * 1024)} MB of {what}). Try a PDF of just the recipe, or a screenshot.")
     rsrcmgr = PDFResourceManager(caching=True)
     total = 0
     for i, page in enumerate(pdf.pages):
