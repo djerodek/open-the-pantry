@@ -142,7 +142,7 @@ def test_failure_reason_says_what_was_tried(tmp_path):
     m.set_content("Test\n\nTest test test\n\nTest test\n\nTest\n")
     result = process_tagged_email(m, str(tmp_path))
     assert result["success"] is False
-    assert "no PDF, photo or link" in result["error"]
+    assert "no PDF, document, photo or link" in result["error"]
     assert "body text: no ingredient or step lines" in result["error"]
 
 

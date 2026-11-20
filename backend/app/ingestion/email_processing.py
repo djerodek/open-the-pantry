@@ -543,8 +543,8 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     else:
         tried.append("body: empty")
 
-    if not (parts["pdf_bytes"] or parts["image_bytes"] or parts["urls"]):
-        tried.insert(0, "no PDF, photo or link in the email")
+    if not (parts["pdf_bytes"] or parts.get("doc_bytes") or parts["image_bytes"] or parts["urls"]):
+        tried.insert(0, "no PDF, document, photo or link in the email")
     reason = "No recipe found. Tried: " + "; ".join(tried) + "."
     if pdf_hint:
         reason += (" To add it, save the page as a PDF and email that as an attachment, "

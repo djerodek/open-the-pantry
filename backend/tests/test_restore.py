@@ -598,13 +598,22 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
     from app.database import SessionLocal
     staged = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
     os.makedirs(staged)
-    # A recipe whose photo is in neither folder (review of 0222/0223: the
-    # library itself, rather than a stand-in for its photo list).
+    # Two recipes, one photo only in uploads/, the other only in the staged
+    # folder: neither folder goes with the library (review of 0222/0223: the
+    # library itself, not a stand-in; Claude review of 0225: a photo missing
+    # from both no longer decides anything, so it's split instead).
+    tag = uuid.uuid4().hex
+    live_photo = os.path.join(UPLOADS_DIR, f"only-live-{tag}.jpg")
+    staged_photo = os.path.join(staged, f"only-staged-{tag}.jpg")
+    for path in (live_photo, staged_photo):
+        with open(path, "wb") as f:
+            f.write(b"photo")
     with SessionLocal() as db:
-        lost = models.Recipe(title="Lost photo", source_type="manual", image_path=f"nowhere-{uuid.uuid4().hex}.jpg")
-        db.add(lost)
+        rows = [models.Recipe(title="Split photos", source_type="manual", image_path=os.path.basename(p))
+                for p in (live_photo, staged_photo)]
+        db.add_all(rows)
         db.commit()
-        lost_id = lost.id
+        row_ids = [r.id for r in rows]
     try:
         with TestClient(app) as c:
             r = c.get("/api/recipes")
@@ -614,9 +623,11 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
             fr = c.get("/api/recipes", headers={"X-App-Lang": "fr"})
             assert fr.json()["detail"].startswith("Une restauration a été interrompue")
     finally:
+        os.remove(staged_photo)
         os.rmdir(staged)
+        os.remove(live_photo)
         with SessionLocal() as db:
-            db.query(models.Recipe).filter(models.Recipe.id == lost_id).delete()
+            db.query(models.Recipe).filter(models.Recipe.id.in_(row_ids)).delete()
             db.commit()
         common._restore_incomplete.clear()
         common._restoring.clear()
@@ -1054,3 +1065,20 @@ def test_settle_marker_marks_only_when_the_staged_photos_alone_fit(tmp_path):
     (tmp_path / "recipes.db").unlink()
     _library(tmp_path, "img-old.jpg")
     assert not restore.staged_photos_fit(str(tmp_path), str(live))
+
+
+@pytest.mark.parametrize("where,expected", [
+    ("rest in uploads", "live"), ("rest in staged", "staged"), ("none anywhere", "live")])
+def test_a_photo_missing_from_both_folders_decides_nothing(tmp_path, where, expected):
+    """Claude review of 0225: a library photo missing from both folders (Library
+    check's "photo file missing") kept the app closed after an interrupted
+    restore. Only photos that exist decide; when none does, uploads/ stays."""
+    from app import restore
+    live, staged = _layout(tmp_path)
+    present = {"rest in uploads": ["img-old.jpg"], "rest in staged": ["img-restored.jpg"], "none anywhere": []}[where]
+    _library(tmp_path, "img-gone.jpg", *present)
+    result = restore.recover_interrupted_restore(str(tmp_path), str(live))
+    if expected == "live":
+        assert result is None and (live / "img-old.jpg").exists() and staged.is_dir()
+    else:
+        assert result == str(staged) and (live / "img-restored.jpg").exists() and not staged.exists()

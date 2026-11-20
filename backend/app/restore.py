@@ -348,20 +348,31 @@ def _library_photos(data_dir: str) -> set[str] | None:
         return None
 
 
-def _matching_folder(data_dir: str, folders: list[str]) -> str | None:
-    """The first of folders holding every photo the library uses (GPT review
-    of 0221: an interrupted restore without its marker can often be settled
-    this way rather than guessed). None when the library can't be read or no
-    folder holds them all."""
+def _matching_folder(data_dir: str, folders: list[str], among: list[str] | None = None) -> str | None:
+    """The first of folders holding every photo the library uses that exists
+    in any of among (folders when not given): GPT review of 0221, an
+    interrupted restore without its marker can often be settled this way
+    rather than guessed. A photo missing from all of them (Library check's
+    "photo file missing") says nothing about which folder goes with the
+    library, so it doesn't count (Claude review of 0225: one such photo
+    kept the app closed). When none of the library's photos exists, no
+    folder fits it better than another: the first is returned. None when
+    the library can't be read or no folder holds them all."""
     used = _library_photos(data_dir)
     if used is None:
         return None
-    for folder in folders:
+    listings = {}
+    for folder in dict.fromkeys(list(folders) + list(among or [])):
         try:
-            if os.path.isdir(folder) and used <= set(os.listdir(folder)):
-                return folder
+            listings[folder] = set(os.listdir(folder)) if os.path.isdir(folder) else None
         except OSError:
             log.warning("Start-up: couldn't list %s", folder, exc_info=True)
+            listings[folder] = None
+    found = set().union(*(names for names in listings.values() if names))
+    existing = used & found
+    for folder in folders:
+        if listings[folder] is not None and existing <= listings[folder]:
+            return folder
     return None
 
 
@@ -393,7 +404,7 @@ def staged_photos_fit(data_dir: str, live_dir: str) -> bool:
     from its own backup), so its kept settings are put back: written just
     before the restore, they match this server either way."""
     staged = live_dir.rstrip("/") + STAGED_SUFFIX
-    return os.path.isdir(staged) and _matching_folder(data_dir, [staged]) == staged
+    return os.path.isdir(staged) and _matching_folder(data_dir, [staged], [live_dir.rstrip("/"), staged]) == staged
 
 
 def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
@@ -436,7 +447,8 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
             match = _matching_folder(data_dir, [live, staged])
             if match == live:
                 log.warning("Start-up: %s holds staged photos from a restore that stopped before the library "
-                            "was replaced (uploads/ has every photo the library uses); delete the folder when "
+                            "was replaced (uploads/ has every photo of the library's that exists); delete the "
+                            "folder when "
                             "you like", os.path.basename(staged))
                 return None
             if match == staged:
@@ -445,7 +457,8 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
                 marked = True
             else:
                 log.error("Start-up: %s holds staged photos from a restore that stopped, and neither it nor "
-                          "uploads/ has every photo the library uses. The app stays closed: stop it, check "
+                          "uploads/ has every photo of the library's that exists. The app stays closed: stop "
+                          "it, check "
                           "which folder belongs with recipes.db (or restore a backup again by hand, see the "
                           "README), and move or delete %s.", os.path.basename(staged), os.path.basename(staged))
                 raise RestoreUnresolved("staged photos without a marker, matching neither the library nor uploads/")

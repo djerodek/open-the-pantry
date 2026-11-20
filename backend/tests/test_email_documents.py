@@ -67,6 +67,8 @@ def test_a_pdf_comes_before_a_document(tmp_path):
 
 def test_the_french_reply_names_the_document():
     from app import i18n
+    assert i18n.translate("No recipe found. Tried: no PDF, document, photo or link in the email; body: empty.", "fr") \
+        .startswith("Aucune recette trouvée. Essais : aucun PDF, document, photo ni lien dans le courriel;")
     assert i18n.translate("No recipe found. Tried: notes.docx: not a Word, text or Markdown file.", "fr") == \
         "Aucune recette trouvée. Essais : notes.docx : pas un fichier Word, texte ou Markdown."
     assert i18n.translate('Saved "Pancakes" (from "Recipe", via document attachment)', "fr").endswith(

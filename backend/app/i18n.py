@@ -572,6 +572,7 @@ _FR_PATTERNS = [
     _p(r": over the (\d+) MB limit(?=[;.]|$)", r" : plus de \1 Mo"),
     _p(r": couldn't be read(?=[;.]|$)", " : illisible"),
     _p(r"No recipe found\. Tried: ", "Aucune recette trouvée. Essais : "),
+    _p(r"no PDF, document, photo or link in the email(?=[;.]|$)", "aucun PDF, document, photo ni lien dans le courriel"),
     _p(r": not a valid PDF, or over the size limit", " : PDF invalide, ou trop volumineux"),
     _p(r": no ingredient or step lines found in its text", " : aucune ligne d'ingrédient ou d'étape dans son texte"),
     _p(r": not a supported image \((.+?)\), or over the size limit",

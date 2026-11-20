@@ -33,6 +33,10 @@ def months(line):
     ("1 jalapeño, seeded", "........S..."),
     ("4 stalks rhubarb", "....MJJAS..."),        # the calendar's available months (review of 0216)
     ("1 bunch asparagus", "....MJ......"),
+    # Claude review of 0225: a preserved form only as an alternative.
+    ("6 tomatoes (or 1 can)", "........S..."),
+    ("6 tomatoes, or 1 can", "........S..."),
+    ("2 cups blueberries, fresh or frozen", "......JA...."),
 ])
 def test_produce_in_its_months(line, expected):
     assert months(line) == expected
