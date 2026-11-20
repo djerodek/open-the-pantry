@@ -180,10 +180,18 @@ def _check_text_size(pdf_path: str, pdf) -> None:
                                    "Try printing it to a new PDF.") from e
         if content > MAX_PDF_PAGE_CONTENT_BYTES or cmaps > MAX_PDF_PAGE_CMAP_BYTES:
             log.warning("PDF page %d: %d bytes of content, %d of character maps", i + 1, content, cmaps)
-            what = "page content and fonts" if content > MAX_PDF_PAGE_CONTENT_BYTES else "font character maps"
+            # The number and the name from the same measure, the one past its
+            # limit (content first when both are): max() of the two named
+            # the wrong one when the maps were over and the content larger
+            # but under its own limit (review of 0224). The number is a lower
+            # bound: a stream is inflated only to just past its limit.
+            if content > MAX_PDF_PAGE_CONTENT_BYTES:
+                size, what = content, "page content and fonts"
+            else:
+                size, what = cmaps, "font character maps"
             raise PdfTooLargeError(
                 f"Page {i + 1} of this PDF holds far more than a recipe "
-                f"({max(content, cmaps) // (1024 * 1024)} MB of {what}). Try a PDF of just the recipe, or a screenshot.")
+                f"({size // (1024 * 1024)} MB of {what}). Try a PDF of just the recipe, or a screenshot.")
     rsrcmgr = PDFResourceManager(caching=True)
     total = 0
     for i, page in enumerate(pdf.pages):

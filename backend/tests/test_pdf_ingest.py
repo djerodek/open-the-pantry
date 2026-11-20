@@ -1095,3 +1095,24 @@ def test_a_font_file_two_fonts_share_is_counted_once_a_page(tmp_path):
         w.write(f)
     content, _ = pdf_read._page_streams(PdfReader(str(path)).pages[0], {})
     assert 50_000 <= content < 100_000
+
+
+@pytest.mark.parametrize("content,cmaps,expected", [
+    (21, 1, "21 MB of page content and fonts"),
+    (1, 5, "5 MB of font character maps"),
+    (15, 5, "5 MB of font character maps"),       # content larger but under its limit
+    (21, 5, "21 MB of page content and fonts"),
+], ids=["content", "maps", "maps-over-content-larger", "both"])
+def test_the_size_refusal_names_the_measure_past_its_limit(tmp_path, monkeypatch, content, cmaps, expected):
+    """Review of 0224: the message's number and its name come from the
+    same measure, the one over its limit."""
+    from app import i18n
+    path = _text_stream_pdf(tmp_path / "ok.pdf", 100)
+    mb = 1024 * 1024
+    monkeypatch.setattr(pdf_read, "_page_streams", lambda page, sizes: (content * mb, cmaps * mb))
+    with pytest.raises(pdf_read.PdfTooLargeError) as e:
+        pdf_read.extract_pdf_text(str(path))
+    assert f"({expected})" in str(e.value)
+    fr = i18n.translate(str(e.value), "fr")
+    assert fr.startswith("La page 1 de ce PDF contient bien plus qu'une recette (")
+    assert ("de contenu et de polices" if "content" in expected else "de tables de caractères des polices") in fr
