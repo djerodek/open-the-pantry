@@ -80,7 +80,8 @@ Son fonctionnement :
     et 400 000 en tout, 20 Mo d'instructions de dessin et de polices
     intégrées par page, et 4 Mo de tables de caractères des polices, chaque
     flux décodé seulement jusqu'à ce qui reste. Un PDF qui ne peut pas être
-    mesuré est refusé.
+    mesuré, ou qui utilise une compression que la vérification ne connaît
+    pas, est refusé.
   - **Fichiers Word, texte et Markdown** : la nature d'un fichier vient de
     son contenu, pas de son nom. D'un fichier Word, seul le texte du
     document est lu (au plus 20 Mo, parmi au plus 2 000 parties), et son

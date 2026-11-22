@@ -178,13 +178,14 @@ def line_months(line: str) -> int:
     produce is in season; 0 when it names none, or one not counted."""
     if not line:
         return 0
-    # Preserved forms count in the line outside brackets, before an "or":
-    # "6 tomatoes (or 1 can)" and "blueberries, fresh or frozen" are fresh
-    # produce, "1 cup blueberries, frozen" and "1 (796 ml) can tomatoes"
-    # aren't (Claude review of 0225: "can" in the bracket counted).
-    plain = _fold(_BRACKETS.sub(" ", line))
-    plain = re.split(r"\s(?:or|ou)\s", plain, maxsplit=1)[0]
-    if _PRESERVED.search(plain):
+    # A preserved form leaves the line out only when every alternative
+    # (split at "or") is preserved: "6 tomatoes (or 1 can)", "fresh or
+    # frozen" and "frozen or fresh" are fresh produce; "4 cups strawberries
+    # (frozen)", "1 (796 ml) can tomatoes" and "frozen or canned corn"
+    # aren't (Claude reviews of 0225 and 0228: 0226 dropped brackets, so
+    # "(frozen)" counted as fresh, and took only the first alternative).
+    alternatives = re.split(r"[\s(\[](?:or|ou)\s", _fold(line))
+    if all(_PRESERVED.search(alt) for alt in alternatives):
         return 0
     # Amounts in brackets ("2 cups (500 ml) strawberries") and a leading
     # amount ("1/2 chou") first, so their "(" and "/" don't end the name.

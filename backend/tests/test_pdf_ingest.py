@@ -1183,3 +1183,70 @@ def test_the_bounded_decoders_match_pdfminers(tmp_path):
     runs = bytes([129, 65]) * 1000 + bytes([2]) + b"abc" + bytes([128])
     assert pdf_read._run_length(runs, 10**9) == rldecode(runs)
     assert len(pdf_read._run_length(runs, 500)) == 501
+
+
+def _lzw_codes(codes, width=9):
+    bits = "".join(format(c, f"0{width}b") for c in codes)
+    bits += "0" * (-len(bits) % 8)
+    return bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits), 8))
+
+
+def test_lzw_goes_on_past_an_end_code_as_pdfminer_does():
+    """Claude review of 0228: Clear, A, B, end, C, D, end is "ABCD" to
+    pdfminer; the measure stopped at the first end code ("AB")."""
+    from pdfminer.lzw import lzwdecode
+    data = _lzw_codes([256, 65, 66, 257, 67, 68, 257])
+    assert lzwdecode(data) == pdf_read._lzw(data, 10**9) == b"ABCD"
+
+
+@pytest.mark.parametrize("filt,raw,expected", [
+    ("/ASCII85Decode", b"z" * 1000 + b"~>", 4000),                # each "z" is four bytes
+    ("/ASCIIHexDecode", b"41 42 43>", 3),
+], ids=["ascii85-z", "asciihex"])
+def test_ascii_filters_are_counted_before_they_are_decoded(filt, raw, expected, monkeypatch):
+    """GPT and Claude reviews of 0228: decoded whole, past the limit."""
+    from pdfminer import ascii85
+    stream = StreamObject()
+    stream._data = raw
+    stream[NameObject("/Filter")] = NameObject(filt)
+    assert pdf_read._decoded_size(stream, 10**9) == expected
+    called = []
+    monkeypatch.setattr(ascii85, "ascii85decode", lambda d: called.append(d) or b"")
+    monkeypatch.setattr(ascii85, "asciihexdecode", lambda d: called.append(d) or b"")
+    assert pdf_read._decoded_size(stream, expected - 1) == expected        # over, nothing decoded
+    assert called == []
+
+
+def test_a_ccitt_stream_is_measured_by_what_it_can_decode_to(tmp_path):
+    """GPT review of 0228: pdfminer decodes CCITT, and a 1 KB stream that
+    became 1.77 MB was counted at 1 KB. It's measured by an upper bound now,
+    and a filter pdfminer doesn't know is refused, not counted raw."""
+    from pypdf.generic import DictionaryObject, NumberObject
+    stream = StreamObject()
+    stream._data = b"\x00" * 1024
+    stream[NameObject("/Filter")] = NameObject("/CCITTFaxDecode")
+    stream[NameObject("/DecodeParms")] = DictionaryObject({NameObject("/K"): NumberObject(-1),
+                                                           NameObject("/Columns"): NumberObject(1728)})
+    assert pdf_read._decoded_size(stream, 10**9) == 8 * 1024 * 216 >= 1_769_472       # the review's 1.77 MB
+    stream[NameObject("/Filter")] = NameObject("/DCTDecode")
+    assert pdf_read._decoded_size(stream, 10**9) == 1024                 # pdfminer keeps it as it is
+    stream[NameObject("/Filter")] = NameObject("/MadeUpDecode")
+    with pytest.raises(pdf_read._Unmeasurable):
+        pdf_read._decoded_size(stream, 10**9)
+    path = _fonts_pdf(tmp_path / "odd.pdf", [(b"abc", "/MadeUpDecode")])
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"uses a kind of compression that can't be checked"):
+        pdf_read.extract_pdf_text(str(path))
+
+
+def test_many_broken_flate_streams_are_measured_quickly():
+    """DeepSeek review of 0228: a broken chunk retried a byte at a time cost
+    tens of milliseconds a stream; halving takes a few passes."""
+    import os
+    import time
+    import zlib
+    broken = bytearray(zlib.compress(os.urandom(12_000)) + os.urandom(16_000))   # junk after the end
+    broken[200] ^= 0xFF
+    t = time.monotonic()
+    for _ in range(200):
+        pdf_read._inflate(bytes(broken), 10**9)
+    assert time.monotonic() - t < 2.0

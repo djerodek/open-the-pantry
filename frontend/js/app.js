@@ -2847,7 +2847,6 @@ function notesSection(recipe) {
     toggleBtn.setAttribute("aria-expanded", String(what !== null));
     if (what === "view") viewText.textContent = recipe.notes || "";
     if (what === "edit") {
-      textarea.value = recipe.notes || "";
       textarea.focus();
     } else if (moveFocus) {
       (what === "view" ? editBtn : toggleBtn).focus();
@@ -2859,6 +2858,9 @@ function notesSection(recipe) {
     "aria-expanded": "false",
     onclick: () => {
       if (!viewWrap.hidden || !editorWrap.hidden) show(null);
+      // Text typed and not saved stays (Claude review of 0228: closing with
+      // this button threw it away): the editor reopens with it.
+      else if (textarea.value !== (recipe.notes || "")) show("edit");
       else show(hasNotes() ? "view" : "edit");
     },
   });
@@ -2882,6 +2884,7 @@ function notesSection(recipe) {
       const ok = await patchNotes(recipe.id, newNotes);
       if (ok) {
         recipe.notes = newNotes || null;
+        textarea.value = newNotes;
         syncButtonState();
         show(hasNotes() ? "view" : null, true);
         announce(tx("Notes saved."));
@@ -2893,7 +2896,10 @@ function notesSection(recipe) {
 
   const cancelBtn = el("button", {
     class: "btn-secondary", type: "button", text: tx("Cancel"),
-    onclick: () => show(hasNotes() ? "view" : null, true),
+    onclick: () => {
+      textarea.value = recipe.notes || "";       // only Cancel puts the saved notes back
+      show(hasNotes() ? "view" : null, true);
+    },
   });
 
   editorWrap.appendChild(el("div", { class: "field" }, [

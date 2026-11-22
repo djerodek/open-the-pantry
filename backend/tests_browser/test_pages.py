@@ -1163,3 +1163,29 @@ def test_a_time_filter_tapped_twice_leaves_its_recipes_out(server, api, page):
     assert p.page.locator(".time-filter-row.sub").count() == 0
     p.page.click(".time-filter-row:not(.sub) button.filter-chip[data-filter='out']")
     wait_until(p.page, f"{cards}.length === 3")
+
+
+def test_unsaved_notes_survive_closing_with_the_notes_button(server, api, page):
+    """Claude review of 0228: since 0227, closing the editor with the Notes
+    button threw away what was typed. It stays, and the editor reopens with
+    it; Cancel is what puts the saved notes back."""
+    r = add_recipe(api, f"Browser notes draft {uuid.uuid4().hex[:6]}")
+    api.patch(f"/api/recipes/{r['id']}/notes", json={"notes": "Saved."})
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    toggle, view, editor = ".notes-toggle-btn", f"#notes-view-{r['id']}", f"#notes-editor-{r['id']}"
+    textarea = f"#notes-textarea-{r['id']}"
+    pg.click(toggle)
+    pg.click(f"{view} .notes-edit-btn")
+    pg.fill(textarea, "Saved. Plus a draft.")
+    pg.click(toggle)                                    # closes, not saved
+    assert pg.is_hidden(editor) and pg.is_hidden(view)
+    pg.click(toggle)                                    # back in the editor, draft kept
+    assert pg.is_visible(editor) and pg.input_value(textarea) == "Saved. Plus a draft."
+    pg.click(f"{editor} button:has-text('Cancel')")
+    assert pg.inner_text(f"{view} .notes-view-text") == "Saved."
+    pg.click(f"{view} .notes-edit-btn")
+    assert pg.input_value(textarea) == "Saved."

@@ -87,3 +87,17 @@ def test_a_document_over_the_upload_limit_is_named(tmp_path, monkeypatch):
     assert "huge.txt: over the 2 MB limit" in result["error"], result
     assert "huge.txt : plus de 2 Mo" in i18n.translate(result["error"], "fr")
     assert os.listdir(tmp_path) == []
+
+
+def test_the_attachments_passed_over_are_named_in_french():
+    """Claude review of 0228: these reasons reach the result email and
+    Check email, not only the log."""
+    from app import i18n
+    english = ("No recipe found. Tried: a.bmp: not a supported image (JPEG, PNG, GIF or WebP); "
+               "b.jpg: 40x30, too small to be a recipe photo; c.zip: application/zip isn't a PDF, Word, "
+               "text or Markdown file, or an image; d.jpg: a larger photo was used instead.")
+    assert i18n.translate(english, "fr") == (
+        "Aucune recette trouvée. Essais : a.bmp : pas une image prise en charge (JPEG, PNG, GIF ou WebP); "
+        "b.jpg : 40x30, trop petite pour être une photo de recette; c.zip : application/zip n'est ni un "
+        "fichier PDF, Word, texte ou Markdown, ni une image; d.jpg : une photo plus grande a été utilisée "
+        "à la place.")

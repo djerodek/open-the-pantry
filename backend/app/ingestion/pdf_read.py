@@ -75,27 +75,37 @@ def _inflate(data: bytes, limit: int) -> bytes:
     """Flate, at most limit + 1 bytes out. Data that stops inflating part
     way gives what came out before the error, as pdfminer's own recovery
     does (GPT review of 0227: an error was measured as nothing while
-    pdfminer recovered the whole stream). The chunk with the error is
-    retried a byte at a time from a copy taken before it."""
+    pdfminer recovered the whole stream). In the chunk with the error, the
+    longest prefix that inflates is found by halving, from a copy taken
+    before the chunk: a few passes, not one per byte (DeepSeek review of
+    0228: a byte at a time could cost seconds over many broken streams)."""
     out = bytearray()
     inflater = zlib.decompressobj()
     step = 16 * 1024
+
+    def inflates(state, part):
+        try:
+            state.copy().decompress(part)
+            return True
+        except zlib.error:
+            return False
+
     for start in range(0, len(data), step):
         chunk = data[start:start + step]
         before = inflater.copy()
         try:
             out += inflater.decompress(chunk, limit + 1 - len(out))
         except zlib.error:
-            inflater = before
-            for k in range(len(chunk)):
-                try:
-                    out += inflater.decompress(chunk[k:k + 1], limit + 1 - len(out))
-                except zlib.error:
-                    log.debug("_inflate: Flate data broken after %d bytes out", len(out))
-                    return bytes(out)
-                if len(out) > limit or inflater.unconsumed_tail:
-                    return bytes(out)
-            continue
+            lo, hi = 0, len(chunk) - 1           # chunk[:lo] inflates; chunk[:hi + 1] doesn't
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if inflates(before, chunk[:mid]):
+                    lo = mid
+                else:
+                    hi = mid - 1
+            out += before.decompress(chunk[:lo], limit + 1 - len(out))
+            log.debug("_inflate: Flate data broken after %d bytes out", len(out))
+            return bytes(out[:limit + 1])
         if len(out) > limit or inflater.unconsumed_tail:
             return bytes(out)
         if inflater.eof:
@@ -120,11 +130,13 @@ def _run_length(data: bytes, limit: int) -> bytes:
 
 
 def _lzw(data: bytes, limit: int) -> bytes:
-    """PDF LZW (early change), at most limit + 1 bytes out; stops at a code
-    it can't read, as pdfminer does."""
+    """PDF LZW, at most limit + 1 bytes out, step for step as pdfminer's
+    LZWDecoder: an end-of-data code is passed over, not the end (Claude
+    review of 0228: stopping there measured "AB" where pdfminer reads
+    "ABCD"), and a code it can't read ends it."""
     out = bytearray()
-    table = [bytes([n]) for n in range(256)] + [b"", b""]
-    width, prev, buf, nbits = 9, None, 0, 0
+    table: list = [bytes([n]) for n in range(256)] + [None, None]
+    width, prev, buf, nbits = 9, b"", 0, 0
     for byte in data:
         buf = (buf << 8) | byte
         nbits += 8
@@ -133,35 +145,81 @@ def _lzw(data: bytes, limit: int) -> bytes:
             code = (buf >> nbits) & ((1 << width) - 1)
             buf &= (1 << nbits) - 1
             if code == 256:
-                table, width, prev = table[:258], 9, None
+                table, width, prev = table[:258], 9, b""
                 continue
             if code == 257:
-                return bytes(out)
-            if code < len(table):
-                entry = table[code]
-                if prev is not None:
-                    table.append(prev + entry[:1])
-            elif code == len(table) and prev is not None:
-                entry = prev + prev[:1]
-                table.append(entry)
+                continue
+            if not prev:
+                if code >= len(table) or table[code] is None:
+                    return bytes(out)
+                entry = prev = table[code]
             else:
-                return bytes(out)
+                if code < len(table) and table[code] is not None:
+                    entry = table[code]
+                    table.append(prev + entry[:1])
+                elif code == len(table):
+                    entry = prev + prev[:1]
+                    table.append(entry)
+                else:
+                    return bytes(out)
+                if len(table) in (511, 1023, 2047):
+                    width = {511: 10, 1023: 11, 2047: 12}[len(table)]
+                prev = entry
             out += entry
             if len(out) > limit:
                 return bytes(out[:limit + 1])
-            prev = entry
-            if len(table) >= (1 << width) - 1 and width < 12:
-                width += 1
     return bytes(out)
+
+
+def _ascii85_size(data: bytes) -> int:
+    """What ASCII85 decodes to, counted without decoding: four bytes a
+    group of five, four for each "z" (Claude review of 0228: one "z" is
+    four zero bytes, so the output can outgrow the input)."""
+    data = data.split(b"~>")[0].translate(None, b" \t\r\n\x00\x0c")
+    if data.startswith(b"<~"):
+        data = data[2:]
+    zs = data.count(b"z")
+    rest = len(data) - zs
+    return 4 * zs + 4 * (rest // 5) + max(0, rest % 5 - 1)
+
+
+def _asciihex_size(data: bytes) -> int:
+    data = data.split(b">")[0].translate(None, b" \t\r\n\x00\x0c")
+    return (len(data) + 1) // 2
+
+
+def _ccitt_bound(data: bytes, params) -> int:
+    """At most what pdfminer's CCITT decoder can write: a row of
+    (Columns + 7) // 8 bytes for every bit of input, a row taking at least
+    one (GPT review of 0228: the stream was counted at its compressed size,
+    1 KB that pdfminer turned into 1.77 MB). An upper bound: CCITT belongs
+    in scanned images, which aren't measured here, not in text or fonts."""
+    columns = 1728
+    try:
+        get = getattr(params, "get", None)
+        columns = int(get("/Columns", 1728)) if get is not None else 1728
+    except (TypeError, ValueError):
+        log.debug("_ccitt_bound: unreadable /Columns", exc_info=True)
+    return 8 * len(data) * ((max(columns, 1) + 7) // 8)
+
+
+class _Unmeasurable(Exception):
+    pass
+
+
+_PASSED_THROUGH = {"/DCTDecode", "/DCT", "/JBIG2Decode", "/JPXDecode"}   # pdfminer keeps these as they are
 
 
 def _decoded_size(stream, limit: int) -> int:
     """A pypdf stream's decoded length, or more than limit once it's past
-    limit, decoding no further: each filter pdfminer applies (Flate, LZW,
-    run-length, ASCII85, ASCIIHex, in the stream's order) is run here with
-    the same bound, so no stage holds more than limit + 1 bytes (GPT review
-    of 0227: other filters went through pypdf's get_data(), up to 75 MB a
-    stream). Other filters (images') pdfminer passes through as they are."""
+    limit, decoding no further. Each filter pdfminer decodes is handled
+    here (GPT review of 0228: the list is pdfminer's, not a guess): Flate,
+    LZW and run-length decoded with the same bound, so no stage holds more
+    than limit + 1 bytes; ASCII85 and ASCIIHex counted before they're
+    decoded, and decoded only within the limit; CCITT by an upper bound.
+    pdfminer leaves DCT, JBIG2 and JPX as they are, so the measure stops
+    there. Anything else (Crypt, unknown names) raises _Unmeasurable: the
+    page is refused rather than counted at its compressed size."""
     # stream._data is pypdf's private copy of the raw bytes: the only way to
     # decode them part way (get_data() decodes all). Renamed some day, the
     # AttributeError refuses the PDF as damaged, never skips the limit.
@@ -169,7 +227,9 @@ def _decoded_size(stream, limit: int) -> int:
     data = stream._data
     filters = stream.get("/Filter")
     names = [] if filters is None else [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
-    for name in names:
+    params = stream.get("/DecodeParms")
+    params = list(params) if isinstance(params, list) else [params] * len(names)
+    for n, name in enumerate(names):
         if name in ("/FlateDecode", "/Fl"):
             data = _inflate(data, limit)
         elif name in ("/LZWDecode", "/LZW"):
@@ -177,11 +237,20 @@ def _decoded_size(stream, limit: int) -> int:
         elif name in ("/RunLengthDecode", "/RL"):
             data = _run_length(data, limit)
         elif name in ("/ASCII85Decode", "/A85"):
-            data = ascii85decode(data)          # never longer than its input
+            if _ascii85_size(data) > limit:
+                return limit + 1
+            data = ascii85decode(data)
         elif name in ("/ASCIIHexDecode", "/AHx"):
+            if _asciihex_size(data) > limit:
+                return limit + 1
             data = asciihexdecode(data)
-        else:
+        elif name in ("/CCITTFaxDecode", "/CCF"):
+            p = params[n] if n < len(params) else None
+            return min(_ccitt_bound(data, p.get_object() if p is not None else None), limit + 1)
+        elif name in _PASSED_THROUGH:
             break
+        else:
+            raise _Unmeasurable(name)
         if len(data) > limit:
             break
     return len(data)
@@ -285,6 +354,10 @@ def _check_text_size(pdf_path: str, pdf) -> None:
     for i, page in enumerate(pages):
         try:
             content, cmaps = _page_streams(page, sizes)
+        except _Unmeasurable as e:
+            log.info("_check_text_size: page %d has a stream in %s", i + 1, e)
+            raise PdfTooLargeError(f"Page {i + 1} of this PDF uses a kind of compression that can't be checked "
+                                   "before it's read. Try printing it to a new PDF.") from e
         except Exception as e:
             log.info("_check_text_size: page %d can't be measured", i + 1, exc_info=True)
             raise PdfTooLargeError(f"Page {i + 1} of this PDF is damaged and can't be checked before it's read. "

@@ -68,7 +68,8 @@ How it works:
     before it is read: at most 30,000 characters a page and 400,000 in
     all, 20 MB of drawing instructions and embedded fonts a page, and 4 MB
     of fonts' character maps, each stream decoded only as far as what's
-    left. A PDF that can't be measured is refused.
+    left. A PDF that can't be measured, or uses a compression the check
+    doesn't know, is refused.
   - **Word, text and Markdown files**: what a file is comes from its bytes,
     not its name. From a Word file only the document's text is read (at
     most 20 MB of it, from at most 2,000 parts), and its XML never fetches

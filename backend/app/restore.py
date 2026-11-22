@@ -25,6 +25,7 @@ Steps (main.restore_backup drives them, with the app quiet):
 """
 from __future__ import annotations
 
+import filecmp
 import json
 import os
 import shutil
@@ -403,7 +404,6 @@ def _photos_differ(data_dir: str, a: str, b: str) -> list[str]:
     review of 0227; the app's own names are random, so this takes a foreign
     or hand-made backup). Read in full, but only at a start-up that finds a
     restore's staged folder."""
-    import filecmp
     used = _library_photos(data_dir) or set()
     differ = []
     for name in sorted(used):

@@ -37,6 +37,7 @@ def months(line):
     ("6 tomatoes (or 1 can)", "........S..."),
     ("6 tomatoes, or 1 can", "........S..."),
     ("2 cups blueberries, fresh or frozen", "......JA...."),
+    ("2 cups blueberries, frozen or fresh", "......JA...."),
 ])
 def test_produce_in_its_months(line, expected):
     assert months(line) == expected
@@ -52,6 +53,8 @@ def test_produce_in_its_months(line, expected):
     # Review of 0216: canned without the word "canned", and choux pastry.
     "1 (796 ml) can tomatoes", "1 boîte (796 ml) de tomates", "2 tins chopped tomatoes", "1 jar roasted red peppers",
     "1 recette de pâte à choux",
+    # Claude review of 0228: every alternative preserved, or a bracketed note.
+    "4 cups strawberries (frozen)", "2 cups frozen or canned corn",
 ])
 def test_not_counted(line):
     assert line_months(line) == 0
