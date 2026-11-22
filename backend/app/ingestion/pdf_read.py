@@ -184,6 +184,11 @@ def _ascii85_size(data: bytes) -> int:
     from pdfminer.ascii85 import end_re, start_re
     data = end_re.sub(b"", start_re.sub(b"", data, count=1), count=1)
     data = data.translate(None, b" \t\n\r\v")
+    # Exact for what base64.a85decode accepts. Anything it refuses (a
+    # character outside "!".."u" and "z", a "z" inside a group) makes
+    # pdfminer's decode fail, so nothing is read: the count is never below
+    # what pdfminer produces (DeepSeek review of 0231). Note that start_re
+    # takes off a leading "~" with or without "<".
     zs = data.count(b"z")
     rest = len(data) - zs
     return 4 * zs + 4 * (rest // 5) + max(0, rest % 5 - 1)

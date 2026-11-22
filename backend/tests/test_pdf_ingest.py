@@ -1311,7 +1311,9 @@ def test_a_null_filter_entry_counts_as_absent():
     b"\x0b<~>sVLWz!($ZP!'pS~>", b">sVLWz!($ZP!'pS~",
 ], ids=["<~", "~", "< ~", "<newline~", "vtab", "trailing ~"])
 def test_ascii85_start_and_end_as_pdfminer_takes_them_off(raw):
-    """Claude review of 0230: other start forms counted 0 or 1."""
+    """Claude review of 0230: other start forms counted 0 or 1. Equal, not
+    at least: the count mirrors pdfminer, so a pdfminer upgrade that reads
+    these differently should fail here (DeepSeek review of 0231)."""
     from pdfminer.ascii85 import ascii85decode
     assert pdf_read._ascii85_size(raw) == len(ascii85decode(raw))
 
