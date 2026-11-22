@@ -1250,3 +1250,41 @@ def test_many_broken_flate_streams_are_measured_quickly():
     for _ in range(200):
         pdf_read._inflate(bytes(broken), 10**9)
     assert time.monotonic() - t < 2.0
+
+
+def _stream(data, **keys):
+    from pypdf.generic import ArrayObject, DictionaryObject, NumberObject
+    stream = StreamObject()
+    stream._data = data
+    for key, value in keys.items():
+        if isinstance(value, list):
+            value = ArrayObject(NameObject(v) for v in value)
+        elif isinstance(value, dict):
+            value = DictionaryObject({NameObject(k): NumberObject(v) for k, v in value.items()})
+        else:
+            value = NameObject(value)
+        stream[NameObject("/" + key)] = value
+    return stream
+
+
+def test_the_filter_list_is_read_as_pdfminer_reads_it():
+    """Claude review of 0229: /F instead of /Filter, or a filter after DCT,
+    was counted at the compressed size while pdfminer decoded it; /DP was
+    ignored for CCITT; a filter after CCITT wasn't counted."""
+    import zlib
+    text = b"BT /F1 12 Tf (" + b"recipe " * 900 + b") Tj ET"
+    packed = zlib.compress(text, 9)
+    assert pdf_read._decoded_size(_stream(packed, F="/FlateDecode"), 10**9) == len(text)
+    assert pdf_read._decoded_size(_stream(packed, Filter=["/DCTDecode", "/FlateDecode"]), 10**9) == len(text)
+    ccitt = _stream(b"\x00" * 100, Filter="/CCITTFaxDecode", DP={"/Columns": 80}, DecodeParms={"/Columns": 8000})
+    assert pdf_read._decoded_size(ccitt, 10**9) == 8 * 100 * 10                   # /DP first: 80 columns
+    with pytest.raises(pdf_read._Unmeasurable):
+        pdf_read._decoded_size(_stream(b"\x00", Filter=["/CCITTFaxDecode", "/FlateDecode"]), 10**9)
+
+
+def test_ascii85_starting_with_a_greater_than_sign_is_counted():
+    """Claude review of 0229: "<~>..." was cut at its first "~>" before the
+    "<~" came off, and counted as nothing."""
+    from pdfminer.ascii85 import ascii85decode
+    raw = b"<~>sVLWz!($ZP!'pS~>"
+    assert pdf_read._ascii85_size(raw) == len(ascii85decode(raw)) == 15

@@ -84,8 +84,10 @@ def _inflate(data: bytes, limit: int) -> bytes:
     step = 16 * 1024
 
     def inflates(state, part):
+        # Held to the same bound as the decompress it stands for (Claude
+        # review of 0229: a trial could put out more than the limit left).
         try:
-            state.copy().decompress(part)
+            state.copy().decompress(part, limit + 1 - len(out))
             return True
         except zlib.error:
             return False
@@ -162,8 +164,8 @@ def _lzw(data: bytes, limit: int) -> bytes:
                     table.append(entry)
                 else:
                     return bytes(out)
-                if len(table) in (511, 1023, 2047):
-                    width = {511: 10, 1023: 11, 2047: 12}[len(table)]
+                if width < 12 and len(table) == (1 << width) - 1:       # 511, 1023, 2047
+                    width += 1
                 prev = entry
             out += entry
             if len(out) > limit:
@@ -175,9 +177,12 @@ def _ascii85_size(data: bytes) -> int:
     """What ASCII85 decodes to, counted without decoding: four bytes a
     group of five, four for each "z" (Claude review of 0228: one "z" is
     four zero bytes, so the output can outgrow the input)."""
-    data = data.split(b"~>")[0].translate(None, b" \t\r\n\x00\x0c")
+    # "<~" taken off before cutting at "~>": ">" is an ASCII85 character, so
+    # "<~>..." isn't an empty stream (Claude review of 0229).
+    data = data.lstrip(b" \t\r\n\x00\x0c")
     if data.startswith(b"<~"):
         data = data[2:]
+    data = data.split(b"~>")[0].translate(None, b" \t\r\n\x00\x0c")
     zs = data.count(b"z")
     rest = len(data) - zs
     return 4 * zs + 4 * (rest // 5) + max(0, rest % 5 - 1)
@@ -210,6 +215,28 @@ class _Unmeasurable(Exception):
 _PASSED_THROUGH = {"/DCTDecode", "/DCT", "/JBIG2Decode", "/JPXDecode"}   # pdfminer keeps these as they are
 
 
+def _filters(stream) -> list[tuple[str, object]]:
+    """The stream's (filter, parameters) list as pdfminer's get_filters
+    reads it (Claude review of 0229: /F and /DP were missed): /F before
+    /Filter; /DP, then /DecodeParms, then /FDecodeParms; one parameters
+    dict for every filter when it isn't a list; and, like pdfminer's zip,
+    no more filters than parameters when it is."""
+    def first(*keys):
+        for key in keys:
+            if key in stream:
+                value = stream[key]
+                return value.get_object() if hasattr(value, "get_object") else value
+        return None
+    filters = first("/F", "/Filter")
+    if not filters:
+        return []
+    filters = list(filters) if isinstance(filters, list) else [filters]
+    params = first("/DP", "/DecodeParms", "/FDecodeParms")
+    params = list(params) if isinstance(params, list) else [params] * len(filters)
+    resolved = [p.get_object() if hasattr(p, "get_object") else p for p in params]
+    return [(str(f.get_object() if hasattr(f, "get_object") else f), p) for f, p in zip(filters, resolved)]
+
+
 def _decoded_size(stream, limit: int) -> int:
     """A pypdf stream's decoded length, or more than limit once it's past
     limit, decoding no further. Each filter pdfminer decodes is handled
@@ -217,19 +244,16 @@ def _decoded_size(stream, limit: int) -> int:
     LZW and run-length decoded with the same bound, so no stage holds more
     than limit + 1 bytes; ASCII85 and ASCIIHex counted before they're
     decoded, and decoded only within the limit; CCITT by an upper bound.
-    pdfminer leaves DCT, JBIG2 and JPX as they are, so the measure stops
-    there. Anything else (Crypt, unknown names) raises _Unmeasurable: the
+    pdfminer leaves DCT, JBIG2 and JPX as they are and goes on to the next
+    filter, and so does the measure (Claude review of 0229: it stopped, so
+    [/DCTDecode /FlateDecode] counted the compressed bytes). Anything else (Crypt, unknown names) raises _Unmeasurable: the
     page is refused rather than counted at its compressed size."""
     # stream._data is pypdf's private copy of the raw bytes: the only way to
     # decode them part way (get_data() decodes all). Renamed some day, the
     # AttributeError refuses the PDF as damaged, never skips the limit.
     from pdfminer.ascii85 import ascii85decode, asciihexdecode
     data = stream._data
-    filters = stream.get("/Filter")
-    names = [] if filters is None else [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
-    params = stream.get("/DecodeParms")
-    params = list(params) if isinstance(params, list) else [params] * len(names)
-    for n, name in enumerate(names):
+    for n, (name, param) in enumerate(_filters(stream)):
         if name in ("/FlateDecode", "/Fl"):
             data = _inflate(data, limit)
         elif name in ("/LZWDecode", "/LZW"):
@@ -245,10 +269,13 @@ def _decoded_size(stream, limit: int) -> int:
                 return limit + 1
             data = asciihexdecode(data)
         elif name in ("/CCITTFaxDecode", "/CCF"):
-            p = params[n] if n < len(params) else None
-            return min(_ccitt_bound(data, p.get_object() if p is not None else None), limit + 1)
+            if n + 1 < len(_filters(stream)):
+                # Only a bound is known for CCITT, so nothing can measure a
+                # filter after it (Claude review of 0229).
+                raise _Unmeasurable(f"{name} followed by another filter")
+            return min(_ccitt_bound(data, param), limit + 1)
         elif name in _PASSED_THROUGH:
-            break
+            continue          # pdfminer keeps the data as it is and goes on to the next filter
         else:
             raise _Unmeasurable(name)
         if len(data) > limit:
