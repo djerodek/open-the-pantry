@@ -587,7 +587,10 @@ def test_staged_photos_that_settle_nothing_keep_the_app_closed(tmp_path, library
 def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
     """GPT review of 0221: start-up logged the problem and opened anyway
     (GET /api/recipes 200). Now every request but /healthz gets a 503 that
-    says what happened, and the sweeps, scans and backups stay off."""
+    says what happened, and the sweeps, scans and backups stay off. GPT
+    review of 0227: the settings the restore kept stay on disk, unapplied,
+    for the owner to settle (they were removed before start-up knew)."""
+    from app.routes import backup as routes_backup
     from fastapi.testclient import TestClient
     from app import restore as restore_mod
     from app.database import UPLOADS_DIR
@@ -614,8 +617,10 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
         db.add_all(rows)
         db.commit()
         row_ids = [r.id for r in rows]
+    routes_backup._write_kept({}, None)
     try:
         with TestClient(app) as c:
+            assert os.path.exists(routes_backup._kept_path())
             r = c.get("/api/recipes")
             assert r.status_code == 503 and r.json()["detail"] == common.RESTORE_UNRESOLVED_MESSAGE
             assert c.get("/healthz").status_code == 200
@@ -623,6 +628,8 @@ def test_an_unsettled_restore_keeps_both_ports_closed_at_start_up():
             fr = c.get("/api/recipes", headers={"X-App-Lang": "fr"})
             assert fr.json()["detail"].startswith("Une restauration a été interrompue")
     finally:
+        if os.path.exists(routes_backup._kept_path()):
+            os.remove(routes_backup._kept_path())
         os.remove(staged_photo)
         os.rmdir(staged)
         os.remove(live_photo)
@@ -1064,6 +1071,7 @@ def test_settle_marker_marks_only_when_the_staged_photos_alone_fit(tmp_path):
     assert restore.staged_photos_fit(str(tmp_path), str(live))
     (tmp_path / "recipes.db").unlink()
     _library(tmp_path, "img-old.jpg")
+    # uploads/ still has img-old.jpg; only the staged folder lacks it.
     assert not restore.staged_photos_fit(str(tmp_path), str(live))
 
 
@@ -1082,3 +1090,41 @@ def test_a_photo_missing_from_both_folders_decides_nothing(tmp_path, where, expe
         assert result is None and (live / "img-old.jpg").exists() and staged.is_dir()
     else:
         assert result == str(staged) and (live / "img-restored.jpg").exists() and not staged.exists()
+
+
+def test_kept_settings_left_by_a_restore_that_never_replaced_the_library_are_removed():
+    """GPT review of 0227: kept until recovery decides; once it settles with
+    the old library (uploads/ fits, the staged folder is left), the file is
+    removed unapplied, as before."""
+    from app import main, restore as restore_mod
+    from app.database import UPLOADS_DIR
+    from app.routes import backup as routes_backup
+    staged = UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX
+    os.makedirs(staged)
+    routes_backup._write_kept({}, None)
+    try:
+        main.settle_interrupted_restore()
+        assert not os.path.exists(routes_backup._kept_path())
+        assert os.path.isdir(staged)
+    finally:
+        if os.path.exists(routes_backup._kept_path()):
+            os.remove(routes_backup._kept_path())
+        os.rmdir(staged)
+
+
+@pytest.mark.parametrize("same", [True, False], ids=["same files", "different files"])
+def test_photos_with_the_same_names_must_also_match(tmp_path, same):
+    """GPT review of 0227: both folders naming every photo the library uses
+    said nothing about whether the pictures are the same; uploads/ won. Now
+    differing files keep the app closed."""
+    from app import restore
+    live, staged = _layout(tmp_path)
+    (live / "shared.jpg").write_bytes(b"OLD PHOTO")
+    (staged / "shared.jpg").write_bytes(b"OLD PHOTO" if same else b"RESTORED PHOTO")
+    _library(tmp_path, "shared.jpg")
+    if same:
+        assert restore.recover_interrupted_restore(str(tmp_path), str(live)) is None
+        assert (live / "shared.jpg").read_bytes() == b"OLD PHOTO" and staged.is_dir()
+    else:
+        with pytest.raises(restore.RestoreUnresolved):
+            restore.recover_interrupted_restore(str(tmp_path), str(live))

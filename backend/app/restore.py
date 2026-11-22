@@ -396,6 +396,23 @@ def settle_marker(data_dir: str, live_dir: str) -> bool:
     return True
 
 
+def _photos_differ(data_dir: str, a: str, b: str) -> list[str]:
+    """The library's photos present in both folders whose files differ
+    (size, then every byte). Matching names don't prove matching photos: a
+    restored database can name the same files with other pictures (GPT
+    review of 0227; the app's own names are random, so this takes a foreign
+    or hand-made backup). Read in full, but only at a start-up that finds a
+    restore's staged folder."""
+    import filecmp
+    used = _library_photos(data_dir) or set()
+    differ = []
+    for name in sorted(used):
+        pa, pb = os.path.join(a, name), os.path.join(b, name)
+        if os.path.isfile(pa) and os.path.isfile(pb) and not filecmp.cmp(pa, pb, shallow=False):
+            differ.append(name)
+    return differ
+
+
 def staged_photos_fit(data_dir: str, live_dir: str) -> bool:
     """Staged photos are there and hold every photo the library uses. With
     restore-kept.json present that means a restore stopped at this start
@@ -445,11 +462,18 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
         if has_staged and not marked:
             # Settle it from the library's photo names, if they do.
             match = _matching_folder(data_dir, [live, staged])
+            if match == live and _matching_folder(data_dir, [staged], [live, staged]) == staged:
+                differ = _photos_differ(data_dir, live, staged)
+                if differ:
+                    log.error("Start-up: %s and uploads/ both hold the library's photos, but %d of them differ "
+                              "(%s); the app stays closed: stop it, check which folder belongs with recipes.db, "
+                              "and move or delete %s.", os.path.basename(staged), len(differ),
+                              ", ".join(differ[:5]), os.path.basename(staged))
+                    raise RestoreUnresolved("uploads/ and the staged folder name the same photos with different files")
             if match == live:
                 log.warning("Start-up: %s holds staged photos from a restore that stopped before the library "
                             "was replaced (uploads/ has every photo of the library's that exists); delete the "
-                            "folder when "
-                            "you like", os.path.basename(staged))
+                            "folder when you like", os.path.basename(staged))
                 return None
             if match == staged:
                 log.error("Start-up: a restore stopped after the library was replaced but before its marker; "
@@ -458,9 +482,9 @@ def recover_interrupted_restore(data_dir: str, live_dir: str) -> str | None:
             else:
                 log.error("Start-up: %s holds staged photos from a restore that stopped, and neither it nor "
                           "uploads/ has every photo of the library's that exists. The app stays closed: stop "
-                          "it, check "
-                          "which folder belongs with recipes.db (or restore a backup again by hand, see the "
-                          "README), and move or delete %s.", os.path.basename(staged), os.path.basename(staged))
+                          "it, check which folder belongs with recipes.db (or restore a backup again by hand, "
+                          "see the README), and move or delete %s.", os.path.basename(staged),
+                          os.path.basename(staged))
                 raise RestoreUnresolved("staged photos without a marker, matching neither the library nor uploads/")
         if has_staged and empty and len(left) == 1 and marked:
             # Between the two renames: the old photos are already aside.

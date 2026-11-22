@@ -653,7 +653,17 @@ def _put_back_kept(kept_rows: dict, email_kept) -> None:
         _put_back_blanked_email_fields(email_kept[0])
 
 
-def put_back_after_restart(staged_fit: bool = False) -> bool:
+def discard_kept_after_recovery() -> None:
+    """After a start-up recovery that settled without the database having
+    been replaced: the kept settings put_back_after_restart left in place are
+    left over, removed unapplied as it would have."""
+    if os.path.exists(_kept_path()) and not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER)):
+        log.warning("Start-up: %s was left from a restore that never replaced the database; removed, not applied",
+                    KEPT_FILE)
+        _remove_kept()
+
+
+def put_back_after_restart(staged_fit: bool = False, unsettled: bool = False) -> bool:
     """At start-up, before the interrupted restore's photos are finished:
     this server's settings kept by a restore that stopped after the copy
     are put back. Only while the restore's marker says the database was
@@ -666,6 +676,14 @@ def put_back_after_restart(staged_fit: bool = False) -> bool:
     if not os.path.exists(_kept_path()):
         return False
     if not staged_fit and not os.path.exists(os.path.join(DATA_DIR, restore_mod.MARKER)):
+        if unsettled:
+            # A restore's staged folder is still there and nothing says yet
+            # whether it replaced the database: kept, not applied, until
+            # recovery decides (GPT review of 0227: removed before start-up
+            # knew the restore couldn't be settled). discard_kept_after_recovery
+            # removes it once recovery finishes without a replaced database.
+            log.warning("Start-up: %s kept, not applied, until the interrupted restore is settled", KEPT_FILE)
+            return False
         log.warning("Start-up: %s was left from a restore that finished or never replaced the database; "
                     "removed, not applied", KEPT_FILE)
         _remove_kept()

@@ -1116,3 +1116,70 @@ def test_the_size_refusal_names_the_measure_past_its_limit(tmp_path, monkeypatch
     fr = i18n.translate(str(e.value), "fr")
     assert fr.startswith("La page 1 de ce PDF contient bien plus qu'une recette (")
     assert ("de contenu et de polices" if "content" in expected else "de tables de caractères des polices") in fr
+
+
+def _fonts_pdf(path, font_files):
+    """One blank page whose resources name one font per stream given, each
+    with its own /FontFile2 (data, filter name)."""
+    from pypdf.generic import DictionaryObject
+    w = PdfWriter()
+    page = w.add_blank_page(612, 792)
+    fonts = DictionaryObject()
+    for n, (data, filt) in enumerate(font_files):
+        stream = StreamObject()
+        stream._data = data
+        stream[NameObject("/Filter")] = NameObject(filt)
+        desc = w._add_object(DictionaryObject({NameObject("/Type"): NameObject("/FontDescriptor"),
+                                               NameObject("/FontFile2"): w._add_object(stream)}))
+        fonts[NameObject(f"/F{n}")] = w._add_object(DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/TrueType"),
+            NameObject("/BaseFont"): NameObject(f"/Font{n}"), NameObject("/FontDescriptor"): desc}))
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): fonts})
+    with open(path, "wb") as f:
+        w.write(f)
+    return path
+
+
+def test_the_page_budget_stops_decoding_once_spent(tmp_path, monkeypatch):
+    """GPT review of 0227: twelve run-length font files of 2 MB each were all
+    decoded (24 MB) before the 20 MB page total was checked. Each stream is
+    now decoded only as far as what's left, and measuring stops past it."""
+    two_mb = bytes([129, 65]) * (2 * 1024 * 1024 // 128) + bytes([128])     # run-length: 2 MB of "A"
+    path = _fonts_pdf(tmp_path / "rl.pdf", [(two_mb, "/RunLengthDecode")] * 12)
+    calls = []
+    real = pdf_read._decoded_size
+    monkeypatch.setattr(pdf_read, "_decoded_size", lambda s, limit: calls.append(limit) or real(s, limit))
+    content, _ = pdf_read._page_streams(PdfReader(str(path)).pages[0], {})
+    assert content > pdf_read.MAX_PDF_PAGE_CONTENT_BYTES
+    assert len(calls) == 11                                  # the 11th passes the limit; the 12th isn't read
+    assert calls[-1] == pdf_read.MAX_PDF_PAGE_CONTENT_BYTES - 10 * 2 * 1024 * 1024     # what was left
+    with pytest.raises(pdf_read.PdfTooLargeError, match=r"MB of page content and fonts"):
+        pdf_read.extract_pdf_text(str(path))
+
+
+def test_a_flate_stream_with_a_bad_checksum_is_measured_as_pdfminer_reads_it(tmp_path):
+    """GPT review of 0227: a Flate error was measured as nothing, while
+    pdfminer's recovery read the whole stream."""
+    import zlib
+    from pdfminer.pdftypes import decompress_corrupted
+    broken = bytearray(zlib.compress(b"x" * 300_000))
+    broken[-1] ^= 0xFF                                       # the checksum
+    assert len(decompress_corrupted(bytes(broken))) == 300_000
+    path = _fonts_pdf(tmp_path / "bad.pdf", [(bytes(broken), "/FlateDecode")])
+    assert pdf_read._page_streams(PdfReader(str(path)).pages[0], {})[0] == 300_000
+    truncated = zlib.compress(b"y" * 300_000)[:200]          # cut short: what came out before the end
+    assert len(pdf_read._inflate(truncated, 10**9)) == len(zlib.decompressobj().decompress(truncated)) > 0
+
+
+def test_the_bounded_decoders_match_pdfminers(tmp_path):
+    import os
+    from pdfminer.lzw import lzwdecode
+    from pdfminer.runlength import rldecode
+    from pypdf._codecs._codecs import LzwCodec
+    for data in (b"", b"TOBEORNOTTOBEORTOBEORNOT" * 50, os.urandom(5000), bytes(range(256)) * 300):
+        encoded = LzwCodec().encode(data)
+        assert pdf_read._lzw(encoded, 10**9) == lzwdecode(encoded) == data
+        assert len(pdf_read._lzw(encoded, 100)) == min(len(data), 101)
+    runs = bytes([129, 65]) * 1000 + bytes([2]) + b"abc" + bytes([128])
+    assert pdf_read._run_length(runs, 10**9) == rldecode(runs)
+    assert len(pdf_read._run_length(runs, 500)) == 501

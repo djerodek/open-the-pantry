@@ -816,12 +816,14 @@ def test_saved_notes_are_shown_as_text_and_edited_only_on_request(server, api, p
     assert pg.input_value(f"#notes-textarea-{r['id']}") == "Less salt.\nBake 5 min longer."
     pg.click(f"{editor} button:has-text('Cancel')")          # back to the text, unchanged
     assert pg.is_visible(view) and pg.is_hidden(editor)
+    assert pg.evaluate("document.activeElement.classList.contains('notes-edit-btn')")   # focus kept
     pg.click(f"{view} .notes-edit-btn")
     pg.fill(f"#notes-textarea-{r['id']}", "Less salt.")
     with pg.expect_response(lambda resp: resp.url.endswith(f"/api/recipes/{r['id']}/notes")):
         pg.click(f"{editor} button:has-text('Save notes')")
     wait_until(pg, f"document.querySelector('{view} .notes-view-text').textContent === 'Less salt.'")
     assert pg.is_visible(view) and pg.is_hidden(editor)
+    assert pg.evaluate("document.activeElement.classList.contains('notes-edit-btn')")
 
 
 def test_add_notes_opens_the_editor_directly(server, api, page):

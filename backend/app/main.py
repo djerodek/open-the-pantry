@@ -206,19 +206,23 @@ def settle_interrupted_restore():
     In this order: the marker settled from the photos first, since the
     put-back reads it (GPT review of 0222)."""
     staged_fit = False
+    unsettled = os.path.isdir(UPLOADS_DIR.rstrip("/") + restore_mod.STAGED_SUFFIX)
     try:
         restore_mod.settle_marker(DATA_DIR, UPLOADS_DIR)
         staged_fit = restore_mod.staged_photos_fit(DATA_DIR, UPLOADS_DIR)
     except OSError:
         log.exception("Start-up: couldn't mark an interrupted restore; left to the recovery below")
-    backup_routes.put_back_after_restart(staged_fit)
+    backup_routes.put_back_after_restart(staged_fit, unsettled)
     try:
         restore_mod.recover_interrupted_restore(DATA_DIR, UPLOADS_DIR)
+        backup_routes.discard_kept_after_recovery()
     except restore_mod.RestoreUnresolved as e:
         # Closed, both ports, and the sweeps, scans and backups off, until
         # the owner sorts the folders out and restarts (GPT review of 0221:
         # the app used to open with photos that might not match).
-        log.error("Start-up: the app stays closed (503) until the restore's folders are sorted out: %s", e)
+        log.error("Start-up: the app stays closed (503) until the restore's folders are sorted out: %s%s", e,
+                  f"; {backup_routes.KEPT_FILE} is kept for that" if os.path.exists(backup_routes._kept_path())
+                  else "")
         common.restore_closed_message = common.RESTORE_UNRESOLVED_MESSAGE
         _restoring.set()
         common._restore_incomplete.set()

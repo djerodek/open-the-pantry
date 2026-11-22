@@ -2837,8 +2837,11 @@ function notesSection(recipe) {
   const viewWrap = el("div", { class: "notes-view", id: `notes-view-${recipe.id}`, hidden: "" });
   const editorWrap = el("div", { class: "notes-editor", id: `notes-editor-${recipe.id}`, hidden: "" });
 
-  // One of: nothing open, the notes as text, the editor.
-  const show = (what) => {
+  // One of: nothing open, the notes as text, the editor. focus moves
+  // with it when asked (from Save or Cancel, whose button disappears):
+  // to Edit in the text, to the Notes button when it all closes (DeepSeek
+  // review of 0227: it fell to the page).
+  const show = (what, moveFocus = false) => {
     viewWrap.hidden = what !== "view";
     editorWrap.hidden = what !== "edit";
     toggleBtn.setAttribute("aria-expanded", String(what !== null));
@@ -2846,6 +2849,8 @@ function notesSection(recipe) {
     if (what === "edit") {
       textarea.value = recipe.notes || "";
       textarea.focus();
+    } else if (moveFocus) {
+      (what === "view" ? editBtn : toggleBtn).focus();
     }
   };
 
@@ -2866,10 +2871,9 @@ function notesSection(recipe) {
   };
   syncButtonState();
 
-  viewWrap.append(viewText, el("div", { class: "notes-actions" }, [
-    el("button", { class: "btn-secondary notes-edit-btn", type: "button", text: tx("Edit notes"),
-      onclick: () => show("edit") }),
-  ]));
+  const editBtn = el("button", { class: "btn-secondary notes-edit-btn", type: "button", text: tx("Edit notes"),
+    onclick: () => show("edit") });
+  viewWrap.append(viewText, el("div", { class: "notes-actions" }, [editBtn]));
 
   const saveBtn = el("button", {
     class: "btn-primary", type: "button", text: tx("Save notes"),
@@ -2879,7 +2883,7 @@ function notesSection(recipe) {
       if (ok) {
         recipe.notes = newNotes || null;
         syncButtonState();
-        show(hasNotes() ? "view" : null);
+        show(hasNotes() ? "view" : null, true);
         announce(tx("Notes saved."));
       } else {
         announceError(tx("Could not save notes."));
@@ -2889,7 +2893,7 @@ function notesSection(recipe) {
 
   const cancelBtn = el("button", {
     class: "btn-secondary", type: "button", text: tx("Cancel"),
-    onclick: () => show(hasNotes() ? "view" : null),
+    onclick: () => show(hasNotes() ? "view" : null, true),
   });
 
   editorWrap.appendChild(el("div", { class: "field" }, [

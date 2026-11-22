@@ -41,6 +41,9 @@ PRODUCE = [
     # and June, when Aliments du Québec's harvest guide (2024) and
     # Marchés publics de Montréal place them (review of 0216).
     (["asparagus"], ["asperge"], [MAY, JUN]),
+    # Rutabaga (June) and parsnip (July-August) are short next to the usual
+    # autumn harvest, but they are the calendar's high-season bars, kept as
+    # it shows them (owner, 2026-11-19).
     (["rutabaga"], ["rutabaga"], [JUN]),
     (["strawberry", "strawberries"], ["fraise"], [JUN, JUL, AUG, SEP, OCT]),
     (["romaine", "romaine lettuce"], ["laitue romaine", "romaine"], [JUN, JUL, AUG]),

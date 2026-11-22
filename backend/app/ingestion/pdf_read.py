@@ -67,94 +67,205 @@ class _CharCounter(PDFTextDevice):
         return 0.0
 
 
-def _decoded_size(stream, limit: int) -> int:
-    """A pypdf stream's decoded length, or limit + 1 once it's past limit.
-    Flate alone (the usual) is inflated only that far."""
-    # stream._data is pypdf's private copy of the raw bytes: the only way to
-    # inflate them part way (get_data() decodes all). Renamed some day, the
-    # AttributeError refuses the PDF as damaged, never skips the limit.
-    filters = stream.get("/Filter")
-    if filters is None:
-        return len(stream._data)
-    names = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
-    if names == ["/FlateDecode"]:
-        inflater = zlib.decompressobj()
+class _PageTooBig(Exception):
+    pass
+
+
+def _inflate(data: bytes, limit: int) -> bytes:
+    """Flate, at most limit + 1 bytes out. Data that stops inflating part
+    way gives what came out before the error, as pdfminer's own recovery
+    does (GPT review of 0227: an error was measured as nothing while
+    pdfminer recovered the whole stream). The chunk with the error is
+    retried a byte at a time from a copy taken before it."""
+    out = bytearray()
+    inflater = zlib.decompressobj()
+    step = 16 * 1024
+    for start in range(0, len(data), step):
+        chunk = data[start:start + step]
+        before = inflater.copy()
         try:
-            out = inflater.decompress(stream._data, limit + 1)
+            out += inflater.decompress(chunk, limit + 1 - len(out))
         except zlib.error:
-            log.debug("_decoded_size: Flate data that doesn't inflate", exc_info=True)
-            return 0                      # pdfminer reads nothing from it either
-        return len(out)
-    return min(len(stream.get_data()), limit + 1)
+            inflater = before
+            for k in range(len(chunk)):
+                try:
+                    out += inflater.decompress(chunk[k:k + 1], limit + 1 - len(out))
+                except zlib.error:
+                    log.debug("_inflate: Flate data broken after %d bytes out", len(out))
+                    return bytes(out)
+                if len(out) > limit or inflater.unconsumed_tail:
+                    return bytes(out)
+            continue
+        if len(out) > limit or inflater.unconsumed_tail:
+            return bytes(out)
+        if inflater.eof:
+            break
+    return bytes(out)
+
+
+def _run_length(data: bytes, limit: int) -> bytes:
+    out = bytearray()
+    i = 0
+    while i < len(data) and len(out) <= limit:
+        n = data[i]
+        if n == 128:
+            break
+        if n < 128:
+            out += data[i + 1:i + n + 2]
+            i += n + 2
+        else:
+            out += data[i + 1:i + 2] * (257 - n)
+            i += 2
+    return bytes(out[:limit + 1])
+
+
+def _lzw(data: bytes, limit: int) -> bytes:
+    """PDF LZW (early change), at most limit + 1 bytes out; stops at a code
+    it can't read, as pdfminer does."""
+    out = bytearray()
+    table = [bytes([n]) for n in range(256)] + [b"", b""]
+    width, prev, buf, nbits = 9, None, 0, 0
+    for byte in data:
+        buf = (buf << 8) | byte
+        nbits += 8
+        while nbits >= width:
+            nbits -= width
+            code = (buf >> nbits) & ((1 << width) - 1)
+            buf &= (1 << nbits) - 1
+            if code == 256:
+                table, width, prev = table[:258], 9, None
+                continue
+            if code == 257:
+                return bytes(out)
+            if code < len(table):
+                entry = table[code]
+                if prev is not None:
+                    table.append(prev + entry[:1])
+            elif code == len(table) and prev is not None:
+                entry = prev + prev[:1]
+                table.append(entry)
+            else:
+                return bytes(out)
+            out += entry
+            if len(out) > limit:
+                return bytes(out[:limit + 1])
+            prev = entry
+            if len(table) >= (1 << width) - 1 and width < 12:
+                width += 1
+    return bytes(out)
+
+
+def _decoded_size(stream, limit: int) -> int:
+    """A pypdf stream's decoded length, or more than limit once it's past
+    limit, decoding no further: each filter pdfminer applies (Flate, LZW,
+    run-length, ASCII85, ASCIIHex, in the stream's order) is run here with
+    the same bound, so no stage holds more than limit + 1 bytes (GPT review
+    of 0227: other filters went through pypdf's get_data(), up to 75 MB a
+    stream). Other filters (images') pdfminer passes through as they are."""
+    # stream._data is pypdf's private copy of the raw bytes: the only way to
+    # decode them part way (get_data() decodes all). Renamed some day, the
+    # AttributeError refuses the PDF as damaged, never skips the limit.
+    from pdfminer.ascii85 import ascii85decode, asciihexdecode
+    data = stream._data
+    filters = stream.get("/Filter")
+    names = [] if filters is None else [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+    for name in names:
+        if name in ("/FlateDecode", "/Fl"):
+            data = _inflate(data, limit)
+        elif name in ("/LZWDecode", "/LZW"):
+            data = _lzw(data, limit)
+        elif name in ("/RunLengthDecode", "/RL"):
+            data = _run_length(data, limit)
+        elif name in ("/ASCII85Decode", "/A85"):
+            data = ascii85decode(data)          # never longer than its input
+        elif name in ("/ASCIIHexDecode", "/AHx"):
+            data = asciihexdecode(data)
+        else:
+            break
+        if len(data) > limit:
+            break
+    return len(data)
 
 
 def _page_streams(page, sizes: dict) -> tuple[int, int]:
     """(content bytes, ToUnicode bytes) decoded for a pypdf page: its
     content, and through its resources (and those of its forms and Type 3
     fonts) each form XObject, embedded font file, Type 3 glyph and
-    ToUnicode map, each counted once a page. sizes caches a stream's size
-    by object number across pages."""
-    content = cmaps = 0
+    ToUnicode map, each counted once a page. Each stream is decoded only
+    as far as what's left of the page's limit, and measuring stops as soon
+    as a total is past it (GPT review of 0227: every stream was decoded,
+    each up to the whole limit, before the totals were checked). sizes
+    caches a stream's exact size by object number across pages."""
+    totals = {"content": 0, "cmaps": 0}
+    limits = {"content": MAX_PDF_PAGE_CONTENT_BYTES, "cmaps": MAX_PDF_PAGE_CMAP_BYTES}
     counted: set = set()
 
-    def measure(ref, limit):
+    def measure(ref, kind):
         # Once a page: two fonts sharing one font file decode it once
         # (review of 0222/0223: it was counted twice).
         key = getattr(ref, "idnum", None)
         if key is not None and key in counted:
-            return 0
+            return
         if key is not None:
             counted.add(key)
+        left = limits[kind] - totals[kind]
         if key is not None and key in sizes:
-            return sizes[key]
-        size = _decoded_size(ref.get_object(), limit)
-        if key is not None:
-            sizes[key] = size
-        return size
+            size = sizes[key]
+        else:
+            size = _decoded_size(ref.get_object(), left)
+            if key is not None and size <= left:
+                sizes[key] = size                # exact; a cut-off size isn't kept
+        totals[kind] += size
+        if totals[kind] > limits[kind]:
+            raise _PageTooBig
 
-    ref = page.raw_get("/Contents") if "/Contents" in page else None
-    obj = ref.get_object() if ref is not None else None
-    for item in (list(obj) if isinstance(obj, list) else [ref] if ref is not None else []):
-        content += measure(item, MAX_PDF_PAGE_CONTENT_BYTES)
-    seen = set()
-    todo = [page.get("/Resources")]
-    while todo and content <= MAX_PDF_PAGE_CONTENT_BYTES and cmaps <= MAX_PDF_PAGE_CMAP_BYTES:
-        res = todo.pop()
-        res = res.get_object() if res is not None else None
-        if not hasattr(res, "get"):
-            continue
-        xobjects = res.get("/XObject")
-        for ref in (xobjects.get_object().values() if xobjects is not None else []):
-            key = getattr(ref, "idnum", None) or id(ref)
-            if key in seen:
+    try:
+        ref = page.raw_get("/Contents") if "/Contents" in page else None
+        obj = ref.get_object() if ref is not None else None
+        for item in (list(obj) if isinstance(obj, list) else [ref] if ref is not None else []):
+            measure(item, "content")
+        seen = set()
+        todo = [page.get("/Resources")]
+        while todo:
+            res = todo.pop()
+            res = res.get_object() if res is not None else None
+            if not hasattr(res, "get"):
                 continue
-            seen.add(key)
-            obj = ref.get_object()
-            if obj.get("/Subtype") == "/Form":
-                content += measure(ref, MAX_PDF_PAGE_CONTENT_BYTES)
-                todo.append(obj.get("/Resources"))
-        fonts = res.get("/Font")
-        for ref in (fonts.get_object().values() if fonts is not None else []):
-            key = getattr(ref, "idnum", None) or id(ref)
-            if key in seen:
-                continue
-            seen.add(key)
-            font = ref.get_object()
-            if font.get("/ToUnicode") is not None and hasattr(font["/ToUnicode"].get_object(), "get_data"):
-                cmaps += measure(font.raw_get("/ToUnicode"), MAX_PDF_PAGE_CMAP_BYTES)
-            descriptors = [font.get("/FontDescriptor")]
-            for d in (font.get("/DescendantFonts") or []):
-                descriptors.append(d.get_object().get("/FontDescriptor"))
-            for desc in descriptors:
-                desc = desc.get_object() if desc is not None else None
-                for name in ("/FontFile", "/FontFile2", "/FontFile3"):
-                    if desc is not None and desc.get(name) is not None:
-                        content += measure(desc.raw_get(name), MAX_PDF_PAGE_CONTENT_BYTES)
-            for glyph in (font.get("/CharProcs").get_object().values() if font.get("/CharProcs") is not None else []):
-                content += measure(glyph, MAX_PDF_PAGE_CONTENT_BYTES)
-            if font.get("/Resources") is not None:
-                todo.append(font.get("/Resources"))
-    return content, cmaps
+            xobjects = res.get("/XObject")
+            for ref in (xobjects.get_object().values() if xobjects is not None else []):
+                key = getattr(ref, "idnum", None) or id(ref)
+                if key in seen:
+                    continue
+                seen.add(key)
+                obj = ref.get_object()
+                if obj.get("/Subtype") == "/Form":
+                    measure(ref, "content")
+                    todo.append(obj.get("/Resources"))
+            fonts = res.get("/Font")
+            for ref in (fonts.get_object().values() if fonts is not None else []):
+                key = getattr(ref, "idnum", None) or id(ref)
+                if key in seen:
+                    continue
+                seen.add(key)
+                font = ref.get_object()
+                if font.get("/ToUnicode") is not None and hasattr(font["/ToUnicode"].get_object(), "get_data"):
+                    measure(font.raw_get("/ToUnicode"), "cmaps")
+                descriptors = [font.get("/FontDescriptor")]
+                for d in (font.get("/DescendantFonts") or []):
+                    descriptors.append(d.get_object().get("/FontDescriptor"))
+                for desc in descriptors:
+                    desc = desc.get_object() if desc is not None else None
+                    for name in ("/FontFile", "/FontFile2", "/FontFile3"):
+                        if desc is not None and desc.get(name) is not None:
+                            measure(desc.raw_get(name), "content")
+                for glyph in (font.get("/CharProcs").get_object().values()
+                              if font.get("/CharProcs") is not None else []):
+                    measure(glyph, "content")
+                if font.get("/Resources") is not None:
+                    todo.append(font.get("/Resources"))
+    except _PageTooBig:
+        log.debug("_page_streams: stopped measuring past a limit: %s", totals)
+    return totals["content"], totals["cmaps"]
 
 
 def _check_text_size(pdf_path: str, pdf) -> None:
