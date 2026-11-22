@@ -791,6 +791,51 @@ def test_saved_notes_show_on_the_card_without_a_reload(server, api, page):
     pg.wait_for_selector(f"{card} .card-notes-icon")
 
 
+def test_saved_notes_are_shown_as_text_and_edited_only_on_request(server, api, page):
+    """Owner, 2026-11-21: saved notes can be read without an editor open;
+    Edit opens it, and saving shows the new text."""
+    r = add_recipe(api, f"Browser notes view {uuid.uuid4().hex[:6]}")
+    api.patch(f"/api/recipes/{r['id']}/notes", json={"notes": "Less salt.\nBake 5 min longer."})
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    toggle, view, editor = ".notes-toggle-btn", f"#notes-view-{r['id']}", f"#notes-editor-{r['id']}"
+    assert pg.get_attribute(toggle, "aria-label") == "Show notes"
+    pg.click(toggle)
+    assert pg.is_visible(view) and pg.is_hidden(editor)
+    assert pg.inner_text(f"{view} .notes-view-text") == "Less salt.\nBake 5 min longer."
+    assert pg.locator(f"{view} textarea, {view} [contenteditable]").count() == 0
+    assert pg.get_attribute(toggle, "aria-expanded") == "true"
+    pg.click(toggle)                                        # closes
+    assert pg.is_hidden(view) and pg.get_attribute(toggle, "aria-expanded") == "false"
+    pg.click(toggle)
+    pg.click(f"{view} .notes-edit-btn")
+    assert pg.is_hidden(view) and pg.is_visible(editor)
+    assert pg.input_value(f"#notes-textarea-{r['id']}") == "Less salt.\nBake 5 min longer."
+    pg.click(f"{editor} button:has-text('Cancel')")          # back to the text, unchanged
+    assert pg.is_visible(view) and pg.is_hidden(editor)
+    pg.click(f"{view} .notes-edit-btn")
+    pg.fill(f"#notes-textarea-{r['id']}", "Less salt.")
+    with pg.expect_response(lambda resp: resp.url.endswith(f"/api/recipes/{r['id']}/notes")):
+        pg.click(f"{editor} button:has-text('Save notes')")
+    wait_until(pg, f"document.querySelector('{view} .notes-view-text').textContent === 'Less salt.'")
+    assert pg.is_visible(view) and pg.is_hidden(editor)
+
+
+def test_add_notes_opens_the_editor_directly(server, api, page):
+    r = add_recipe(api, f"Browser notes add {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    assert pg.get_attribute(".notes-toggle-btn", "aria-label") == "Add notes"
+    pg.click(".notes-toggle-btn")
+    assert pg.is_visible(f"#notes-textarea-{r['id']}") and pg.is_hidden(f"#notes-view-{r['id']}")
+
+
 def test_a_rating_can_be_cleared_from_the_recipe_view(server, api, page):
     """DeepSeek review of 0180: the recipe view's rating popover could change
     a rating but not take it off; only a card's sheet had "Clear rating"."""

@@ -934,7 +934,8 @@ button.tag-node[data-filter="out"] {
   border-color: var(--color-accent);
   color: var(--color-accent-ink);
 }
-.notes-editor {
+.notes-editor,
+.notes-view {
   margin-top: 0.6rem;
   padding: 0.75rem;
   border: 1px solid var(--color-border);
@@ -942,6 +943,9 @@ button.tag-node[data-filter="out"] {
   background: var(--color-bg);
 }
 .notes-editor textarea { width: 100%; }
+/* Saved notes as written: line breaks kept, long words wrapped. */
+.notes-view-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.notes-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 
 .rating-popover {
   position: absolute;

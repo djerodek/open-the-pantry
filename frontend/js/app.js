@@ -2785,11 +2785,6 @@ function clearRecipeHash() {
 window.addEventListener("hashchange", openRecipeFromHash);
 
 // -------------------------------------------------------------------
-// Notes: a toggle button (visually distinct once notes exist) that
-// reveals an inline editor. Saved via the dedicated notes endpoint so
-// this doesn't need to resend the whole recipe payload.
-// -------------------------------------------------------------------
-// -------------------------------------------------------------------
 // Per-recipe wake lock toggle. Reflects the ACTUAL lock state rather
 // than what was requested -- if the browser denies or silently revokes
 // it, the button shows off, because a wake lock that looks on but
@@ -2821,6 +2816,13 @@ function wakeLockToggle() {
   return row;
 }
 
+// -------------------------------------------------------------------
+// Notes: a toggle button (visually distinct once notes exist). Once saved
+// (owner, 2026-11-21), it shows them as text with an Edit button, and only
+// that opens the editor, so reading them while cooking can't change them
+// by a stray tap; without notes, "Add notes" opens the editor directly.
+// Saved through the notes endpoint, not the whole recipe.
+// -------------------------------------------------------------------
 function notesSection(recipe) {
   const hasNotes = () => !!recipe.notes;
 
@@ -2831,27 +2833,43 @@ function notesSection(recipe) {
   });
   textarea.value = recipe.notes || "";
 
-  const editorWrap = el("div", { class: "notes-editor", hidden: "" });
+  const viewText = el("div", { class: "notes-view-text" });
+  const viewWrap = el("div", { class: "notes-view", id: `notes-view-${recipe.id}`, hidden: "" });
+  const editorWrap = el("div", { class: "notes-editor", id: `notes-editor-${recipe.id}`, hidden: "" });
+
+  // One of: nothing open, the notes as text, the editor.
+  const show = (what) => {
+    viewWrap.hidden = what !== "view";
+    editorWrap.hidden = what !== "edit";
+    toggleBtn.setAttribute("aria-expanded", String(what !== null));
+    if (what === "view") viewText.textContent = recipe.notes || "";
+    if (what === "edit") {
+      textarea.value = recipe.notes || "";
+      textarea.focus();
+    }
+  };
 
   const toggleBtn = el("button", {
     class: "btn-secondary notes-toggle-btn", type: "button",
-    "data-has-notes": String(hasNotes()),
     "aria-expanded": "false",
-    "aria-label": hasNotes() ? tx("View or edit notes") : tx("Add notes"),
-    text: "\ud83d\udcdd " + (hasNotes() ? tx("Notes") : tx("Add notes")),
     onclick: () => {
-      const willOpen = editorWrap.hidden;
-      editorWrap.hidden = !willOpen;
-      toggleBtn.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen) textarea.focus();
+      if (!viewWrap.hidden || !editorWrap.hidden) show(null);
+      else show(hasNotes() ? "view" : "edit");
     },
   });
 
   const syncButtonState = () => {
     toggleBtn.setAttribute("data-has-notes", String(hasNotes()));
     toggleBtn.textContent = "\ud83d\udcdd " + (hasNotes() ? tx("Notes") : tx("Add notes"));
-    toggleBtn.setAttribute("aria-label", hasNotes() ? tx("View or edit notes") : tx("Add notes"));
+    toggleBtn.setAttribute("aria-label", hasNotes() ? tx("Show notes") : tx("Add notes"));
+    toggleBtn.setAttribute("aria-controls", hasNotes() ? viewWrap.id : editorWrap.id);
   };
+  syncButtonState();
+
+  viewWrap.append(viewText, el("div", { class: "notes-actions" }, [
+    el("button", { class: "btn-secondary notes-edit-btn", type: "button", text: tx("Edit notes"),
+      onclick: () => show("edit") }),
+  ]));
 
   const saveBtn = el("button", {
     class: "btn-primary", type: "button", text: tx("Save notes"),
@@ -2861,8 +2879,7 @@ function notesSection(recipe) {
       if (ok) {
         recipe.notes = newNotes || null;
         syncButtonState();
-        editorWrap.hidden = true;
-        toggleBtn.setAttribute("aria-expanded", "false");
+        show(hasNotes() ? "view" : null);
         announce(tx("Notes saved."));
       } else {
         announceError(tx("Could not save notes."));
@@ -2872,20 +2889,16 @@ function notesSection(recipe) {
 
   const cancelBtn = el("button", {
     class: "btn-secondary", type: "button", text: tx("Cancel"),
-    onclick: () => {
-      textarea.value = recipe.notes || "";
-      editorWrap.hidden = true;
-      toggleBtn.setAttribute("aria-expanded", "false");
-    },
+    onclick: () => show(hasNotes() ? "view" : null),
   });
 
   editorWrap.appendChild(el("div", { class: "field" }, [
     el("label", { for: `notes-textarea-${recipe.id}`, text: tx("Notes") }),
     textarea,
-    el("div", { style: "display:flex;gap:0.5rem;margin-top:0.5rem;" }, [saveBtn, cancelBtn]),
+    el("div", { class: "notes-actions" }, [saveBtn, cancelBtn]),
   ]));
 
-  return el("div", { class: "notes-section" }, [toggleBtn, editorWrap]);
+  return el("div", { class: "notes-section" }, [toggleBtn, viewWrap, editorWrap]);
 }
 
 // -------------------------------------------------------------------
