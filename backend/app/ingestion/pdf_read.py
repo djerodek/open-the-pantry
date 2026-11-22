@@ -6,6 +6,7 @@ import zlib
 import pdfplumber
 from pdfminer.pdfdevice import PDFTextDevice
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+from pypdf.generic import NullObject
 
 from ..logging_setup import get_logger
 # Private to ocr, but this module's to use: rendering a scanned page at the
@@ -177,12 +178,12 @@ def _ascii85_size(data: bytes) -> int:
     """What ASCII85 decodes to, counted without decoding: four bytes a
     group of five, four for each "z" (Claude review of 0228: one "z" is
     four zero bytes, so the output can outgrow the input)."""
-    # "<~" taken off before cutting at "~>": ">" is an ASCII85 character, so
-    # "<~>..." isn't an empty stream (Claude review of 0229).
-    data = data.lstrip(b" \t\r\n\x00\x0c")
-    if data.startswith(b"<~"):
-        data = data[2:]
-    data = data.split(b"~>")[0].translate(None, b" \t\r\n\x00\x0c")
+    # The start and end are taken off with pdfminer's own two patterns,
+    # and the characters base64.a85decode ignores are left out (Claude
+    # review of 0230: "~>...", "< ~>..." and others were counted as 0 or 1).
+    from pdfminer.ascii85 import end_re, start_re
+    data = end_re.sub(b"", start_re.sub(b"", data, count=1), count=1)
+    data = data.translate(None, b" \t\n\r\v")
     zs = data.count(b"z")
     rest = len(data) - zs
     return 4 * zs + 4 * (rest // 5) + max(0, rest % 5 - 1)
@@ -220,12 +221,19 @@ def _filters(stream) -> list[tuple[str, object]]:
     reads it (Claude review of 0229: /F and /DP were missed): /F before
     /Filter; /DP, then /DecodeParms, then /FDecodeParms; one parameters
     dict for every filter when it isn't a list; and, like pdfminer's zip,
-    no more filters than parameters when it is."""
+    no more filters than parameters when it is. Not the PDF standard's
+    pairing (/F with /FDecodeParms): what pdfminer decodes is what has to
+    be measured, so its order is kept on purpose (DeepSeek review of 0230)."""
     def first(*keys):
+        # A null value counts as absent, as pdfminer drops such entries
+        # (Claude review of 0230: "/F null /Filter /FlateDecode" was refused,
+        # and "/DP null" hid the width in /DecodeParms).
         for key in keys:
             if key in stream:
                 value = stream[key]
-                return value.get_object() if hasattr(value, "get_object") else value
+                value = value.get_object() if hasattr(value, "get_object") else value
+                if value is not None and not isinstance(value, NullObject):
+                    return value
         return None
     filters = first("/F", "/Filter")
     if not filters:
@@ -234,6 +242,7 @@ def _filters(stream) -> list[tuple[str, object]]:
     params = first("/DP", "/DecodeParms", "/FDecodeParms")
     params = list(params) if isinstance(params, list) else [params] * len(filters)
     resolved = [p.get_object() if hasattr(p, "get_object") else p for p in params]
+    resolved = [None if isinstance(p, NullObject) else p for p in resolved]
     return [(str(f.get_object() if hasattr(f, "get_object") else f), p) for f, p in zip(filters, resolved)]
 
 
@@ -253,7 +262,8 @@ def _decoded_size(stream, limit: int) -> int:
     # AttributeError refuses the PDF as damaged, never skips the limit.
     from pdfminer.ascii85 import ascii85decode, asciihexdecode
     data = stream._data
-    for n, (name, param) in enumerate(_filters(stream)):
+    chain = _filters(stream)
+    for n, (name, param) in enumerate(chain):
         if name in ("/FlateDecode", "/Fl"):
             data = _inflate(data, limit)
         elif name in ("/LZWDecode", "/LZW"):
@@ -269,13 +279,17 @@ def _decoded_size(stream, limit: int) -> int:
                 return limit + 1
             data = asciihexdecode(data)
         elif name in ("/CCITTFaxDecode", "/CCF"):
-            if n + 1 < len(_filters(stream)):
+            if n + 1 < len(chain):
                 # Only a bound is known for CCITT, so nothing can measure a
                 # filter after it (Claude review of 0229).
                 raise _Unmeasurable(f"{name} followed by another filter")
             return min(_ccitt_bound(data, param), limit + 1)
         elif name in _PASSED_THROUGH:
-            continue          # pdfminer keeps the data as it is and goes on to the next filter
+            # pdfminer keeps the data as it is and goes on to the next filter.
+            # An image's decoded pixels would be larger, but images aren't
+            # measured here (only content, forms and fonts are), and pdfminer
+            # doesn't decode them for text (DeepSeek review of 0230).
+            continue
         else:
             raise _Unmeasurable(name)
         if len(data) > limit:

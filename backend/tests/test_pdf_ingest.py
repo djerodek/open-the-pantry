@@ -1288,3 +1288,40 @@ def test_ascii85_starting_with_a_greater_than_sign_is_counted():
     from pdfminer.ascii85 import ascii85decode
     raw = b"<~>sVLWz!($ZP!'pS~>"
     assert pdf_read._ascii85_size(raw) == len(ascii85decode(raw)) == 15
+
+
+def test_a_null_filter_entry_counts_as_absent():
+    """Claude review of 0230: pdfminer drops an entry whose value is null;
+    "/F null /Filter /FlateDecode" was refused, and "/DP null" hid the
+    CCITT width in /DecodeParms."""
+    import zlib
+    from pypdf.generic import DictionaryObject, NullObject, NumberObject
+    text = b"BT (" + b"recipe " * 500 + b") Tj ET"
+    stream = _stream(zlib.compress(text), Filter="/FlateDecode")
+    stream[NameObject("/F")] = NullObject()
+    assert pdf_read._decoded_size(stream, 10**9) == len(text)
+    ccitt = _stream(b"\x00" * 100, Filter="/CCITTFaxDecode")
+    ccitt[NameObject("/DP")] = NullObject()
+    ccitt[NameObject("/DecodeParms")] = DictionaryObject({NameObject("/Columns"): NumberObject(8000)})
+    assert pdf_read._decoded_size(ccitt, 10**9) == 8 * 100 * 1000
+
+
+@pytest.mark.parametrize("raw", [
+    b"<~>sVLWz!($ZP!'pS~>", b"~>sVLWz!($ZP!'pS~>", b"< ~>sVLWz!($ZP!'pS~>", b"<\n~>sVLWz!($ZP!'pS~>",
+    b"\x0b<~>sVLWz!($ZP!'pS~>", b">sVLWz!($ZP!'pS~",
+], ids=["<~", "~", "< ~", "<newline~", "vtab", "trailing ~"])
+def test_ascii85_start_and_end_as_pdfminer_takes_them_off(raw):
+    """Claude review of 0230: other start forms counted 0 or 1."""
+    from pdfminer.ascii85 import ascii85decode
+    assert pdf_read._ascii85_size(raw) == len(ascii85decode(raw))
+
+
+def test_f_wins_over_filter_and_decodeparms_stands_in_for_dp():
+    """DeepSeek review of 0230: the two fallbacks the earlier test didn't
+    reach."""
+    import zlib
+    text = b"BT (" + b"recipe " * 400 + b") Tj ET"
+    both = _stream(zlib.compress(text), F="/FlateDecode", Filter="/DCTDecode")
+    assert pdf_read._decoded_size(both, 10**9) == len(text)               # /F's Flate, not /Filter's DCT
+    ccitt = _stream(b"\x00" * 10, F="/CCITTFaxDecode", DecodeParms={"/Columns": 160})
+    assert pdf_read._decoded_size(ccitt, 10**9) == 8 * 10 * 20            # /DecodeParms read without /DP
