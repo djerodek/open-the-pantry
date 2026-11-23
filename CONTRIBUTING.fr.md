@@ -55,7 +55,9 @@ backend/tests_browser/  tests des pages (Playwright)
 frontend/           l'application : index.html, js/app.js (un module JavaScript, sans compilation),
                     js/settings.js (les panneaux des Paramètres), js/add_recipe.js (la fenêtre Ajouter),
                     js/i18n.js, css/;
-                    js/amounts.js + js/weights.js : ajustement, Poids, Volumes (aussi pour On mange quoi?)
+                    js/amounts.js + js/weights.js : ajustement, Poids, Volumes (aussi pour On mange quoi?);
+                    js/reference.js + js/reference-data.json : l'aide-mémoire (contenu et sources
+                    dans le JSON, vérifiés par backend/tests/test_reference_charts.py)
 frontend-picker/    la page On mange quoi? (port 8091)
 docker-compose*.yml image publiée, construction depuis les sources, HTTPS par Traefik
 ```

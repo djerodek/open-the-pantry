@@ -5,6 +5,7 @@ import {
   ensureUnlocked, adminFetch, refreshHttpsSummary, refreshPickerLink,
 } from "./settings.js";
 import { initAddRecipe, addOverlay, discardCurrentDraftFiles, errorDetail, openSharedLink } from "./add_recipe.js";
+import { initQuickReference, recipeReferenceMenu } from "./reference.js";
 const API = "/api";
 
 // Interface language helpers (js/i18n.js). Static page text is
@@ -1604,6 +1605,8 @@ function renderTagGroupsPanel() {
 
 // Settings -> Learning, What to eat?, photos and checkboxes (settings.js).
 initPreferencePanels();
+// Quick reference charts: the top-bar button, the dialog, its switch in Settings (reference.js).
+initQuickReference();
 
 $("#batch-cancel-btn").addEventListener("click", () => {
   state.selectMode = false;
@@ -3295,7 +3298,9 @@ function renderRecipeDetail(recipe) {
     showcaseImageSection(recipe),
     meta,
     cardQuickControls(recipe, true),
-    wakeLockToggle(),
+    // Things to have at hand while cooking: Keep screen on and the
+    // quick reference charts (reference.js), side by side when they fit.
+    el("div", { class: "recipe-aids" }, [wakeLockToggle(), recipeReferenceMenu()]),
     factsEditor,
     notesSection(recipe),
     // Side by side on a wide screen (ingredients stay in view while the
@@ -3969,6 +3974,9 @@ export {
   topOverlay, tagsFromInput, linesOf, ingredientsOf, discardDraftFile, loadTimeBuckets, loadRecipes, tagSourcesNote,
   ingredientText, makeDurationInput, openRecipeDetail, partHint, renderFilterPanel, syncClearFiltersButton,
 };
+
+// What reference.js uses from here, besides what settings.js does.
+export { storageGet, reportClientError };
 
 // What settings.js uses from here.
 export {

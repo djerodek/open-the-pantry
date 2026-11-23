@@ -9,7 +9,7 @@ import globals from "globals";
 export default [
   {
     // The main page's modules (index.html, type="module").
-    files: ["frontend/js/app.js", "frontend/js/settings.js", "frontend/js/add_recipe.js"],
+    files: ["frontend/js/app.js", "frontend/js/settings.js", "frontend/js/add_recipe.js", "frontend/js/reference.js"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: { ...globals.browser } },
     rules: { "no-undef": "error" },
   },

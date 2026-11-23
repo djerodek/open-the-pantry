@@ -152,6 +152,10 @@ the next scan.
   scaling; **Weights** and **Volumes** conversions from a table of about
   220 ingredients, which leave a line as written when no conversion is
   safe; keep the screen awake (needs HTTPS); optional checkboxes.
+- **Quick reference**, in the top bar and on each recipe, offline: baking
+  and cooking substitutions in Canadian measures, and meat roasting times
+  (FoodSafety.gov) with Health Canada's safe internal temperatures, in °F
+  or °C. Settings → Display hides it.
 - **Library**: edit, duplicate, merge two recipes, tag or delete several at
   once; **Recently deleted** keeps recipes 30 days; **Library check** lists
   incomplete recipes and likely duplicates.

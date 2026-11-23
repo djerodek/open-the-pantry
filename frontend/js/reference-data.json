@@ -1,0 +1,698 @@
+{
+  "checked": "2026-11-23",
+  "sources": {
+    "sha": {
+      "title": {"en": "Ingredient Substitutions (handout)", "fr": "Ingredient Substitutions (document, en anglais)"},
+      "publisher": {"en": "Saskatchewan Health Authority", "fr": "Saskatchewan Health Authority"},
+      "date": {"en": "2026", "fr": "2026"},
+      "url": "https://www.saskhealthauthority.ca/sites/default/files/2026-06/Handout-NFS-Ingredient-Substitutions.pdf"
+    },
+    "ndsu": {
+      "title": {"en": "Ingredient Substitutions (FN198)", "fr": "Ingredient Substitutions (FN198, en anglais)"},
+      "publisher": {"en": "NDSU Extension, North Dakota State University", "fr": "NDSU Extension, Université d'État du Dakota du Nord"},
+      "date": {"en": "reviewed January 2023", "fr": "révisé en janvier 2023"},
+      "url": "https://www.ndsu.edu/agriculture/extension/publications/ingredient-substitutions"
+    },
+    "nmsu": {
+      "title": {"en": "In a Pinch Ingredient Substitution (Guide E-131)", "fr": "In a Pinch Ingredient Substitution (guide E-131, en anglais)"},
+      "publisher": {"en": "New Mexico State University Cooperative Extension", "fr": "Service de vulgarisation de l'Université d'État du Nouveau-Mexique"},
+      "date": {"en": "revised May 2016", "fr": "révisé en mai 2016"},
+      "url": "https://pubs.nmsu.edu/_e/E131/index.html"
+    },
+    "csu": {
+      "title": {"en": "Ingredient Substitutions", "fr": "Ingredient Substitutions (en anglais)"},
+      "publisher": {"en": "Colorado State University Extension", "fr": "Colorado State University Extension"},
+      "date": {"en": "reviewed August 2025", "fr": "révisé en août 2025"},
+      "url": "https://extension.colostate.edu/resource/ingredient-substitutions"
+    },
+    "csu_oils": {
+      "title": {"en": "Cooking with Fats and Oils: Can they withstand the heat?", "fr": "Cooking with Fats and Oils: Can they withstand the heat? (en anglais)"},
+      "publisher": {"en": "Kendall Reagan Nutrition Center, Colorado State University", "fr": "Kendall Reagan Nutrition Center, Colorado State University"},
+      "date": {"en": "April 2019", "fr": "avril 2019"},
+      "url": "https://www.chhs.colostate.edu/krnc/monthly-blog/cooking-with-fats-and-oils/"
+    },
+    "fsgov": {
+      "title": {"en": "Meat and Poultry Roasting Charts", "fr": "Meat and Poultry Roasting Charts (en anglais)"},
+      "publisher": {"en": "FoodSafety.gov, U.S. Department of Health and Human Services", "fr": "FoodSafety.gov, département de la Santé et des Services sociaux des États-Unis"},
+      "date": {"en": "reviewed 2023-09-21", "fr": "révisé le 2023-09-21"},
+      "url": "https://www.foodsafety.gov/food-safety-charts/meat-poultry-charts"
+    },
+    "fsis": {
+      "title": {"en": "Lamb from Farm to Table", "fr": "Lamb from Farm to Table (en anglais)"},
+      "publisher": {"en": "Food Safety and Inspection Service, U.S. Department of Agriculture", "fr": "Food Safety and Inspection Service, département de l'Agriculture des États-Unis"},
+      "date": {"en": "updated 2024-12-03", "fr": "mis à jour le 2024-12-03"},
+      "url": "https://www.fsis.usda.gov/food-safety/safe-food-handling-and-preparation/meat/lamb-farm-table"
+    },
+    "hc": {
+      "title": {"en": "Safe cooking temperatures", "fr": "Températures de cuisson sécuritaires"},
+      "publisher": {"en": "Health Canada", "fr": "Santé Canada"},
+      "date": {"en": "modified 2020-05-29", "fr": "modifié le 2020-05-29"},
+      "url": {
+        "en": "https://www.canada.ca/en/health-canada/services/general-food-safety-tips/safe-internal-cooking-temperatures.html",
+        "fr": "https://www.canada.ca/fr/sante-canada/services/conseils-generaux-salubrite/temperatures-securitaires-cuisson-interne.html"
+      }
+    }
+  },
+
+  "baking": {
+    "intro": {
+      "en": "For when you run out of something. Amounts in Canadian measures: 1 cup is 250 mL.",
+      "fr": "Pour quand il vous manque un ingrédient. Mesures canadiennes : 1 tasse égale 250 mL."
+    },
+    "entries": [
+      {
+        "item": {"en": "Baking powder, 1 tsp (5 mL)", "fr": "Poudre à pâte, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "¼ tsp (1 mL) baking soda + ½ tsp (2 mL) cream of tartar", "fr": "¼ c. à thé (1 mL) de bicarbonate de soude + ½ c. à thé (2 mL) de crème de tartre"}
+        ],
+        "note": {"en": "Mix it just before using: it starts to work as soon as it gets wet.", "fr": "Mélangez au moment de l'utiliser : la réaction commence dès qu'elle est mouillée."},
+        "src": ["sha", "csu"]
+      },
+      {
+        "item": {"en": "Buttermilk or sour milk, 1 cup (250 mL)", "fr": "Babeurre ou lait suri, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 tbsp (15 mL) lemon juice or white vinegar, plus milk to make 1 cup (250 mL); let stand 5 minutes", "fr": "1 c. à soupe (15 mL) de jus de citron ou de vinaigre blanc, plus du lait pour obtenir 1 tasse (250 mL); laissez reposer 5 minutes"},
+          {"en": "1 cup (250 mL) plain yogurt", "fr": "1 tasse (250 mL) de yogourt nature"}
+        ],
+        "src": ["sha", "ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Cake and pastry flour, 1 cup (250 mL)", "fr": "Farine à gâteaux et pâtisseries, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) all-purpose flour minus 2 tbsp (30 mL)", "fr": "1 tasse (250 mL) de farine tout usage moins 2 c. à soupe (30 mL)"}
+        ],
+        "note": {"en": "Measure both flours after sifting.", "fr": "Mesurez les deux farines après les avoir tamisées."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Self-rising flour, 1 cup (250 mL)", "fr": "Farine auto-levante, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) all-purpose flour minus 2 tsp (10 mL), + 1½ tsp (7 mL) baking powder + ½ tsp (2 mL) salt", "fr": "1 tasse (250 mL) de farine tout usage moins 2 c. à thé (10 mL), + 1½ c. à thé (7 mL) de poudre à pâte + ½ c. à thé (2 mL) de sel"}
+        ],
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "All-purpose flour", "fr": "Farine tout usage"},
+        "use": [
+          {"en": "Whole wheat flour for up to half of it", "fr": "De la farine de blé entier pour au plus la moitié"}
+        ],
+        "note": {"en": "All whole wheat works too, but the result is denser.", "fr": "Tout en blé entier fonctionne aussi, mais le résultat est plus dense."},
+        "src": ["ndsu", "sha"]
+      },
+      {
+        "item": {"en": "Brown sugar, packed, 1 cup (250 mL)", "fr": "Cassonade tassée, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) white sugar", "fr": "1 tasse (250 mL) de sucre blanc"}
+        ],
+        "note": {"en": "Less moist, with less caramel taste.", "fr": "Moins moelleux, avec moins de goût de caramel."},
+        "src": ["sha", "ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "White sugar, 1 cup (250 mL)", "fr": "Sucre blanc, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) packed brown sugar", "fr": "1 tasse (250 mL) de cassonade tassée"},
+          {"en": "¾ cup (175 mL) maple syrup; use 3 tbsp (45 mL) less of the recipe's liquid", "fr": "¾ tasse (175 mL) de sirop d'érable; mettez 3 c. à soupe (45 mL) de moins du liquide de la recette"},
+          {"en": "1 cup (250 mL) honey; use ¼ cup (60 mL) less of the recipe's liquid, add ½ tsp (2 mL) baking soda and lower the oven by 25°F (14°C)", "fr": "1 tasse (250 mL) de miel; mettez ¼ tasse (60 mL) de moins du liquide de la recette, ajoutez ½ c. à thé (2 mL) de bicarbonate de soude et baissez le four de 25 °F (14 °C)"}
+        ],
+        "note": {"en": "In cakes and cookies, replace no more than half the sugar with honey.", "fr": "Dans les gâteaux et les biscuits, remplacez au plus la moitié du sucre par du miel."},
+        "src": ["sha", "ndsu"]
+      },
+      {
+        "item": {"en": "Honey, 1 cup (250 mL)", "fr": "Miel, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1¼ cups (300 mL) sugar + ¼ cup (60 mL) of the recipe's liquid", "fr": "1¼ tasse (300 mL) de sucre + ¼ tasse (60 mL) du liquide de la recette"}
+        ],
+        "src": ["ndsu", "sha"]
+      },
+      {
+        "item": {"en": "Corn syrup, 1 cup (250 mL)", "fr": "Sirop de maïs, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) sugar + ¼ cup (60 mL) of the recipe's liquid", "fr": "1 tasse (250 mL) de sucre + ¼ tasse (60 mL) du liquide de la recette"},
+          {"en": "1 cup (250 mL) honey", "fr": "1 tasse (250 mL) de miel"}
+        ],
+        "note": {"en": "Not for candy or caramel.", "fr": "Pas pour les bonbons ni le caramel."},
+        "src": ["ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Butter, 1 cup (250 mL)", "fr": "Beurre, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) block margarine", "fr": "1 tasse (250 mL) de margarine en bloc"},
+          {"en": "1 cup (250 mL) vegetable oil minus 2 tbsp (30 mL), + ½ tsp (2 mL) salt, only where the recipe melts the butter", "fr": "1 tasse (250 mL) d'huile végétale moins 2 c. à soupe (30 mL), + ½ c. à thé (2 mL) de sel, seulement si la recette fait fondre le beurre"}
+        ],
+        "note": {"en": "Soft tub margarine holds more water and can change the texture.", "fr": "La margarine molle en pot contient plus d'eau et peut changer la texture."},
+        "src": ["ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Shortening, 1 cup (250 mL)", "fr": "Graisse végétale, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) + 2 tbsp (30 mL) butter or block margarine; use ½ tsp (2 mL) less salt", "fr": "1 tasse (250 mL) + 2 c. à soupe (30 mL) de beurre ou de margarine en bloc; mettez ½ c. à thé (2 mL) de sel de moins"},
+          {"en": "1 cup (250 mL) lard minus 2 tbsp (30 mL)", "fr": "1 tasse (250 mL) de saindoux moins 2 c. à soupe (30 mL)"},
+          {"en": "Melted shortening: 1 cup (250 mL) vegetable oil", "fr": "Graisse fondue : 1 tasse (250 mL) d'huile végétale"}
+        ],
+        "src": ["ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Oil or melted butter in muffins and quick breads, 1 cup (250 mL)", "fr": "Huile ou beurre fondu dans les muffins et les pains éclair, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) unsweetened applesauce or other fruit purée", "fr": "1 tasse (250 mL) de compote de pommes non sucrée ou d'une autre purée de fruits"}
+        ],
+        "note": {"en": "Moister and denser.", "fr": "Plus humide et plus dense."},
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Egg, 1 large", "fr": "Œuf, 1 gros"},
+        "use": [
+          {"en": "2 egg whites, or 1 egg white + 2 tsp (10 mL) vegetable oil", "fr": "2 blancs d'œufs, ou 1 blanc d'œuf + 2 c. à thé (10 mL) d'huile végétale"},
+          {"en": "In cookies: 2 egg yolks + 1 tbsp (15 mL) water", "fr": "Dans les biscuits : 2 jaunes d'œufs + 1 c. à soupe (15 mL) d'eau"},
+          {"en": "¼ cup (60 mL) liquid egg product", "fr": "¼ tasse (60 mL) d'œufs liquides"},
+          {"en": "¼ cup (60 mL) puréed silken tofu", "fr": "¼ tasse (60 mL) de tofu soyeux en purée"},
+          {"en": "3 tbsp (45 mL) mayonnaise", "fr": "3 c. à soupe (45 mL) de mayonnaise"}
+        ],
+        "note": {"en": "For recipes with one or two eggs. Not for recipes that rely on eggs to rise or set, such as sponge cake, soufflé or custard.", "fr": "Pour les recettes qui demandent un ou deux œufs. Pas pour celles où les œufs font lever ou figer, comme le gâteau éponge, le soufflé ou la crème pâtissière."},
+        "src": ["ndsu", "nmsu", "csu", "sha"]
+      },
+      {
+        "item": {"en": "Sour cream, 1 cup (250 mL)", "fr": "Crème sure, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) plain yogurt", "fr": "1 tasse (250 mL) de yogourt nature"}
+        ],
+        "note": {"en": "In a hot dish, see Cooking substitutions.", "fr": "Dans un plat chaud, voyez Substitutions en cuisine."},
+        "src": ["sha", "ndsu"]
+      },
+      {
+        "item": {"en": "Plain yogurt, 1 cup (250 mL)", "fr": "Yogourt nature, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) sour cream or buttermilk", "fr": "1 tasse (250 mL) de crème sure ou de babeurre"}
+        ],
+        "src": ["sha", "ndsu"]
+      },
+      {
+        "item": {"en": "Milk, 1 cup (250 mL)", "fr": "Lait, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "½ cup (125 mL) evaporated milk + ½ cup (125 mL) water", "fr": "½ tasse (125 mL) de lait évaporé + ½ tasse (125 mL) d'eau"},
+          {"en": "¼ cup (60 mL) skim milk powder, plus water to make 1 cup (250 mL)", "fr": "¼ tasse (60 mL) de lait écrémé en poudre, plus de l'eau pour obtenir 1 tasse (250 mL)"}
+        ],
+        "src": ["ndsu", "sha"]
+      },
+      {
+        "item": {"en": "Unsweetened chocolate, 1 oz (28 g)", "fr": "Chocolat non sucré, 1 oz (28 g)"},
+        "use": [
+          {"en": "3 tbsp (45 mL) cocoa + 1 tbsp (15 mL) butter or oil", "fr": "3 c. à soupe (45 mL) de cacao + 1 c. à soupe (15 mL) de beurre ou d'huile"}
+        ],
+        "src": ["ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Semisweet chocolate, 1⅔ oz (47 g)", "fr": "Chocolat mi-sucré, 1⅔ oz (47 g)"},
+        "use": [
+          {"en": "1 oz (28 g) unsweetened chocolate + 4 tsp (20 mL) sugar", "fr": "1 oz (28 g) de chocolat non sucré + 4 c. à thé (20 mL) de sucre"}
+        ],
+        "src": ["ndsu", "csu"]
+      },
+      {
+        "item": {"en": "Cream of tartar, ½ tsp (2 mL), for beating egg whites", "fr": "Crème de tartre, ½ c. à thé (2 mL), pour monter des blancs d'œufs"},
+        "use": [
+          {"en": "1½ tsp (7 mL) lemon juice or white vinegar", "fr": "1½ c. à thé (7 mL) de jus de citron ou de vinaigre blanc"}
+        ],
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "Pumpkin pie spice, 1 tsp (5 mL)", "fr": "Épices pour tarte à la citrouille, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "½ tsp (2 mL) cinnamon + ¼ tsp (1 mL) ginger + ⅛ tsp (0.5 mL) allspice + ⅛ tsp (0.5 mL) nutmeg", "fr": "½ c. à thé (2 mL) de cannelle + ¼ c. à thé (1 mL) de gingembre + ⅛ c. à thé (0,5 mL) de piment de la Jamaïque + ⅛ c. à thé (0,5 mL) de muscade"}
+        ],
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "Apple pie spice, 1 tsp (5 mL)", "fr": "Épices pour tarte aux pommes, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "½ tsp (2 mL) cinnamon + ¼ tsp (1 mL) nutmeg + ⅛ tsp (0.5 mL) cardamom", "fr": "½ c. à thé (2 mL) de cannelle + ¼ c. à thé (1 mL) de muscade + ⅛ c. à thé (0,5 mL) de cardamome"}
+        ],
+        "src": ["ndsu"]
+      }
+    ],
+    "sources": ["sha", "ndsu", "nmsu", "csu"]
+  },
+
+  "cooking": {
+    "intro": {
+      "en": "For when you run out of something, with what changes. Amounts in Canadian measures: 1 cup is 250 mL.",
+      "fr": "Pour quand il vous manque un ingrédient, avec ce que ça change. Mesures canadiennes : 1 tasse égale 250 mL."
+    },
+    "entries": [
+      {
+        "item": {"en": "Olive oil, or vegetable or canola oil", "fr": "Huile d'olive, ou huile végétale ou de canola"},
+        "use": [
+          {"en": "The other, in the same amount", "fr": "L'autre, en même quantité"}
+        ],
+        "note": {"en": "Extra-virgin olive oil has a lower smoke point than vegetable and canola oil, and more taste: good for dressings and medium heat, not for deep-frying, high-heat searing, or dishes that need a neutral taste. Refined (“light”) olive oil tastes mild and takes higher heat. Vegetable or canola oil works in place of olive oil, but a dressing loses the olive taste.", "fr": "L'huile d'olive extra vierge a un point de fumée plus bas que l'huile végétale et de canola, et plus de goût : bonne pour les vinaigrettes et le feu moyen, pas pour la grande friture, la saisie à feu vif ni les plats qui demandent un goût neutre. L'huile d'olive raffinée (« légère ») a un goût doux et supporte une chaleur plus forte. L'huile végétale ou de canola remplace l'huile d'olive, mais une vinaigrette perd le goût d'olive."},
+        "src": ["csu_oils"]
+      },
+      {
+        "item": {"en": "Oil for sautéing, ¼ cup (60 mL)", "fr": "Huile pour faire revenir, ¼ tasse (60 mL)"},
+        "use": [
+          {"en": "¼ cup (60 mL) butter, margarine, bacon fat or lard", "fr": "¼ tasse (60 mL) de beurre, de margarine, de gras de bacon ou de saindoux"}
+        ],
+        "note": {"en": "Butter burns over high heat: for searing, use oil or a mix of butter and oil. Clarified butter (ghee) takes higher heat.", "fr": "Le beurre brûle à feu vif : pour saisir, utilisez de l'huile ou un mélange de beurre et d'huile. Le beurre clarifié (ghee) supporte une chaleur plus forte."},
+        "src": ["csu", "csu_oils"]
+      },
+      {
+        "item": {"en": "Fresh herbs, 1 tbsp (15 mL) chopped", "fr": "Fines herbes fraîches, 1 c. à soupe (15 mL) hachées"},
+        "use": [
+          {"en": "1 tsp (5 mL) dried herbs", "fr": "1 c. à thé (5 mL) de fines herbes séchées"}
+        ],
+        "note": {"en": "Add dried herbs early in the cooking, fresh ones near the end.", "fr": "Ajoutez les herbes séchées au début de la cuisson, les fraîches vers la fin."},
+        "src": ["sha", "ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Garlic, 1 small clove", "fr": "Ail, 1 petite gousse"},
+        "use": [
+          {"en": "⅛ tsp (0.5 mL) garlic powder", "fr": "⅛ c. à thé (0,5 mL) d'ail en poudre"}
+        ],
+        "note": {"en": "Garlic powder burns quickly in hot oil: add it with the liquid.", "fr": "L'ail en poudre brûle vite dans l'huile chaude : ajoutez-le avec le liquide."},
+        "src": ["sha", "ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Onion, 1 small", "fr": "Oignon, 1 petit"},
+        "use": [
+          {"en": "1 tsp (5 mL) onion powder", "fr": "1 c. à thé (5 mL) de poudre d'oignon"},
+          {"en": "1 tbsp (15 mL) dried minced onion", "fr": "1 c. à soupe (15 mL) d'oignon émincé séché"}
+        ],
+        "note": {"en": "Best in soups, sauces and stews: dried onion doesn't brown.", "fr": "Pour les soupes, les sauces et les ragoûts : l'oignon séché ne dore pas."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Shallots, leeks or green onions, ½ cup (125 mL) chopped", "fr": "Échalotes françaises, poireaux ou oignons verts, ½ tasse (125 mL) hachés"},
+        "use": [
+          {"en": "½ cup (125 mL) chopped onion", "fr": "½ tasse (125 mL) d'oignon haché"}
+        ],
+        "note": {"en": "Onion is sharper, especially raw.", "fr": "L'oignon est plus piquant, surtout cru."},
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Chives, 2 tsp (10 mL) chopped", "fr": "Ciboulette, 2 c. à thé (10 mL) hachée"},
+        "use": [
+          {"en": "2 tsp (10 mL) chopped green onion tops", "fr": "2 c. à thé (10 mL) de partie verte d'oignons verts, hachée"}
+        ],
+        "src": ["ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Lemon juice, 1 tsp (5 mL)", "fr": "Jus de citron, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "½ tsp (2 mL) white vinegar", "fr": "½ c. à thé (2 mL) de vinaigre blanc"}
+        ],
+        "note": {"en": "Sharper, without the lemon taste.", "fr": "Plus acide, sans le goût de citron."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Lemon, 1 medium", "fr": "Citron, 1 moyen"},
+        "use": [
+          {"en": "2 to 3 tbsp (30 to 45 mL) bottled lemon juice", "fr": "2 à 3 c. à soupe (30 à 45 mL) de jus de citron en bouteille"}
+        ],
+        "note": {"en": "A medium lemon also gives 1 to 2 tsp (5 to 10 mL) grated zest; 1 tsp (5 mL) dried lemon peel stands in for it.", "fr": "Un citron moyen donne aussi 1 à 2 c. à thé (5 à 10 mL) de zeste râpé; 1 c. à thé (5 mL) de zeste de citron séché le remplace."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Vinegar, 1 tsp (5 mL)", "fr": "Vinaigre, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "1 tsp (5 mL) lemon or lime juice", "fr": "1 c. à thé (5 mL) de jus de citron ou de lime"},
+          {"en": "2 tsp (10 mL) white wine", "fr": "2 c. à thé (10 mL) de vin blanc"}
+        ],
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Wine, 1 cup (250 mL)", "fr": "Vin, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "In a savoury dish: 1 cup (250 mL) broth", "fr": "Dans un plat salé : 1 tasse (250 mL) de bouillon"},
+          {"en": "¾ cup (175 mL) + 1 tbsp (15 mL) water, 3 tbsp (45 mL) lemon juice and 1 tbsp (15 mL) sugar", "fr": "¾ tasse (175 mL) + 1 c. à soupe (15 mL) d'eau, 3 c. à soupe (45 mL) de jus de citron et 1 c. à soupe (15 mL) de sucre"}
+        ],
+        "note": {"en": "Broth adds salt: season at the end, after tasting.", "fr": "Le bouillon ajoute du sel : salez à la fin, après avoir goûté."},
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "Broth or stock, 1 cup (250 mL)", "fr": "Bouillon, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 bouillon cube, or 1 tsp (5 mL) powdered broth base, in 1 cup (250 mL) boiling water", "fr": "1 cube de bouillon, ou 1 c. à thé (5 mL) de bouillon en poudre, dans 1 tasse (250 mL) d'eau bouillante"}
+        ],
+        "note": {"en": "Saltier than most homemade or low-sodium broth: salt at the end, after tasting.", "fr": "Plus salé que la plupart des bouillons maison ou réduits en sodium : salez à la fin, après avoir goûté."},
+        "src": ["sha", "ndsu", "nmsu", "csu"]
+      },
+      {
+        "item": {"en": "Cornstarch for thickening, 1 tbsp (15 mL)", "fr": "Fécule de maïs pour épaissir, 1 c. à soupe (15 mL)"},
+        "use": [
+          {"en": "2 tbsp (30 mL) all-purpose flour", "fr": "2 c. à soupe (30 mL) de farine tout usage"}
+        ],
+        "note": {"en": "Flour gives a cloudy sauce and needs a few minutes of simmering to lose its raw taste.", "fr": "La farine donne une sauce opaque et doit mijoter quelques minutes pour perdre son goût de cru."},
+        "src": ["sha", "ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Flour for thickening, 1 tbsp (15 mL)", "fr": "Farine pour épaissir, 1 c. à soupe (15 mL)"},
+        "use": [
+          {"en": "1½ tsp (7 mL) cornstarch, potato starch or arrowroot", "fr": "1½ c. à thé (7 mL) de fécule de maïs, de fécule de pomme de terre ou d'arrow-root"}
+        ],
+        "note": {"en": "Stir the starch into a little cold water first. The sauce is glossy and thickens quickly.", "fr": "Délayez d'abord la fécule dans un peu d'eau froide. La sauce est lustrée et épaissit vite."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Soy sauce, ½ cup (125 mL)", "fr": "Sauce soya, ½ tasse (125 mL)"},
+        "use": [
+          {"en": "½ cup (125 mL) tamari", "fr": "½ tasse (125 mL) de tamari"},
+          {"en": "¼ cup (60 mL) Worcestershire sauce + 1 tbsp (15 mL) water", "fr": "¼ tasse (60 mL) de sauce Worcestershire + 1 c. à soupe (15 mL) d'eau"}
+        ],
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Worcestershire sauce, 1 tsp (5 mL)", "fr": "Sauce Worcestershire, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "1 tsp (5 mL) steak sauce", "fr": "1 c. à thé (5 mL) de sauce à steak"}
+        ],
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Tomato paste, 1 tbsp (15 mL)", "fr": "Pâte de tomates, 1 c. à soupe (15 mL)"},
+        "use": [
+          {"en": "2 to 3 tbsp (30 to 45 mL) tomato sauce, with less of the recipe's other liquid", "fr": "2 à 3 c. à soupe (30 à 45 mL) de sauce tomate, avec moins des autres liquides de la recette"},
+          {"en": "1 tbsp (15 mL) ketchup (sweeter)", "fr": "1 c. à soupe (15 mL) de ketchup (plus sucré)"}
+        ],
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Tomato juice, 1 cup (250 mL)", "fr": "Jus de tomate, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "½ cup (125 mL) tomato sauce + ½ cup (125 mL) water", "fr": "½ tasse (125 mL) de sauce tomate + ½ tasse (125 mL) d'eau"}
+        ],
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Canned tomatoes", "fr": "Tomates en conserve"},
+        "use": [
+          {"en": "Diced, whole, crushed, passata or stewed: one for another", "fr": "En dés, entières, broyées, passata ou étuvées : l'une pour l'autre"}
+        ],
+        "note": {"en": "Break up whole tomatoes. Stewed tomatoes are already seasoned.", "fr": "Défaites les tomates entières. Les tomates étuvées sont déjà assaisonnées."},
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Fresh tomatoes, 2 cups (500 mL) chopped", "fr": "Tomates fraîches, 2 tasses (500 mL) hachées"},
+        "use": [
+          {"en": "2 cups (500 mL) canned diced tomatoes", "fr": "2 tasses (500 mL) de tomates en dés en conserve"}
+        ],
+        "note": {"en": "Drain them if the dish shouldn't get wetter.", "fr": "Égouttez-les si le plat ne doit pas être plus liquide."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Dry mustard, 1 tsp (5 mL)", "fr": "Moutarde sèche, 1 c. à thé (5 mL)"},
+        "use": [
+          {"en": "1 tbsp (15 mL) prepared mustard", "fr": "1 c. à soupe (15 mL) de moutarde préparée"}
+        ],
+        "note": {"en": "Adds a little liquid and vinegar.", "fr": "Ajoute un peu de liquide et de vinaigre."},
+        "src": ["ndsu", "nmsu"]
+      },
+      {
+        "item": {"en": "Ground beef, 1 lb (450 g)", "fr": "Bœuf haché, 1 lb (450 g)"},
+        "use": [
+          {"en": "1 lb (450 g) ground chicken or turkey", "fr": "1 lb (450 g) de poulet ou de dinde haché"},
+          {"en": "Cooked lentils", "fr": "Des lentilles cuites"}
+        ],
+        "note": {"en": "Ground poultry is leaner, and Health Canada says to cook it to 74°C (165°F); ground beef to 71°C (160°F).", "fr": "La volaille hachée est plus maigre, et Santé Canada demande de la cuire à 74 °C (165 °F); le bœuf haché, à 71 °C (160 °F)."},
+        "src": ["sha", "hc"]
+      },
+      {
+        "item": {"en": "Sour cream in a hot dish, 1 cup (250 mL)", "fr": "Crème sure dans un plat chaud, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) plain yogurt with 1 tbsp (15 mL) cornstarch stirred in", "fr": "1 tasse (250 mL) de yogourt nature additionné de 1 c. à soupe (15 mL) de fécule de maïs"}
+        ],
+        "note": {"en": "Without the cornstarch, yogurt separates when heated.", "fr": "Sans la fécule, le yogourt se sépare à la chaleur."},
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "Whipping cream (35%), 1 cup (250 mL)", "fr": "Crème à fouetter 35 %, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "¾ cup (175 mL) milk + ⅓ cup (75 mL) melted butter", "fr": "¾ tasse (175 mL) de lait + ⅓ tasse (75 mL) de beurre fondu"}
+        ],
+        "note": {"en": "For cooking and baking only: it won't whip.", "fr": "Pour cuisiner et cuire seulement : ça ne se fouette pas."},
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "10% cream (half-and-half), 1 cup (250 mL)", "fr": "Crème 10 %, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) milk minus 2 tbsp (30 mL), + 1 tbsp (15 mL) melted butter", "fr": "1 tasse (250 mL) de lait moins 2 c. à soupe (30 mL), + 1 c. à soupe (15 mL) de beurre fondu"},
+          {"en": "1 cup (250 mL) evaporated milk", "fr": "1 tasse (250 mL) de lait évaporé"}
+        ],
+        "src": ["sha", "ndsu"]
+      },
+      {
+        "item": {"en": "Breadcrumbs, 1 cup (250 mL)", "fr": "Chapelure, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) cracker crumbs, crushed cornflakes or ground rolled oats", "fr": "1 tasse (250 mL) de craquelins émiettés, de flocons de maïs écrasés ou de flocons d'avoine moulus"}
+        ],
+        "note": {"en": "1 slice of bread makes about ⅓ cup (75 mL) dry crumbs or ¾ cup (175 mL) fresh crumbs.", "fr": "1 tranche de pain donne environ ⅓ tasse (75 mL) de chapelure sèche ou ¾ tasse (175 mL) de mie fraîche émiettée."},
+        "src": ["sha", "ndsu"]
+      },
+      {
+        "item": {"en": "Cooked white rice, 1 cup (250 mL)", "fr": "Riz blanc cuit, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) cooked barley, brown rice or wild rice", "fr": "1 tasse (250 mL) d'orge, de riz brun ou de riz sauvage cuit"}
+        ],
+        "note": {"en": "They take longer to cook than white rice.", "fr": "Leur cuisson est plus longue que celle du riz blanc."},
+        "src": ["sha"]
+      },
+      {
+        "item": {"en": "Fresh mushrooms, 1 lb (450 g)", "fr": "Champignons frais, 1 lb (450 g)"},
+        "use": [
+          {"en": "3 oz (85 g) dried mushrooms, soaked", "fr": "3 oz (85 g) de champignons séchés, réhydratés"}
+        ],
+        "note": {"en": "Strain the soaking water and use it in the dish.", "fr": "Filtrez l'eau de trempage et ajoutez-la au plat."},
+        "src": ["ndsu"]
+      },
+      {
+        "item": {"en": "Fresh vegetables, 1 cup (250 mL)", "fr": "Légumes frais, 1 tasse (250 mL)"},
+        "use": [
+          {"en": "1 cup (250 mL) frozen or canned vegetables", "fr": "1 tasse (250 mL) de légumes surgelés ou en conserve"}
+        ],
+        "note": {"en": "Add frozen ones later in the cooking. Canned ones are already cooked: drain them and add them at the end.", "fr": "Ajoutez les surgelés plus tard pendant la cuisson. Ceux en conserve sont déjà cuits : égouttez-les et ajoutez-les à la fin."},
+        "src": ["sha"]
+      }
+    ],
+    "sources": ["sha", "ndsu", "nmsu", "csu", "csu_oils", "hc"]
+  },
+
+  "meat": {
+    "intro": [
+      {
+        "en": "Roasting times from FoodSafety.gov (United States), approximate, for an oven at the temperature shown. They are for reaching 63°C (145°F) in meat, with a 3-minute rest, and 74°C (165°F) in poultry.",
+        "fr": "Temps de rôtissage de FoodSafety.gov (États-Unis), approximatifs, pour un four à la température indiquée. Ils visent 63 °C (145 °F) dans la viande, avec 3 minutes de repos, et 74 °C (165 °F) dans la volaille."
+      },
+      {
+        "en": "Health Canada's temperatures, in the last column, are higher for pork and ham, whole birds, and beef, lamb or veal cooked past medium-rare, so those can take longer: keep cooking until a food thermometer in the thickest part, away from bone, reads Health Canada's temperature.",
+        "fr": "Les températures de Santé Canada, dans la dernière colonne, sont plus élevées pour le porc et le jambon, les volailles entières, et le bœuf, l'agneau ou le veau cuits plus que mi-saignants : ils peuvent donc prendre plus de temps. Poursuivez la cuisson jusqu'à ce qu'un thermomètre à cuisson, dans la partie la plus épaisse et loin de l'os, indique la température de Santé Canada."
+      }
+    ],
+    "temps": {
+      "beef": [
+        {"c": 63, "f": 145, "label": {"en": "medium-rare", "fr": "mi-saignant"}},
+        {"c": 71, "f": 160, "label": {"en": "medium", "fr": "à point"}},
+        {"c": 77, "f": 170, "label": {"en": "well done", "fr": "bien cuit"}}
+      ],
+      "63": [{"c": 63, "f": 145}],
+      "70": [{"c": 70, "f": 158}],
+      "71": [{"c": 71, "f": 160}],
+      "74": [{"c": 74, "f": 165}],
+      "82": [{"c": 82, "f": 180}],
+      "cooked": []
+    },
+    "marks": {
+      "cooked": {"symbol": "*", "en": "Already fully cooked: these times heat it through.", "fr": "Déjà entièrement cuit : ces temps servent à le réchauffer."},
+      "fsis": {"symbol": "†", "en": "From USDA FSIS's lamb page. FoodSafety.gov says 10–15 min/lb, which would leave a 7 lb leg more than an hour short of the row above.", "fr": "Selon la page sur l'agneau du FSIS (USDA). FoodSafety.gov indique 10 à 15 min/lb, ce qui laisserait un gigot de 7 lb plus d'une heure en deçà de la ligne précédente."}
+    },
+    "sections": [
+      {
+        "title": {"en": "Beef", "fr": "Bœuf"},
+        "rows": [
+          {"cut": {"en": "Rib roast, bone-in", "fr": "Rôti de côtes, avec os"}, "lb": [4, 6], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [23, 25]}, "temp": "beef"},
+          {"cut": {"en": "Rib roast, boneless", "fr": "Rôti de côtes, désossé"}, "lb": [4, 6], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [28, 33]}, "temp": "beef"},
+          {"cut": {"en": "Round or rump roast", "fr": "Rôti de ronde ou de croupe"}, "ca": {"en": "inside, outside or eye of round; sirloin tip", "fr": "intérieur, extérieur ou œil de ronde; pointe de surlonge"}, "lb": [2.5, 4], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [30, 35]}, "temp": "beef"},
+          {"cut": {"en": "Tenderloin, whole", "fr": "Filet, entier"}, "lb": [4, 6], "oven": {"f": [425], "c": [218]}, "time": {"total": [45, 60]}, "temp": "beef"}
+        ]
+      },
+      {
+        "title": {"en": "Lamb", "fr": "Agneau"},
+        "rows": [
+          {"cut": {"en": "Leg, bone-in", "fr": "Gigot, avec os"}, "lb": [5, 7], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [20, 25]}, "temp": "beef"},
+          {"cut": {"en": "Leg, bone-in", "fr": "Gigot, avec os"}, "lb": [7, 9], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [15, 20]}, "temp": "beef", "mark": "fsis"},
+          {"cut": {"en": "Leg, boneless, rolled", "fr": "Gigot, désossé et roulé"}, "lb": [4, 7], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [25, 30]}, "temp": "beef"},
+          {"cut": {"en": "Shoulder roast", "fr": "Rôti d'épaule"}, "lb": [3, 4], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [30, 35]}, "temp": "beef"}
+        ]
+      },
+      {
+        "title": {"en": "Pork", "fr": "Porc"},
+        "rows": [
+          {"cut": {"en": "Loin roast, bone-in or boneless", "fr": "Rôti de longe, avec ou sans os"}, "lb": [2, 5], "oven": {"f": [350], "c": [177]}, "time": {"per_lb": [20]}, "temp": "71"},
+          {"cut": {"en": "Crown roast", "fr": "Rôti en couronne"}, "lb": [10], "oven": {"f": [350], "c": [177]}, "time": {"per_lb": [12]}, "temp": "71"},
+          {"cut": {"en": "Tenderloin", "fr": "Filet"}, "lb": [0.5, 1.5], "oven": {"f": [425, 450], "c": [218, 232]}, "time": {"total": [20, 27]}, "temp": "71"},
+          {"cut": {"en": "Boston butt", "fr": "Boston butt"}, "ca": {"en": "pork shoulder butt", "fr": "soc"}, "lb": [3, 6], "oven": {"f": [350], "c": [177]}, "time": {"per_lb": [45]}, "temp": "71"},
+          {"cut": {"en": "Ribs", "fr": "Côtes levées"}, "lb": [2, 4], "oven": {"f": [350], "c": [177]}, "time": {"total": [90, 120], "or": {"en": "or until fork-tender", "fr": "ou jusqu'à ce qu'elles soient tendres à la fourchette"}}, "temp": "71"}
+        ]
+      },
+      {
+        "title": {"en": "Veal", "fr": "Veau"},
+        "rows": [
+          {"cut": {"en": "Rib roast", "fr": "Rôti de côtes"}, "lb": [4, 5], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [25, 27]}, "temp": "beef"},
+          {"cut": {"en": "Loin", "fr": "Longe"}, "lb": [3, 4], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [34, 36]}, "temp": "beef"}
+        ]
+      },
+      {
+        "title": {"en": "Smoked ham, to cook before eating", "fr": "Jambon fumé, à cuire avant de manger"},
+        "rows": [
+          {"cut": {"en": "Whole, bone-in", "fr": "Entier, avec os"}, "lb": [10, 14], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [18, 20]}, "temp": "71"},
+          {"cut": {"en": "Half, bone-in", "fr": "Demi, avec os"}, "lb": [5, 7], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [22, 25]}, "temp": "71"},
+          {"cut": {"en": "Shank or butt portion, bone-in", "fr": "Partie jarret ou partie croupe, avec os"}, "lb": [3, 4], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [35, 40]}, "temp": "71"},
+          {"cut": {"en": "Arm picnic shoulder, boneless", "fr": "Épaule picnic, désossée"}, "lb": [5, 8], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [30, 35]}, "temp": "71"},
+          {"cut": {"en": "Shoulder roll (butt), boneless", "fr": "Soc roulé, désossé"}, "lb": [2, 4], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [35, 40]}, "temp": "71"}
+        ]
+      },
+      {
+        "title": {"en": "Smoked ham, fully cooked, to reheat", "fr": "Jambon fumé entièrement cuit, à réchauffer"},
+        "rows": [
+          {"cut": {"en": "Whole, bone-in", "fr": "Entier, avec os"}, "lb": [10, 14], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [15, 18]}, "temp": "cooked", "mark": "cooked"},
+          {"cut": {"en": "Half, bone-in", "fr": "Demi, avec os"}, "lb": [5, 7], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [18, 24]}, "temp": "cooked", "mark": "cooked"},
+          {"cut": {"en": "Arm picnic shoulder, boneless", "fr": "Épaule picnic, désossée"}, "lb": [5, 8], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [25, 30]}, "temp": "cooked", "mark": "cooked"},
+          {"cut": {"en": "Canned, boneless", "fr": "En conserve, désossé"}, "lb": [3, 10], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [15, 20]}, "temp": "cooked", "mark": "cooked"},
+          {"cut": {"en": "Vacuum-packed, boneless", "fr": "Emballé sous vide, désossé"}, "lb": [6, 12], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [10, 15]}, "temp": "cooked", "mark": "cooked"},
+          {"cut": {"en": "Spiral-cut, whole or half", "fr": "Tranché en spirale, entier ou demi"}, "lb": [7, 9], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [10, 18]}, "temp": "cooked", "mark": "cooked"}
+        ]
+      },
+      {
+        "title": {"en": "Fresh ham, uncooked", "fr": "Jambon frais (non fumé), cru"},
+        "rows": [
+          {"cut": {"en": "Whole leg, bone-in", "fr": "Cuisse entière, avec os"}, "lb": [12, 16], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [22, 26]}, "temp": "71"},
+          {"cut": {"en": "Whole leg, boneless", "fr": "Cuisse entière, désossée"}, "lb": [10, 14], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [24, 28]}, "temp": "71"},
+          {"cut": {"en": "Half, bone-in", "fr": "Demi, avec os"}, "lb": [5, 8], "oven": {"f": [325], "c": [163]}, "time": {"per_lb": [35, 40]}, "temp": "71"}
+        ]
+      },
+      {
+        "title": {"en": "Poultry", "fr": "Volaille"},
+        "note": {
+          "en": "Times are for birds that aren't stuffed. A stuffed bird takes 15 to 30 minutes longer, and the centre of the stuffing must reach 74°C (165°F).",
+          "fr": "Ces temps valent pour des volailles non farcies. Une volaille farcie prend de 15 à 30 minutes de plus, et le centre de la farce doit atteindre 74 °C (165 °F)."
+        },
+        "rows": [
+          {"cut": {"en": "Chicken, whole", "fr": "Poulet entier"}, "lb": [3, 4], "oven": {"f": [350], "c": [177]}, "time": {"total": [75, 90]}, "temp": "82"},
+          {"cut": {"en": "Chicken, whole", "fr": "Poulet entier"}, "lb": [5, 7], "oven": {"f": [350], "c": [177]}, "time": {"total": [120, 135]}, "temp": "82"},
+          {"cut": {"en": "Chicken breast halves, bone-in", "fr": "Demi-poitrines de poulet, avec os"}, "oz": [6, 8], "oven": {"f": [350], "c": [177]}, "time": {"total": [30, 40]}, "temp": "74"},
+          {"cut": {"en": "Chicken breast halves, boneless", "fr": "Demi-poitrines de poulet, désossées"}, "oz": [4], "oven": {"f": [350], "c": [177]}, "time": {"total": [20, 30]}, "temp": "74"},
+          {"cut": {"en": "Capon, whole", "fr": "Chapon entier"}, "lb": [4, 8], "oven": {"f": [350], "c": [177]}, "time": {"total": [120, 180]}, "temp": "82"},
+          {"cut": {"en": "Cornish hen, whole", "fr": "Poulet de Cornouailles entier"}, "oz": [18, 24], "oven": {"f": [350], "c": [177]}, "time": {"total": [50, 60]}, "temp": "82"},
+          {"cut": {"en": "Duck, whole (don't stuff it)", "fr": "Canard entier (ne pas le farcir)"}, "lb": [4, 6], "oven": {"f": [350], "c": [177]}, "time": {"per_lb": [30, 35]}, "temp": "82"},
+          {"cut": {"en": "Duck legs or thighs", "fr": "Cuisses ou hauts de cuisse de canard"}, "oven": {"f": [325], "c": [163]}, "time": {"total": [75, 90]}, "temp": "74"},
+          {"cut": {"en": "Young goose, whole", "fr": "Jeune oie entière"}, "lb": [8, 12], "oven": {"f": [325], "c": [163]}, "time": {"total": [150, 180]}, "temp": "82"},
+          {"cut": {"en": "Young goose, in pieces", "fr": "Jeune oie, en morceaux"}, "oven": {"f": [325], "c": [163]}, "time": {"total": [120]}, "temp": "74"}
+        ]
+      }
+    ],
+    "turkey": {
+      "title": {"en": "Turkey", "fr": "Dinde"},
+      "oven": {"f": [325], "c": [163]},
+      "rows": [
+        {"lb": [4, 6], "breast": true, "unstuffed": [90, 135], "stuffed": null},
+        {"lb": [6, 8], "breast": true, "unstuffed": [135, 195], "stuffed": [180, 210]},
+        {"lb": [8, 12], "unstuffed": [165, 180], "stuffed": [180, 210]},
+        {"lb": [12, 14], "unstuffed": [180, 225], "stuffed": [210, 240]},
+        {"lb": [14, 18], "unstuffed": [225, 255], "stuffed": [240, 255]},
+        {"lb": [18, 20], "unstuffed": [255, 270], "stuffed": [255, 285]},
+        {"lb": [20, 24], "unstuffed": [270, 300], "stuffed": [285, 315]}
+      ]
+    },
+    "thawing": {
+      "title": {"en": "Thawing a turkey", "fr": "Décongeler une dinde"},
+      "note": {
+        "en": "In the refrigerator at 4°C (40°F) or colder: about 24 hours for every 4 to 5 lb (1.8 to 2.3 kg). In cold water: about 30 minutes per lb (about 1 hour per kg), changing the water every 30 minutes, then cook the turkey right away. Never at room temperature.",
+        "fr": "Au réfrigérateur, à 4 °C (40 °F) ou moins : environ 24 heures par 4 à 5 lb (1,8 à 2,3 kg). Dans l'eau froide : environ 30 minutes par livre (environ 1 heure par kilo), en changeant l'eau toutes les 30 minutes, puis cuisez la dinde aussitôt. Jamais à la température ambiante."
+      },
+      "rows": [
+        {"lb": [4, 12], "fridge_days": [1, 3], "water_hours": [2, 6]},
+        {"lb": [12, 16], "fridge_days": [3, 4], "water_hours": [6, 8]},
+        {"lb": [16, 20], "fridge_days": [4, 5], "water_hours": [8, 10]},
+        {"lb": [20, 24], "fridge_days": [5, 6], "water_hours": [10, 12]}
+      ]
+    },
+    "safe": {
+      "title": {"en": "Safe internal temperatures (Health Canada)", "fr": "Températures internes sécuritaires (Santé Canada)"},
+      "groups": [
+        {
+          "title": {"en": "Beef, veal and lamb", "fr": "Bœuf, veau et agneau"},
+          "rows": [
+            {"food": {"en": "Ground (burgers, meatballs, sausages)", "fr": "Haché (hamburgers, boulettes, saucisses)"}, "temp": "71"},
+            {"food": {"en": "Steaks and roasts", "fr": "Biftecks et rôtis"}, "temp": "beef"},
+            {"food": {"en": "Mechanically tenderized beef and veal (turn steaks over at least twice while cooking)", "fr": "Bœuf et veau attendris mécaniquement (retournez les biftecks au moins 2 fois pendant la cuisson)"}, "temp": "63"}
+          ]
+        },
+        {
+          "title": {"en": "Pork, including ham, loin and ribs", "fr": "Porc, y compris jambon, longe et côtes"},
+          "rows": [
+            {"food": {"en": "Ground", "fr": "Haché"}, "temp": "71"},
+            {"food": {"en": "Pieces and whole cuts (chops, roasts)", "fr": "Morceaux et coupes entières (côtelettes, rôtis)"}, "temp": "71"}
+          ]
+        },
+        {
+          "title": {"en": "Poultry: chicken, duck, turkey", "fr": "Volaille : poulet, canard, dinde"},
+          "rows": [
+            {"food": {"en": "Frozen raw breaded products (nuggets, fingers, strips, burgers)", "fr": "Produits crus panés et congelés (pépites, doigts, lanières, hamburgers)"}, "temp": "74"},
+            {"food": {"en": "Ground", "fr": "Hachée"}, "temp": "74"},
+            {"food": {"en": "Pieces (breasts, legs, thighs, wings)", "fr": "Morceaux (poitrines, cuisses, hauts de cuisse, ailes)"}, "temp": "74"},
+            {"food": {"en": "Stuffing, cooked alone or in the bird", "fr": "Farce, cuite seule ou dans la volaille"}, "temp": "74"},
+            {"food": {"en": "Whole bird", "fr": "Entière"}, "temp": "82"}
+          ]
+        },
+        {
+          "title": {"en": "Eggs", "fr": "Œufs"},
+          "rows": [
+            {"food": {"en": "Egg dishes (frittata, omelette, quiche)", "fr": "Plats à base d'œufs (frittata, omelette, quiche)"}, "temp": "74"}
+          ]
+        },
+        {
+          "title": {"en": "Seafood", "fr": "Fruits de mer"},
+          "rows": [
+            {"food": {"en": "Fish", "fr": "Poisson"}, "temp": "70"},
+            {"food": {"en": "Shellfish and crustaceans (crab, lobster, shrimp, clams, mussels, oysters, scallops). Throw out clams, mussels, oysters and scallops that don't open.", "fr": "Mollusques et crustacés (crabe, homard, crevettes, palourdes, moules, huîtres, pétoncles). Jetez les palourdes, moules, huîtres et pétoncles qui ne s'ouvrent pas."}, "temp": "74"}
+          ]
+        },
+        {
+          "title": {"en": "Leftovers and hot dogs", "fr": "Restes et hot dogs"},
+          "rows": [
+            {"food": {"en": "Leftovers", "fr": "Restes"}, "temp": "74"},
+            {"food": {"en": "Hot dogs", "fr": "Hot dogs"}, "temp": "74"}
+          ]
+        },
+        {
+          "title": {"en": "Game meats", "fr": "Viandes de gibier"},
+          "rows": [
+            {"food": {"en": "Ground meat, mixtures, ground venison, sausage", "fr": "Viande hachée, mélanges de viandes, venaison hachée, saucisses"}, "temp": "74"},
+            {"food": {"en": "Deer, elk, moose, caribou, reindeer, antelope, pronghorn", "fr": "Cerf, wapiti, orignal, caribou, renne, antilope, antilope d'Amérique"}, "temp": "74"},
+            {"food": {"en": "Large game (bear, bison, musk-ox, walrus)", "fr": "Gros gibier (ours, bison, bœuf musqué, morse)"}, "temp": "74"},
+            {"food": {"en": "Small game (beaver, muskrat, hare)", "fr": "Petit gibier (castor, rat musqué, lièvre)"}, "temp": "74"}
+          ]
+        },
+        {
+          "title": {"en": "Game birds and waterfowl: duck, goose, partridge, pheasant, wild turkey", "fr": "Gibier à plumes et gibier d'eau : canard, oie, perdrix, faisan, dinde sauvage"},
+          "rows": [
+            {"food": {"en": "Pieces", "fr": "Morceaux"}, "temp": "74"},
+            {"food": {"en": "Stuffing, cooked alone or in the bird", "fr": "Farce, cuite seule ou dans le gibier à plumes"}, "temp": "74"},
+            {"food": {"en": "Whole bird", "fr": "Entier"}, "temp": "82"}
+          ]
+        }
+      ]
+    },
+    "sources": ["fsgov", "fsis", "hc"]
+  },
+
+  "notes": {
+    "substitutions": [
+      {"en": "Substitutions change taste, colour and texture. They are not a guide for allergies, intolerances or special diets: check labels, and ask a dietitian or your doctor.", "fr": "Les substitutions changent le goût, la couleur et la texture. Elles ne sont pas un guide pour les allergies, les intolérances ni les régimes particuliers : lisez les étiquettes et consultez une diététiste ou votre médecin."}
+    ],
+    "meat": [
+      {"en": "Times are approximate: the oven, the shape of the meat and how cold it was going in all change them. Check with a food thermometer in the thickest part, away from bone and fat.", "fr": "Les temps sont approximatifs : le four, la forme de la pièce et sa température au départ les font varier. Vérifiez avec un thermomètre à cuisson dans la partie la plus épaisse, loin de l'os et du gras."}
+    ],
+    "all": [
+      {"en": "General guidance gathered from the sources below, not a food-safety authority. Their links need a connection; these charts work offline.", "fr": "Renseignements généraux tirés des sources ci-dessous, et non une autorité en salubrité alimentaire. Les liens demandent une connexion; ces tableaux fonctionnent hors ligne."}
+    ]
+  }
+}

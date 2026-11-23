@@ -92,6 +92,9 @@ several user accounts.
   (volumes as grams, or weights as cups and spoons); notes; keep the screen
   awake (needs HTTPS); checkboxes to tick off ingredients and steps
   (Settings, off by default).
+- **Quick reference** (top bar and each recipe, offline): baking and
+  cooking substitutions, and meat roasting times with Health Canada's safe
+  internal temperatures, in °F or °C.
 - **Manage**: edit, duplicate, merge two recipes, tag or delete several at
   once, Recently deleted (30 days), and a library check.
 - **Share**: print, PDF, self-contained HTML, JSON, a JPG image, or email

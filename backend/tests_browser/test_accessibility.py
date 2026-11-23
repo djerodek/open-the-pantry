@@ -22,8 +22,8 @@ from .test_pages import _open_settings
 
 AXE_SOURCE = (pathlib.Path(axe_playwright_python.__file__).parent / "axe.min.js").read_text(encoding="utf-8")
 FAILING = ("serious", "critical")
-RUN = """async () => {
-  const r = await axe.run(document, {
+RUN = """async (within) => {
+  const r = await axe.run(within ? document.querySelector(within) : document, {
     resultTypes: ["violations"],
     runOnly: {type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]},
     rules: {"meta-viewport": {enabled: false}},
@@ -38,7 +38,10 @@ class Scanner:
     def __init__(self, pg, label):
         self.pg, self.label, self.failures = pg, label, []
 
-    def scan(self, screen):
+    def scan(self, screen, within=None):
+        """`within`: a selector to scan only that part. For an open menu:
+        whatever it covers counts as an obscured target (target-size), as
+        any menu drawn over a page would."""
         # A sheet fading in has blended colours: contrast is measured once
         # every animation and transition has finished.
         wait_until(self.pg, "document.getAnimations().every((a) => a.playState !== 'running')")
@@ -46,7 +49,7 @@ class Scanner:
         # apply to; an injected <script> would be blocked (and reported).
         if not self.pg.evaluate("typeof window.axe !== 'undefined'"):
             self.pg.evaluate(AXE_SOURCE)
-        for v in self.pg.evaluate(RUN):
+        for v in self.pg.evaluate(RUN, within):
             where = f"{self.label} / {screen}: [{v['impact']}] {v['id']} ({v['help']})\n      " + "\n      ".join(v["nodes"])
             if v["impact"] in FAILING:
                 self.failures.append(where)
@@ -98,6 +101,15 @@ def test_main_page(server, page, library, lang, scheme):
     pg.click(f"text={soup['title']}")
     pg.wait_for_selector("#recipe-detail-heading")
     s.scan("recipe")
+    pg.click(".recipe-aids .ref-toggle")
+    s.scan("quick reference menu", within=".recipe-aids .ref-wrap")
+    pg.click(".recipe-aids .ref-menu button[data-chart=meat]")
+    pg.wait_for_selector("#reference-overlay:not([hidden]) .ref-sources")
+    s.scan("meat cooking times")
+    pg.click(".ref-switch button[data-chart=baking]")
+    pg.wait_for_selector("#reference-body .ref-subs")
+    s.scan("baking substitutions")
+    pg.click("#reference-close")
     pg.click(".share-toggle")
     pg.click("#share-menu button >> nth=-2")                   # Image (JPG)
     wait_until(pg, "document.querySelector('#image-sheet-preview img')?.naturalWidth > 0")
@@ -155,6 +167,11 @@ def test_what_to_eat_page(server, api, page, library, lang, scheme):
         pg.goto(f"{server['picker_url']}/#recipe-{library['soup']['id']}")
         pg.wait_for_selector("#reader-overlay:not([hidden]) #reader-title")
         s.scan("recipe")
+        # The main page's top bar on a phone: What to eat? in the charts' menu (0233).
+        pg.goto(server["url"])
+        wait_until(pg, "document.querySelector('#topbar-ref')?.classList.contains('is-merged')")
+        pg.click("#topbar-ref-toggle")
+        s.scan("main page: What to eat? and quick reference menu", within="#topbar-ref")
         s.check()
     finally:
         api.put("/api/picker/settings", json={"enabled": False})

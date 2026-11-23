@@ -261,6 +261,32 @@ a { color: var(--color-focus); }
   .topbar-link-label { display: inline; }
 }
 
+/* Quick reference (reference.js): a book, or three dots on a phone when
+   What to eat? shares its menu (is-merged); icon and label from 48rem. */
+.topbar-ref .icon-more { display: none; }
+.topbar-ref.is-merged .icon-more { display: block; }
+.topbar-ref.is-merged .icon-book { display: none; }
+.topbar-ref .topbar-ref-menu { top: 2.6rem; }
+/* Wide enough for the French items on one line. */
+.topbar-ref-menu, .ref-menu { min-width: 15rem; max-width: calc(100vw - 1.5rem); }
+.share-menu a {
+  display: block;
+  padding: 0.55rem 0.8rem;
+  color: var(--color-ink);
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+.share-menu a:hover { background: var(--color-bg); }
+.menu-sub { display: block; font-size: 0.75rem; color: var(--color-ink-muted); margin-top: 0.1rem; }
+.menu-head {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
+  padding: 0.55rem 0.8rem 0.2rem;
+  border-top: 1px solid var(--color-border);
+}
+
 /* min-width:0 because a flex item defaults to min-width:auto, which refuses
    to shrink below the search input's intrinsic width. On a narrow phone that
    pushed the topbar ~3px wider than the viewport and gave the whole page a
@@ -1836,7 +1862,7 @@ li.is-ticked .tick-text {
 --------------------------------------------------------------------- */
 @media print {
   .topbar, .sidebar, .fab, .toolbar-row, .filter-panel, .batch-bar, .share-menu-wrap, .skip-link,
-  .notes-section, .wakelock-row, .recipe-facts-editor, .meta-edit,
+  .notes-section, .wakelock-row, .ref-wrap, .recipe-facts-editor, .meta-edit,
   #add-recipe-overlay, .modal-close,
   /* Controls, not the recipe (Claude review of 0138). */
   .photo-controls, .card-quick-controls, .recipe-record-actions, .review-banner,
@@ -2040,6 +2066,72 @@ html { touch-action: manipulation; }
 
 /* Per-recipe "Keep screen on" switch: same look as the Settings rows. */
 .wakelock-row { margin: 0.25rem 0 0.75rem; max-width: 24rem; }
+
+/* Keep screen on and Quick reference, side by side when they fit. */
+.recipe-aids {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.recipe-aids .wakelock-row { margin: 0; flex: 0 1 18rem; }
+.ref-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
+.ref-toggle .icon { width: 1.1rem; height: 1.1rem; display: block; }
+.ref-wrap .ref-menu { left: 0; right: auto; }
+
+/* The charts (reference.js). */
+.reference-modal { max-width: 52rem; }
+.ref-switch { flex-wrap: wrap; }
+.ref-units { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.ref-units .mode-switch { margin-bottom: 0; }
+.ref-intro { font-size: 0.9rem; margin: 0.4rem 0; }
+.ref-section { margin: 1.4rem 0 0.4rem; font-size: 1.05rem; }
+.ref-group { margin: 1rem 0 0.3rem; font-size: 0.92rem; }
+.ref-note { font-size: 0.85rem; margin: 0.3rem 0 0; }
+.ref-footnote { font-size: 0.8rem; margin: 0.3rem 0 0; }
+.ref-subs { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.ref-subs > li { padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
+.ref-item { font-weight: 600; }
+.ref-use { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+.ref-use li { margin: 0.15rem 0; }
+.ref-sources { padding-left: 1.2rem; font-size: 0.85rem; }
+.ref-sources li { margin: 0.3rem 0; overflow-wrap: anywhere; }
+.ref-table-wrap { margin: 0.4rem 0; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.ref-table th, .ref-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.ref-table th { font-size: 0.78rem; color: var(--color-ink-muted); font-weight: 600; }
+.ref-cut { display: block; font-weight: 600; }
+.ref-ca { display: block; font-size: 0.78rem; color: var(--color-ink-muted); }
+.ref-temp { display: block; }
+.ref-body .nowrap { white-space: nowrap; }
+/* The same column width in every group's table, so the temperatures line up. */
+.ref-table-2 th:last-child, .ref-table-2 td:last-child { width: 45%; }
+@media (min-width: 40rem) {
+  .ref-table:not(.ref-table-2) td:first-child { width: 26%; }
+}
+/* Below 40rem the wide tables become one block per row, each value with
+   its column's name (data-label) beside it. The two-column table of
+   temperatures fits as it is. */
+@media (max-width: 39.99rem) {
+  .ref-table:not(.ref-table-2) thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .ref-table:not(.ref-table-2), .ref-table:not(.ref-table-2) tbody,
+  .ref-table:not(.ref-table-2) tr, .ref-table:not(.ref-table-2) td { display: block; width: 100%; }
+  .ref-table:not(.ref-table-2) tr { padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); }
+  .ref-table:not(.ref-table-2) td { border: none; padding: 0.1rem 0; display: flex; gap: 0.5rem; }
+  .ref-table:not(.ref-table-2) td::before {
+    content: attr(data-label); flex: 0 0 6.5rem; color: var(--color-ink-muted); font-size: 0.78rem;
+  }
+  .ref-table:not(.ref-table-2) td:first-child { display: block; }
+  .ref-table:not(.ref-table-2) td:first-child::before { content: none; }
+}
 
 /* Settings -> HTTPS */
 .setup-code {

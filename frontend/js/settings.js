@@ -1191,10 +1191,16 @@ function pickerAddress(st) {
   } catch { return null; }
 }
 
+// On a phone with the quick reference charts on, reference.js hides this
+// link and offers it in its own menu instead; the event tells it the link
+// came, went or moved.
 function renderPickerLink(st) {
   const url = st && st.enabled ? pickerAddress(st) : null;
   let link = $("#picker-link");
-  if (!url) { if (link) link.remove(); return; }
+  if (!url) {
+    if (link) { link.remove(); document.dispatchEvent(new Event("otp:picker-link")); }
+    return;
+  }
   if (!link) {
     // Icon only on a phone (the label is hidden by CSS); the aria-label
     // names it either way.
@@ -1203,6 +1209,7 @@ function renderPickerLink(st) {
     $("#settings-toggle").before(link);
   }
   link.href = url;
+  document.dispatchEvent(new Event("otp:picker-link"));
 }
 
 async function refreshPickerLink() {

@@ -51,7 +51,9 @@ backend/tests_browser/  page tests (Playwright)
 frontend/           the app: index.html, js/app.js (a JavaScript module, no build step),
                     js/settings.js (the Settings panels), js/add_recipe.js (the Add dialog),
                     js/i18n.js, css/;
-                    js/amounts.js + js/weights.js: scaling, Weights, Volumes (also used by What to eat?)
+                    js/amounts.js + js/weights.js: scaling, Weights, Volumes (also used by What to eat?);
+                    js/reference.js + js/reference-data.json: the Quick reference charts (content
+                    and sources in the JSON, checked by backend/tests/test_reference_charts.py)
 frontend-picker/    the What to eat? page (port 8091)
 docker-compose*.yml published image, build from source, HTTPS via Traefik
 ```

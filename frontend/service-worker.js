@@ -1,4 +1,4 @@
-const CACHE_NAME = "open-the-pantry-shell-v122";
+const CACHE_NAME = "open-the-pantry-shell-v123";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -6,6 +6,8 @@ const SHELL_ASSETS = [
   "/js/i18n.js",
   "/js/weights.js", "/js/amounts.js",
   "/js/app.js", "/js/settings.js", "/js/add_recipe.js",
+  // The quick reference charts, so they open offline before ever being opened online.
+  "/js/reference.js", "/js/reference-data.json",
   "/manifest.json",
 ];
 

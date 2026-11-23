@@ -1189,3 +1189,145 @@ def test_unsaved_notes_survive_closing_with_the_notes_button(server, api, page):
     assert pg.inner_text(f"{view} .notes-view-text") == "Saved."
     pg.click(f"{view} .notes-edit-btn")
     assert pg.input_value(textarea) == "Saved."
+
+
+def _body_text(pg):
+    """The open chart's text, with the no-break spaces as plain spaces."""
+    return pg.evaluate("document.querySelector('#reference-body').textContent").replace("\xa0", " ")
+
+
+def _open_chart(pg, chart, toggle="#topbar-ref-toggle", menu="#topbar-ref-menu"):
+    pg.click(toggle)
+    pg.click(f"{menu} button[data-chart={chart}]")
+    pg.wait_for_selector("#reference-overlay:not([hidden]) .ref-sources")
+
+
+def test_quick_reference_from_the_top_bar_and_a_recipe(server, api, page):
+    """0233: three charts in a dialog, from the top bar and from a recipe,
+    with roasting times in lb and kg and temperatures in °F unless °C is
+    chosen (owner, 2026-11-23). Escape closes the menu or the dialog, never
+    the recipe under them."""
+    r = add_recipe(api, f"Browser roast {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector("#topbar-ref-toggle")
+    assert pg.get_attribute("#topbar-ref-toggle", "aria-label") == "Quick reference"
+    pg.click("#topbar-ref-toggle")
+    assert pg.locator("#topbar-ref-menu button").all_inner_texts() == [
+        "Baking substitutions", "Cooking substitutions", "Meat cooking times"]
+    assert pg.is_hidden("#topbar-menu-picker")                 # What to eat? is off
+    pg.click("#topbar-ref-menu button[data-chart=meat]")
+    pg.wait_for_selector("#reference-overlay:not([hidden]) .ref-sources")
+    assert pg.inner_text("#reference-heading") == "Meat cooking times"
+    text = _body_text(pg)
+    for shown in ("4–6 lb (1.8–2.7 kg)", "23–25 min/lb (51–55 min/kg)", "145°F medium-rare", "160°F medium",
+                  "1¼–1½ h", "½–1½ lb (0.2–0.7 kg)", "18–24 oz (510–680 g)", "425–450°F",
+                  "Already fully cooked", "Health Canada", "FoodSafety.gov"):
+        assert shown in text, shown
+    assert not re.search(r"\d ?°C", text)
+    assert pg.evaluate("(() => { const m = document.querySelector('#reference-modal'); return m.scrollWidth <= m.clientWidth; })()")
+    pg.click(".ref-units button[data-unit=C]")                 # °C, remembered on this device
+    wait_until(pg, "document.querySelector('#reference-body').textContent.includes('63°C')")
+    text = _body_text(pg)
+    assert "63°C medium-rare" in text and "218–232°C" in text and not re.search(r"\d ?°F", text)
+    assert pg.evaluate("localStorage.getItem('recipe-app-reference-temperature')") == "C"
+    pg.click(".ref-switch button[data-chart=cooking]")
+    wait_until(pg, "document.querySelector('#reference-heading').textContent === 'Cooking substitutions'")
+    wait_until(pg, "!!document.querySelector('#reference-body .ref-subs')")
+    text = _body_text(pg)
+    assert "cook it to 74°C; ground beef to 71°C" in text and "Saskatchewan Health Authority" in text
+    pg.click(".ref-units button[data-unit=F]")
+    wait_until(pg, "document.querySelector('#reference-body').textContent.includes('165°F')")
+    pg.keyboard.press("Escape")
+    assert pg.is_hidden("#reference-overlay")
+    assert pg.evaluate("document.activeElement.id") == "topbar-ref-toggle"
+
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    pg.click(".recipe-aids .ref-toggle")
+    pg.keyboard.press("Escape")                                 # the menu, not the recipe
+    assert pg.is_hidden(".ref-menu") and pg.is_visible("#recipe-detail-heading")
+    _open_chart(pg, "baking", ".recipe-aids .ref-toggle", ".recipe-aids .ref-menu")
+    assert "¼ tsp (1 mL) baking soda + ½ tsp (2 mL) cream of tartar" in _body_text(pg)
+    pg.keyboard.press("Escape")                                 # the dialog, not the recipe
+    assert pg.is_hidden("#reference-overlay") and pg.is_visible("#recipe-detail-heading")
+
+
+def test_quick_reference_turned_off_in_settings(server, api, page):
+    """0233: on by default; Settings -> Display turns it off on this device,
+    in the top bar and in recipes."""
+    r = add_recipe(api, f"Browser no charts {uuid.uuid4().hex[:6]}")
+    p = page()
+    pg = p.page
+
+    def flip():
+        _open_settings(p, server["url"])
+        pg.click("label[for='quick-reference-setting']")
+        pg.click("#settings-close")
+
+    _open_settings(p, server["url"])
+    assert pg.is_checked("#quick-reference-setting")
+    pg.click("#settings-close")
+    flip()
+    assert pg.is_hidden("#topbar-ref")
+    assert pg.evaluate("localStorage.getItem('recipe-app-quick-reference')") == "false"
+    pg.click(f"text={r['title']}")
+    pg.wait_for_selector("#recipe-detail-heading")
+    assert pg.is_hidden(".recipe-aids .ref-wrap")
+    pg.click("#recipe-detail-close")
+    flip()
+    assert pg.is_visible("#topbar-ref-toggle")
+
+
+def test_quick_reference_shares_its_menu_with_what_to_eat_on_a_phone(server, api, page):
+    """0233 (owner, 2026-11-23, Option B): a button each left the search box
+    88 px wide at 320 px and crushed the search button, so on a phone What
+    to eat? moves into the charts' menu under ⋮. From 48rem both stay
+    labelled buttons."""
+    assert api.put("/api/picker/settings", json={"enabled": True}).status_code == 200
+    try:
+        p = page(width=320)
+        pg = p.page
+        pg.goto(server["url"])
+        wait_until(pg, "document.querySelector('#topbar-ref')?.classList.contains('is-merged')")
+        assert pg.is_hidden("#picker-link")
+        assert pg.get_attribute("#topbar-ref-toggle", "aria-label") == "What to eat? and quick reference"
+        assert pg.evaluate("document.querySelector('#search-input').getBoundingClientRect().width") >= 100
+        assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        pg.click("#topbar-ref-toggle")
+        assert pg.is_visible("#topbar-menu-picker") and pg.is_visible("#topbar-menu-head")
+        assert pg.inner_text("#topbar-menu-picker .menu-sub") == "Picks a random recipe"
+        assert pg.get_attribute("#topbar-menu-picker", "href").startswith(server["picker_url"])
+
+        wide = page(width=1280)
+        wpg = wide.page
+        wpg.goto(server["url"])
+        wpg.wait_for_selector("#picker-link")
+        wait_until(wpg, "!!document.querySelector('#topbar-ref-toggle')")
+        assert wpg.is_visible("#picker-link")
+        assert not wpg.evaluate("document.querySelector('#topbar-ref').classList.contains('is-merged')")
+        assert wpg.inner_text("#topbar-ref-toggle") == "Quick reference"
+        wpg.click("#topbar-ref-toggle")
+        assert wpg.is_hidden("#topbar-menu-picker")
+    finally:
+        api.put("/api/picker/settings", json={"enabled": False})
+
+
+def test_quick_reference_in_french(server, page):
+    """0233: the charts in Quebec French, decimals with a comma and the
+    hours written "1 h 15"."""
+    p = page(locale="fr")
+    pg = p.page
+    pg.goto(server["url"])
+    pg.wait_for_selector("#topbar-ref-toggle")
+    assert pg.get_attribute("#topbar-ref-toggle", "aria-label") == "Aide-mémoire"
+    _open_chart(pg, "meat")
+    assert pg.inner_text("#reference-heading") == "Temps de cuisson des viandes"
+    text = _body_text(pg)
+    for shown in ("4 à 6 lb (1,8 à 2,7 kg)", "1 h 15 à 1 h 30", "145 °F mi-saignant", "Santé Canada",
+                  "Températures de cuisson sécuritaires"):
+        assert shown in text, shown
+    pg.click(".ref-switch button[data-chart=baking]")
+    wait_until(pg, "!!document.querySelector('#reference-body .ref-subs')")
+    assert "¼ c. à thé (1 mL) de bicarbonate de soude" in _body_text(pg)
