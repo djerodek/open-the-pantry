@@ -1334,3 +1334,57 @@ def test_quick_reference_in_french(server, page):
     pg.click(".ref-switch button[data-chart=baking]")
     wait_until(pg, "!!document.querySelector('#reference-body .ref-subs')")
     assert "¼ c. à thé (1 mL) de bicarbonate de soude" in _body_text(pg)
+
+
+def test_quick_reference_search(server, page):
+    """0235 (owner): a search box above the charts. Every word must be in an
+    entry or a title above it, accents and case aside; parts with nothing
+    left are hidden; with nothing in the open chart, the charts that have
+    something are offered."""
+    p = page()
+    pg = p.page
+    pg.goto(server["url"])
+    _open_chart(pg, "meat")
+
+    def visible(selector):
+        return pg.evaluate(f"[...document.querySelectorAll('{selector}')].filter((n) => n.offsetParent).length")
+
+    total = visible("#reference-body .ref-entry")
+    # A title: the lamb section's 4 rows, and Health Canada's 3 under "Beef, veal and lamb".
+    pg.fill("#reference-search", "LAMB")
+    wait_until(pg, "document.querySelector('#reference-found').textContent === '7 matches'")
+    assert visible("#reference-body .ref-entry") == 7
+    assert pg.is_hidden("#reference-body .ref-block[data-title='Beef']")
+    assert pg.is_visible("#reference-body .ref-block[data-title='Beef, veal and lamb']")
+    assert pg.is_visible("#reference-body .ref-sources")      # sources and notes stay
+    pg.fill("#reference-search", "fish")                     # Health Canada's table
+    wait_until(pg, "document.querySelector('#reference-found').textContent === '2 matches'")   # fish, shellfish
+    pg.fill("#reference-search", "whole bird")
+    wait_until(pg, "document.querySelector('#reference-found').textContent === '2 matches'")
+    pg.fill("#reference-search", "")
+    wait_until(pg, "document.querySelector('#reference-found').textContent === ''")
+    assert visible("#reference-body .ref-entry") == total
+
+    pg.fill("#reference-search", "tamari")                   # not about meat
+    wait_until(pg, "!!document.querySelector('.ref-elsewhere')")
+    assert pg.inner_text("#reference-found").startswith("Nothing in this chart matches.")
+    assert pg.locator(".ref-elsewhere").all_inner_texts() == ["Cooking substitutions (1)"]
+    pg.click(".ref-elsewhere")
+    wait_until(pg, "document.querySelector('#reference-heading').textContent === 'Cooking substitutions'")
+    wait_until(pg, "document.querySelector('#reference-found').textContent === '1 match'")
+    assert "Soy sauce" in pg.locator("#reference-body .ref-entry:not([hidden])").inner_text()
+    pg.click(".ref-switch button[data-chart=baking]")         # the search follows to another chart
+    wait_until(pg, "document.querySelector('#reference-heading').textContent === 'Baking substitutions'")
+    pg.fill("#reference-search", "buttermilk")
+    wait_until(pg, "document.querySelector('#reference-found').textContent === '2 matches'")   # buttermilk, yogurt
+    pg.keyboard.press("Escape")
+    _open_chart(pg, "baking")
+    assert pg.input_value("#reference-search") == ""           # cleared for the next look
+    assert visible("#reference-body .ref-entry") == 21
+
+    fr = page(locale="fr").page
+    fr.goto(server["url"])
+    _open_chart(fr, "baking")
+    fr.fill("#reference-search", "creme sure")               # Crème sure, without its accent
+    wait_until(fr, "/résultat/.test(document.querySelector('#reference-found').textContent)")
+    assert "Crème sure" in fr.locator("#reference-body .ref-entry:not([hidden])").first.inner_text()

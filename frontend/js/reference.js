@@ -162,7 +162,7 @@ function table(headers, rows, extraClass = "") {
     el("table", { class: `ref-table ${extraClass}`.trim(), role: "table" }, [
       el("thead", { role: "rowgroup" }, [el("tr", { role: "row" },
         headers.map((h) => el("th", { scope: "col", role: "columnheader", text: h })))]),
-      el("tbody", { role: "rowgroup" }, rows.map((cells) => el("tr", { role: "row" },
+      el("tbody", { role: "rowgroup" }, rows.map((cells) => el("tr", { role: "row", class: "ref-entry" },
         // One element per cell, so a stacked row lays out as label | value.
         cells.map((c, i) => el("td", { role: "cell", "data-label": headers[i] }, [
           el("div", { class: "ref-cell" }, typeof c === "string" ? [document.createTextNode(c)] : [].concat(c)),
@@ -171,10 +171,20 @@ function table(headers, rows, extraClass = "") {
   ]);
 }
 
+// A part of a chart the search can hide whole: its title counts as part of
+// every entry in it ("lamb" finds every lamb row).
+function block(title, children) {
+  return el("section", { class: "ref-block", "data-title": title }, children);
+}
+
+function chartContent(data, id) {
+  return id === "meat" ? meatChart(data.meat) : substitutionChart(data[id]);
+}
+
 function substitutionChart(chart) {
   return [
     el("p", { class: "ref-intro", text: t(chart.intro) }),
-    el("ul", { class: "ref-subs" }, chart.entries.map((e) => el("li", {}, [
+    el("ul", { class: "ref-subs" }, chart.entries.map((e) => el("li", { class: "ref-entry" }, [
       el("div", { class: "ref-item", text: t(e.item) }),
       el("ul", { class: "ref-use" }, e.use.map((u) => el("li", { text: t(u) }))),
       e.note ? el("p", { class: "ref-note", text: t(e.note) }) : null,
@@ -186,8 +196,8 @@ function meatChart(m) {
   const out = m.intro.map((p) => el("p", { class: "ref-intro", text: t(p) }));
   const H = tx("Health Canada");
   for (const section of m.sections) {
-    out.push(el("h3", { class: "ref-section", text: t(section.title) }));
-    if (section.note) out.push(el("p", { class: "ref-note", text: t(section.note) }));
+    const part = [el("h3", { class: "ref-section", text: t(section.title) })];
+    if (section.note) part.push(el("p", { class: "ref-note", text: t(section.note) }));
     const used = new Set();
     const rows = section.rows.map((r) => {
       if (r.mark) used.add(r.mark);
@@ -199,34 +209,41 @@ function meatChart(m) {
       return [cut, weightNodes(r), el("span", { class: "nowrap", text: ovenText(r.oven) }), timeNodes(r.time),
         tempNodes(m.temps, r.temp, m.marks)];
     });
-    out.push(table([tx("Cut"), tx("Weight"), tx("Oven"), tx("Time"), H], rows));
-    for (const key of used) out.push(el("p", { class: "ref-footnote", text: `${m.marks[key].symbol} ${t(m.marks[key])}` }));
+    part.push(table([tx("Cut"), tx("Weight"), tx("Oven"), tx("Time"), H], rows));
+    for (const key of used) part.push(el("p", { class: "ref-footnote", text: `${m.marks[key].symbol} ${t(m.marks[key])}` }));
+    out.push(block(t(section.title), part));
   }
 
   const turkey = m.turkey;
-  out.push(el("h3", { class: "ref-section", text: t(turkey.title) }));
-  out.push(el("p", { class: "ref-note", text: tx("Oven at {1}.", { 1: ovenText(turkey.oven) }) }));
-  out.push(table([tx("Size"), tx("Not stuffed"), tx("Stuffed"), H], turkey.rows.map((r) => [
+  out.push(block(t(turkey.title), [
+    el("h3", { class: "ref-section", text: t(turkey.title) }),
+    el("p", { class: "ref-note", text: tx("Oven at {1}.", { 1: ovenText(turkey.oven) }) }),
+    table([tx("Size"), tx("Not stuffed"), tx("Stuffed"), H], turkey.rows.map((r) => [
     [...weightNodes(r), r.breast ? document.createTextNode(`, ${tx("breast")}`) : null],
     durationText(r.unstuffed),
     r.stuffed ? durationText(r.stuffed) : tx("not usually stuffed"),
     tempNodes(m.temps, r.breast ? "74" : "82", m.marks),
-  ])));
+    ])),
+  ]));
 
   const thaw = m.thawing;
-  out.push(el("h3", { class: "ref-section", text: t(thaw.title) }));
-  out.push(el("p", { class: "ref-note", text: t(thaw.note) }));
-  out.push(table([tx("Size"), tx("Refrigerator"), tx("Cold water")], thaw.rows.map((r) => [
-    weightNodes(r),
-    `${range(r.fridge_days)} ${tx("days")}`,
-    `${range(r.water_hours)} h`,
-  ])));
+  out.push(block(t(thaw.title), [
+    el("h3", { class: "ref-section", text: t(thaw.title) }),
+    el("p", { class: "ref-note", text: t(thaw.note) }),
+    table([tx("Size"), tx("Refrigerator"), tx("Cold water")], thaw.rows.map((r) => [
+      weightNodes(r),
+      `${range(r.fridge_days)} ${tx("days")}`,
+      `${range(r.water_hours)} h`,
+    ])),
+  ]));
 
-  out.push(el("h3", { class: "ref-section", text: t(m.safe.title) }));
-  for (const g of m.safe.groups) {
-    out.push(el("h4", { class: "ref-group", text: t(g.title) }));
-    out.push(table([tx("Food"), tx("Cook to")], g.rows.map((r) => [t(r.food), tempNodes(m.temps, r.temp, m.marks)]), "ref-table-2"));
-  }
+  out.push(block(t(m.safe.title), [
+    el("h3", { class: "ref-section", text: t(m.safe.title) }),
+    ...m.safe.groups.map((g) => block(t(g.title), [
+      el("h4", { class: "ref-group", text: t(g.title) }),
+      table([tx("Food"), tx("Cook to")], g.rows.map((r) => [t(r.food), tempNodes(m.temps, r.temp, m.marks)]), "ref-table-2"),
+    ])),
+  ]));
   return out;
 }
 
@@ -275,13 +292,20 @@ function buildDialog() {
     el("div", { class: "mode-switch", role: "group", "aria-labelledby": "reference-units-label" },
       ["F", "C"].map((u) => el("button", { type: "button", "data-unit": u, text: `°${u}`, onclick: () => setTempUnit(u) }))),
   ]);
+  const search = el("input", {
+    type: "search", id: "reference-search", class: "ref-search", autocomplete: "off",
+    placeholder: tx("Find in the charts"), "aria-label": tx("Find in the charts"),
+    "aria-describedby": "reference-found",
+  });
+  search.addEventListener("input", () => applySearch());
+  const found = el("p", { id: "reference-found", class: "field-hint ref-found", "aria-live": "polite" });
   const body = el("div", { id: "reference-body", class: "ref-body" });
   overlay = el("div", { class: "modal-overlay", id: "reference-overlay", hidden: "" }, [
     el("div", { class: "modal reference-modal", id: "reference-modal", role: "dialog", "aria-modal": "true",
       "aria-labelledby": "reference-heading" }, [
       el("button", { class: "modal-close", id: "reference-close", type: "button", "aria-label": tx("Close dialog"),
         text: "×", onclick: () => closeModal(overlay) }),
-      heading, switcher, units, body,
+      heading, switcher, units, search, found, body,
     ]),
   ]);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(overlay); });
@@ -321,17 +345,79 @@ async function showChart(id, keepPlace = false) {
   }
   if (shown !== id) return;   // switched again while it loaded
   const notes = data.notes;
-  const content = id === "meat"
-    ? [...meatChart(data.meat), ...sourcesSection(data, data.meat, [...notes.meat, ...notes.all])]
-    : [...substitutionChart(data[id]), ...sourcesSection(data, data[id], [...notes.substitutions, ...notes.all])];
+  const content = [...chartContent(data, id),
+    ...sourcesSection(data, data[id], id === "meat" ? [...notes.meat, ...notes.all] : [...notes.substitutions, ...notes.all])];
   body.replaceChildren(...content);
+  applySearch(data);
   if (keepPlace) modal.scrollTop = place;
+}
+
+// ---------------------------------------------------------------------
+// Search: entries of the open chart with every word typed, accents and
+// case aside, in their own text or a title above them. The intro, notes
+// and sources stay: they apply to whatever is found.
+// ---------------------------------------------------------------------
+function fold(s) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00a0/g, " ").toLowerCase();
+}
+
+function entryText(entry) {
+  let s = entry.textContent;
+  for (let b = entry.closest(".ref-block"); b; b = b.parentElement.closest(".ref-block")) s += " " + b.dataset.title;
+  return fold(s);
+}
+
+// Entries matching in `root`; shows or hides them (and empty blocks) when show is true.
+function filterEntries(root, words, show) {
+  let count = 0;
+  root.querySelectorAll(".ref-entry").forEach((entry) => {
+    const hit = words.every((w) => entryText(entry).includes(w));
+    if (hit) count += 1;
+    if (show) entry.hidden = !hit;
+  });
+  if (show) {
+    root.querySelectorAll(".ref-block").forEach((b) => { b.hidden = !b.querySelector(".ref-entry:not([hidden])"); });
+  }
+  return count;
+}
+
+let searchData = null;
+
+function applySearch(data) {
+  if (data) searchData = data;
+  const words = fold($("#reference-search").value).split(/\s+/).filter(Boolean);
+  const body = $("#reference-body");
+  const found = $("#reference-found");
+  body.querySelectorAll(".ref-none").forEach((n) => n.remove());
+  if (!words.length) {
+    body.querySelectorAll(".ref-entry, .ref-block").forEach((n) => { n.hidden = false; });
+    found.replaceChildren();
+    return;
+  }
+  const count = filterEntries(body, words, true);
+  if (count) {
+    found.textContent = count === 1 ? tx("1 match") : tx("{1} matches", { 1: count });
+    return;
+  }
+  // None here: say which other charts have some, as buttons to them.
+  found.textContent = tx("Nothing in this chart matches.");
+  if (!searchData) return;
+  const elsewhere = CHARTS.filter((id) => id !== shown).map((id) => {
+    const scratch = el("div", {}, chartContent(searchData, id));
+    return [id, filterEntries(scratch, words, false)];
+  }).filter(([, n]) => n);
+  if (elsewhere.length) {
+    found.replaceChildren(document.createTextNode(`${tx("Nothing in this chart matches.")} ${tx("Found in:")} `),
+      ...elsewhere.map(([id, n]) => el("button", { type: "button", class: "btn-link ref-elsewhere", "data-chart": id,
+        text: `${chartTitle(id)} (${n})`, onclick: () => showChart(id) })));
+  }
 }
 
 // `from` gets the focus back when the dialog closes: the menu item that
 // was tapped is hidden by then.
 function openChart(id, from) {
   if (from) from.focus();
+  $("#reference-search").value = "";   // a new look, not the last one's search
   openModal(overlay);
   showChart(id);
 }

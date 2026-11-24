@@ -185,8 +185,8 @@ n'ont pas pu être envoyés attendent la prochaine.
 - **Aide-mémoire**, dans la barre du haut et sur chaque recette, hors
   ligne : substitutions en pâtisserie et en cuisine en mesures canadiennes,
   et temps de rôtissage des viandes (FoodSafety.gov) avec les températures
-  internes sécuritaires de Santé Canada, en °F ou en °C. Paramètres →
-  Affichage le masque.
+  internes sécuritaires de Santé Canada, en °F ou en °C, avec une recherche.
+  Paramètres → Affichage le masque.
 - **Bibliothèque** : modifier, dupliquer, fusionner deux recettes,
   étiqueter ou supprimer plusieurs à la fois; **Récemment supprimées** les
   garde 30 jours; **Vérification de la bibliothèque** liste les recettes

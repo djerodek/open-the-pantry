@@ -155,7 +155,7 @@ the next scan.
 - **Quick reference**, in the top bar and on each recipe, offline: baking
   and cooking substitutions in Canadian measures, and meat roasting times
   (FoodSafety.gov) with Health Canada's safe internal temperatures, in °F
-  or °C. Settings → Display hides it.
+  or °C, with a search box. Settings → Display hides it.
 - **Library**: edit, duplicate, merge two recipes, tag or delete several at
   once; **Recently deleted** keeps recipes 30 days; **Library check** lists
   incomplete recipes and likely duplicates.

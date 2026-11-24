@@ -94,7 +94,7 @@ several user accounts.
   (Settings, off by default).
 - **Quick reference** (top bar and each recipe, offline): baking and
   cooking substitutions, and meat roasting times with Health Canada's safe
-  internal temperatures, in °F or °C.
+  internal temperatures, in °F or °C, with a search box.
 - **Manage**: edit, duplicate, merge two recipes, tag or delete several at
   once, Recently deleted (30 days), and a library check.
 - **Share**: print, PDF, self-contained HTML, JSON, a JPG image, or email
