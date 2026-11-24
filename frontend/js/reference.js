@@ -111,7 +111,8 @@ function pair(main, alt) {
 
 function weightNodes(row) {
   if (row.lb) {
-    // Under 1 kg in grams, like the ounce rows: ½ lb is 230 g, not "0.2 kg" (Claude review of 0233).
+    // Under 1 kg in grams (to 10 g; the ounce rows go to 5 g): ½ lb is 230 g, not "0.2 kg"
+    // (Claude review of 0233).
     const kg = row.lb.map((v) => v * LB_KG);
     const metric = kg.every((v) => v < 1)
       ? `${range(kg.map((v) => Math.round(v * 100) * 10))} g`
@@ -357,8 +358,11 @@ async function showChart(id, keepPlace = false) {
 // case aside, in their own text or a title above them. The intro, notes
 // and sources stay: they apply to whatever is found.
 // ---------------------------------------------------------------------
+// "165°F", "165 °F" and the French "165 °F" all fold to "165°f" (DeepSeek
+// review of 0235: a typed temperature didn't find the French spacing).
 function fold(s) {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00a0/g, " ").toLowerCase();
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00a0/g, " ").replace(/(\d)\s+°/g, "$1°")
+    .toLowerCase();
 }
 
 function entryText(entry) {
@@ -408,8 +412,10 @@ function applySearch(data) {
   }).filter(([, n]) => n);
   if (elsewhere.length) {
     found.replaceChildren(document.createTextNode(`${tx("Nothing in this chart matches.")} ${tx("Found in:")} `),
-      ...elsewhere.map(([id, n]) => el("button", { type: "button", class: "btn-link ref-elsewhere", "data-chart": id,
-        text: `${chartTitle(id)} (${n})`, onclick: () => showChart(id) })));
+      // Comma-separated when two charts have matches (DeepSeek review of 0235).
+      ...elsewhere.flatMap(([id, n], i) => [i ? document.createTextNode(", ") : null,
+        el("button", { type: "button", class: "btn-link ref-elsewhere", "data-chart": id,
+          text: `${chartTitle(id)} (${n})`, onclick: () => showChart(id) })].filter(Boolean)));
   }
 }
 

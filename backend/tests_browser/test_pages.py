@@ -1361,9 +1361,20 @@ def test_quick_reference_search(server, page):
     wait_until(pg, "document.querySelector('#reference-found').textContent === '2 matches'")   # fish, shellfish
     pg.fill("#reference-search", "whole bird")
     wait_until(pg, "document.querySelector('#reference-found').textContent === '2 matches'")
+    pg.fill("#reference-search", "160 °F")                   # a temperature, spaced or not (°F by default)
+    wait_until(pg, "/matches/.test(document.querySelector('#reference-found').textContent)")
+    assert pg.is_visible("#reference-body .ref-block[data-title='Pork']")      # 71°C
+    assert pg.is_hidden("#reference-body .ref-block[data-title='Poultry']")   # 74°C and 82°C
     pg.fill("#reference-search", "")
     wait_until(pg, "document.querySelector('#reference-found').textContent === ''")
     assert visible("#reference-body .ref-entry") == total
+    pg.fill("#reference-search", "lamb")                     # the search follows a switch
+    pg.click(".ref-switch button[data-chart=cooking]")
+    wait_until(pg, "document.querySelector('#reference-heading').textContent === 'Cooking substitutions'")
+    wait_until(pg, "document.querySelector('#reference-found').textContent.startsWith('Nothing in this chart matches.')")
+    assert pg.locator(".ref-elsewhere").all_inner_texts() == ["Meat cooking times (7)"]
+    pg.click(".ref-switch button[data-chart=meat]")
+    wait_until(pg, "document.querySelector('#reference-heading').textContent === 'Meat cooking times'")
 
     pg.fill("#reference-search", "tamari")                   # not about meat
     wait_until(pg, "!!document.querySelector('.ref-elsewhere')")
@@ -1388,3 +1399,8 @@ def test_quick_reference_search(server, page):
     fr.fill("#reference-search", "creme sure")               # Crème sure, without its accent
     wait_until(fr, "/résultat/.test(document.querySelector('#reference-found').textContent)")
     assert "Crème sure" in fr.locator("#reference-body .ref-entry:not([hidden])").first.inner_text()
+    # "160°F" typed without a space finds the French "160 °F" (DeepSeek review of 0235).
+    fr.click(".ref-switch button[data-chart=meat]")
+    fr.fill("#reference-search", "160°F")
+    wait_until(fr, "/résultats/.test(document.querySelector('#reference-found').textContent)")
+    assert fr.is_visible("#reference-body .ref-block[data-title='Porc']")
