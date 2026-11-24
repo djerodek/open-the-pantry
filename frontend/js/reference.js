@@ -51,7 +51,8 @@ function chartTitle(id) {
 const lang = () => (window.OTP_I18N && window.OTP_I18N.lang === "fr" ? "fr" : "en");
 
 // Quebec typography, as i18n.js does for its catalog: a no-break space
-// before ":" and "%", inside « », and between a number and °C.
+// before ":" and "%", and inside « ». The last replace is a fallback for a
+// "25 °F" in the data: degrees() already writes the no-break space.
 function frType(s) {
   return s.replace(/ :/g, "\u00a0:").replace(/ %/g, "\u00a0%").replace(/« /g, "«\u00a0").replace(/ »/g, "\u00a0»")
     .replace(/(\d) °/g, "$1\u00a0°");
@@ -70,8 +71,10 @@ function oneUnit(s) {
   return s.replace(/(\d+) ?°([CF]) \((\d+) ?°([CF])\)/g, (m, a, unitA, b) => degrees(unitA === want ? a : b, want));
 }
 
+// o is one of the data's {en, fr} pairs; a plain string is shown as it is.
 function t(o) {
   if (o == null) return "";
+  if (typeof o === "string") return o;
   const s = oneUnit(keepUnits(o[lang()] || o.en || ""));
   return lang() === "fr" ? frType(s) : s;
 }
@@ -107,7 +110,14 @@ function pair(main, alt) {
 }
 
 function weightNodes(row) {
-  if (row.lb) return pair(`${range(row.lb, lbNum)} lb`, `${range(row.lb.map((v) => v * LB_KG), (v) => dec(v, 1))} kg`);
+  if (row.lb) {
+    // Under 1 kg in grams, like the ounce rows: ½ lb is 230 g, not "0.2 kg" (Claude review of 0233).
+    const kg = row.lb.map((v) => v * LB_KG);
+    const metric = kg.every((v) => v < 1)
+      ? `${range(kg.map((v) => Math.round(v * 100) * 10))} g`
+      : `${range(kg, (v) => dec(v, 1))} kg`;
+    return pair(`${range(row.lb, lbNum)} lb`, metric);
+  }
   if (row.oz) return pair(`${range(row.oz)} oz`, `${range(row.oz.map((v) => Math.round((v * OZ_G) / 5) * 5))} g`);
   return [document.createTextNode("—")];
 }

@@ -1222,10 +1222,13 @@ def test_quick_reference_from_the_top_bar_and_a_recipe(server, api, page):
     assert pg.inner_text("#reference-heading") == "Meat cooking times"
     text = _body_text(pg)
     for shown in ("4–6 lb (1.8–2.7 kg)", "23–25 min/lb (51–55 min/kg)", "145°F medium-rare", "160°F medium",
-                  "1¼–1½ h", "½–1½ lb (0.2–0.7 kg)", "18–24 oz (510–680 g)", "425–450°F",
+                  "1¼–1½ h", "½–1½ lb (230–680 g)", "18–24 oz (510–680 g)", "425–450°F",
                   "Already fully cooked", "Health Canada", "FoodSafety.gov"):
         assert shown in text, shown
     assert not re.search(r"\d ?°C", text)
+    # Health Canada's own table, group by group.
+    assert pg.locator(".ref-table-2 tr", has_text="Fish").first.inner_text().replace("\xa0", " ").endswith("158°F")
+    assert "180°F" in pg.locator(".ref-table-2 tr", has_text="Whole bird").first.inner_text()
     assert pg.evaluate("(() => { const m = document.querySelector('#reference-modal'); return m.scrollWidth <= m.clientWidth; })()")
     pg.click(".ref-units button[data-unit=C]")                 # °C, remembered on this device
     wait_until(pg, "document.querySelector('#reference-body').textContent.includes('63°C')")

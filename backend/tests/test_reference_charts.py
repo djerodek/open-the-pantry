@@ -15,7 +15,8 @@ DATA = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "js" / "re
 GLYPHS = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125}
 
 # Canadian kitchen measures (1 cup = 250 mL), written the way Canadian
-# recipes print them: ⅓ cup is 75 mL and ¾ cup 175 mL, not 83 and 188.
+# recipes print them: ¼ cup is 60 mL (4 tbsp of 15 mL, not 62.5), ⅓ cup
+# 75 mL and ¾ cup 175 mL, not 83 and 188. Not typos to correct.
 CANADIAN_ML = {
     ("tsp", 0.125): 0.5, ("tsp", 0.25): 1, ("tsp", 0.5): 2, ("tsp", 1.5): 7,
     ("cup", 0.25): 60, ("cup", 1 / 3): 75, ("cup", 0.5): 125, ("cup", 0.75): 175, ("cup", 1.25): 300,
@@ -218,3 +219,11 @@ def test_every_source_named_exists_and_links_out():
         assert all(u.startswith("https://") for u in urls), sid
         assert s["title"]["en"] and s["publisher"]["en"] and s["date"]["en"], sid
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", DATA["checked"])
+
+
+def test_the_charts_are_in_the_offline_shell():
+    """Without them in the service worker's list, the charts fail offline
+    with only a fetch error (DeepSeek review of 0233)."""
+    sw = (Path(__file__).resolve().parents[2] / "frontend" / "service-worker.js").read_text(encoding="utf-8")
+    shell = re.search(r"const SHELL_ASSETS = \[(.*?)\];", sw, re.S).group(1)
+    assert '"/js/reference.js"' in shell and '"/js/reference-data.json"' in shell

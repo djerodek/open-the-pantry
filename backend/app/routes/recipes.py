@@ -39,6 +39,15 @@ router = APIRouter()
 
 @router.post("/api/recipes", response_model=schemas.RecipeOut)
 def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
+    return insert_recipe(payload, db)
+
+
+def insert_recipe(payload: schemas.RecipeCreate, db: Session, before_commit=None):
+    """create_recipe's work. before_commit(recipe), if given, sets more on
+    the recipe inside the same transaction: an import's notes, review flag
+    and date are saved with the recipe or not at all (GPT review of 0233:
+    a second commit could fail after the first had saved the recipe, which
+    the import then reported as failed)."""
     # Promoting the file (a filesystem move) can't be rolled back by the DB
     # transaction below it -- if anything after this fails, the except
     # block demotes it back to TMP_DIR so it doesn't become a permanent
@@ -67,7 +76,8 @@ def create_recipe(payload: schemas.RecipeCreate, db: Session = Depends(get_db)):
         db.flush()
         _add_lines(db, recipe, [_ingredient_fields(i) for i in payload.ingredients], payload.steps)
         _apply_tags(db, recipe, payload.tags)
-
+        if before_commit is not None:
+            before_commit(recipe)
         db.commit()
     except Exception:
         log.debug("create_recipe: caught error, continuing", exc_info=True)

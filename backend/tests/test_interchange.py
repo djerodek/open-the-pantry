@@ -404,3 +404,38 @@ def test_an_import_reads_the_tag_table_once(client):
         assert names == {f"batch{sfx}"}            # the first one's spelling, one tag
     finally:
         client.post("/api/recipes/batch-delete", headers=H, json={"ids": _ids(body)})
+
+
+def test_an_imported_recipe_s_notes_and_review_flag_are_saved_in_its_own_commit(client, monkeypatch):
+    """GPT review of 0233: the import committed the recipe, then its notes,
+    review flag and date in a second commit; if that one failed, the recipe
+    stayed in the library without them while the import reported it as
+    failed. Now one commit holds both."""
+    from sqlalchemy.orm import Session
+    from app import models
+    from app.database import SessionLocal
+    from app.interchange import ImportedRecipe
+    from app.routes import backup
+
+    title = f"One commit {uuid.uuid4().hex[:8]}"
+    r = ImportedRecipe(title=title, origin="t.json", ingredients=["1 cup flour"], steps=["Mix."],
+                       notes="kept with it", to_review=True,
+                       created_at=datetime(2024, 3, 1, 12, 0, tzinfo=timezone.utc))
+    commits = []
+    real_commit = Session.commit
+
+    def commit(self):
+        commits.append(1)
+        if len(commits) > 1:
+            raise RuntimeError("disk I/O error")      # a second commit would fail
+        return real_commit(self)
+
+    monkeypatch.setattr(Session, "commit", commit)
+    with SessionLocal() as db:
+        backup._save_imported(db, r)
+    monkeypatch.undo()
+    assert len(commits) == 1
+    with SessionLocal() as db:
+        saved = db.query(models.Recipe).filter_by(title=title).one()
+        assert saved.notes == "kept with it" and saved.needs_review
+        assert saved.created_at.year == 2024

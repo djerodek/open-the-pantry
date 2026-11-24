@@ -35,7 +35,7 @@ from . import common
 from .common import (BACKUP_TMP_DIR, RESTORE_INCOMPLETE_MESSAGE, _discard_temp_file, _inflight_lock, _restore_incomplete,
                      _restoring, _run_heavy, _settings_lock_refusal, _utc_now, refresh_user_keywords)
 from .email import _email_scan_lock
-from .recipes import create_recipe
+from .recipes import insert_recipe
 from fastapi import APIRouter
 from ..logging_setup import get_logger
 
@@ -185,7 +185,7 @@ def _match_tags(by_name: dict[str, tuple], names: list[str], keep_unknown: bool)
 def _save_imported(db: Session, r: "interchange.ImportedRecipe",
                    index: "duplicates.Index | None" = None,
                    tags: dict[str, tuple] | None = None) -> tuple[int, Optional[dict]]:
-    """Saves one imported recipe through create_recipe (the same checks and
+    """Saves one imported recipe through insert_recipe (the same checks and
     caps as any save). Returns (recipe id, duplicate_of or None). index:
     the import's duplicates.Index, which the new recipe is added to; tags:
     its _tags_by_name(), which the new recipe's tags are added to."""
@@ -221,19 +221,19 @@ def _save_imported(db: Session, r: "interchange.ImportedRecipe",
             cook_time_rating=r.cook_time_rating, difficulty_rating=r.difficulty_rating,
             language=r.language, actual_cook_time=r.actual_cook_time,
         )
-        recipe = create_recipe(payload, db)
+        def imported_extras(recipe):
+            if r.notes or r.to_review:
+                recipe.notes = r.notes[:50_000] if r.notes else None
+                # Still to review in the library it came from: still to review here.
+                recipe.needs_review = r.to_review
+            if r.created_at:
+                recipe.created_at = r.created_at      # the date it was added there
+
+        recipe = insert_recipe(payload, db, before_commit=imported_extras)
     except Exception:
         log.debug("_save_imported: %r not saved; its photo draft is discarded", r.title, exc_info=True)
         _discard_temp_file(image)
         raise
-    if r.notes or r.to_review:
-        recipe.notes = r.notes[:50_000] if r.notes else None
-        # Still to review in the library it came from: still to review here.
-        recipe.needs_review = r.to_review
-    if r.created_at:
-        recipe.created_at = r.created_at      # the date it was added there
-    if r.notes or r.to_review or r.created_at:
-        db.commit()
     if index is not None:
         index.add(recipe.id, recipe.title, recipe.source_url)
     if tags is not None:
