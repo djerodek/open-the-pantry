@@ -6,6 +6,7 @@ import ssl
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
+import re
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -271,7 +272,7 @@ def test_extract_from_single_url_in_body(tmp_path):
         result = process_tagged_email(msg, str(tmp_path))
     assert result["success"] is True
     assert result["title"] == "Linked Recipe"
-    assert "URL in body" in result["source_detail"]
+    assert result["source_detail"].startswith("the link ") and result["source_detail"].endswith(" in the body")
     assert result["source_url"] == "https://example.com/recipe"
 
 
@@ -566,7 +567,7 @@ def test_unusable_attachment_does_not_block_url_fallback(tmp_path):
 
     assert result["success"] is True, "an unusable attachment must not block the URL fallback"
     assert result["title"] == "Linked Recipe"
-    assert "URL in body" in result["source_detail"]
+    assert result["source_detail"].startswith("the link ") and result["source_detail"].endswith(" in the body")
 
 
 def test_mark_seen_uses_parenthesized_flag_list():
@@ -1562,7 +1563,7 @@ def test_a_batch_email_saves_every_linked_recipe(client, monkeypatch):
         assert fetched == good + [bad]                       # each once; the social link never
         assert sorted(s["title"] for s in body["saved"]) == sorted(f"Batch {u.rsplit('/', 1)[-1]}" for u in good)
         failure = next(m for m in body["messages"] if m.startswith("FAILED"))
-        assert f"link {bad}: No recipe was found on that page." in failure
+        assert f"link {bad} — No recipe was found on that page." in failure
         assert "save the page as a PDF" in failure
         # Sent again: every recipe is already in the library, reported and not saved twice.
         again, _ = _scan_batch(client, monkeypatch, msg, fetch)
@@ -1627,6 +1628,27 @@ def test_batch_reply_lines_in_french():
         '"[RECIPES] x": 4 lien(s) non essayé(s) : au plus 50 sont suivis par courriel'
     assert i18n.translate("2 link(s) not tried: the email reached the 15-minute limit. Send them again.", "fr") == \
         "2 lien(s) non essayé(s) : le courriel a atteint la limite de 15 minutes. Renvoyez-les."
-    assert i18n.translate("link https://example.com/a: No recipe. To add it, save the page as a PDF and email "
+    assert i18n.translate("link https://example.com/a — No recipe. To add it, save the page as a PDF and email "
                           "that as an attachment.", "fr").endswith(
         "Pour l'ajouter, enregistrez la page en PDF et envoyez-la en pièce jointe.")
+
+
+def test_reply_lines_leave_a_space_after_every_address(tmp_path):
+    """Owner, 2026-11-25: "link https://…/:" in a reply made the mail app
+    take the colon as part of the link, which then didn't open; the same
+    for "(https://…/))". Every address in a reply line ends at a space."""
+    from app import i18n
+    from app.ingestion.email_processing import process_tagged_email
+    from app.ingestion.url_ingest import SiteRefusedError
+
+    url = "https://www.example.com/creamy-pork-chops/"
+    with patch("app.ingestion.email_processing.ingest_url",
+               side_effect=SiteRefusedError("www.example.com refused the request (HTTP 403).")):
+        failed = process_tagged_email(_make_email(body=url), str(tmp_path))
+    with patch("app.ingestion.email_processing.ingest_url", side_effect=_Linked):
+        saved = process_tagged_email(_make_email(body=url), str(tmp_path))
+    lines = [f'"[RECIPE]": {failed["error"]}', f'{saved["title"]} (from "[RECIPE]", via {saved["source_detail"]})']
+    for line in lines + [i18n.translate(x, "fr") for x in lines]:
+        assert url in line
+        for m in re.finditer(r"https?://\S+", line):
+            assert m.group(0) == url, line             # nothing stuck to its end

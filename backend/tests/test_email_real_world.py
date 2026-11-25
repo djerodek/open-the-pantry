@@ -157,7 +157,7 @@ def test_failed_link_reason_is_reported(tmp_path):
     m.set_content("https://example.com/recipe")
     with patch("app.ingestion.email_processing.ingest_url", side_effect=ValueError("HTTP 403 from the site")):
         result = process_tagged_email(m, str(tmp_path))
-    assert "link https://example.com/recipe: HTTP 403 from the site" in result["error"]
+    assert "link https://example.com/recipe — HTTP 403 from the site" in result["error"]
 
 
 # --- TLS mode ---------------------------------------------------------------

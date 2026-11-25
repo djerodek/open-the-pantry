@@ -441,7 +441,7 @@ def _scan_batch_email(msg, subject: str, handle) -> None:
         # Links aren't heavy work (no OCR), so they don't hold a heavy-job slot.
         result, why, hint = try_link(url)
         if not result:
-            error = f"link {url}: {why}"
+            error = f"link {url} — {why}"
             if hint:
                 error += " To add it, save the page as a PDF and email that as an attachment."
             result = {"success": False, "error": error}

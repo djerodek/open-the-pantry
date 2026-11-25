@@ -385,7 +385,7 @@ def try_link(url: str):
         return None, str(e), False
     return _build_result(
         url_result.title, url_result.ingredients, url_result.steps,
-        url_result.raw_text, source_detail=f"URL in body ({url})",
+        url_result.raw_text, source_detail=f"the link {url} in the body",
         source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
         times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
     ), None, False
@@ -577,7 +577,9 @@ def process_tagged_email(msg, tmp_dir: str, links: bool = True, body: bool = Tru
             if result:
                 return result
             pdf_hint = pdf_hint or hint
-            tried.append(f"link {url}: {why}")
+            # Nothing right after the address: mail apps took a ":" or ")" as
+            # part of the link, and it no longer opened (owner, 2026-11-25).
+            tried.append(f"link {url} — {why}")
     if links and parts["footer_links"]:
         tried.append(f"{len(parts['footer_links'])} footer or social link(s) not followed")
 

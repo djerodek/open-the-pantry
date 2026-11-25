@@ -67,6 +67,6 @@ def test_an_emailed_link_gives_the_short_reason(public, monkeypatch, tmp_path):
            b"https://www.example.com/recipe\r\n")
     result = email_processing.process_tagged_email(email.message_from_bytes(raw), str(tmp_path))
     assert result["success"] is False
-    assert ("link https://www.example.com/recipe: www.example.com didn't answer within 15 seconds; "
+    assert ("link https://www.example.com/recipe — www.example.com didn't answer within 15 seconds; "
             "some sites only answer web browsers.;") in result["error"]
     assert "HTTPSConnectionPool" not in result["error"]

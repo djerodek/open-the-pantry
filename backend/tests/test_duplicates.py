@@ -120,7 +120,7 @@ def test_email_skips_a_saved_link_and_notes_a_saved_title(client, monkeypatch):
     client.put("/api/email-settings", json=_settings_payload(enabled=True, password="pw"))
     a = _make(client, "Dup Mail Curry", "https://example.com/dup-mail-curry")
     base = {"success": True, "ingredients": [{"raw_line": "1 onion", "quantity": "1", "unit": None, "name": "onion"}],
-            "steps": ["Cook."], "tags": [], "raw_text": "x", "image_path": None, "source_detail": "URL in body (example.com)"}
+            "steps": ["Cook."], "tags": [], "raw_text": "x", "image_path": None, "source_detail": "the link https://example.com/ in the body"}
     made = []
     try:
         before = len(client.get("/api/recipes").json())
@@ -144,8 +144,8 @@ def test_result_lines_translate_with_a_note_after_them():
     from app.i18n import translate
     line = 'OK: Pie (from "Fw: pie", via PDF attachment) -- no steps were found; check the recipe'
     assert translate(line, "fr") == "OK : Pie (de « Fw: pie », par la pièce jointe PDF) -- aucune étape trouvée; vérifiez la recette"
-    line = 'OK: Pie (from "x", via URL in body (a.com)) -- already in your library; not saved again'
-    assert translate(line, "fr") == "OK : Pie (de « x », par l'URL dans le corps (a.com)) -- déjà dans votre bibliothèque; pas enregistrée de nouveau"
+    line = 'OK: Pie (from "x", via the link https://a.com/ in the body) -- already in your library; not saved again'
+    assert translate(line, "fr") == "OK : Pie (de « x », par le lien https://a.com/ dans le corps) -- déjà dans votre bibliothèque; pas enregistrée de nouveau"
 
 
 BAD = ["https://example.com:443443/stew", "https://example.com:abc/stew", "http://[::1/x"]

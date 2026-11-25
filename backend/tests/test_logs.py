@@ -193,7 +193,7 @@ def test_email_link_with_half_a_recipe_fails_with_pdf_advice(tmp_path):
     with patch.object(email_processing, "ingest_url", return_value=_url_result(["1 chicken"], [])):
         result = email_processing.process_tagged_email(m, str(tmp_path))
     assert result["success"] is False
-    assert "link https://example.com/poulet: This page didn't give a complete recipe (no steps found)." in result["error"]
+    assert "link https://example.com/poulet — This page didn't give a complete recipe (no steps found)." in result["error"]
     assert "Save the page as a PDF and add that instead" not in result["error"]
     assert result["error"].endswith("save the page as a PDF and email that as an attachment, "
                                     "with the same word in the subject.")
