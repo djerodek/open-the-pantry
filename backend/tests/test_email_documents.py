@@ -56,7 +56,7 @@ def test_a_pdf_comes_before_a_document(tmp_path):
     pdf = HTML(string="<h1>PDF pancakes</h1><h2>Ingredients</h2><p>2 cups flour</p><p>1 egg</p>"
                       "<h2>Instructions</h2><p>1. Mix</p><p>2. Bake</p>").write_pdf()
     msg = EmailMessage()
-    msg["Subject"], msg["From"], msg["To"] = "[RECIPE] two", "sender@example.com", "me@example.com"
+    msg["Subject"], msg["From"], msg["To"] = "[RECIPE] two", "sender@mail.test", "me@example.com"
     msg.set_content("Two files.")
     msg.add_attachment(pdf, maintype="application", subtype="pdf", filename="a.pdf")
     msg.add_attachment("\n".join(["Text pancakes"] + RECIPE_LINES).encode(), maintype="text", subtype="plain",

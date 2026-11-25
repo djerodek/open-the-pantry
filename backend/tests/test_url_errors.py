@@ -63,7 +63,7 @@ def test_an_emailed_link_gives_the_short_reason(public, monkeypatch, tmp_path):
 
     from app.ingestion import email_processing
     monkeypatch.setattr(public, "http_get", _failing(requests.exceptions.ReadTimeout("x")))
-    raw = (b"From: a@example.com\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
+    raw = (b"From: a@mail.test\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
            b"https://www.example.com/recipe\r\n")
     result = email_processing.process_tagged_email(email.message_from_bytes(raw), str(tmp_path))
     assert result["success"] is False

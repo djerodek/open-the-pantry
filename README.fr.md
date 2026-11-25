@@ -158,7 +158,8 @@ n'ont pas pu être envoyés attendent la prochaine.
   réponse détaille chaque lien. Sans lien, le courriel est lu comme une seule
   recette.
 - Les liens de réseaux sociaux, d'applications de courriel et de
-  désabonnement (signatures, bas d'infolettres) ne sont jamais suivis.
+  désabonnement (signatures, bas d'infolettres), et ceux vers le domaine
+  de l'adresse de l'expéditeur, ne sont jamais suivis.
 - Le courriel sans le mot-clé n'est jamais lu; « Accepter les courriels
   seulement de » limite les expéditeurs (une ligne From peut être falsifiée :
   cela filtre, cela ne prouve rien).

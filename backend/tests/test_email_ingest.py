@@ -192,7 +192,7 @@ def test_scan_hour_validated(client):
 def _make_email(subject="[RECIPE] test", body="", attachment=None, attach_type=None, filename=None):
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = "sender@example.com"
+    msg["From"] = "sender@mail.test"   # not example.com, the test links' site (0239)
     msg["To"] = "me@example.com"
     msg.set_content(body)
     if attachment is not None:
@@ -810,7 +810,7 @@ def _nested(levels):
     for i in range(levels):
         b = f"b{i}"
         body = f"Content-Type: multipart/mixed; boundary={b}\r\n\r\n--{b}\r\n{body}--{b}--\r\n"
-    return ("From: a@example.com\r\nSubject: [RECIPE]\r\n" + body).encode()
+    return ("From: a@mail.test\r\nSubject: [RECIPE]\r\n" + body).encode()
 
 
 class _Imap:
@@ -1435,7 +1435,7 @@ def test_a_scheduled_scan_that_raises_is_tried_again_in_an_hour(monkeypatch):
 def test_links_over_2000_characters_arent_taken_from_an_email():
     from app.ingestion.email_processing import extract_email_parts
     long_link = "https://example.com/r?" + "a" * 2500
-    raw = ("From: a@example.com\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
+    raw = ("From: a@mail.test\r\nSubject: [RECIPE]\r\nContent-Type: text/plain\r\n\r\n"
            f"{long_link}\r\nhttps://example.com/soup\r\n").encode()
     assert extract_email_parts(email.message_from_bytes(raw))["urls"] == ["https://example.com/soup"]
 
@@ -1652,3 +1652,25 @@ def test_reply_lines_leave_a_space_after_every_address(tmp_path):
         assert url in line
         for m in re.finditer(r"https?://\S+", line):
             assert m.group(0) == url, line             # nothing stuck to its end
+
+
+def test_links_to_the_sender_s_own_domain_are_left_out(tmp_path):
+    """Owner, 2026-11-25: a work signature's company link was tried as a
+    recipe in every email, after the recipe link had failed."""
+    from app.ingestion.email_processing import extract_email_parts, is_footer_link, process_tagged_email
+
+    for host in ("demers.example", "www.demers.example", "ca.demers.example"):
+        assert is_footer_link(f"https://{host}/ca-en/", "demers.example"), host
+    assert is_footer_link("https://demers.example/", "mail.demers.example")
+    for url in ("https://demers-ambulances.example/", "https://notdemers.example/", "https://example.com/r/stew"):
+        assert not is_footer_link(url, "demers.example"), url
+    assert not is_footer_link("https://demers.example/", "")         # no From address
+
+    msg = _make_email(body="https://example.com/r/stew\nMarc Tremblay\nhttps://www.demers.example/ca-en/")
+    msg.replace_header("From", "Marc Tremblay <marc@demers.example>")
+    parts = extract_email_parts(msg)
+    assert parts["urls"] == ["https://example.com/r/stew"]
+    assert parts["footer_links"] == ["https://www.demers.example/ca-en/"]
+    with patch("app.ingestion.email_processing.ingest_url", side_effect=_Linked) as fetch:
+        assert process_tagged_email(msg, str(tmp_path))["success"]
+    fetch.assert_called_once_with("https://example.com/r/stew")

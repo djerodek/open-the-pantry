@@ -134,8 +134,8 @@ the next scan.
   Email ingest → Batch keyword), every linked recipe is saved, up to 50, plus
   one from an attachment; the reply lists each link. Without links it's read
   as one recipe.
-- Social, mail-app and unsubscribe links (signatures, newsletter footers)
-  are never followed.
+- Social, mail-app and unsubscribe links (signatures, newsletter footers),
+  and links to the sender's own email domain, are never followed.
 - Mail without the keyword is never read; "Only accept email from" limits
   senders (a From line can be forged: it filters, it doesn't prove).
 - **Use a dedicated address** with an app-specific password. The app stores

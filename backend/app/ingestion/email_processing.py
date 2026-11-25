@@ -2,6 +2,7 @@ import codecs
 import os
 import re
 import uuid
+from email.utils import parseaddr
 from urllib.parse import urlsplit
 
 from .completeness import missing_parts as missing_sections
@@ -44,7 +45,24 @@ FOOTER_WORDS = ("unsubscribe", "optout", "opt-out", "view-in-browser", "viewinbr
                 "email-preferences", "email_preferences", "manage-preferences")
 
 
-def is_footer_link(url: str) -> bool:
+def _same_site(host: str, domain: str) -> bool:
+    """One is the other or a subdomain of it: mail.example.com and
+    www.example.com both go with example.com. Never a bare suffix such as
+    co.uk, since neither side is one."""
+    return host == domain or host.endswith("." + domain) or domain.endswith("." + host)
+
+
+def sender_domain(msg) -> str:
+    """The From address's domain, lower case; "" when there's none."""
+    address = parseaddr(str(msg.get("From", "")))[1]
+    return address.rpartition("@")[2].lower().rstrip(".").removeprefix("www.") if "@" in address else ""
+
+
+def is_footer_link(url: str, sender: str = "") -> bool:
+    """`sender`: the From address's domain. A link to the sender's own site
+    is their signature's (owner, 2026-11-25: a work signature's company link
+    was tried as a recipe in every email). The From line can be forged; the
+    worst it does is leave one link out."""
     try:
         parsed = urlsplit(url)
         host = (parsed.hostname or "").lower().rstrip(".")
@@ -52,6 +70,8 @@ def is_footer_link(url: str) -> bool:
         return False
     host = host.removeprefix("www.")
     if any(host == h or host.endswith("." + h) for h in FOOTER_HOSTS):
+        return True
+    if sender and host and _same_site(host, sender):
         return True
     if host in ("youtube.com", "m.youtube.com") and re.match(r"/(@|channel/|c/|user/)", parsed.path):
         return True      # a channel page, not a video
@@ -257,7 +277,8 @@ def extract_email_parts(msg) -> dict:
     # link target).
     # At most 2,000 characters, as a batch of links takes (review of 0169).
     found = list(dict.fromkeys(u.rstrip(".,;:!?") for u in URL_RE.findall(body_text) if len(u) <= MAX_URL_CHARS))
-    footer_links = [u for u in found if is_footer_link(u)]
+    sender = sender_domain(msg)
+    footer_links = [u for u in found if is_footer_link(u, sender)]
     urls = [u for u in found if u not in footer_links]
 
     return {
