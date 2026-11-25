@@ -374,6 +374,7 @@ class EmailSettingsIn(BaseModel):
     password: Optional[str] = Field(default=None, max_length=1024)
     notify_email: Optional[str] = Field(default=None, max_length=1000)
     subject_keyword: str = Field(default="[RECIPE]", max_length=100)
+    batch_subject_keyword: str = Field(default="[RECIPES]", max_length=100)
     allowed_senders: str = Field(default="", max_length=2000)
     daily_scan_hour: int = Field(default=3, ge=0, le=23)
     cooldown_minutes: int = Field(default=30, ge=0, le=7 * 24 * 60)  # timedelta overflowed on huge values
@@ -412,6 +413,7 @@ class EmailSettingsOut(BaseModel):
     password_cleared: bool = False
     notify_email: Optional[str] = None
     subject_keyword: str
+    batch_subject_keyword: str = "[RECIPES]"
     allowed_senders: str = ""
     daily_scan_hour: int
     cooldown_minutes: int

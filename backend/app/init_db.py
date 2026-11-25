@@ -163,6 +163,8 @@ def _migrate_and_setup_schema():
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN language VARCHAR NOT NULL DEFAULT 'en'")
         if email_cols and "recent_recipients" not in email_cols:
             cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN recent_recipients TEXT NOT NULL DEFAULT '[]'")
+        if email_cols and "batch_subject_keyword" not in email_cols:
+            cur.execute("ALTER TABLE email_ingest_settings ADD COLUMN batch_subject_keyword VARCHAR NOT NULL DEFAULT '[RECIPES]'")
 
         tag_cols = {row[1] for row in cur.execute("PRAGMA table_info(tags)")}
         for col, decl in (("keywords", "TEXT NOT NULL DEFAULT ''"),

@@ -102,7 +102,10 @@ Son fonctionnement :
   - **Courriel** : un courriel de plus de 30 Mo, trop imbriqué, ou que
     l'OCR ne peut pas lire de façon fiable est refusé et marqué lu; les
     expéditeurs non permis sont refusés d'après la ligne From, avant que le
-    courriel soit téléchargé.
+    courriel soit téléchargé. Un courriel en lot (`[RECIPES]`) suit au plus
+    50 liens et n'en commence aucun après 15 minutes; les liens de réseaux
+    sociaux, d'applications de courriel et de désabonnement ne sont jamais
+    suivis.
   - **Archives** : au plus 20 000 fichiers pour une importation, 50 000
     pour une sauvegarde complète, vérifié avant de lire la liste des
     fichiers, et taille limitée à la décompression.

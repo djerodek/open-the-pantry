@@ -58,15 +58,16 @@ def safe_pdf_filename(title: str, recipe_id: int) -> str:
 # Never written into a backup, downloaded or automatic (owner's decision
 # after the Claude security audit of 0140: the backup download needs no
 # password, and held what the settings password guards): the email login
-# and its encrypted password, the subject keyword and allowed senders that
+# and its encrypted password, the subject keywords and allowed senders that
 # decide which emails are read, the notification address and the people
 # recipes were emailed to, and the HTTPS name and addresses. A restore
 # keeps the server's own (routes.backup); a new server needs them entered
-# again. Other settings (mail server names and ports, scan hour) stay; a
+# again (the batch keyword goes back to its default, not empty, which would
+# turn batches off unnoticed). Other settings (mail server names and ports, scan hour) stay; a
 # restore uses them only on a server with no email login (routes.backup).
 REDACTED_SETTINGS = {
     "email_ingest_settings": {"enabled": 0, "username": None, "password_encrypted": None, "notify_email": None,
-                              "subject_keyword": "", "allowed_senders": "", "recent_recipients": "[]",
+                              "subject_keyword": "", "batch_subject_keyword": "[RECIPES]", "allowed_senders": "", "recent_recipients": "[]",
                               "last_problem": None},
     "https_settings": {"domain": None, "lan_address": None, "email": None, "a_record_value": None,
                        "last_error": None},

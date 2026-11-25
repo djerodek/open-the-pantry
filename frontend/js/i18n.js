@@ -843,6 +843,9 @@
       "Verrouillé de nouveau après 15 minutes. Fermez puis rouvrez cette section pour entrer le mot de passe.",
     "Send notifications to": "Envoyer les avis à",
     "Subject keyword": "Mot-clé de l'objet",
+    "Batch keyword": "Mot-clé pour un lot",
+    "An email whose subject contains this adds every recipe it links to, up to 50, and one more from an attachment. Leave empty for none.":
+      "Un courriel dont l'objet contient ce mot-clé ajoute chaque recette vers laquelle il pointe, jusqu'à 50, et une de plus d'une pièce jointe. Laissez vide pour aucun lot.",
     "Only accept email from": "Accepter les courriels seulement de",
     "Daily scan hour (0-23)": "Heure de la vérification quotidienne (0-23)",
     "Notification cooldown (minutes)": "Délai entre les avis (minutes)",
@@ -855,8 +858,8 @@
     "Used for both IMAP and SMTP.": "Utilisé pour IMAP et SMTP.",
     "Stored encrypted. Use an app-specific password, not your main account password.":
       "Conservé chiffré. Utilisez un mot de passe propre à l'application, pas le mot de passe principal du compte.",
-    "Only emails whose subject contains this are considered. Everything else is ignored.":
-      "Seuls les courriels dont l'objet contient ce mot sont traités. Tous les autres sont ignorés.",
+    "Only emails whose subject contains this or the batch keyword are considered. Everything else is ignored.":
+      "Seuls les courriels dont l'objet contient ce mot ou le mot-clé pour un lot sont traités. Tous les autres sont ignorés.",
     "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone who knows the address and keyword. Recommended: list the addresses you send from.":
       "Des adresses, ou un domaine (exemple.com) pour tout le monde à ce domaine, séparés par des virgules. Laissez vide pour accepter quiconque connaît l'adresse et le mot-clé. Recommandé : indiquez les adresses d'où vous envoyez.",
     "Results within this window are batched into one email.": "Les résultats dans cet intervalle sont regroupés en un seul courriel.",

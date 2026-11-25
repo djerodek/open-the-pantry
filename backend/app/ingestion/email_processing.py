@@ -2,6 +2,7 @@ import codecs
 import os
 import re
 import uuid
+from urllib.parse import urlsplit
 
 from .completeness import missing_parts as missing_sections
 from .pdf_read import PdfTooLargeError, extract_pdf_text
@@ -27,6 +28,35 @@ CLIENT_FOOTER_RE = re.compile(
     r"^\s*(get outlook for (ios|android)|sent from (my |outlook|yahoo|mail for windows|gmail|samsung|proton)).*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
+# Links never followed (owner, 2026-11-25): social profiles, mail-app and
+# short-link hosts, newsletter senders' tracking hosts, and unsubscribe /
+# view-in-browser / preference links. Signatures without a "-- " line and
+# newsletter footers are otherwise just text with links in it; these are
+# the links they carry. A personal site in a signature isn't on the list:
+# it's tried, and fails as "no recipe" in the reply.
+FOOTER_HOSTS = (
+    "facebook.com", "fb.com", "instagram.com", "x.com", "twitter.com", "linkedin.com", "tiktok.com",
+    "threads.net", "aka.ms", "list-manage.com", "mailchi.mp", "mcusercontent.com", "sendgrid.net",
+    "rs6.net", "klclick.com", "klclick1.com", "klclick2.com", "klclick3.com",
+)
+FOOTER_WORDS = ("unsubscribe", "optout", "opt-out", "view-in-browser", "viewinbrowser", "view_in_browser",
+                "email-preferences", "email_preferences", "manage-preferences")
+
+
+def is_footer_link(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    host = host.removeprefix("www.")
+    if any(host == h or host.endswith("." + h) for h in FOOTER_HOSTS):
+        return True
+    if host in ("youtube.com", "m.youtube.com") and re.match(r"/(@|channel/|c/|user/)", parsed.path):
+        return True      # a channel page, not a video
+    return any(w in f"{parsed.path}?{parsed.query}".lower() for w in FOOTER_WORDS)
+
 
 # At most this many links are tried, in order, stopping at the first that
 # yields a recipe. A newsletter with dozens of links shouldn't trigger
@@ -226,13 +256,15 @@ def extract_email_parts(msg) -> dict:
     # Deduplicated: the same link often appears twice (as text and as the
     # link target).
     # At most 2,000 characters, as a batch of links takes (review of 0169).
-    urls = list(dict.fromkeys(u.rstrip(".,;:!?") for u in URL_RE.findall(body_text) if len(u) <= MAX_URL_CHARS))
+    found = list(dict.fromkeys(u.rstrip(".,;:!?") for u in URL_RE.findall(body_text) if len(u) <= MAX_URL_CHARS))
+    footer_links = [u for u in found if is_footer_link(u)]
+    urls = [u for u in found if u not in footer_links]
 
     return {
         "pdf_bytes": pdf_bytes, "pdf_name": pdf_name,
         "doc_bytes": doc_bytes, "doc_name": doc_name,
         "image_bytes": image_bytes, "image_name": image_name,
-        "body_text": body_text, "urls": urls, "skipped": skipped,
+        "body_text": body_text, "urls": urls, "footer_links": footer_links, "skipped": skipped,
     }
 
 
@@ -336,7 +368,39 @@ def _failure(reason: str) -> dict:
     return {"success": False, "error": reason}
 
 
-def process_tagged_email(msg, tmp_dir: str) -> dict:
+def try_link(url: str):
+    """One link through the URL pipeline: (result, None, False) when it gave
+    a complete recipe, else (None, why, whether saving the page as a PDF
+    would help). Shared by single and batch emails."""
+    try:
+        url_result = require_complete(ingest_url(url))
+    except Exception as e:
+        # Full traceback for the unexpected; the URL checks and a site's
+        # refusal are already explained in one line.
+        log.warning("Link %s failed: %s", log_url(url), e, exc_info=not isinstance(e, UrlValidationError))
+        if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, SiteUnreachableError)):
+            # The "add that instead" advice is for the app's own screens;
+            # the email gets its own version.
+            return None, re.sub(r"\s*(?:Sites with a bot check do this; s|S)ave the page as a PDF.*$", "", str(e)), True
+        return None, str(e), False
+    return _build_result(
+        url_result.title, url_result.ingredients, url_result.steps,
+        url_result.raw_text, source_detail=f"URL in body ({url})",
+        source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
+        times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
+    ), None, False
+
+
+def batch_parts(msg) -> dict:
+    """What a batch email ([RECIPES]) holds: its links (footer links left
+    out), the footer links, and whether it has an attachment to read as a
+    recipe of its own. Raises if the email can't be parsed."""
+    parts = extract_email_parts(msg)
+    return {"urls": parts["urls"], "footer_links": parts["footer_links"],
+            "attachment": bool(parts["pdf_bytes"] or parts.get("doc_bytes") or parts["image_bytes"])}
+
+
+def process_tagged_email(msg, tmp_dir: str, links: bool = True, body: bool = True) -> dict:
     """Attempts extraction in order: PDF attachment, Word/text/Markdown
     attachment, image attachment, a single clear URL in the body, then the
     body text itself. Each path
@@ -365,9 +429,9 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
         layout.append(f"{part.get_content_type()}[{disp}"
                       f"{', ' + _filename(part) if _filename(part) else ''}, {len(payload)}B]")
     log.info("Parts: %s", " ".join(layout) or "(none)")
-    log.info("Found: pdf=%s image=%s urls=%s body=%d chars; skipped=%s",
+    log.info("Found: pdf=%s image=%s urls=%s body=%d chars; footer links=%d; skipped=%s",
              parts["pdf_name"], parts["image_name"], [log_url(u) for u in parts["urls"]], len(parts["body_text"]),
-             parts["skipped"])
+             len(parts["footer_links"]), parts["skipped"])
 
     name_prefix = f"email-{uuid.uuid4().hex}"
     tried = list(parts["skipped"])
@@ -501,34 +565,26 @@ def process_tagged_email(msg, tmp_dir: str) -> dict:
     # Links are tried in order, first success wins. This used to require
     # exactly one link and skip the step otherwise -- which, with Outlook's
     # footer link, meant any email sent from Outlook for iOS.
+    # Footer and social links (is_footer_link) were left out of the links.
     pdf_hint = False
-    if len(parts["urls"]) > MAX_LINKS_TRIED:
+    if not links:
+        pass
+    elif len(parts["urls"]) > MAX_LINKS_TRIED:
         tried.append(f"{len(parts['urls'])} links in the body; at most {MAX_LINKS_TRIED} are followed")
     else:
         for url in parts["urls"]:
-            try:
-                url_result = require_complete(ingest_url(url))
-                return _build_result(
-                    url_result.title, url_result.ingredients, url_result.steps,
-                    url_result.raw_text, source_detail=f"URL in body ({url})",
-                    source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
-                    times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
-                )
-            except Exception as e:
-                # Full traceback for the unexpected; the URL checks and a
-                # site's refusal are already explained in one line.
-                log.warning("Link %s failed: %s", log_url(url), e, exc_info=not isinstance(e, UrlValidationError))
-                if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, SiteUnreachableError)):
-                    pdf_hint = True
-                    # The "add that instead" advice is for the app's own
-                    # screens; the email gets its own version below.
-                    reason_only = re.sub(r"\s*(?:Sites with a bot check do this; s|S)ave the page as a PDF.*$", "", str(e))
-                    tried.append(f"link {url}: {reason_only}")
-                else:
-                    tried.append(f"link {url}: {e}")
+            result, why, hint = try_link(url)
+            if result:
+                return result
+            pdf_hint = pdf_hint or hint
+            tried.append(f"link {url}: {why}")
+    if links and parts["footer_links"]:
+        tried.append(f"{len(parts['footer_links'])} footer or social link(s) not followed")
 
     # 5. Last resort: treat the body text itself as the recipe.
-    if parts["body_text"]:
+    if not body:
+        pass
+    elif parts["body_text"]:
         segmented = segment_raw_text(parts["body_text"])
         if not missing_sections(segmented["ingredients"], segmented["steps"]):
             return _build_result(

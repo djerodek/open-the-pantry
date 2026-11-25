@@ -247,9 +247,10 @@ def send_email_with_attachment(smtp_conn: smtplib.SMTP, from_addr: str, to_addrs
     smtp_conn.send_message(msg, from_addr=from_addr, to_addrs=to_addrs)
 
 
-def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> list[bytes]:
-    """Returns message IDs for UNSEEN emails whose subject contains
-    subject_keyword (case-insensitive substring match). Uses a broad
+def search_unseen_by_subject(imap_conn: imaplib.IMAP4, *keywords: str) -> list[bytes]:
+    """Returns message IDs for UNSEEN emails whose subject contains any of
+    the keywords (case-insensitive substring match; empty ones ignored):
+    the subject keyword and the batch keyword. Uses a broad
     UNSEEN search then filters subjects client-side -- IMAP SEARCH SUBJECT
     behavior (case sensitivity, substring vs. exact) varies enough across
     server implementations that client-side filtering on the decoded
@@ -257,8 +258,9 @@ def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> 
     fetching the header for inspection doesn't itself mark anything Seen
     -- only mark_seen() (called explicitly once a message has actually
     been handled) should do that."""
+    wanted = [k.lower() for k in keywords if k]
     status, data = imap_conn.search(None, "UNSEEN")
-    if status != "OK" or not data or not data[0]:
+    if not wanted or status != "OK" or not data or not data[0]:
         return []
     matched = []
     for msg_id in data[0].split():
@@ -275,7 +277,7 @@ def search_unseen_by_subject(imap_conn: imaplib.IMAP4, subject_keyword: str) -> 
         raw_header = header_data[0][1]
         msg = email.message_from_bytes(raw_header)
         subject = decode_subject(msg.get("Subject", ""))
-        if subject_keyword.lower() in subject.lower():
+        if any(k in subject.lower() for k in wanted):
             matched.append(msg_id)
     return matched
 

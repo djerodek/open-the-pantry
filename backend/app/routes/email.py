@@ -12,7 +12,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db, SessionLocal, UPLOADS_DIR, TMP_DIR
-from ..ingestion.email_processing import process_tagged_email
+from ..ingestion.email_processing import batch_parts, process_tagged_email, try_link
 from ..ingestion.url_ingest import redact_urls
 from ..export import render_recipe_pdf
 from .. import email_client
@@ -21,6 +21,7 @@ from .. import i18n
 from .. import duplicates
 from ..ml import service as learning
 from ..file_validation import safe_join
+from .ingest import MAX_BATCH_SECONDS, MAX_BATCH_URLS
 from .common import _add_recipe, _attachment_disposition, _demote_to_tmp, _discard_temp_file, _iso_utc, _promote_temp_file, _restoring, _run_heavy, _utc_now
 from fastapi import APIRouter
 from ..logging_setup import get_logger
@@ -285,8 +286,41 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
         return {"scanned": 0, "succeeded": 0, "failed": 0, "messages": [f"Could not connect: {e}"]}
 
     try:
-        msg_ids = email_client.search_unseen_by_subject(imap, settings.subject_keyword)
-        scan_log.info("Scan: %d unread email(s) matching %r", len(msg_ids), settings.subject_keyword)
+        batch_keyword = settings.batch_subject_keyword or ""
+        msg_ids = email_client.search_unseen_by_subject(imap, settings.subject_keyword, batch_keyword)
+        scan_log.info("Scan: %d unread email(s) matching %r or %r", len(msg_ids), settings.subject_keyword,
+                      batch_keyword)
+
+        def handle(result, subject):
+            """Saves, reports or skips one recipe found in an email."""
+            nonlocal succeeded, failed
+            existing = duplicates.same_link(db, result.get("source_url")) if result["success"] else None
+            if existing:
+                # Already saved from this link: reported, not saved again.
+                _discard_temp_file(result.get("image_path"))
+                line = f"{existing['title']} (from \"{subject}\", via {result['source_detail']}) -- already in your library; not saved again"
+                scan_log.info("Scan: %s", redact_urls(line))
+                messages.append(f"OK: {line}")
+                _queue_notification(db, True, line)
+            elif result["success"]:
+                same_title = duplicates.find(db, title=result["title"], limit=1)
+                recipe_id = _save_email_recipe(db, result, subject)
+                saved.append({"recipe_id": recipe_id, "title": result["title"]})
+                succeeded += 1
+                line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
+                if not result["steps"]:
+                    line += " -- no steps were found; check the recipe"
+                if same_title:
+                    line += " -- a recipe with this title was already in your library"
+                scan_log.info("Scan: saved recipe %s: %s", recipe_id, redact_urls(line))
+                messages.append(f"OK: {line}")
+                _queue_notification(db, True, line)
+            else:
+                failed += 1
+                line = f"\"{subject}\": {result['error']}"
+                messages.append(f"FAILED: {line}")
+                _queue_notification(db, False, line)
+
         for msg_id in msg_ids:
             subject = "(unknown subject)"
             try:
@@ -321,33 +355,10 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     _mark_seen(imap, msg_id)
                     continue
                 scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
-                result = _run_heavy(process_tagged_email, msg, TMP_DIR)
-                existing = duplicates.same_link(db, result.get("source_url")) if result["success"] else None
-                if existing:
-                    # Already saved from this link: reported, not saved again.
-                    _discard_temp_file(result.get("image_path"))
-                    line = f"{existing['title']} (from \"{subject}\", via {result['source_detail']}) -- already in your library; not saved again"
-                    scan_log.info("Scan: %s", redact_urls(line))
-                    messages.append(f"OK: {line}")
-                    _queue_notification(db, True, line)
-                elif result["success"]:
-                    same_title = duplicates.find(db, title=result["title"], limit=1)
-                    recipe_id = _save_email_recipe(db, result, subject)
-                    saved.append({"recipe_id": recipe_id, "title": result["title"]})
-                    succeeded += 1
-                    line = f"{result['title']} (from \"{subject}\", via {result['source_detail']})"
-                    if not result["steps"]:
-                        line += " -- no steps were found; check the recipe"
-                    if same_title:
-                        line += " -- a recipe with this title was already in your library"
-                    scan_log.info("Scan: saved recipe %s: %s", recipe_id, redact_urls(line))
-                    messages.append(f"OK: {line}")
-                    _queue_notification(db, True, line)
+                if batch_keyword and batch_keyword.lower() in subject.lower():
+                    _scan_batch_email(msg, subject, handle)
                 else:
-                    failed += 1
-                    line = f"\"{subject}\": {result['error']}"
-                    messages.append(f"FAILED: {line}")
-                    _queue_notification(db, False, line)
+                    handle(_run_heavy(process_tagged_email, msg, TMP_DIR), subject)
             except Exception as e:
                 scan_log.exception("Scan: error handling message %r (%r); left unread", msg_id, subject)
                 # Something went wrong AROUND the email rather than IN it:
@@ -391,6 +402,50 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
 
     return {"scanned": succeeded + failed, "succeeded": succeeded, "failed": failed, "messages": messages,
             "saved": saved}
+
+
+def _scan_batch_email(msg, subject: str, handle) -> None:
+    """A batch email (its subject has the batch keyword, [RECIPES] by
+    default; owner, 2026-11-25): every link in it is a recipe of its own,
+    up to Add from URL's batch limits (MAX_BATCH_URLS links, no new one
+    started after MAX_BATCH_SECONDS), each saved or reported on its own
+    line. An attachment is read as one more recipe. With no links, the
+    email is read as a single one: a lone recipe sent with the plural tag
+    still arrives."""
+    try:
+        found = batch_parts(msg)
+    except Exception as e:
+        log.exception("Batch email %r: could not read its content", subject)
+        handle({"success": False, "error": f"Could not read email content: {e}"}, subject)
+        return
+    if not found["urls"]:
+        handle(_run_heavy(process_tagged_email, msg, TMP_DIR), subject)
+        return
+    if found["attachment"]:
+        # Only the attachments: the links are tried below, and the body
+        # of a batch email is its list of links.
+        handle(_run_heavy(process_tagged_email, msg, TMP_DIR, links=False, body=False), subject)
+    urls = found["urls"]
+    if len(urls) > MAX_BATCH_URLS:
+        handle({"success": False, "error": f"{len(urls) - MAX_BATCH_URLS} link(s) not tried: "
+                f"at most {MAX_BATCH_URLS} are followed in one email"}, subject)
+        urls = urls[:MAX_BATCH_URLS]
+    deadline = time.monotonic() + MAX_BATCH_SECONDS
+    scan_log.info("Scan: batch email %r: %d link(s), %d footer or social link(s) left out",
+                  subject, len(urls), len(found["footer_links"]))
+    for i, url in enumerate(urls):
+        if time.monotonic() > deadline:
+            handle({"success": False, "error": f"{len(urls) - i} link(s) not tried: the email reached the "
+                    f"{MAX_BATCH_SECONDS // 60}-minute limit. Send them again."}, subject)
+            break
+        # Links aren't heavy work (no OCR), so they don't hold a heavy-job slot.
+        result, why, hint = try_link(url)
+        if not result:
+            error = f"link {url}: {why}"
+            if hint:
+                error += " To add it, save the page as a PDF and email that as an attachment."
+            result = {"success": False, "error": error}
+        handle(result, subject)
 
 
 def _scan_due(now, scan_hour: int, last_scan_at) -> bool:
@@ -497,6 +552,7 @@ def _email_settings_out(settings: models.EmailIngestSettings, password_cleared: 
         password_cleared=password_cleared,
         notify_email=settings.notify_email,
         subject_keyword=settings.subject_keyword,
+        batch_subject_keyword=settings.batch_subject_keyword or "",
         allowed_senders=settings.allowed_senders or "",
         daily_scan_hour=settings.daily_scan_hour,
         cooldown_minutes=settings.cooldown_minutes,
@@ -602,6 +658,9 @@ def update_email_settings(payload: schemas.EmailSettingsIn, db: Session = Depend
     settings.username = payload.username
     settings.notify_email = payload.notify_email
     settings.subject_keyword = payload.subject_keyword or "[RECIPE]"
+    # Empty turns batches off: those emails are then read one recipe each,
+    # if they also have the subject keyword.
+    settings.batch_subject_keyword = payload.batch_subject_keyword.strip()
     settings.allowed_senders = ", ".join(_parse_allowed_senders(payload.allowed_senders))
     settings.daily_scan_hour = payload.daily_scan_hour
     settings.cooldown_minutes = payload.cooldown_minutes
@@ -656,7 +715,9 @@ def test_email_settings(db: Session = Depends(get_db)):
                     "Ceci est un message de test d'Open the Pantry.\n\n"
                     "Si vous le recevez, l'envoi des avis fonctionne. Open the Pantry "
                     f"vérifiera une fois par jour, à {settings.daily_scan_hour:02d} h 00, les courriels "
-                    f"dont l'objet contient « {settings.subject_keyword} ».",
+                    f"dont l'objet contient « {settings.subject_keyword} »"
+                    + (f", ou « {settings.batch_subject_keyword} » pour plusieurs recettes par liens."
+                       if settings.batch_subject_keyword else "."),
                 )
             else:
                 subject, body = (
@@ -664,8 +725,10 @@ def test_email_settings(db: Session = Depends(get_db)):
                     "This is a test message from Open the Pantry.\n\n"
                     "Receiving it means outgoing notifications are working. "
                     f"Open the Pantry will scan for emails whose subject contains "
-                    f"\"{settings.subject_keyword}\" once daily at "
-                    f"{settings.daily_scan_hour:02d}:00.",
+                    f"\"{settings.subject_keyword}\""
+                    + (f" (or \"{settings.batch_subject_keyword}\" for several recipes by link)"
+                       if settings.batch_subject_keyword else "")
+                    + f" once daily at {settings.daily_scan_hour:02d}:00.",
                 )
             email_client.send_email(smtp, settings.username, settings.notify_email, subject, body)
         finally:

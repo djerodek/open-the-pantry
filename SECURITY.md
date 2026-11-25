@@ -86,7 +86,9 @@ How it works:
     wasn't started in time is listed as not tried, to send again.
   - **Email**: mail over 30 MB, nested too deeply, or that OCR can't read
     reliably is refused and marked read; senders not allowed are refused
-    from the From line, before the mail is downloaded.
+    from the From line, before the mail is downloaded. A batch email
+    (`[RECIPES]`) follows at most 50 links and starts none after 15
+    minutes; social, mail-app and unsubscribe links are never followed.
   - **Archives**: at most 20,000 files for an import, 50,000 for a full
     backup, checked before the file list is read, and size-limited when
     unpacked.

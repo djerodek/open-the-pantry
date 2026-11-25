@@ -178,6 +178,12 @@ class EmailIngestSettings(Base):
 
     notify_email = Column(String, nullable=True)  # where success/failure notifications are sent
     subject_keyword = Column(String, nullable=False, default="[RECIPE]")
+    # A subject with this one is a batch: every link in it is saved as a
+    # recipe of its own (routes.email._scan_batch_email; owner, 2026-11-25).
+    # A default in the table too: a row written without it (settings kept
+    # through a restore by an older version, routes.backup._put_back_rows)
+    # still goes in.
+    batch_subject_keyword = Column(String, nullable=False, default="[RECIPES]", server_default="[RECIPES]")
     # Comma-separated addresses ("me@example.com") and/or domains
     # ("@example.com"). Empty = accept any sender, as before.
     allowed_senders = Column(Text, nullable=False, default="")

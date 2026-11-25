@@ -6,6 +6,7 @@ import ssl
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -945,7 +946,7 @@ def test_the_scan_marks_it_read_and_refuses_a_stranger_before_downloading(client
     seen = []
     monkeypatch.setattr(email_routes.crypto, "decrypt_secret", lambda v: "pw")
     monkeypatch.setattr(email_client, "connect_imap", lambda *a, **k: type("I", (), {"logout": lambda self: None})())
-    monkeypatch.setattr(email_client, "search_unseen_by_subject", lambda imap, kw: [b"1", b"2"])
+    monkeypatch.setattr(email_client, "search_unseen_by_subject", lambda imap, *kw: [b"1", b"2"])
     monkeypatch.setattr(email_client, "fetch_sender", lambda imap, i: "Stranger <bad@x.example>" if i == b"1" else "friend@example.com")
 
     def full(imap, i, **kw):
@@ -1199,7 +1200,7 @@ def test_an_oversized_email_is_refused_before_its_header(client, monkeypatch):
     monkeypatch.setattr(email_routes.crypto, "decrypt_secret", lambda v: "pw")
     monkeypatch.setattr(email_client, "connect_imap", lambda *a, **k: imap)
     imap.logout = lambda: None
-    monkeypatch.setattr(email_client, "search_unseen_by_subject", lambda i, kw: [b"1"])
+    monkeypatch.setattr(email_client, "search_unseen_by_subject", lambda i, *kw: [b"1"])
     monkeypatch.setattr(email_client, "mark_seen", lambda i, m: seen.append(m))
     try:
         out = email_routes.run_email_scan()
@@ -1456,3 +1457,176 @@ def test_the_subject_is_read_from_its_first_4_kb_only():
 
     assert email_client.search_unseen_by_subject(Imap(), "recipe") == [b"1"]
     assert asked and all("[HEADER.FIELDS (SUBJECT)]<0.4096>" in a for a in asked), asked
+
+
+# ---------------------------------------------------------------------------
+# Footer links and batch emails (0237, owner 2026-11-25)
+# ---------------------------------------------------------------------------
+
+class _Linked:
+    """A complete recipe as url_ingest returns it, titled from its link."""
+    def __init__(self, url):
+        self.title = f"Batch {url.rsplit('/', 1)[-1]}"
+        self.ingredients = ["2 cups flour"]
+        self.steps = ["Mix"]
+        self.raw_text = "Mix"
+        self.final_url = url
+
+
+def test_footer_and_social_links_are_left_out():
+    from app.ingestion.email_processing import extract_email_parts, is_footer_link
+
+    for url in ("https://www.instagram.com/me", "https://x.com/me", "https://ca.linkedin.com/in/me",
+                "https://aka.ms/o0ukef", "https://us1.list-manage.com/track/click?u=1",
+                "https://example.com/newsletter/unsubscribe?u=1", "https://example.com/view-in-browser/42",
+                "https://www.youtube.com/@chef", "https://youtube.com/channel/UC1"):
+        assert is_footer_link(url), url
+    for url in ("https://example.com/recipes/stew", "https://www.youtube.com/watch?v=abc",
+                "https://www.pinterest.com/pin/1/", "not a url"):
+        assert not is_footer_link(url), url
+    parts = extract_email_parts(_make_email(body=(
+        "https://example.com/recipes/stew\nMarc\nFollow me https://www.instagram.com/me\n"
+        "Unsubscribe: https://example.com/unsubscribe?u=1")))
+    # A signature with no "-- " line above it: only the list leaves its links out.
+    assert parts["urls"] == ["https://example.com/recipes/stew"]
+    assert len(parts["footer_links"]) == 2
+
+
+def test_a_single_email_no_longer_counts_footer_links(tmp_path):
+    """A recipe link with three social and unsubscribe links: four links
+    meant none was followed; footer links don't count now."""
+    from app.ingestion.email_processing import process_tagged_email
+
+    msg = _make_email(body="https://example.com/recipes/stew\nhttps://www.facebook.com/me\n"
+                           "https://x.com/me\nhttps://example.com/unsubscribe?u=1")
+    with patch("app.ingestion.email_processing.ingest_url", side_effect=_Linked) as fetch:
+        result = process_tagged_email(msg, str(tmp_path))
+    assert result["success"] and result["source_url"] == "https://example.com/recipes/stew"
+    fetch.assert_called_once_with("https://example.com/recipes/stew")
+
+
+def test_the_inbox_search_takes_either_keyword():
+    from app import email_client
+
+    subjects = {b"1": "[RECIPE] one", b"2": "[RECIPES] several", b"3": "lunch", b"4": "[recipes] lower case"}
+    imap = MagicMock()
+    imap.search.return_value = ("OK", [b"1 2 3 4"])
+    imap.fetch.side_effect = lambda mid, _q: ("OK", [(b"h", f"Subject: {subjects[mid]}\r\n\r\n".encode())])
+    assert email_client.search_unseen_by_subject(imap, "[RECIPE]", "[RECIPES]") == [b"1", b"2", b"4"]
+    # "[RECIPE]" isn't inside "[RECIPES]": the batch keyword alone finds only batches.
+    assert email_client.search_unseen_by_subject(imap, "[RECIPES]") == [b"2", b"4"]
+    assert email_client.search_unseen_by_subject(imap, "[RECIPE]", "") == [b"1"]
+
+
+def _scan_batch(client, monkeypatch, msg, fetch):
+    from cryptography.fernet import Fernet
+
+    from app import crypto
+
+    monkeypatch.setenv(crypto.ENCRYPTION_KEY_ENV_VAR, Fernet.generate_key().decode())
+    client.put("/api/email-settings", json=_settings_payload(enabled=True, password="pw"))
+    with patch("app.routes.email.email_client.connect_imap", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.search_unseen_by_subject", return_value=[b"1"]), \
+         patch("app.routes.email.email_client.fetch_full_message", return_value=msg), \
+         patch("app.routes.email.email_client.mark_seen"), \
+         patch("app.routes.email.email_client.connect_smtp", return_value=MagicMock()), \
+         patch("app.routes.email.email_client.send_email"), \
+         patch("app.ingestion.email_processing.ingest_url", side_effect=fetch) as called:
+        r = client.post("/api/email-settings/scan")
+    assert r.status_code == 200
+    return r.json(), [c.args[0] for c in called.call_args_list]
+
+
+def _cleanup(client, body):
+    client.post("/api/recipes/batch-delete", json={"ids": [s["recipe_id"] for s in body.get("saved", [])]})
+    client.delete("/api/email-settings/password")
+
+
+def test_a_batch_email_saves_every_linked_recipe(client, monkeypatch):
+    from app.ingestion.url_ingest import NoRecipeFoundError
+
+    tag = uuid.uuid4().hex[:6]
+    good = [f"https://example.com/r/{tag}a", f"https://example.com/r/{tag}b", f"https://example.com/r/{tag}c"]
+    bad = f"https://example.com/r/{tag}-blog"
+
+    def fetch(url):
+        if url == bad:
+            raise NoRecipeFoundError("No recipe was found on that page.")
+        return _Linked(url)
+
+    msg = _make_email(subject="[RECIPES] this week",
+                      body="\n".join(good + [bad, good[0], "https://www.instagram.com/me"]))
+    body, fetched = _scan_batch(client, monkeypatch, msg, fetch)
+    try:
+        assert body["succeeded"] == 3 and body["failed"] == 1
+        assert fetched == good + [bad]                       # each once; the social link never
+        assert sorted(s["title"] for s in body["saved"]) == sorted(f"Batch {u.rsplit('/', 1)[-1]}" for u in good)
+        failure = next(m for m in body["messages"] if m.startswith("FAILED"))
+        assert f"link {bad}: No recipe was found on that page." in failure
+        assert "save the page as a PDF" in failure
+        # Sent again: every recipe is already in the library, reported and not saved twice.
+        again, _ = _scan_batch(client, monkeypatch, msg, fetch)
+        assert again["succeeded"] == 0 and again.get("saved") == []
+        assert sum("already in your library; not saved again" in m for m in again["messages"]) == 3
+    finally:
+        _cleanup(client, body)
+
+
+def test_a_batch_email_with_no_links_is_read_as_one_recipe(client, monkeypatch):
+    """The owner's case: one recipe sent with the plural tag still arrives."""
+    title = f"Plural tag soup {uuid.uuid4().hex[:6]}"
+    msg = _make_email(subject="[RECIPES] oops",
+                      body=f"{title}\nIngredients\n2 cups stock\n1 onion\nInstructions\n1. Simmer.")
+    body, fetched = _scan_batch(client, monkeypatch, msg, _Linked)
+    try:
+        assert body["succeeded"] == 1 and body["saved"][0]["title"] == title and fetched == []
+    finally:
+        _cleanup(client, body)
+
+
+def test_a_batch_email_stops_at_its_limits(client, monkeypatch):
+    from app.routes import email as email_routes
+
+    tag = uuid.uuid4().hex[:6]
+    links = [f"https://example.com/r/{tag}{i}" for i in range(3)]
+    msg = _make_email(subject="[RECIPES] many", body="\n".join(links))
+    monkeypatch.setattr(email_routes, "MAX_BATCH_URLS", 2)
+    body, fetched = _scan_batch(client, monkeypatch, msg, _Linked)
+    try:
+        assert fetched == links[:2] and body["succeeded"] == 2
+        assert any("1 link(s) not tried: at most 2 are followed in one email" in m for m in body["messages"])
+    finally:
+        _cleanup(client, body)
+
+    monkeypatch.setattr(email_routes, "MAX_BATCH_SECONDS", -1)    # past its time before the first link
+    body, fetched = _scan_batch(client, monkeypatch, msg, _Linked)
+    try:
+        assert fetched == [] and body["succeeded"] == 0
+        assert any("2 link(s) not tried: the email reached the" in m for m in body["messages"])
+    finally:
+        _cleanup(client, body)
+
+
+def test_the_batch_keyword_setting(client):
+    r = client.get("/api/email-settings")
+    assert r.json()["batch_subject_keyword"] == "[RECIPES]"
+    client.put("/api/email-settings", json=_settings_payload(batch_subject_keyword="  "))
+    assert client.get("/api/email-settings").json()["batch_subject_keyword"] == ""     # batches off
+    client.put("/api/email-settings", json=_settings_payload(batch_subject_keyword="[BATCH]"))
+    assert client.get("/api/email-settings").json()["batch_subject_keyword"] == "[BATCH]"
+    client.put("/api/email-settings", json=_settings_payload())
+    assert client.get("/api/email-settings").json()["batch_subject_keyword"] == "[RECIPES]"
+
+
+def test_batch_reply_lines_in_french():
+    from app import i18n
+
+    assert i18n.translate("3 footer or social link(s) not followed", "fr") == \
+        "3 lien(s) de bas de courriel ou de réseau social non suivi(s)"
+    assert i18n.translate('"[RECIPES] x": 4 link(s) not tried: at most 50 are followed in one email', "fr") == \
+        '"[RECIPES] x": 4 lien(s) non essayé(s) : au plus 50 sont suivis par courriel'
+    assert i18n.translate("2 link(s) not tried: the email reached the 15-minute limit. Send them again.", "fr") == \
+        "2 lien(s) non essayé(s) : le courriel a atteint la limite de 15 minutes. Renvoyez-les."
+    assert i18n.translate("link https://example.com/a: No recipe. To add it, save the page as a PDF and email "
+                          "that as an attachment.", "fr").endswith(
+        "Pour l'ajouter, enregistrez la page en PDF et envoyez-la en pièce jointe.")

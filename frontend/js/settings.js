@@ -875,6 +875,8 @@ async function renderEmailSettings() {
   if (!settings.encryption_configured) password.disabled = true;
   const notifyEmail = el("input", { type: "email", id: "email-notify", value: settings.notify_email || "" });
   const keyword = el("input", { type: "text", id: "email-keyword", value: settings.subject_keyword || "[RECIPE]" });
+  // Empty is allowed: no batches (0237).
+  const batchKeyword = el("input", { type: "text", id: "email-batch-keyword", value: settings.batch_subject_keyword ?? "[RECIPES]" });
   const senders = el("input", { type: "text", id: "email-senders", value: settings.allowed_senders || "",
     placeholder: tx("you@example.com, @family.example") });
   const scanHour = el("input", { type: "number", id: "email-scan-hour", min: "0", max: "23", value: String(settings.daily_scan_hour ?? 3) });
@@ -919,7 +921,9 @@ async function renderEmailSettings() {
     "Stored encrypted. Use an app-specific password, not your main account password."));
   emailPanel.appendChild(emailField("Send notifications to", notifyEmail));
   emailPanel.appendChild(emailField("Subject keyword", keyword,
-    "Only emails whose subject contains this are considered. Everything else is ignored."));
+    "Only emails whose subject contains this or the batch keyword are considered. Everything else is ignored."));
+  emailPanel.appendChild(emailField("Batch keyword", batchKeyword,
+    "An email whose subject contains this adds every recipe it links to, up to 50, and one more from an attachment. Leave empty for none."));
   emailPanel.appendChild(emailField("Only accept email from", senders,
     "Addresses, or a domain (example.com) for everyone there, separated by commas. Leave empty to accept anyone who knows the address and keyword. Recommended: list the addresses you send from."));
   emailPanel.appendChild(emailField("Daily scan hour (0-23)", scanHour,
@@ -954,6 +958,7 @@ async function renderEmailSettings() {
         username: username.value.trim() || null,
         notify_email: notifyEmail.value.trim() || null,
         subject_keyword: keyword.value.trim() || "[RECIPE]",
+        batch_subject_keyword: batchKeyword.value.trim(),
         allowed_senders: senders.value.trim(),
         daily_scan_hour: parseInt(scanHour.value, 10) || 0,
         cooldown_minutes: parseInt(cooldown.value, 10) || 0,

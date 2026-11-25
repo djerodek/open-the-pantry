@@ -147,11 +147,18 @@ Un courriel avec un mot-clé dans l'objet (`[RECIPE]` par défaut) envoyé à
 une boîte que vous configurez est récupéré une fois par jour, ou avec
 **Vérifier la boîte de courriel** dans le menu +. L'application essaie un
 PDF joint, puis un fichier Word, texte ou Markdown, puis une photo, puis
-les 3 premiers liens, puis le texte, et répond par `[SUCCESS]`,
+jusqu'à 3 liens, puis le texte, et répond par `[SUCCESS]`,
 `[FAILURE]` ou `[PARTIAL]`. Une vérification manquée pendant que le
 conteneur était arrêté se fait plus tard le même jour; les résultats qui
 n'ont pas pu être envoyés attendent la prochaine.
 
+- **Plusieurs recettes à la fois** : avec `[RECIPES]` dans l'objet
+  (Paramètres → Réception par courriel → Mot-clé pour un lot), chaque recette
+  en lien est enregistrée, jusqu'à 50, plus une d'une pièce jointe; la
+  réponse détaille chaque lien. Sans lien, le courriel est lu comme une seule
+  recette.
+- Les liens de réseaux sociaux, d'applications de courriel et de
+  désabonnement (signatures, bas d'infolettres) ne sont jamais suivis.
 - Le courriel sans le mot-clé n'est jamais lu; « Accepter les courriels
   seulement de » limite les expéditeurs (une ligne From peut être falsifiée :
   cela filtre, cela ne prouve rien).
