@@ -401,7 +401,9 @@ def try_link(url: str):
         log.warning("Link %s failed: %s", log_url(url), e, exc_info=not isinstance(e, UrlValidationError))
         if isinstance(e, (NoRecipeFoundError, IncompleteRecipeError, SiteRefusedError, SiteUnreachableError)):
             # The "add that instead" advice is for the app's own screens;
-            # the email gets its own version.
+            # the email gets its own version. Two forms: a site's refusal
+            # says "Sites with a bot check do this; save the page as a
+            # PDF…", the other errors start that advice at "Save the page".
             return None, re.sub(r"\s*(?:Sites with a bot check do this; s|S)ave the page as a PDF.*$", "", str(e)), True
         return None, str(e), False
     return _build_result(

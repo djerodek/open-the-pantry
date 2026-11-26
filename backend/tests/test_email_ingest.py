@@ -1573,6 +1573,27 @@ def test_a_batch_email_saves_every_linked_recipe(client, monkeypatch):
         _cleanup(client, body)
 
 
+def test_a_batch_email_with_an_attachment_and_links(client, monkeypatch):
+    """The likeliest batch: a PDF plus a couple of links. The attachment is
+    one recipe, each link another, the social link never fetched."""
+    from weasyprint import HTML
+
+    tag = uuid.uuid4().hex[:6]
+    title = f"Attached stew {tag}"
+    pdf = HTML(string=(f"<h1>{title}</h1><h2>Ingredients</h2><p>2 cups stock</p><p>1 onion</p>"
+                       "<h2>Instructions</h2><p>1. Simmer.</p><p>2. Serve.</p>")).write_pdf()
+    links = [f"https://example.com/r/{tag}a", f"https://example.com/r/{tag}b"]
+    msg = _make_email(subject="[RECIPES] mixed", body="\n".join(links + ["https://www.instagram.com/me"]),
+                      attachment=pdf, attach_type="application/pdf", filename="stew.pdf")
+    body, fetched = _scan_batch(client, monkeypatch, msg, _Linked)
+    try:
+        assert fetched == links
+        assert body["succeeded"] == 3 and body["failed"] == 0
+        assert sorted(s["title"] for s in body["saved"]) == sorted([title] + [f"Batch {tag}a", f"Batch {tag}b"])
+    finally:
+        _cleanup(client, body)
+
+
 def test_a_batch_email_with_no_links_is_read_as_one_recipe(client, monkeypatch):
     """The owner's case: one recipe sent with the plural tag still arrives."""
     title = f"Plural tag soup {uuid.uuid4().hex[:6]}"
@@ -1657,7 +1678,7 @@ def test_reply_lines_leave_a_space_after_every_address(tmp_path):
 def test_links_to_the_sender_s_own_domain_are_left_out(tmp_path):
     """Owner, 2026-11-25: a work signature's company link was tried as a
     recipe in every email, after the recipe link had failed."""
-    from app.ingestion.email_processing import extract_email_parts, is_footer_link, process_tagged_email
+    from app.ingestion.email_processing import extract_email_parts, is_footer_link, process_tagged_email, sender_domain
 
     for host in ("demers.example", "www.demers.example", "ca.demers.example"):
         assert is_footer_link(f"https://{host}/ca-en/", "demers.example"), host
@@ -1665,6 +1686,9 @@ def test_links_to_the_sender_s_own_domain_are_left_out(tmp_path):
     for url in ("https://demers-ambulances.example/", "https://notdemers.example/", "https://example.com/r/stew"):
         assert not is_footer_link(url, "demers.example"), url
     assert not is_footer_link("https://demers.example/", "")         # no From address
+    www = _make_email()
+    www.replace_header("From", "Marc <marc@www.demers.example>")
+    assert is_footer_link("https://demers.example/", sender_domain(www))   # www. taken off the sender too
 
     msg = _make_email(body="https://example.com/r/stew\nMarc Tremblay\nhttps://www.demers.example/ca-en/")
     msg.replace_header("From", "Marc Tremblay <marc@demers.example>")
