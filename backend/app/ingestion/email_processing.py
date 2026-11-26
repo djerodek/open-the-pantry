@@ -395,6 +395,15 @@ def try_link(url: str):
     would help). Shared by single and batch emails."""
     try:
         url_result = require_complete(ingest_url(url))
+        # Inside the try too (GPT review of 0239): a recipe that breaks the
+        # ingredient parser or the tagger is this link's failure, not the
+        # whole email's (which would leave it unread, retried every scan).
+        return _build_result(
+            url_result.title, url_result.ingredients, url_result.steps,
+            url_result.raw_text, source_detail=f"the link {url} in the body",
+            source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
+            times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
+        ), None, False
     except Exception as e:
         # Full traceback for the unexpected; the URL checks and a site's
         # refusal are already explained in one line.
@@ -406,12 +415,6 @@ def try_link(url: str):
             # PDF…", the other errors start that advice at "Save the page".
             return None, re.sub(r"\s*(?:Sites with a bot check do this; s|S)ave the page as a PDF.*$", "", str(e)), True
         return None, str(e), False
-    return _build_result(
-        url_result.title, url_result.ingredients, url_result.steps,
-        url_result.raw_text, source_detail=f"the link {url} in the body",
-        source_url=getattr(url_result, "final_url", None) or url, servings=getattr(url_result, "servings", None),
-        times={k: getattr(url_result, k, None) for k in ("prep_time", "cook_time", "total_time")},
-    ), None, False
 
 
 def batch_parts(msg) -> dict:

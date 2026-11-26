@@ -356,7 +356,7 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
                     continue
                 scan_log.info("Scan: processing %r from %s", subject, msg.get("From", "?"))
                 if batch_keyword and batch_keyword.lower() in subject.lower():
-                    _scan_batch_email(msg, subject, handle)
+                    _scan_batch_email(msg, subject, handle, known=lambda u: duplicates.same_link(db, u))
                 else:
                     handle(_run_heavy(process_tagged_email, msg, TMP_DIR), subject)
             except Exception as e:
@@ -404,14 +404,16 @@ def _run_email_scan_inner(db: Session, force_notify: bool) -> dict:
             "saved": saved}
 
 
-def _scan_batch_email(msg, subject: str, handle) -> None:
+def _scan_batch_email(msg, subject: str, handle, known=None) -> None:
     """A batch email (its subject has the batch keyword, [RECIPES] by
     default; owner, 2026-11-25): every link in it is a recipe of its own,
     up to Add from URL's batch limits (MAX_BATCH_URLS links, no new one
     started after MAX_BATCH_SECONDS), each saved or reported on its own
     line. An attachment is read as one more recipe. With no links, the
     email is read as a single one: a lone recipe sent with the plural tag
-    still arrives."""
+    still arrives. known(url) is a saved recipe with that link: it is
+    reported without being fetched again (GPT review of 0239), as when
+    links not tried are sent again with the ones already saved."""
     try:
         found = batch_parts(msg)
     except Exception as e:
@@ -438,6 +440,12 @@ def _scan_batch_email(msg, subject: str, handle) -> None:
             handle({"success": False, "error": f"{len(urls) - i} link(s) not tried: the email reached the "
                     f"{MAX_BATCH_SECONDS // 60}-minute limit. Send them again."}, subject)
             break
+        if known and known(url):
+            # handle() finds it again by this link and reports it as
+            # already in the library. A link that redirected when it was
+            # saved isn't matched here; it is fetched and matched after.
+            handle({"success": True, "source_url": url, "source_detail": f"the link {url} in the body"}, subject)
+            continue
         # Links aren't heavy work (no OCR), so they don't hold a heavy-job slot.
         result, why, hint = try_link(url)
         if not result:

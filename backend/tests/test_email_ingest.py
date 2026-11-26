@@ -1566,7 +1566,8 @@ def test_a_batch_email_saves_every_linked_recipe(client, monkeypatch):
         assert f"link {bad} — No recipe was found on that page." in failure
         assert "save the page as a PDF" in failure
         # Sent again: every recipe is already in the library, reported and not saved twice.
-        again, _ = _scan_batch(client, monkeypatch, msg, fetch)
+        again, fetched = _scan_batch(client, monkeypatch, msg, fetch)
+        assert fetched == [bad]                              # the saved ones not fetched again
         assert again["succeeded"] == 0 and again.get("saved") == []
         assert sum("already in your library; not saved again" in m for m in again["messages"]) == 3
     finally:
@@ -1590,6 +1591,31 @@ def test_a_batch_email_with_an_attachment_and_links(client, monkeypatch):
         assert fetched == links
         assert body["succeeded"] == 3 and body["failed"] == 0
         assert sorted(s["title"] for s in body["saved"]) == sorted([title] + [f"Batch {tag}a", f"Batch {tag}b"])
+    finally:
+        _cleanup(client, body)
+
+
+def test_a_link_that_breaks_the_tagger_fails_alone(client, monkeypatch):
+    """GPT review of 0239: an error building one link's recipe is that
+    link's failure; the other links are saved and the email is read."""
+    from app.ingestion import email_processing
+
+    tag = uuid.uuid4().hex[:6]
+    links = [f"https://example.com/r/{tag}a", f"https://example.com/r/{tag}b"]
+    real = email_processing.suggest_tags
+
+    def tags(title, *args):
+        if title.endswith(f"{tag}a"):
+            raise ValueError("tagger broke")
+        return real(title, *args)
+
+    monkeypatch.setattr(email_processing, "suggest_tags", tags)
+    body, fetched = _scan_batch(client, monkeypatch, _make_email(subject="[RECIPES] t", body="\n".join(links)), _Linked)
+    try:
+        assert fetched == links
+        assert body["succeeded"] == 1 and body["failed"] == 1
+        assert any(f"link {links[0]} — tagger broke" in m for m in body["messages"])
+        assert not any("left unread" in m for m in body["messages"])
     finally:
         _cleanup(client, body)
 
