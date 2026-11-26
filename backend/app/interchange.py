@@ -10,7 +10,7 @@ JSON on a recipe):
   importing the file back here loses nothing;
 - the library: recipes/<id>-<name>.json plus images/<photo> in one zip.
 
-Import (Settings -> Backup, restore and import -> Import or restore):
+Import (Settings -> Backup, restore and import -> Restore or import):
 - a schema.org Recipe .json (one recipe, a list, or an @graph), or a zip
   of them (this app's export, or another app's);
 - a Paprika .paprikarecipes file: a zip with one gzip-compressed JSON
