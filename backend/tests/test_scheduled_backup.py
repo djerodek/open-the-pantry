@@ -1,4 +1,4 @@
-"""Settings -> Backup & export -> Automatic backups (app/scheduled_backup.py)."""
+"""Settings -> Backup, restore and import -> Automatic backups (app/scheduled_backup.py)."""
 import os
 import zipfile
 from datetime import datetime, timedelta, timezone

@@ -1,4 +1,4 @@
-"""Settings -> Backup & export -> Restore from backup.
+"""Settings -> Backup, restore and import -> Restore from backup.
 
 Puts a full backup (backup.build_database_backup's zip) back without
 stopping the app. The manual way (stop, unzip, start; RESTORE.txt) still

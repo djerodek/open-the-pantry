@@ -1,7 +1,7 @@
-"""Settings -> Backup & export -> Automatic backups.
+"""Settings -> Backup, restore and import -> Automatic backups.
 
 Once a day, at the hour set (the container's local time, TZ), a full
-backup -- the same zip as Settings -> Backup & export -> Full backup
+backup -- the same zip as Settings -> Backup, restore and import -> Full backup
 (backup.build_database_backup) -- is written to the backup folder, and
 only the newest `keep` are kept. A backup missed because the server was
 off (none for 36 hours while switched on) is made at the next check. A

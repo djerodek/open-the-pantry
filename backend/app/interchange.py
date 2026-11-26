@@ -1,7 +1,7 @@
 """Recipes in standard formats: schema.org Recipe JSON-LD out, schema.org
 JSON and Paprika in.
 
-Export (Settings -> Backup & export -> Recipes as JSON, and Share -> Download
+Export (Settings -> Backup, restore and import -> Recipes as JSON, and Share -> Download
 JSON on a recipe):
 - one schema.org Recipe object per recipe (what recipe sites publish and
   most recipe managers can read), with the app's own fields that schema.org
@@ -10,7 +10,7 @@ JSON on a recipe):
   importing the file back here loses nothing;
 - the library: recipes/<id>-<name>.json plus images/<photo> in one zip.
 
-Import (Settings -> Backup & export -> Import or restore):
+Import (Settings -> Backup, restore and import -> Import or restore):
 - a schema.org Recipe .json (one recipe, a list, or an @graph), or a zip
   of them (this app's export, or another app's);
 - a Paprika .paprikarecipes file: a zip with one gzip-compressed JSON
@@ -196,8 +196,8 @@ recipes/  one file per recipe, a schema.org Recipe (https://schema.org/Recipe),
           and their groups, ratings, favourite, notes...).
 images/   the recipes' photos, named in each recipe's "image".
 
-To bring these recipes back into Open the Pantry: Settings -> Backup &
-export -> Import or restore, and choose this zip. They are added to the
+To bring these recipes back into Open the Pantry: Settings -> Backup,
+restore and import -> Restore or import, and choose this zip. They are added to the
 library (recipes already there are skipped); nothing is replaced.
 """
 

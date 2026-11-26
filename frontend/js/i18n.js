@@ -235,8 +235,8 @@
     "Quebec produce in high season (Mangez Québec's calendar), not greenhouse. Not for other regions.":
       "Fruits et légumes du Québec en haute saison (calendrier de Mangez Québec), pas de serre. Pas pour les autres régions.",
     "\"In season in Quebec\" filter": "Filtre « De saison au Québec »",
-    "Recipes with Quebec produce in high season this month, from Mangez Québec's calendar. Not for other regions. On this device.":
-      "Recettes avec des fruits et légumes du Québec en haute saison ce mois-ci, selon le calendrier de Mangez Québec. Pas pour les autres régions. Sur cet appareil.",
+    "Recipes with Quebec produce in high season this month, from Mangez Québec's calendar. Not for other regions.":
+      "Recettes avec des fruits et légumes du Québec en haute saison ce mois-ci, selon le calendrier de Mangez Québec. Pas pour les autres régions.",
     "search": "recherche",
     "{1} active": "{1} actif(s)",
     "No filters active": "Aucun filtre actif",
@@ -525,7 +525,6 @@
     "System": "Système",
     "Dark is true black.":
       "Le mode sombre est un vrai noir.",
-    "Screen": "Écran",
     "Keep screen awake when viewing a recipe": "Garder l'écran allumé pendant la consultation d'une recette",
     "For every recipe you open; each recipe also has its own switch.":
       "Pour chaque recette ouverte; chaque recette a aussi son propre interrupteur.",
@@ -552,12 +551,12 @@
     "Tiles": "Mosaïque",
     "Recipe view": "Affichage des recettes",
     "Checkboxes to tick off ingredients and steps": "Cases à cocher pour les ingrédients et les étapes",
-    "To keep track while you cook. What you tick stays until you clear it, at the bottom of the recipe. On this device.":
-      "Pour suivre où vous en êtes en cuisinant. Ce qui est coché le reste jusqu'à ce que vous l'effaciez, au bas de la recette. Sur cet appareil.",
+    "To keep track while you cook. What you tick stays until you clear it, at the bottom of the recipe.":
+      "Pour suivre où vous en êtes en cuisinant. Ce qui est coché le reste jusqu'à ce que vous l'effaciez, au bas de la recette.",
     "Clear checkboxes": "Décocher tout",
     "Checkboxes cleared.": "Cases décochées.",
-    "Titles: no photos. Tiles: photos side by side; tap one to open it. On this device.":
-      "Titres : sans photos. Mosaïque : les photos côte à côte; touchez-en une pour l'ouvrir. Sur cet appareil.",
+    "Titles: no photos. Tiles: photos side by side; tap one to open it.":
+      "Titres : sans photos. Mosaïque : les photos côte à côte; touchez-en une pour l'ouvrir.",
     "Tags": "Étiquettes",
     "Add suggested tags to all recipes": "Ajouter les étiquettes suggérées à toutes les recettes",
     "Suggests tags for every recipe; you pick which to add. Nothing is removed.":
@@ -569,7 +568,7 @@
     "Configure email ingest": "Configurer la réception par courriel",
     "Email recipes to a dedicated inbox; it's checked daily.":
       "Envoyez des recettes à une boîte dédiée; elle est vérifiée chaque jour.",
-    "Backup & export": "Sauvegarde et exportation",
+    "Backup, restore and import": "Sauvegarde, restauration et importation",
     "Full backup": "Sauvegarde complète",
     "Recipes as JSON": "Recettes en JSON",
     "Every recipe in the standard recipe format, with photos, for other recipe apps.":
@@ -620,7 +619,7 @@
     "⧉ Duplicate": "⧉ Dupliquer",
     "The copy": "La copie",
     "Copy made: {1}. Change it here, then save.": "Copie faite : {1}. Modifiez-la ici, puis enregistrez.",
-    "Display": "Affichage",
+    "This device": "Cet appareil",
     "Recipes": "Recettes",
     "Server": "Serveur",
     "Automatic backups": "Sauvegardes automatiques",
@@ -807,8 +806,8 @@
     "Open {1}": "Ouvrir {1}",
     "HTTPS is on: these open only at {1}": "HTTPS est activé : ils s'ouvrent seulement à {1}",
     "Change settings password": "Changer le mot de passe des paramètres",
-    "Protects the Server settings, Email PDF, restoring and automatic backups. Everything else stays open.":
-      "Protège les paramètres Serveur, l'envoi du PDF par courriel, la restauration et les sauvegardes automatiques. Le reste demeure ouvert.",
+    "Protects Email ingest, HTTPS, Logs, Email PDF, restoring and automatic backups. Everything else stays open.":
+      "Protège la réception par courriel, HTTPS, le journal, l'envoi du PDF par courriel, la restauration et les sauvegardes automatiques. Le reste demeure ouvert.",
     "Email ingest, HTTPS, Logs and Email PDF use your email account or DNS login, so they're behind a password. Create it now. Everything else in the app stays open.":
       "La réception par courriel, HTTPS, le journal et l'envoi du PDF par courriel utilisent votre compte de courriel ou votre accès DNS; ils sont donc protégés par un mot de passe. Créez-le maintenant. Tout le reste de l'application demeure ouvert.",
     "Email ingest, HTTPS, Logs and Email PDF are locked. Enter the settings password to unlock them on this device for 15 minutes.":
@@ -980,7 +979,7 @@
     "Add group": "Ajouter le groupe",
     "Added the {1} group. Add tags to it below.": "Groupe {1} ajouté. Ajoutez-y des étiquettes ci-dessous.",
 
-    // Quick reference charts (reference.js; Settings -> Display)
+    // Quick reference charts (reference.js; Settings -> This device)
     "Quick reference": "Aide-mémoire",
     "Baking substitutions": "Substitutions en pâtisserie",
     "Cooking substitutions": "Substitutions en cuisine",
@@ -1015,8 +1014,8 @@
     "Checked on {1}.": "Vérifié le {1}.",
     "Couldn't load the charts. Try again once you're online.": "Impossible de charger les tableaux. Réessayez une fois en ligne.",
     "Baking and cooking substitutions, meat cooking times": "Substitutions en pâtisserie et en cuisine, temps de cuisson des viandes",
-    "A button in the top bar and in each recipe. Works offline. On this device.":
-      "Un bouton dans la barre du haut et dans chaque recette. Fonctionne hors ligne. Sur cet appareil.",
+    "A button in the top bar and in each recipe. Works offline.":
+      "Un bouton dans la barre du haut et dans chaque recette. Fonctionne hors ligne.",
 
     // What to eat? (the picker page, its link in the top bar, its Settings section)
     "What to eat?": "On mange quoi?",

@@ -32,7 +32,7 @@ const backupNotesOption = document.querySelector(".backup-notes-option");
 const selectedBackupFormat = () =>
   (document.querySelector('input[name="backup-format"]:checked') || {}).value || "database";
 
-// Settings -> Backup & export -> Restore or import. A full backup
+// Settings -> Backup, restore and import -> Restore or import. A full backup
 // (backend: restore.py) is checked first and replaces the library only
 // after "Replace my library" (behind the settings password); anything else
 // goes to the import (interchange.py, POST /api/import/recipes), which
@@ -41,7 +41,7 @@ const importBtn = $("#import-btn");
 const restoreConfirm = $("#restore-confirm");
 let pendingRestore = null;
 
-// Settings -> Backup & export -> Automatic backups (scheduled_backup.py).
+// Settings -> Backup, restore and import -> Automatic backups (scheduled_backup.py).
 // Changing them or "Back up now" needs the settings password; the status
 // is open.
 const autoBackup = {

@@ -199,9 +199,9 @@ server keeps its own; on a new server, enter them again in Settings.
 To restore
 ----------
 
-The easy way, while the app is running: Settings -> Backup & export ->
-Restore or import, choose this file, then Replace my library. A safety copy
-of the current library is written to the data folder first
+The easy way, while the app is running: Settings -> Backup, restore and
+import -> Restore or import, choose this file, then Replace my library. A
+safety copy of the current library is written to the data folder first
 (restore-safety-<date>.zip).
 
 By hand (when the app won't start, or onto a new install):

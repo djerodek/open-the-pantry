@@ -90,7 +90,18 @@ def test_settings_groups_and_hidden_buttons(server, page):
     p = page()
     _open_settings(p, server["url"])
     titles = p.page.locator(".settings-group-title").all_inner_texts()
-    assert titles == ["Display", "Recipes", "Server"]
+    assert titles == ["This device", "Recipes", "Server"]
+    # 2026-11-26 regrouping (owner): each group's sections, in order.
+    sections = p.page.evaluate(
+        "[...document.querySelectorAll('.settings-group')].map(g => [...g.querySelectorAll("
+        "':scope > .filter-section > .filter-section-title')].map(t => t.textContent.trim()))")
+    assert sections == [
+        ["Language", "Theme", "Text size", "Recipe list", "Recipe view", "Quick reference", "Filters"],
+        ["Tags", "Library check", "Learning", "Backup, restore and import"],
+        ["Settings password", "Email ingest", "HTTPS", "What to eat?", "Logs"],
+    ]
+    # Keep screen awake is part of Recipe view (shown only where it works).
+    assert p.page.locator(".filter-section:has(#checkboxes-setting) #wakelock-default").count() == 1
     if "Not set yet" in p.page.inner_text("#admin-lock-status"):
         assert not p.page.is_visible("#admin-change-toggle") and not p.page.is_visible("#admin-lock-now")
     hidden_but_shown = p.page.evaluate(
@@ -101,7 +112,7 @@ def test_settings_groups_and_hidden_buttons(server, page):
 def test_french(server, page):
     p = page(locale="fr")
     _open_settings(p, server["url"])
-    assert p.page.locator(".settings-group-title").all_inner_texts() == ["Affichage", "Recettes", "Serveur"]
+    assert p.page.locator(".settings-group-title").all_inner_texts() == ["Cet appareil", "Recettes", "Serveur"]
     assert p.page.inner_text("#settings-heading") == "Paramètres"
 
 
@@ -1258,7 +1269,7 @@ def test_quick_reference_from_the_top_bar_and_a_recipe(server, api, page):
 
 
 def test_quick_reference_turned_off_in_settings(server, api, page):
-    """0233: on by default; Settings -> Display turns it off on this device,
+    """0233: on by default; Settings -> This device turns it off on this device,
     in the top bar and in recipes."""
     r = add_recipe(api, f"Browser no charts {uuid.uuid4().hex[:6]}")
     p = page()

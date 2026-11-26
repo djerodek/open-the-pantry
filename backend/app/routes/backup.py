@@ -1,4 +1,4 @@
-"""Backup & export, import, scheduled backups, and restoring a full backup."""
+"""Backup, restore and import: exports, imports, scheduled backups, and restoring a full backup."""
 import asyncio
 import base64
 import json

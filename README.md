@@ -161,7 +161,7 @@ the next scan.
 - **Quick reference**, in the top bar and on each recipe, offline: baking
   and cooking substitutions in Canadian measures, and meat roasting times
   (FoodSafety.gov) with Health Canada's safe internal temperatures, in °F
-  or °C, with a search box. Settings → Display hides it.
+  or °C, with a search box. Settings → This device hides it.
 - **Library**: edit, duplicate, merge two recipes, tag or delete several at
   once; **Recently deleted** keeps recipes 30 days; **Library check** lists
   incomplete recipes and likely duplicates.
@@ -178,7 +178,7 @@ If 8091 is taken, publish another port (e.g. `"9000:8091"`) and set
 
 ### Backup and restore
 
-Settings → Backup & export:
+Settings → Backup, restore and import:
 - **Full backup** (`.zip`): the database, every photo and PDF, and restore
   instructions. The one you can restore from.
 - **Recipes as PDFs** or **as JSON** (schema.org, for other recipe apps).

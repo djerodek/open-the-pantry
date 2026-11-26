@@ -253,7 +253,7 @@ class PickerSettings(Base):
 
 
 class BackupSchedule(Base):
-    """Singleton row (id=1): Settings -> Backup & export -> Automatic
+    """Singleton row (id=1): Settings -> Backup, restore and import -> Automatic
     backups (scheduled_backup.py). Off until turned on; a database from
     before it has no table, and create_all() adds one."""
     __tablename__ = "backup_schedule"

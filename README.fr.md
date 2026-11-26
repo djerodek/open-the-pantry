@@ -194,7 +194,7 @@ n'ont pas pu être envoyés attendent la prochaine.
   ligne : substitutions en pâtisserie et en cuisine en mesures canadiennes,
   et temps de rôtissage des viandes (FoodSafety.gov) avec les températures
   internes sécuritaires de Santé Canada, en °F ou en °C, avec une recherche.
-  Paramètres → Affichage le masque.
+  Paramètres → Cet appareil le masque.
 - **Bibliothèque** : modifier, dupliquer, fusionner deux recettes,
   étiqueter ou supprimer plusieurs à la fois; **Récemment supprimées** les
   garde 30 jours; **Vérification de la bibliothèque** liste les recettes
@@ -214,7 +214,7 @@ pris, publiez un autre port (p. ex. `"9000:8091"`) et réglez
 
 ### Sauvegarde et restauration
 
-Paramètres → Sauvegarde et exportation :
+Paramètres → Sauvegarde, restauration et importation :
 - **Sauvegarde complète** (`.zip`) : la base, toutes les photos et tous les
   PDF, et des instructions de restauration. C'est celle qu'on peut
   restaurer.

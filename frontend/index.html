@@ -314,7 +314,7 @@
     <h2 id="settings-heading">Settings</h2>
 
     <section class="settings-group" aria-labelledby="settings-group-display">
-      <h3 class="settings-group-title" id="settings-group-display">Display</h3>
+      <h3 class="settings-group-title" id="settings-group-display">This device</h3>
       <div class="filter-section">
         <div class="filter-section-title" id="language-setting-label">Language</div>
         <div class="mode-switch" id="language-switch" role="group" aria-labelledby="language-setting-label">
@@ -333,17 +333,6 @@
         <div class="field-hint">Dark is true black.</div>
       </div>
 
-      <div class="filter-section" id="wakelock-setting" hidden>
-        <div class="filter-section-title" id="wakelock-setting-label">Screen</div>
-        <label class="switch-row" for="wakelock-default">
-          <span>Keep screen awake when viewing a recipe</span>
-          <input type="checkbox" role="switch" id="wakelock-default" class="switch">
-        </label>
-        <div class="field-hint">
-          For every recipe you open; each recipe also has its own switch.
-        </div>
-      </div>
-
       <div class="filter-section">
         <div class="filter-section-title" id="text-size-setting-label">Text size</div>
         <div class="text-size-control" role="group" aria-labelledby="text-size-setting-label">
@@ -359,16 +348,25 @@
           <button type="button" data-list-style="photos">Photos</button>
           <button type="button" data-list-style="tiles">Tiles</button>
         </div>
-        <div class="field-hint">Titles: no photos. Tiles: photos side by side; tap one to open it. On this device.</div>
+        <div class="field-hint">Titles: no photos. Tiles: photos side by side; tap one to open it.</div>
       </div>
 
       <div class="filter-section">
         <div class="filter-section-title">Recipe view</div>
+        <div id="wakelock-setting" hidden>
+          <label class="switch-row" for="wakelock-default">
+            <span>Keep screen awake when viewing a recipe</span>
+            <input type="checkbox" role="switch" id="wakelock-default" class="switch">
+          </label>
+          <div class="field-hint">
+            For every recipe you open; each recipe also has its own switch.
+          </div>
+        </div>
         <label class="switch-row" for="checkboxes-setting">
           <span>Checkboxes to tick off ingredients and steps</span>
           <input type="checkbox" role="switch" id="checkboxes-setting" class="switch">
         </label>
-        <div class="field-hint">To keep track while you cook. What you tick stays until you clear it, at the bottom of the recipe. On this device.</div>
+        <div class="field-hint">To keep track while you cook. What you tick stays until you clear it, at the bottom of the recipe.</div>
       </div>
 
       <div class="filter-section">
@@ -377,7 +375,7 @@
           <span>Baking and cooking substitutions, meat cooking times</span>
           <input type="checkbox" role="switch" id="quick-reference-setting" class="switch">
         </label>
-        <div class="field-hint">A button in the top bar and in each recipe. Works offline. On this device.</div>
+        <div class="field-hint">A button in the top bar and in each recipe. Works offline.</div>
       </div>
 
       <div class="filter-section">
@@ -386,7 +384,7 @@
           <span>"In season in Quebec" filter</span>
           <input type="checkbox" role="switch" id="season-setting" class="switch">
         </label>
-        <div class="field-hint">Recipes with Quebec produce in high season this month, from Mangez Québec's calendar. Not for other regions. On this device.</div>
+        <div class="field-hint">Recipes with Quebec produce in high season this month, from Mangez Québec's calendar. Not for other regions.</div>
       </div>
     </section>
 
@@ -434,22 +432,8 @@
         <button type="button" id="learning-train" class="btn-secondary">Retrain now</button>
       </div>
 
-      <div class="filter-section" id="picker-section">
-        <div class="filter-section-title">What to eat?</div>
-        <label class="switch-row" for="picker-enabled">
-          <span>Turn on the What to eat? page</span>
-          <input type="checkbox" role="switch" id="picker-enabled" class="switch">
-        </label>
-        <div class="field-hint">
-          A read-only page on its own port that picks a random recipe. No login: anyone who can reach that port can read your recipes and notes.
-        </div>
-        <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY doesn't cover this page.</p>
-        <p class="field-hint" id="picker-status" role="status" hidden></p>
-        <p class="field-hint field-warning" id="picker-warning" hidden></p>
-      </div>
-
       <div class="filter-section">
-        <div class="filter-section-title" id="backup-format-label">Backup &amp; export</div>
+        <div class="filter-section-title" id="backup-format-label">Backup, restore and import</div>
         <p class="field-hint" id="backup-stats">&nbsp;</p>
 
         <fieldset class="backup-formats" aria-labelledby="backup-format-label">
@@ -558,7 +542,7 @@
       <div class="filter-section" id="admin-lock-section">
         <div class="filter-section-title">Settings password</div>
         <div class="field-hint">
-          Protects the Server settings, Email PDF, restoring and automatic backups. Everything else stays open.
+          Protects Email ingest, HTTPS, Logs, Email PDF, restoring and automatic backups. Everything else stays open.
         </div>
         <p class="field-hint" id="admin-lock-status" role="status"></p>
         <div class="logs-buttons" id="admin-lock-actions" hidden>
@@ -587,6 +571,20 @@
           An https:// address on your network (Let's Encrypt). Needed to keep the screen awake.
         </div>
         <div id="https-settings-panel" hidden></div>
+      </div>
+
+      <div class="filter-section" id="picker-section">
+        <div class="filter-section-title">What to eat?</div>
+        <label class="switch-row" for="picker-enabled">
+          <span>Turn on the What to eat? page</span>
+          <input type="checkbox" role="switch" id="picker-enabled" class="switch">
+        </label>
+        <div class="field-hint">
+          A read-only page on its own port that picks a random recipe. No login: anyone who can reach that port can read your recipes and notes.
+        </div>
+        <p class="field-hint field-warning" id="picker-key-note" hidden>RECIPE_APP_API_KEY doesn't cover this page.</p>
+        <p class="field-hint" id="picker-status" role="status" hidden></p>
+        <p class="field-hint field-warning" id="picker-warning" hidden></p>
       </div>
 
       <div class="filter-section">

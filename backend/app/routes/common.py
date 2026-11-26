@@ -70,7 +70,7 @@ BACKUP_TMP_DIR = os.path.join(DATA_DIR, "backup-tmp")
 os.makedirs(BACKUP_TMP_DIR, exist_ok=True)
 
 
-# Settings -> Backup & export -> Restore: while a backup is put back, every
+# Settings -> Backup, restore and import -> Restore: while a backup is put back, every
 # other request on either port gets a 503 (the database and photos are
 # being replaced under them), and the restore waits for requests already
 # running to finish before it starts. (restore_backup)

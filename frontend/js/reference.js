@@ -4,7 +4,7 @@
 // languages, fetched the first time a chart opens; the service worker
 // keeps it with the rest of the app, so the charts work offline.
 //
-// On by default; Settings -> Display turns it off on this device.
+// On by default; Settings -> This device turns it off on this device.
 //
 // The top bar (owner, 2026-11-23, "Option B"): from 48rem, a labelled
 // "Quick reference" button beside What to eat?. On a phone, a button each
